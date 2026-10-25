@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel
 
 from . import clipedit, obsrec, qt_theme
 from .i18n import N_, _
+from .qt_common import guard_wheel
 
 log = logging.getLogger("fogscout")
 
@@ -697,7 +698,7 @@ class ClipWindow(QWidget):
                                      "Bild neu kodiert, auch im Format „Schnell“)."))
         self.censor_box.toggled.connect(self._censor_toggled)
         zr.addWidget(self.censor_box)
-        self.style_box = QComboBox()
+        self.style_box = guard_wheel(QComboBox())
         for key in clipedit.CENSOR_STYLES:
             self.style_box.addItem(_(CENSOR_LABELS[key]), key)
         self.style_box.setCurrentIndex(max(0, list(clipedit.CENSOR_STYLES).index(self._censor_style)
@@ -739,7 +740,7 @@ class ClipWindow(QWidget):
             el.addLayout(row2)
             row2 = QHBoxLayout()
         row2.addWidget(QLabel(_("Format")))
-        self.mode_box = QComboBox()
+        self.mode_box = guard_wheel(QComboBox())
         if self.compact:
             self.mode_box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
             self.mode_box.setMinimumContentsLength(18)
@@ -748,7 +749,7 @@ class ClipWindow(QWidget):
         self.mode_box.setCurrentIndex(max(0, list(clipedit.MODES).index(mode) if mode in clipedit.MODES else 0))
         self.mode_box.currentIndexChanged.connect(self._mode_changed)
         row2.addWidget(self.mode_box)
-        self.target_box = QComboBox()
+        self.target_box = guard_wheel(QComboBox())
         for mb in clipedit.TARGETS_MB:
             self.target_box.addItem(_("≤ {n} MB", n=mb), mb)
         self.target_box.setCurrentIndex(list(clipedit.TARGETS_MB).index(self._target_mb))
@@ -897,7 +898,7 @@ class ClipWindow(QWidget):
         for key in obsrec.SOURCES:
             box = QCheckBox(_(SOURCE_LABELS[key]))
             box.setToolTip(_(SOURCE_TIPS[key]))
-            sl = QSlider(Qt.Horizontal)
+            sl = guard_wheel(QSlider(Qt.Horizontal))
             sl.setRange(0, MIX_MAX)
             sl.setFixedWidth(80)
             sl.setToolTip(_("Lautstärke dieser Quelle im Clip (100 % = wie aufgenommen)."))

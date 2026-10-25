@@ -190,6 +190,24 @@ def test_the_clip_window_mixes_the_sound_only_with_the_tracks_for_it(clip, four_
         assert win._silent == {"mic"} and "still" in win.mix_boxes["mic"].text()
         assert "still" not in win.mix_boxes["discord"].text() and win.mix_boxes["mic"].isEnabled()
         assert not win.mix_hint.isHidden() and "Mikrofon (Spur 4)" in win.mix_hint.text()
+        from PySide6.QtCore import QPoint, QPointF, Qt
+        from PySide6.QtGui import QWheelEvent
+        from PySide6.QtWidgets import QAbstractSlider, QComboBox, QWidget
+
+        def _wheel(w):                              # 1.11.13: the wheel guard sits on each widget, not on the app
+            pos = QPointF(w.rect().center())
+            app.sendEvent(w, QWheelEvent(pos, QPointF(w.mapToGlobal(pos.toPoint())), QPoint(0, 0), QPoint(0, -120),
+                                         Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False))
+
+        boxes = [w for w in win.findChildren(QWidget) if isinstance(w, (QComboBox, QAbstractSlider))
+                 and not w.inherits("QScrollBar")]
+        assert len(boxes) >= 3 + len(win.mix_sliders) and win.mix_sliders["mic"].isEnabled()
+        for w in boxes:
+            before = w.currentIndex() if isinstance(w, QComboBox) else w.value()
+            if isinstance(w, QAbstractSlider):
+                w.setValue(before := w.maximum() // 2)
+            _wheel(w)
+            assert (w.currentIndex() if isinstance(w, QComboBox) else w.value()) == before
     finally:
         win.close()
         app.processEvents()
