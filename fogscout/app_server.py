@@ -49,9 +49,11 @@ class ServerTab:
         t.heading("#0", text=_("Region"), anchor="w")
         t.heading("ping", text="Ping", anchor="e")
         t.heading("state", text=_("hosts-Datei"), anchor="w")
-        t.column("#0", width=215, stretch=True)
+        # 1.11.14 (user picked "Ping neben dem Namen"): the hosts column takes the rest – the ping stood a whole
+        # window width away from its region
+        t.column("#0", width=290, stretch=False)
         t.column("ping", width=78, anchor="e", stretch=False)
-        t.column("state", width=120, anchor="w", stretch=False)
+        t.column("state", width=120, anchor="w", stretch=True)
         t.pack(side="left", fill="x")             # as tall as its rows, no empty box below (1.58.1)
         self.srv_tree = t
         t._dbdms_click = self._srv_toggle         # a click toggles the region (also from the Qt window)
@@ -189,6 +191,13 @@ class ServerTab:
             n = sum(c in self.srv_sel for c in codes)
             box = ui.CHECK_ON if n == len(codes) else ui.CHECK_OFF if n == 0 else ui.CHECK_PART
             t.item(f"g:{g}", text=_(g), tags=("group", box))
+            # 1.11.14: after a measurement the fastest region of each group first (unanswered ones last)
+            measured = bool(self.srv_ping) and not self._srv_busy
+            ms_of = {c: (self.srv_ping.get(c) or {}).get("ms") for c in codes}
+            order = sorted(codes, key=lambda c: (ms_of[c] is None, ms_of[c] or 0)) if measured else codes
+            for i, c in enumerate(order):
+                if t.get_children(f"g:{g}").index(f"r:{c}") != i:
+                    t.move(f"r:{c}", f"g:{g}", i)
             for c in codes:
                 p = self.srv_ping.get(c)
                 ms = p.get("ms") if p else None

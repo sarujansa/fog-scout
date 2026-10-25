@@ -10,13 +10,16 @@ from dataclasses import dataclass, field
 
 from . import dashboard, history, obsrec, official, sysinfo, theme
 from .connwatch import UNKNOWN, region_name
-from .i18n import _
+from .i18n import N_, _
 from .lobby import killer_label
 from .overlay_win32 import ping_colour
 from .status import DOT_STYLE, user_state
 from .textnorm import fmt_duration, roman
 
 LAST_ROUNDS = 5
+DAYS = 14                 # 1.11.14: the overview's chart "Runden pro Tag" covers this many days, today the last
+WEEKDAYS = (N_("Montag"), N_("Dienstag"), N_("Mittwoch"), N_("Donnerstag"), N_("Freitag"), N_("Samstag"),
+            N_("Sonntag"))
 WEEK_S = 7 * 86400       # 1.8.83: the week before this one, for the comparison tiles
 
 
@@ -54,6 +57,8 @@ class Overview:
     week: list = field(default_factory=list)           # 1.8.83: this week against the last one (Facts); [] = no rounds
     week_note: str = ""
     news_since: str = ""                      # the card's title
+    days: dict = field(default_factory=dict)  # 1.11.14: chart data (trendchart panel "killer") – {} = no round in DAYS
+    dark: bool = True
 
 
 def _num(v: float, digits: int = 1) -> str:
@@ -302,6 +307,35 @@ def _system_rows(app, now: float, is_win: bool) -> tuple[list, str]:
     return rows, note
 
 
+def days(app, now: float) -> dict:
+    """1.11.14 (user picked "Übersicht: freie Fläche nutzen"): rounds per day over the last DAYS days as one chart
+    panel (trendchart format, drawn by qt_views.Chart) – {} while none of those days has a round."""
+    j = app._joined()
+    start = history.period_start("day", now)
+    first = start - (DAYS - 1) * 86400
+    counts = [[0, 0, 0] for _i in range(DAYS)]               # all, killer, survivor
+    for r in j.rounds:
+        if r.t >= first:
+            i = min(DAYS - 1, int((r.t - first) // 86400))   # a DST change day is 23/25 h: the last bucket holds
+            counts[i][0] += 1
+            counts[i][1] += r.role == "killer"
+            counts[i][2] += r.role == "survivor"
+    if not any(c[0] for c in counts):
+        return {}
+    bars = []
+    for i, (n, k, s) in enumerate(counts):
+        t = time.localtime(first + i * 86400 + 43200)        # noon: the right date on a DST change day
+        when = _(WEEKDAYS[t.tm_wday])[:2] + time.strftime(" %d.%m.", t)
+        bars.append((n or None, time.strftime("%d.", t),
+                     _("{when}: {n} Runden ({k} Killer, {s} Survivor)", when=when, n=n, k=k, s=s) if n else ""))
+    top = max(c[0] for c in counts)
+    step = next((s for s in (1, 2, 5, 10, 20, 25, 50, 100) if -(-top // s) <= 4), 100 * -(-top // 400))  # round
+    peak = step * -(-top // step)                                                                    # grid lines
+    return {"killer": {"title": _("Runden pro Tag – letzte {n} Tage", n=DAYS), "bars": bars, "max": peak,
+                       "ticks": [(v, str(v)) for v in range(0, peak + 1, step)],
+                       "last": str(counts[-1][0]) if counts[-1][0] else "", "empty": ""}}
+
+
 def last_rounds(app, n: int = LAST_ROUNDS) -> list:
     j = app._joined()
     out = []
@@ -347,8 +381,10 @@ def overview_model(app, now: float, is_win: bool) -> Overview:
     j = app._joined()                       # today and the last rounds: again only when the files or the minute change
     cache = getattr(app, "_ov_cache", None)
     if cache is None or cache[0] is not j or cache[1] != int(now // 60):
-        cache = app._ov_cache = (j, int(now // 60), today(app, now), last_rounds(app), week(app, now))
-    (o.today, o.today_note), o.rounds, (o.week, o.week_note) = cache[2], cache[3], cache[4]
+        cache = app._ov_cache = (j, int(now // 60), today(app, now), last_rounds(app), week(app, now),
+                                 days(app, now))
+    (o.today, o.today_note), o.rounds, (o.week, o.week_note), o.days = cache[2], cache[3], cache[4], cache[5]
+    o.dark = bool(app.settings.get("dark_mode", True))
     o.system, o.system_note = system(app, now, is_win)
     o.log_alert = bool(getattr(app, "_log_alert", False))
     o.news = list(getattr(app, "_news", None) or ())
