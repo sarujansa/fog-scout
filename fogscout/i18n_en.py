@@ -1905,7 +1905,6 @@ EN = {
     'Verpixelt': 'Pixelated',
     'Verwischt': 'Blurred',
     'Schwarz': 'Black',
-    'Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg 1 Bild · I/O Start/Ende · M Marke · Pos1/Ende Anfang/Schluss · Entf Kasten weg · Esc schliessen': 'Space play · ←/→ 1 s · Shift 5 s · Ctrl 1 frame · I/O start/end · M mark · Home/End first/last · Del removes a box · Esc closes',
     'Zensieren': 'Censor',
     'Beim Speichern anwenden': 'Apply when saving',
     'Die Kästen werden im gespeicherten Clip unkenntlich gemacht (dafür wird das Bild neu kodiert, auch im Format „Schnell“).': 'The boxes are hidden in the saved clip (the picture is re-encoded for that, also in the "Fast" format).',
@@ -2246,4 +2245,241 @@ EN = {
         'editor) on the "Clips" tab.',
     'Runden pro Tag – letzte {n} Tage': 'Rounds per day – last {n} days',
     '{when}: {n} Runden ({k} Killer, {s} Survivor)': '{when}: {n} rounds ({k} killer, {s} survivor)',
+    # 1.12: the editing tools (clip editor, picture editor, screenshots)
+    '+ Abschnitt':
+        '+ Part',
+    '1 s ab Abspielkopf':
+        '1 s from the playhead',
+    '10 s ab Abspielkopf':
+        '10 s from the playhead',
+    '100 % = unverändert.':
+        '100 % = unchanged.',
+    '3 s ab Abspielkopf':
+        '3 s from the playhead',
+    '5 s ab Abspielkopf':
+        '5 s from the playhead',
+    '9:16 (Hochformat)':
+        '9:16 (portrait)',
+    'Abschnitt entfernen':
+        'Remove part',
+    'Abschnitte':
+        'Parts',
+    'Alle Abschnitte entfernen':
+        'Remove all parts',
+    'Alle Bilder':
+        'All pictures',
+    'Alle Zeichnungen entfernen':
+        'Remove all drawings',
+    'Alles zurücksetzen':
+        'Reset everything',
+    'Anderen Ordner …':
+        'Other folder …',
+    'Aufgenommen (F12)':
+        'Taken (F12)',
+    'Ausschnitt':
+        'Crop',
+    'Ausschnitt {w}×{h}':
+        'crop {w}×{h}',
+    'Ausschnitt, Tempo, Blenden und Zeichnungen brauchen ein neu kodiertes Bild – „Schnell“ speichert dann wie „Genau“.':
+        'Crop, tempo, fades and drawings need the picture re-encoded – "Fast" then saves like "Exact".',
+    'Bearbeitet':
+        'Edited',
+    'Bearbeitete Bilder öffnen':
+        'Open edited pictures',
+    'Bild bearbeiten – {name}':
+        'Edit picture – {name}',
+    'Bild bearbeiten …':
+        'Edit picture …',
+    'Bild gespeichert: {file}':
+        'Picture saved: {file}',
+    'Bild im Explorer zeigen':
+        'Show picture in Explorer',
+    'Bild markieren: bearbeiten (zuschneiden, zeichnen, zensieren), im Explorer zeigen – oder Rechtsklick.':
+        'Mark a picture: edit it (crop, draw, censor), show it in Explorer – or right-click.',
+    'Bild nicht gespeichert: {error}':
+        'Picture not saved: {error}',
+    'Bild nicht lesbar: {error}':
+        'Picture not readable: {error}',
+    'Bild speichern':
+        'Save picture',
+    'Der Clip beginnt aus Schwarz und mit leisem Ton.':
+        'The clip starts from black with the sound rising.',
+    'Der Clip endet in Schwarz, der Ton wird leiser.':
+        'The clip ends in black, the sound fades out.',
+    'Dick':
+        'Thick',
+    'Dünn':
+        'Thin',
+    'Eigener Ordner':
+        'Own folder',
+    'Eigener Ordner nicht gefunden: {path}':
+        'Own folder not found: {path}',
+    'Eigener Ordner: {path}':
+        'Own folder: {path}',
+    'Einblenden':
+        'Fade in',
+    'Entfernt alle Abschnitte – gespeichert wird dann wieder der Bereich zwischen Start und Ende.':
+        'Removes all parts – the stretch between start and end is saved again.',
+    'Entfernt den markierten Abschnitt.':
+        'Removes the marked part.',
+    'Entfernt den markierten Kasten (Entf).':
+        'Removes the marked box (Del).',
+    'Entfernt die markierte Zeichnung (Entf).':
+        'Removes the marked drawing (Del).',
+    'F12 im Spiel ist Steams Screenshot-Taste – Steam legt die Bilder in seinem eigenen Ordner ab, das Programm liest sie dort nur. Bearbeitete Bilder sind Kopien im Ordner „Screenshots“ neben den Aufnahmen (ohne Aufnahmeordner: Bilder/Fog Scout); das Original bleibt immer unverändert.':
+        'F12 in the game is Steam\'s screenshot key – Steam puts the pictures in its own folder, the program only reads them there. Edited pictures are copies in the folder "Screenshots" next to the recordings (without a recording folder: Pictures/Fog Scout); the original always stays as it is.',
+    'Farbe':
+        'Colour',
+    'Farbe zurücksetzen':
+        'Reset colour',
+    'Frei':
+        'Free',
+    'Freihand':
+        'Freehand',
+    'GIF (ohne Ton, für Chats)':
+        'GIF (no sound, for chats)',
+    'GIF {h}p, {fps} Bilder/s, ohne Ton':
+        'GIF {h}p, {fps} frames/s, no sound',
+    'Gespeichert werden die {n} Abschnitte nacheinander ({length} s). Einen Abschnitt anklicken zeigt ihn auf der Zeitleiste.':
+        'The {n} parts are saved one after the other ({length} s). Click a part to show it on the timeline.',
+    'Helligkeit':
+        'Brightness',
+    'Helligkeit, Kontrast und Sättigung auf 100 %.':
+        'Brightness, contrast and saturation back to 100 %.',
+    'Höhe des GIFs – kleiner = kleinere Datei (Discord, Chats).':
+        'Height of the GIF – smaller = smaller file (Discord, chats).',
+    'Im Bild einen Bereich aufziehen, der unkenntlich wird – Namen, Chat, Freundesliste. Kästen lassen sich verschieben und an der Ecke rechts unten vergrössern.':
+        'Drag an area in the picture that is made unreadable – names, chat, friends list. Boxes can be moved and resized at their bottom right corner.',
+    'Im Bild ziehen (Text: klicken). Eine Zeichnung anklicken markiert sie, ziehen verschiebt sie, Entf löscht sie.':
+        'Drag in the picture (text: click). Click a drawing to mark it, drag to move it, Del removes it.',
+    'Immer':
+        'Always',
+    'In Zwischenablage':
+        'To clipboard',
+    'In die Zwischenablage kopiert – in Discord mit Strg+V einfügen.':
+        'Copied to the clipboard – paste it in Discord with Ctrl+V.',
+    'Kein Ausschnitt':
+        'No crop',
+    'Kein Screenshot-Ordner von Steam für DBD gefunden – noch kein F12-Screenshot, oder Steam speichert woanders („Anderen Ordner …“).':
+        'No Steam screenshot folder for DBD found – no F12 screenshot yet, or Steam saves elsewhere ("Other folder …").',
+    'Kontrast':
+        'Contrast',
+    'Kopiert das bearbeitete Bild – in Discord mit Strg+V einfügen (Strg+C).':
+        'Copies the edited picture – paste it in Discord with Ctrl+V (Ctrl+C).',
+    'Kreis':
+        'Ellipse',
+    'Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg 1 Bild · I/O Start/Ende · A Abschnitt · M Marke · Pos1/Ende Anfang/Schluss · Entf Kasten/Zeichnung weg · Esc schliessen':
+        'Space play · ←/→ 1 s · Shift 5 s · Ctrl 1 frame · I/O start/end · A part · M mark · Home/End beginning/end · Del removes box/drawing · Esc close',
+    'Letzten Schritt zurücknehmen (Strg+Z).':
+        'Undo the last step (Ctrl+Z).',
+    'Linie':
+        'Line',
+    'Links und rechts tauschen.':
+        'Swap left and right.',
+    'Mittel':
+        'Medium',
+    'Nimmt den Bereich zwischen Start und Ende als Abschnitt auf (Taste A). Alle Abschnitte werden nacheinander zu einem Clip zusammengefügt.':
+        'Takes the stretch between start and end as a part (key A). All parts are joined into one clip, one after the other.',
+    'Noch keine Abschnitte: gespeichert wird der Bereich zwischen Start und Ende. Für mehrere Szenen aus einer Runde: Bereich wählen, „+ Abschnitt“, nächsten Bereich wählen …':
+        'No parts yet: the stretch between start and end is saved. For several scenes from one round: pick a stretch, "+ Part", pick the next stretch …',
+    'Oben und unten tauschen.':
+        'Swap top and bottom.',
+    'Ordner mit deinen Screenshots':
+        'Folder with your screenshots',
+    'Ordner nicht anlegbar: {error}':
+        'Cannot create the folder: {error}',
+    'PNG: verlustfrei · JPG: kleinere Datei.':
+        'PNG: lossless · JPG: smaller file.',
+    'Pfeil':
+        'Arrow',
+    'Quelle':
+        'Source',
+    'Rahmen':
+        'Box',
+    'Rahmen bearbeiten':
+        'Edit frame',
+    'Rahmen im Bild ziehen, verschieben, an den Ecken ändern.':
+        'Drag the frame in the picture, move it, change it at the corners.',
+    'Rahmen in der Vorschau verschieben oder an den Ecken grösser/kleiner ziehen. Nochmal drücken beendet das Werkzeug.':
+        'Move the frame in the preview or drag its corners larger/smaller. Press again to end the tool.',
+    'Schneidet einen Bereich aus dem Bild – 9:16 für YouTube Shorts und TikTok, 1:1 für Instagram. Den Rahmen in der Vorschau verschieben und an den Ecken ziehen.':
+        'Cuts an area out of the picture – 9:16 for YouTube Shorts and TikTok, 1:1 for Instagram. Move the frame in the preview and drag its corners.',
+    'Screenshots':
+        'Screenshots',
+    'Sehr dick':
+        'Very thick',
+    'Seitenverhältnis des Ausschnitts; den Rahmen im Bild verschieben und an den Ecken ziehen.':
+        'Aspect ratio of the crop; move the frame in the picture and drag its corners.',
+    'Speichert eine bearbeitete Kopie in Fog Scouts Ordner – das Original (z. B. im Screenshot-Ordner von Steam) bleibt unverändert (Strg+S).':
+        "Saves an edited copy in Fog Scout's folder – the original (e.g. in Steam's screenshot folder) stays as it is (Ctrl+S).",
+    'Steam (F12)':
+        'Steam (F12)',
+    'Steam-Ordner verwenden':
+        "Use Steam's folder",
+    'Steams Screenshots von DBD (F12): {path}':
+        "Steam's DBD screenshots (F12): {path}",
+    'Strg+Z rückgängig · Strg+Y wiederholen · Strg+C kopieren · Strg+S speichern · Entf Markiertes löschen · Esc schliessen':
+        'Ctrl+Z undo · Ctrl+Y redo · Ctrl+C copy · Ctrl+S save · Del removes the marked one · Esc close',
+    'Strichstärke bzw. Textgrösse.':
+        'Line width or text size.',
+    'Sättigung':
+        'Saturation',
+    'Tempo':
+        'Tempo',
+    'Text':
+        'Text',
+    'Text für das Text-Werkzeug':
+        'Text for the text tool',
+    'Um 90° gegen den Uhrzeigersinn drehen.':
+        'Turn 90° anticlockwise.',
+    'Um 90° im Uhrzeigersinn drehen.':
+        'Turn 90° clockwise.',
+    'Verwirft alle Änderungen – das Original bleibt ohnehin unverändert.':
+        'Drops all changes – the original stays as it is anyway.',
+    'Wie der Bereich unkenntlich wird.':
+        'How the area is made unreadable.',
+    'Wie lange die Zeichnung im Clip zu sehen ist – ab der Stelle des Abspielkopfs. Gilt für neue und für die markierte Zeichnung.':
+        'How long the drawing shows in the clip – from the playhead on. For new drawings and the marked one.',
+    'Zeichnen':
+        'Draw',
+    'Zeichnung entfernen':
+        'Remove drawing',
+    'Zeigt das zuletzt gespeicherte Bild im Explorer.':
+        'Shows the picture saved last in Explorer.',
+    'Zeitlupe oder Zeitraffer für den markierten Abschnitt (ohne Abschnitte: für den Bereich zwischen Start und Ende). Der Ton läuft mit.':
+        'Slow motion or fast forward for the marked part (without parts: for the stretch between start and end). The sound follows.',
+    'Zurückgenommenen Schritt wiederholen (Strg+Y).':
+        'Redo the undone step (Ctrl+Y).',
+    'Zuschneiden':
+        'Crop',
+    'neu kodiert (wie „Genau“)':
+        're-encoded (like "Exact")',
+    'normal':
+        'normal',
+    '{n} Abschnitt(e), {length} s':
+        '{n} part(s), {length} s',
+    '{w} × {h} Pixel · Original bleibt unverändert':
+        '{w} × {h} pixels · the original stays as it is',
+    '↶ Rückgängig':
+        '↶ Undo',
+    '↷ Wiederholen':
+        '↷ Redo',
+    '⇅ Kippen':
+        '⇅ Flip',
+    '⇆ Spiegeln':
+        '⇆ Mirror',
+    '⟲ Links drehen':
+        '⟲ Turn left',
+    '⟳ Rechts drehen':
+        '⟳ Turn right',
+    'Öffnet das markierte Bild im Bild-Editor: zuschneiden, drehen, Pfeile und Text, zensieren, Farbe – gespeichert wird eine Kopie, das Original bleibt.':
+        'Opens the marked picture in the picture editor: crop, turn, arrows and text, censor, colour – a copy is saved, the original stays.',
+    'Zeigt die Bilddatei im Explorer.':
+        'Shows the picture file in Explorer.',
+    'Öffnet den Ordner mit den bearbeiteten Bildern (Screenshots neben den Aufnahmen bzw. Bilder/Fog Scout).':
+        'Opens the folder with the edited pictures (Screenshots next to the recordings, or Pictures/Fog Scout).',
+    'Bilder aus einem eigenen Ordner zeigen – z. B. wenn Steam die Screenshots unkomprimiert in einen anderen Ordner speichert.':
+        'Show pictures from a folder of your own – e.g. when Steam saves uncompressed screenshots to another folder.',
+    'Wieder die Screenshots aus Steams Ordner für DBD zeigen (F12 im Spiel).':
+        "Show the screenshots from Steam's DBD folder again (F12 in the game).",
 }

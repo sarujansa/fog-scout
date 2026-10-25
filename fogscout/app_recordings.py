@@ -11,7 +11,7 @@ import subprocess
 import time
 from types import SimpleNamespace
 
-from . import history, obsrec, uimodel as ui
+from . import history, obsrec, steamshots, uimodel as ui
 from .app_stats import STATS_PERIODS
 from .capture import IS_WIN
 from .i18n import N_, _
@@ -29,6 +29,8 @@ CLIP_KINDS = [("all", N_("Alle Arten")), ("clip", N_("Clips")), ("instant", N_("
 CLIP_KIND_NAMES = {"clip": N_("Clip"), "instant": N_("Sofort-Clip"), "still": N_("Standbild")}
 REC_REFRESH_S = 20            # the table re-reads the index this often while the tab is on display
 PREVIEW_DELAY_MS = 180               # 1.8.11: the clip preview is built once the marking stays
+SHOT_KINDS = [("all", N_("Alle Bilder")), ("taken", N_("Aufgenommen (F12)")), ("edited", N_("Bearbeitet"))]   # 1.12
+SHOT_PREVIEW_W = 420                 # 1.12: px of the picture beside the screenshots table
 
 
 def fmt_bytes(n: float) -> str:
@@ -151,6 +153,9 @@ class RecordingsTab:
                             "Platte Platz braucht."),
                  style="Dim.TLabel", wraplength=560).pack(anchor="w", pady=(6, 0))
         self._tab_clips(cp)
+        sp = ui.Frame(self.rec_nb, padding=6)                  # 1.12: Steam's F12 screenshots and edited copies
+        self.rec_nb.add(sp, text=_("Screenshots"))
+        self._tab_shots(sp)
         return outer
 
     def _tab_clips(self, f):
@@ -227,6 +232,202 @@ class RecordingsTab:
                             "angelegt hat."),
                  style="Dim.TLabel", wraplength=560).pack(anchor="w", pady=(6, 0))
 
+    def _tab_shots(self, f):
+        """1.12 (user: "Screenshots die ich mit F12 mache" → "lass es ruhig auf F12"): Steam's DBD screenshots (read
+        only, steamshots) and the copies edited here, newest first; "Bild bearbeiten …" opens qt_image."""
+        self._shot_rows = {}
+        self._shot_preview_key = None
+        hr = ui.Frame(f)
+        hr.pack(fill="x", pady=(0, 6))
+        self.shot_src_var = ui.StringVar(value="")
+        ui.Label(hr, textvariable=self.shot_src_var, style="Dim.TLabel", wraplength=620).pack(side="left")
+        self.shot_steam_btn = ui.Button(hr, text=_("Steam-Ordner verwenden"), command=self._shot_steam_folder)
+        self.shot_dir_btn = ui.Button(hr, text=_("Anderen Ordner …"), command=self._shot_pick_folder)
+        self.shot_dir_btn.pack(side="right")
+        self._shot_kinds = [(k, _(label)) for k, label in SHOT_KINDS]
+        fr = ui.Frame(f)
+        fr.pack(fill="x", pady=(0, 6))
+        self.shot_kind_var = ui.StringVar(value=self._shot_kinds[0][1])
+        cb = ui.Combobox(fr, textvariable=self.shot_kind_var, values=[lbl for _k, lbl in self._shot_kinds],
+                         state="readonly", width=18)
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>", lambda e: self._shots_render())
+        row = ui.Frame(f)
+        row.pack(fill="x", pady=(0, 6))
+        self.shot_sel_hint = ui.Label(row, text=_("Bild markieren: bearbeiten (zuschneiden, zeichnen, zensieren), im "
+                                                  "Explorer zeigen – oder Rechtsklick."), style="Dim.TLabel")
+        self.shot_sel_hint.pack(side="left")
+        sel = self.shot_sel_row = ui.Frame(row)
+        self.shot_edit_btn = ui.Button(sel, text=_("Bild bearbeiten …"), command=self._shot_edit)
+        self.shot_edit_btn.pack(side="left")
+        self.shot_show_btn = ui.Button(sel, text=_("Bild im Explorer zeigen"), command=self._shot_explorer)
+        self.shot_show_btn.pack(side="left", padx=(6, 0))
+        self.shot_folder_btn = ui.Button(row, text=_("Bearbeitete Bilder öffnen"), command=self._shot_open_folder)
+        self.shot_folder_btn.pack(side="right")
+        tf = ui.Frame(f)
+        tf.pack(fill="both", expand=True)
+        cols = (("when", _("Wann"), 110, "w"), ("src", _("Quelle"), 90, "w"), ("size", _("Grösse"), 70, "e"),
+                ("file", _("Datei"), 220, "w"))
+        self.shot_table = ui.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=12, selectmode="browse")
+        for key, title, width, anchor in cols:
+            self.shot_table.heading(key, text=title, anchor=anchor)
+            self.shot_table.column(key, width=width, anchor=anchor, stretch=key == "file")
+        self.shot_table.pack(side="left", fill="both", expand=True)
+        self.shot_table.bind("<<TreeviewSelect>>", lambda e: self._shot_buttons())
+        self.shot_host = ui.Host(tf)
+        self._table_menu(self.shot_table, self._shot_menu_items, self._shot_menu_act)
+        ui.Label(f, text=_("F12 im Spiel ist Steams Screenshot-Taste – Steam legt die Bilder in seinem eigenen Ordner "
+                            "ab, das Programm liest sie dort nur. Bearbeitete Bilder sind Kopien im Ordner "
+                            "„Screenshots“ neben den Aufnahmen (ohne Aufnahmeordner: Bilder/Fog Scout); das Original "
+                            "bleibt immer unverändert."),
+                 style="Dim.TLabel", wraplength=620).pack(anchor="w", pady=(6, 0))
+
+    # ============================================================ 1.12: screenshots
+    def _shot_edit_dir(self) -> str:
+        folder = self.recorder.folder() if self.settings.get("rec_on", False) or self.settings.get("rec_folder") \
+            else None
+        return steamshots.edit_folder(folder)
+
+    def _shots_list(self) -> list:
+        own = str(self.settings.get("shots_folder") or "")
+        steam = steamshots.steam_path()
+        shots = []
+        for folder, source in steamshots.folders(own or None, steam):
+            shots += steamshots.list_shots([folder], source)
+        shots += steamshots.list_shots([self._shot_edit_dir()], "edited")
+        shots.sort(key=lambda s: s.t, reverse=True)
+        return shots[:steamshots.LIST_LIMIT]
+
+    def _shots_render(self):
+        own = str(self.settings.get("shots_folder") or "")
+        steam = steamshots.steam_path()
+        dirs = steamshots.folders(own or None, steam)
+        if own:
+            self.shot_src_var.set(_("Eigener Ordner: {path}", path=own) if dirs else
+                                  _("Eigener Ordner nicht gefunden: {path}", path=own))
+        elif dirs:
+            self.shot_src_var.set(_("Steams Screenshots von DBD (F12): {path}", path=dirs[0][0]))
+        else:
+            self.shot_src_var.set(_("Kein Screenshot-Ordner von Steam für DBD gefunden – noch kein F12-Screenshot, "
+                                    "oder Steam speichert woanders („Anderen Ordner …“)."))
+        if own and not self.shot_steam_btn.winfo_manager():
+            self.shot_steam_btn.pack(side="right", padx=(6, 0))
+        elif not own and self.shot_steam_btn.winfo_manager():
+            self.shot_steam_btn.pack_forget()
+        kind = next((k for k, lbl in self._shot_kinds if lbl == self.shot_kind_var.get()), "all")
+        shots = self._shots_list()
+        self._shot_count = len(shots)
+        if kind == "edited":
+            shots = [s for s in shots if s.source == "edited"]
+        elif kind == "taken":
+            shots = [s for s in shots if s.source != "edited"]
+        t = self.shot_table
+        keep = t.selection()
+        t.delete(*t.get_children())
+        self._shot_rows = {}
+        names = {"steam": _("Steam (F12)"), "own": _("Eigener Ordner"), "edited": _("Bearbeitet")}
+        for i, s in enumerate(shots):
+            iid = f"s{i}:{os.path.basename(s.path)}"
+            self._shot_rows[iid] = s
+            t.insert("", "end", iid=iid, values=(time.strftime("%d.%m.%y %H:%M", time.localtime(s.t)),
+                                                 names.get(s.source, s.source), fmt_bytes(s.size),
+                                                 os.path.basename(s.path)))
+        if keep and t.exists(keep[0]):
+            t.selection_set(keep[0])
+        self._shot_buttons()
+
+    def _shot_selected(self):
+        sel = self.shot_table.selection()
+        return self._shot_rows.get(sel[0]) if sel else None
+
+    def _shot_buttons(self):
+        s = self._shot_selected()
+        self._sel_buttons(self.shot_sel_row, self.shot_sel_hint, s is not None)
+        self._shot_preview_follow(s)
+
+    def _shot_preview_follow(self, s):
+        """The marked picture beside the table (scaled, read in the window thread – a screenshot is one file)."""
+        if self.qt is None:
+            return
+        host = self.qt.host(str(self.shot_host))
+        if host is None:
+            return
+        key = s.path if s is not None else None
+        if key == self._shot_preview_key:
+            return
+        self._shot_preview_key = key
+        if s is None or not os.path.exists(s.path):
+            host.set_content(None)
+            self.shot_host.pack_forget()
+            return
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QPixmap
+        from PySide6.QtWidgets import QLabel
+        pm = QPixmap(s.path)
+        if pm.isNull():
+            host.set_content(None)
+            self.shot_host.pack_forget()
+            return
+        label = QLabel()
+        label.setObjectName("thumb")
+        label.setAlignment(Qt.AlignCenter)
+        label.setPixmap(pm.scaled(SHOT_PREVIEW_W, SHOT_PREVIEW_W, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        host.set_content(label)
+        self.shot_host.pack(side="left", fill="both")
+
+    def _shot_menu_items(self):
+        return [("edit", _("Bild bearbeiten …")), ("show", _("Bild im Explorer zeigen"))] \
+            if self._shot_selected() is not None else []
+
+    def _shot_menu_act(self, ident):
+        {"edit": self._shot_edit, "show": self._shot_explorer}.get(ident, lambda: None)()
+
+    def _shot_edit(self, path=None):
+        s = self._shot_selected()
+        path = path or (s.path if s is not None else None)
+        if not path or not os.path.exists(path):
+            return
+        from .qt_image import ImageWindow
+        win = ImageWindow(path, self._shot_edit_dir(), on_saved=self._shot_saved, log=self._log,
+                          dark=bool(self.settings.get("dark_mode", True)),
+                          qss=getattr(self.qt, "_qss", "") if self.qt is not None else "")
+        self._clip_windows = [w for w in self._clip_windows if w.isVisible()] + [win]
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
+    def _shot_saved(self, out):
+        self._shots_render()
+
+    def _shot_explorer(self):
+        s = self._shot_selected()
+        if s is not None:
+            show_in_explorer(s.path)
+
+    def _shot_open_folder(self):
+        folder = self._shot_edit_dir()
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except OSError as e:
+            self._log(_("Ordner nicht anlegbar: {error}", error=e), "Fehler")
+            return
+        self._open(folder)
+
+    def _shot_pick_folder(self):
+        self._qt_file("dir", _("Ordner mit deinen Screenshots"), str(self.settings.get("shots_folder") or ""),
+                      self._shot_folder_chosen)
+
+    def _shot_folder_chosen(self, path):
+        if path and os.path.isdir(path):
+            self.settings.set("shots_folder", os.path.normpath(path))
+            self._save_soon()
+            self._shots_render()
+
+    def _shot_steam_folder(self):
+        self.settings.set("shots_folder", "")
+        self._save_soon()
+        self._shots_render()
+
     # ============================================================ data
     def _rec_filters(self):
         period = next((k for k, lbl in self._rec_periods if lbl == self.rec_period_var.get()), "all")
@@ -299,13 +500,14 @@ class RecordingsTab:
             t.selection_set(keep[0])
         self._rec_buttons()
         self._clips_render(folder, recs)
+        self._shots_render()                                    # 1.12
         self._rec_empty_shown(folder, recs)
 
     def _rec_empty_shown(self, folder, recs):
         """1.11.14: no recording and no clip – "Aufnahmen einrichten …" (recording off) or a note on when the first
         one comes, instead of the tabs with their empty tables."""
         on = bool(self.settings.get("rec_on", False))
-        empty = not recs and not getattr(self, "_clip_count", 0)
+        empty = not recs and not getattr(self, "_clip_count", 0) and not getattr(self, "_shot_count", 0)
         self.rec_empty_var.set(_("Noch keine Aufnahmen – OBS nimmt ab dem nächsten Map-Banner auf. Runden erscheinen "
                                  "hier, Clips (F8 oder aus dem Editor) im Reiter „Clips“.") if on and empty else "")
         for w, show in ((self.rec_setup_btn, not on and empty), (self.rec_empty_label, on and empty),
@@ -390,7 +592,7 @@ class RecordingsTab:
         for b in (self.clip_play_btn, self.clip_show_btn, self.clip_delete_btn):
             b.configure(state=state)
         c = self._clip_selected()
-        self.clip_edit_btn.configure(state="normal" if c is not None and c.kind != "still" else "disabled")
+        self.clip_edit_btn.configure(state="normal" if c is not None else "disabled")      # 1.12: stills too
         self.clip_yt_btn.configure(state="normal" if c is not None and self._clip_uploadable(c) else "disabled")
         self._sel_buttons(self.clip_sel_row, self.clip_sel_hint, c is not None)
         self._clip_preview_follow(c)
@@ -446,6 +648,11 @@ class RecordingsTab:
         same editor as a recording. What it saves is a new clip of the round the clip came from; the clip itself
         stays as it is. ``at`` (1.11.4) = (start, end, position) taken over from the compact preview."""
         c = self._clip_selected()
+        if c is not None and c.kind == "still":                 # 1.12: a still opens in the picture editor
+            path = self._clip_path(c)
+            if path and os.path.exists(path):
+                self._shot_edit(path)
+            return
         path = self._clip_editable(c)
         if path is None:
             return
