@@ -255,7 +255,8 @@ def layers(gw: int, gh: int, o: dict, hud_side: str, hud_rows: list, hud_own, ma
     rows += len(lines.get("memo") or ())                            # 1.8.54: the own note's lines
     _x, _y, _w, _h, mh = layout.preview_rect(gw, gh, o["anchor"], o.get("pos_x", 0.0), o.get("pos_y", 0.0),
                                              height_frac, o["margin"], o.get("keep_in_bar", True), aspect, rows,
-                                             drop, bool(o.get("grow_past_bar", False)), lift)
+                                             drop, bool(o.get("grow_past_bar", False)), lift,
+                                             bool(o.get("fill_bar", False)) and bar >= layout.MIN_BAR)
     def map_pic_at(h, th):
         return fitted(lambda hh: overlay_picture(map_pic, hh, caption, o.get("transparent", True),
                                                  lines.get("timer", ""), lines.get("server", ""), lines.get("ping"),
