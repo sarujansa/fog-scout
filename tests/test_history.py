@@ -366,3 +366,21 @@ def test_a_rounds_dropouts_are_stored_and_read_back(tmp_path):
         fh.write(json.dumps({"t": 400, "seconds": 600, "map_id": "a", "stalls": True}) + "\n")
     got = [(r.stalls, r.stall_max) for r in h.load(path)]
     assert got == [(3, 0.8), (None, None), (None, None), (None, None)]
+
+
+def test_a_line_cut_inside_a_character_breaks_no_correction(tmp_path):
+    """1.12.3 (audit): a crash while appending can cut a line inside a multi-byte character ("é" of a label). load()
+    skipped that line, but the lost-round reader decoded the whole file as text – UnicodeDecodeError, so every
+    correction (role, killer, farming, delete), the lost rounds of the statistics and the tidy-up after the next
+    round failed until the file was repaired by hand."""
+    path = str(tmp_path / "rounds.jsonl")
+    h.append(path, h.Round(t=1000.0, seconds=600.0, map_id="coal", map="Coal Tower"))
+    with open(path, "ab") as fh:
+        fh.write('{"t": 1500.0, "map": "Café'.encode("utf-8")[:-1])     # cut inside the "é"
+    h.append_lost(path, 1800.0, "Coal Tower", "neues Banner", map_id="coal")
+    h.append(path, h.Round(t=2000.0, seconds=500.0, map_id="coal", map="Coal Tower"))
+    assert [r.t for r in h.load(path)] == [1000.0, 2000.0]
+    assert [t for t, _m, _r in h.load_lost(path)] == [1800.0]
+    assert [r.t for r in h.load_lost_rounds(path)] == [1800.0]
+    assert h.set_role(path, 2000.0, "killer").role == "killer"
+    assert [r.role for r in h.load(path)] == ["", "killer"] and len(h.load_lost(path)) == 1

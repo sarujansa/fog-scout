@@ -1616,6 +1616,29 @@ def test_a_replay_buffer_that_does_not_start_is_asked_for_once_and_reported(obs,
     assert obs.replay and [k for k, _d in obs.requests].count("StartReplayBuffer") == 2
 
 
+def test_a_busy_recorder_thread_starts_the_replay_buffer_once_per_dbd_start(obs, tmp_path):
+    """1.12.3 (audit): the window ticks set_game every 250 ms, but only the recorder thread updates ``_game`` – while
+    the thread was busy (merging a round, an OBS request timing out) every tick queued another ("game", True). Each
+    one reset the once-per-DBD-start guards: a second StartReplayBuffer (another OBS error dialog), a second OBS
+    launch, the same warning again. Repeated "game" commands with the same value change nothing now."""
+    obs.replay = False
+    obs.replay_fails = True
+    r, posted = _recorder(obs, str(tmp_path), pre=False, instant=True, buffer_auto=True, audio=False)
+    for _i in range(4):                                    # four window ticks before the thread gets to them
+        r.set_game(True)
+    r.start()
+    try:
+        end = time.time() + 5
+        while (r.cmds.qsize() or not r._ready) and time.time() < end:
+            time.sleep(0.02)
+        time.sleep(0.2)
+        assert r._ready and [k for k, _d in obs.requests].count("StartReplayBuffer") == 1
+        assert len([d for k, d in _drain(posted) if k == "warn"]) <= 1
+    finally:
+        r.quit()
+        r.join(timeout=5)
+
+
 def test_ticking_the_window_while_dbd_runs_sets_it_up_without_a_restart(obs, tmp_path):
     """1.8.42 (user: "Fenster wurde nicht hinterlegt"): OBS was set up only when DBD started – the box ticked while
     DBD ran created nothing until the next DBD start. A changed setting sets OBS up again within seconds."""
@@ -1813,3 +1836,20 @@ def test_game_capture_alone_is_created_without_a_window_capture(obs, tmp_path):
     r._game_changed(True)
     assert obsrec.GAME_SOURCE in obs.inputs and obsrec.WINDOW_SOURCE not in obs.inputs
     assert obsrec.video_source("anything")[0] == obsrec.WINDOW_SOURCE          # unknown value: the window capture
+
+
+def test_a_damaged_index_line_skips_only_itself(tmp_path):
+    """1.12.3 (audit): a line that is valid JSON but no object ([1, 2], a number) raised AttributeError, and a line
+    cut inside a character UnicodeDecodeError – the whole index could not be read, so pruning, marking and the
+    recordings page failed on every call."""
+    folder = str(tmp_path)
+    rec = obsrec.Recording(t=1000.0, file="a.mkv", map_id="coal", label="Coal Tower")
+    obsrec.save_index(folder, [rec])
+    with open(os.path.join(folder, obsrec.INDEX), "ab") as fh:
+        fh.write(b"[1, 2]\n5\n" + '{"file": "Café'.encode("utf-8")[:-1] + b"\n")
+    assert [r.file for r in obsrec.load_index(folder)] == ["a.mkv"]
+    cdir = str(tmp_path / "Clips")
+    os.makedirs(cdir)
+    with open(os.path.join(cdir, obsrec.CLIPS_INDEX), "wb") as fh:
+        fh.write(b"[1, 2]\n" + '{"file": "Café'.encode("utf-8")[:-1] + b"\n")
+    assert obsrec.load_clips(cdir) == []

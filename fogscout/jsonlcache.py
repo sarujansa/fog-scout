@@ -59,8 +59,8 @@ class LineCache:
                 continue
             try:
                 obj = self.parse(raw.decode("utf-8"))
-            except (ValueError, KeyError, TypeError, UnicodeDecodeError):
-                continue
+            except (ValueError, KeyError, TypeError, UnicodeDecodeError, ArithmeticError):
+                continue                     # 1.12.3: ArithmeticError – int(Infinity) is an OverflowError
             if obj is not None:
                 out.append(obj)
         return out

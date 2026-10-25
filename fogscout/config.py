@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import shutil
 import time
+
+log = logging.getLogger(__name__)
 
 HUD_SHOWN = ("above", "left", "right", "custom")    # settings.sysinfo values that show the system values
 SETTINGS_VERSION = 12
@@ -343,6 +346,7 @@ class Settings:
     def __init__(self, path: str):
         self.path = path
         self.frozen = False             # after importing a backup: nothing is written until the restart
+        self._save_failed = False
         self.data = copy.deepcopy(DEFAULTS)
         self.load_error = ""            # 1.8.38: the file could not be read (the app says so in the log)
         if os.path.exists(path):
@@ -377,6 +381,12 @@ class Settings:
         try:
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(self.data, fh, indent=2, ensure_ascii=False)
+                fh.flush()
+                os.fsync(fh.fileno())   # 1.12.3: on disk before the rename – a power cut must not leave an empty file
             os.replace(tmp, self.path)
-        except OSError:
-            pass
+        except OSError as e:
+            if not self._save_failed:   # disk full, locked: said once in the log, the next save tries again
+                log.warning("Einstellungen nicht gespeichert: %s", e)
+            self._save_failed = True
+        else:
+            self._save_failed = False

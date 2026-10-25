@@ -83,6 +83,8 @@ def _rewrite(path: str, rounds, lost) -> None:
     with open(tmp, "w", encoding="utf-8") as fh:
         for _t, line in sorted(lines, key=lambda x: x[0]):
             fh.write(line + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())          # 1.12.3: on disk before the rename – else a power cut can leave an empty file
     os.replace(tmp, path)
 
 
@@ -102,7 +104,9 @@ def _lost_lines(path: str) -> list:
     """The lost-round lines as stored (dicts with a float ``t``), oldest first."""
     out = []
     try:
-        with open(path, encoding="utf-8") as fh:
+        # 1.12.3: errors="replace" – a line cut inside a character (crash while appending) raised from the loop
+        # itself, outside the per-line try: every correction failed until the file was repaired by hand
+        with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 if '"lost"' not in line:           # quick skip: parsing all 5000 rounds took ~50 ms
                     continue

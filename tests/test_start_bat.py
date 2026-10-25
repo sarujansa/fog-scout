@@ -26,3 +26,9 @@ def test_readmes_name_the_same_python_range():
     assert "Python 3.12, 3.13 oder 3.14" in _read("start.bat")
     assert "3.12 bis 3.14" in _read("README.md")
     assert "3.12 to 3.14" in _read("README.en.md")
+
+
+def test_the_first_setup_installs_wheels_only():
+    """1.12.3 (audit): start.bat runs as administrator – pip must never build a source package (its setup.py)."""
+    pip_lines = [line for line in _read("start.bat").splitlines() if " -m pip install" in line]
+    assert len(pip_lines) == 2 and all("--only-binary=:all:" in line for line in pip_lines)

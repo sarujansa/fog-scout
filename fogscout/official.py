@@ -277,7 +277,7 @@ def load_gaps(path: str) -> list:
     """[(newest stored match before, oldest match of the next file)]: matches in between may be missing."""
     out = []
     try:
-        with open(path, encoding="utf-8") as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:     # 1.12.3: see history._lost_lines
             for line in fh:
                 try:
                     d = json.loads(line)
@@ -297,6 +297,8 @@ def _write(path: str, matches, gaps) -> None:
     with open(tmp, "w", encoding="utf-8") as fh:
         for _t, line in sorted(lines, key=lambda x: x[0]):
             fh.write(line + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())          # 1.12.3: on disk before the rename (see history._rewrite)
     os.replace(tmp, path)
 
 

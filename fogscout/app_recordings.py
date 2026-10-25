@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 import time
 from types import SimpleNamespace
 
@@ -120,7 +121,8 @@ class RecordingsTab:
         self.rec_show_btn.pack(side="left", padx=(6, 0))
         self.rec_keep_btn = ui.Button(sel, text=_("Behalten"), command=self._rec_keep, state="disabled")
         self.rec_keep_btn.pack(side="left", padx=(6, 0))
-        self.rec_delete_btn = ui.Button(sel, text=_("Aufnahme löschen"), command=self._rec_delete, state="disabled")
+        self.rec_delete_btn = ui.danger(ui.Button(sel, text=_("Aufnahme löschen"), command=self._rec_delete,
+                                                  state="disabled"))
         self.rec_delete_btn.pack(side="left", padx=(6, 0))
         self.rec_clip_btn = ui.Button(sel, text=_("Clip bearbeiten …"), command=self._rec_clip, state="disabled")   # 1.5.1
         self.rec_clip_btn.pack(side="left", padx=(6, 0))
@@ -148,6 +150,7 @@ class RecordingsTab:
         # the compact clip editor beside the table, shown once a recording is marked
         self.rec_host = ui.Host(tf)
         self._rec_preview_t = None
+        self._probe_seq = {}                # 1.12.3: newest preview probe per kind ("rec", "clip")
         self._table_menu(self.rec_table, self._rec_menu_items, self._rec_menu_act)       # 1.8.10: right click
         self.rec_marks_var = ui.StringVar(value="")
         ui.Label(f, textvariable=self.rec_marks_var, style="Dim.TLabel", wraplength=560).pack(anchor="w", pady=(6, 0))
@@ -204,7 +207,8 @@ class RecordingsTab:
         self.clip_show_btn = ui.Button(sel, text=_("Clip im Explorer zeigen"), command=self._clip_explorer,
                                        state="disabled")
         self.clip_show_btn.pack(side="left", padx=(6, 0))
-        self.clip_delete_btn = ui.Button(sel, text=_("Clip löschen"), command=self._clip_delete, state="disabled")
+        self.clip_delete_btn = ui.danger(ui.Button(sel, text=_("Clip löschen"), command=self._clip_delete,
+                                                   state="disabled"))
         self.clip_delete_btn.pack(side="left", padx=(6, 0))
         self.clip_yt_btn = ui.Button(sel, text=_("Auf YouTube hochladen"), command=self._clip_youtube, state="disabled")
         self.clip_yt_btn.pack(side="left", padx=(6, 0))                                                      # 1.10
@@ -702,12 +706,17 @@ class RecordingsTab:
             return
         self._clip_preview_job = self.root.after(PREVIEW_DELAY_MS, lambda: self._clip_preview_build(host, c, path))
 
-    def _clip_preview_build(self, host, c, path):
+    def _clip_preview_build(self, host, c, path, info=None, seq=None):
         self._clip_preview_job = None
         if self._clip_preview_key != c.file:
             return
+        if info is None:
+            self._probe_then("clip", path, lambda i, n: self._clip_preview_build(host, c, path, i, n))
+            return
+        if seq != self._probe_seq.get("clip"):
+            return
         win = self._clip_window(clip_round(c, obsrec.load_index(self.recorder.folder())), path, compact=True,
-                                parent=host, on_expand=lambda s, e, p: self._clip_edit(at=(s, e, p)))
+                                parent=host, on_expand=lambda s, e, p: self._clip_edit(at=(s, e, p)), info=info)
         host.set_content(win)
         self.clip_host.pack(side="left", fill="both")
 
@@ -999,14 +1008,30 @@ class RecordingsTab:
         # one in the window's thread and the marking lagged; now only the row that stays marked is loaded
         self._rec_preview_job = self.root.after(PREVIEW_DELAY_MS, lambda: self._rec_preview_build(host, r, path))
 
-    def _rec_preview_build(self, host, r, path):
+    def _rec_preview_build(self, host, r, path, info=None, seq=None):
         self._rec_preview_job = None
         if self._rec_preview_t != r.t:
             return
+        if info is None:
+            self._probe_then("rec", path, lambda i, n: self._rec_preview_build(host, r, path, i, n))
+            return
+        if seq != self._probe_seq.get("rec"):
+            return
         win = self._clip_window(r, path, compact=True, parent=host,
-                                on_expand=lambda s, e, p: self._rec_clip(at=(s, e, p)))
+                                on_expand=lambda s, e, p: self._rec_clip(at=(s, e, p)), info=info)
         host.set_content(win)
         self.rec_host.pack(side="left", fill="both")
+
+    def _probe_then(self, kind, path, done):
+        """1.12.3 (audit): ``ffmpeg -i`` for a preview in a thread – it ran in the window's thread on every marked
+        row (a process start, seconds on a sleeping drive). ``done(info, seq)`` then runs in the window's thread;
+        only the newest probe of a ``kind`` counts (``seq``)."""
+        from .clipedit import probe
+        seq = self._probe_seq[kind] = self._probe_seq.get(kind, 0) + 1
+
+        def run():
+            self.events.put(("call", done, (probe(path), seq)))
+        threading.Thread(target=run, daemon=True, name="clip-probe").start()
 
     def _rec_preview_stop(self):
         """1.8.8: the recordings tab was left – the preview stops playing (1.11.4: the clips' preview too)."""

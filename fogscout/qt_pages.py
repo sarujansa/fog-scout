@@ -510,6 +510,10 @@ def show_control(kind, w, extra, st):
         w.setVisible(shown)
     if "enabled" in st:
         w.setEnabled(st["enabled"])
+    if st.get("danger") and w.objectName() != "danger":       # 1.12.3: the warning colour (style sheet)
+        w.setObjectName("danger")
+        w.style().unpolish(w)
+        w.style().polish(w)
     if st.get("tip") is not None and w.toolTip() != st["tip"]:
         w.setToolTip(st["tip"])
     if kind in ("check", "radio"):
