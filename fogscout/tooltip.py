@@ -12,6 +12,17 @@ from .i18n import _, source
 
 # German label -> German info text (buttons/checkboxes with a fixed label); both translated via i18n
 TIPS = {
+    # 1.12: screenshots
+    'Bild bearbeiten …':
+        'Öffnet das markierte Bild im Bild-Editor: zuschneiden, drehen, Pfeile und Text, zensieren, Farbe – gespeichert wird eine Kopie, das Original bleibt.',
+    'Bild im Explorer zeigen':
+        'Zeigt die Bilddatei im Explorer.',
+    'Bearbeitete Bilder öffnen':
+        'Öffnet den Ordner mit den bearbeiteten Bildern (Screenshots neben den Aufnahmen bzw. Bilder/Fog Scout).',
+    'Anderen Ordner …':
+        'Bilder aus einem eigenen Ordner zeigen – z. B. wenn Steam die Screenshots unkomprimiert in einen anderen Ordner speichert.',
+    'Steam-Ordner verwenden':
+        'Wieder die Screenshots aus Steams Ordner für DBD zeigen (F12 im Spiel).',
     "Filter zurücksetzen": "Alle Filter der Statistik zurück auf „alle“ – Zeitraum, Rolle, Region, Killer, Map, Modus und "
                            "„Farming ausblenden“.",                                                   # 1.11.14
     # main window

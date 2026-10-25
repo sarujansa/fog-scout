@@ -694,7 +694,7 @@ def test_the_clips_sub_tab_lists_filters_and_deletes_the_programs_clips(app_root
     shown = []
     app.qt.popup_menu = lambda items, pos: shown.append(items)
     try:
-        assert [app.rec_nb.tab(i, "text") for i in app.rec_nb.tabs()] == ["Runden", "Clips"]
+        assert [app.rec_nb.tab(i, "text") for i in app.rec_nb.tabs()] == ["Runden", "Clips", "Screenshots"]   # 1.12: + Screenshots
         app._rec_render()
         t = app.clip_table
 
@@ -2658,5 +2658,52 @@ def test_empty_statistics_and_recordings_say_the_next_step(app_root):
         app._rec_render(force=True)
         assert app.rec_setup_btn.winfo_manager() and not app.rec_nb.winfo_manager()
         assert app.rec_setup_btn._dbdms_tip() and app.rec_empty_var.get() == ""
+    finally:
+        app.quit()
+
+
+def test_the_screenshots_tab_lists_pictures_and_opens_the_picture_editor(app_root, tmp_path):
+    """1.12 (user: "Screenshots die ich mit F12 mache" → "lass es ruhig auf F12"): the recordings page has a tab
+    "Screenshots" – Steam's DBD folder (or an own one) read only, plus the copies edited here; "Bild bearbeiten …"
+    opens the picture editor, whose saved copy shows up as "Bearbeitet"; the empty-page note stays away while there
+    are pictures."""
+    import json
+    import os
+    from PIL import Image
+    from fogscout.app import App
+    shots = tmp_path / "shots"
+    shots.mkdir()
+    Image.new("RGB", (320, 180), (90, 30, 30)).save(shots / "20261025_1.jpg")
+    (shots / "notes.txt").write_text("x", encoding="utf-8")
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True, "shots_folder": str(shots)}),
+                                            encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._rec_render(force=True)
+        t = app.shot_table
+        rows = [t.item(i, "values") for i in t.get_children()]
+        assert [r[3] for r in rows] == ["20261025_1.jpg"] and rows[0][1] == "Eigener Ordner"
+        assert app.rec_nb.winfo_manager() and not app.rec_setup_btn.winfo_manager()     # pictures: the tabs show
+        assert "Eigener Ordner" in app.shot_src_var.get() and app.shot_steam_btn.winfo_manager()
+        assert not app.shot_sel_row.winfo_manager()
+        t.selection_set(t.get_children()[0])
+        t.event_generate("<<TreeviewSelect>>")
+        assert app.shot_sel_row.winfo_manager() and app.shot_edit_btn._dbdms_tip()
+        out_dir = tmp_path / "edited"
+        app._shot_edit_dir = lambda: str(out_dir)
+        app._shot_edit()
+        win = app._clip_windows[-1]
+        win.turn(1)
+        win.save()
+        assert os.listdir(out_dir) == ["20261025_1 – bearbeitet.png"]
+        assert Image.open(out_dir / "20261025_1 – bearbeitet.png").size == (180, 320)
+        sources = sorted(t.item(i, "values")[1] for i in t.get_children())
+        assert sources == ["Bearbeitet", "Eigener Ordner"]                                   # refreshed on save
+        app.shot_kind_var.set("Bearbeitet")
+        app._shots_render()
+        assert [t.item(i, "values")[3] for i in t.get_children()] == ["20261025_1 – bearbeitet.png"]
+        win.close()
+        app._shot_steam_folder()
+        assert app.settings.get("shots_folder") == "" and not app.shot_steam_btn.winfo_manager()
     finally:
         app.quit()
