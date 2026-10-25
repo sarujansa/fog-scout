@@ -1152,6 +1152,7 @@ FLOW_KINDS = ("button", "combo", "check", "radio", "label", "entry", "value", "b
 def _grows(node) -> bool:
     """A table, chart or the log below this node: it may take the free height of the page."""
     return (node.get("kind") in ("table", "chart", "log") and not node.get("fit")) or \
+        (node.get("kind") == "host" and bool(node.get("grow"))) or \
         any(_grows(c) for c in node.get("children", ()))
 
 
@@ -1318,7 +1319,8 @@ class AutoPage(QWidget, _Arranged):
         w, extra = make_control(kind, key, self._post)
         if kind == "table" and n.get("fit"):
             w.fit_rows()
-        grow = kind in ("table", "chart", "log") or (kind == "hint" and isinstance(lay, QHBoxLayout))
+        grow = kind in ("table", "chart", "log") or (kind == "hint" and isinstance(lay, QHBoxLayout)) or \
+            (kind == "host" and bool(n.get("grow")))
         if isinstance(lay, FlowRow):
             lay.addWidget(w)
         elif kind in ("button", "combo") and not isinstance(lay, QHBoxLayout):
