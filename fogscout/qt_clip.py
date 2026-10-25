@@ -26,7 +26,7 @@ log = logging.getLogger("fogscout")
 
 CENSOR_LABELS = {"pixel": N_("Verpixelt"), "blur": N_("Verwischt"), "black": N_("Schwarz"),
                  "retouch": N_("Retusche (aus der Umgebung übermalt)")}   # 1.7.2, retouch 1.7.3
-COMPACT_PREVIEW_H = 280                          # 1.8.8: picture height of the preview beside the recordings
+COMPACT_PREVIEW_H = 360                          # 1.8.8: picture height of the preview beside the recordings
 MIX_MAX = 150                                    # 1.8.6: a source may be raised to 150 %
 SOURCE_LABELS = {"dbd": N_("Spiel"), "discord": N_("Discord"), "mic": N_("Mikrofon"), "other": N_("Hintergrund")}
 SOURCE_TIPS = {"dbd": N_("Nur der Ton von Dead by Daylight – OBS-Spur 2."),
@@ -39,10 +39,13 @@ ABSENT_TIPS = {"other": N_("In OBS gab es bei dieser Aufnahme keine Hintergrund-
                            "Spur 5."),
                "dbd": N_("Diese Tonquelle war bei der Aufnahme unter Einstellungen → Aufnahmen "
                          "ausgeschaltet.")}
-MODE_LABELS = {"copy": N_("Schnell (an Schlüsselbildern, Anfang bis zu ein paar Sekunden früher)"),
-               "exact": N_("Genau (Bild neu kodiert, dauert etwas)"),
-               "discord": N_("Für Discord (passt unter die Zielgrösse)"),
-               "gif": N_("GIF (ohne Ton, für Chats)")}                                   # 1.12
+# 1.12.2: short names in the box (the long ones were cut off beside the recordings table), the long ones as tips
+MODE_LABELS = {"copy": N_("Schnell (ohne Neukodieren)"), "exact": N_("Genau (neu kodiert)"),
+               "discord": N_("Für Discord (Zielgrösse)"), "gif": N_("GIF (ohne Ton)")}
+MODE_TIPS = {"copy": N_("Schnell (an Schlüsselbildern, Anfang bis zu ein paar Sekunden früher)"),
+             "exact": N_("Genau (Bild neu kodiert, dauert etwas)"),
+             "discord": N_("Für Discord (passt unter die Zielgrösse)"),
+             "gif": N_("GIF (ohne Ton, für Chats)")}                                    # 1.12
 SPEED_LABELS = {0.25: "×0.25", 0.5: "×0.5", 0.75: "×0.75", 1.0: N_("normal"), 1.5: "×1.5", 2.0: "×2", 4.0: "×4"}
 CROP_LABELS = {"none": N_("Kein Ausschnitt"), "free": N_("Frei"), "16:9": "16:9", "9:16": N_("9:16 (Hochformat)"),
                "1:1": "1:1", "4:5": "4:5"}
@@ -1049,11 +1052,10 @@ class ClipWindow(QWidget):
             row2 = QHBoxLayout()
         row2.addWidget(QLabel(_("Format")))
         self.mode_box = guard_wheel(QComboBox())
-        if self.compact:
-            self.mode_box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-            self.mode_box.setMinimumContentsLength(18)
+        self.mode_box.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         for key in clipedit.MODES:
             self.mode_box.addItem(_(MODE_LABELS[key]), key)
+            self.mode_box.setItemData(self.mode_box.count() - 1, _(MODE_TIPS[key]), Qt.ToolTipRole)
         self.mode_box.setCurrentIndex(max(0, list(clipedit.MODES).index(mode) if mode in clipedit.MODES else 0))
         self.mode_box.currentIndexChanged.connect(self._mode_changed)
         row2.addWidget(self.mode_box)
@@ -1526,7 +1528,12 @@ class ClipWindow(QWidget):
 
     # ---- 1.8.6: the sound mix (like Medal – each source on its own OBS track, on/off and a level each)
     def _mix_row(self):
-        row = QHBoxLayout()
+        """The label and the sources in a row, the hint in a line of its own below them (1.12.2: beside them it
+        squeezed the row into a column of single words next to the recordings table); with no sources to pick the
+        hint stands beside the label (``_mix_fill`` moves it)."""
+        lines = QVBoxLayout()
+        lines.setSpacing(2)
+        row = self._mix_top = QHBoxLayout()
         self.mix_label = QLabel(_("Ton im Clip"))
         row.addWidget(self.mix_label)
         self.mix_boxes, self.mix_sliders, self.mix_values = {}, {}, {}
@@ -1548,19 +1555,36 @@ class ClipWindow(QWidget):
         self.mix_hint = QLabel(_("Eine Tonspur – zum Mischen nimmt OBS mit Spur 1–4 auf (Einstellungen → Aufnahmen)."))
         self.mix_hint.setProperty("class", "dim")
         self.mix_hint.setWordWrap(True)
-        row.addWidget(self.mix_hint, 1)
         row.addStretch()
+        self._mix_below = QHBoxLayout()
+        lines.addLayout(row)
+        lines.addLayout(self._mix_below)
         self._mix_fill()
         for key in obsrec.SOURCES:
             self.mix_boxes[key].toggled.connect(self._mix_changed)
             self.mix_sliders[key].valueChanged.connect(lambda v, k=key: self._mix_slid(k))
             self.mix_sliders[key].sliderReleased.connect(self._mix_changed)
-        return row
+        return lines
+
+    def _mix_place_hint(self):
+        """No sources: the hint beside the label (before the row's stretch); else in the line below, indented to
+        where the sources begin."""
+        top, below = getattr(self, "_mix_top", None), getattr(self, "_mix_below", None)
+        if top is None or below is None:
+            return
+        top.removeWidget(self.mix_hint)
+        below.removeWidget(self.mix_hint)
+        if self._sources:
+            below.setContentsMargins(self.mix_label.sizeHint().width() + top.spacing(), 0, 0, 0)
+            below.addWidget(self.mix_hint, 1)
+        else:
+            top.insertWidget(top.count() - 1, self.mix_hint, 1)
 
     def _mix_fill(self):
         """Controls for the sources the file has on their own tracks; none → only the hint. A source whose track
         is silent in the whole recording says so (1.8.18) – OBS recorded nothing there."""
         self.mix_hint.setVisible(not self._sources or bool(self._silent))
+        self._mix_place_hint()
         if self._silent:
             names = ", ".join(_("{name} (Spur {n})", name=_(SOURCE_LABELS[k]), n=self._sources[k] + 1)
                               for k in obsrec.SOURCES if k in self._silent)
@@ -1757,6 +1781,7 @@ class ClipWindow(QWidget):
         self._show_size()
         if not self.name_edit.isModified() or not self.name_edit.text():
             self.name_edit.setText(clipedit.clip_name(self.path, tl.start, tl.end))
+            self.name_edit.setCursorPosition(0)                  # 1.12.2: the start of the name, not its cut end
             self.name_edit.setModified(False)
 
     def _show_size(self):
