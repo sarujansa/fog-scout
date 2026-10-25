@@ -131,6 +131,7 @@ def test_packages_installed_only_when_requirements_change(tmp_path):
     up.sync_packages(str(root), str(venv), run)
     assert len(calls) == 2
     assert "--no-deps" in calls[1] and "--no-deps" not in calls[0]  # extra package never pulls opencv-python
+    assert all("--only-binary=:all:" in c for c in calls)            # 1.12.3: no setup.py run as administrator
     up.sync_packages(str(root), str(venv), run)
     assert len(calls) == 2                                           # unchanged: nothing to do
     write(root / "requirements.txt", "numpy\nnew-package\n")

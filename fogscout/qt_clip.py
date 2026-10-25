@@ -856,7 +856,7 @@ class ClipWindow(QWidget):
     def __init__(self, path: str, marks: list, clips_dir: str, mode: str = "copy", sound: bool = True,
                  on_saved=None, on_setting=None, log=None, dark=True, qss: str = "", title: str = "",
                  target_mb: int = clipedit.DEFAULT_TARGET_MB, censor_on: bool = False, censor_style: str = "pixel",
-                 censor_boxes=(), mix_on=None, mix_vol=None, compact=False, parent=None, on_expand=None, sources=None):
+                 censor_boxes=(), mix_on=None, mix_vol=None, compact=False, parent=None, on_expand=None, sources=None, info=None):
         # 1.8.8: compact = the preview beside the recordings table (no window of its own, no censor card, sound
         # sources only on/off, start/end in the clip card); "Grosser Editor" (on_expand) opens the full window
         super().__init__(parent, Qt.Widget if compact else Qt.Window)
@@ -865,7 +865,7 @@ class ClipWindow(QWidget):
         self.on_saved, self.on_setting, self.log = on_saved, on_setting, (log or (lambda text, kind="System": None))
         self.saved_seconds = {}           # 1.8.13: out path -> length of the clip (the clips list shows it)
         self.dark = dark
-        self.info = clipedit.probe(path)
+        self.info = info if info is not None else clipedit.probe(path)   # 1.12.3: the previews probe in a thread
         self.ffmpeg = clipedit.ffmpeg_exe()
         self.bridge = _Bridge()
         self._pump = QTimer(self)             # 1.8.66: hands the threads' results to the window (GUI thread)

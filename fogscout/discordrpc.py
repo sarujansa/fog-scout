@@ -199,6 +199,7 @@ class Presence(threading.Thread):
         self.on, self.client_id = False, ""
         self.show_killer = self.show_lobby = True
         self.state = GameState()
+        self._asked = self.state      # last state the UI thread queued (self.state is the thread's)
         self.status = _("Discord: aus")
         self.connected = False
         self._ipc = None
@@ -213,7 +214,10 @@ class Presence(threading.Thread):
         self.cmds.put(("config", (bool(on), str(client_id or "").strip(), bool(show_killer), bool(show_lobby))))
 
     def update(self, state: GameState):
-        if state != self.state:
+        # 1.12.3: compared with what was queued, not with self.state – a thread stuck on a hanging Discord pipe never
+        # updates that, and every window tick queued the same state again (the queue grew 4 entries a second)
+        if state != self._asked:
+            self._asked = state
             self.cmds.put(("state", state))
 
     def test(self):

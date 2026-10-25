@@ -18,12 +18,12 @@ ZOOMS = (0.9, 1.0, 1.1, 1.25, 1.5)        # setting ui_zoom: text size of the wi
 PALETTE = {
     True: dict(DARK, card=DARK["panel"], nav=DARK["panel"], nav_sel=DARK["bg"], btn=DARK["hover"],
                btn_hover=DARK["press"], btn_dis="#2b2d31", fg_dis="#6a6e75", on_accent="#1a1406", bar=DARK["field"],
-               head="#ffffff", accent_hover="#d8b43a"),
+               head="#ffffff", accent_hover="#d8b43a", danger="#ff9a94"),
     False: {"bg": "#f3f3f4", "panel": "#ffffff", "field": "#ffffff", "border": "#d6d7da", "fg": "#1b1c1e",
             "dim": "#5f636a", "accent": "#8a6a12", "select": "#7a1f1f", "hover": "#e9eaec", "press": "#dcdde0",
             "card": "#ffffff", "nav": "#e9eaec", "nav_sel": "#f3f3f4", "btn": "#ffffff", "btn_hover": "#e9eaec",
             "btn_dis": "#f3f3f4", "fg_dis": "#a2a5aa", "on_accent": "#ffffff", "bar": "#e4e5e8", "head": "#000000",
-            "accent_hover": "#9c7a1a"},
+            "accent_hover": "#9c7a1a", "danger": "#b42a22"},
 }
 
 
@@ -262,6 +262,9 @@ QPushButton:focus {{ border-color: {c['accent']}; }}  /* 1.8.72: the keyboard fo
 QPushButton#primary {{ background: {c['accent']}; color: {c['on_accent']}; border: 1px solid {c['accent']}; font-weight: 700; }}
 QPushButton#primary:hover {{ background: {c['accent_hover']}; }}
 QPushButton#primary:focus {{ border-color: {c['head']}; }}
+QPushButton#danger {{ color: {c['danger']}; }}  /* 1.12.3: deletes or resets data (uimodel.danger) */
+QPushButton#danger:hover {{ border-color: {c['danger']}; }}
+QPushButton#danger:disabled {{ color: {c['fg_dis']}; border-color: {c['border']}; }}
 QPushButton[class="seg"]:checked {{ background: {c['accent']}; color: {c['on_accent']}; border-color: {c['accent']}; font-weight: 700; }}  /* 1.3.3 */
 QProgressBar {{ background: {c['bar']}; border: none; border-radius: 3px; max-height: 6px; min-height: 6px; }}
 QProgressBar::chunk {{ background: {c['accent']}; border-radius: 3px; }}

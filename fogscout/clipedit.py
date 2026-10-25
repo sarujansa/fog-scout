@@ -14,7 +14,8 @@ import subprocess
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
+from collections import OrderedDict
+from dataclasses import dataclass, field, replace
 
 from .obsrec import AUDIO_STREAM_RE, CLIPS_DIR as _CLIPS_DIR, NAME_CHARS, audio_graph, ffmpeg_exe
 
@@ -57,11 +58,36 @@ def _flags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+PROBE_KEPT = 16                     # 1.12.3: probe results kept (preview, then the big editor of the same file)
+_PROBED = OrderedDict()             # (path, size, mtime_ns) -> Info
+_PROBED_LOCK = threading.Lock()
+
+
 def probe(path: str, ffmpeg: str | None = None) -> Info:
-    """Length, picture size and frame rate from ``ffmpeg -i`` (imageio-ffmpeg ships no ffprobe)."""
+    """Length, picture size and frame rate from ``ffmpeg -i`` (imageio-ffmpeg ships no ffprobe). 1.12.3: the result of
+    an unchanged file (same size and time) is kept – a copy each call, so a caller may change it."""
     ffmpeg = ffmpeg or ffmpeg_exe()
     if not ffmpeg:
         return Info()
+    try:
+        st = os.stat(path)
+        key = (os.path.abspath(path), st.st_size, st.st_mtime_ns)
+    except OSError:
+        key = None
+    with _PROBED_LOCK:
+        if key in _PROBED:
+            _PROBED.move_to_end(key)
+            return replace(_PROBED[key])
+    info = _probe(path, ffmpeg)
+    if key is not None and info.ok:
+        with _PROBED_LOCK:
+            _PROBED[key] = replace(info)
+            while len(_PROBED) > PROBE_KEPT:
+                _PROBED.popitem(last=False)
+    return info
+
+
+def _probe(path: str, ffmpeg: str) -> Info:
     try:
         p = subprocess.run([ffmpeg, "-hide_banner", "-i", path], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                            stderr=subprocess.PIPE, timeout=30, creationflags=_flags())

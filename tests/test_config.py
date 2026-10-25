@@ -1,4 +1,5 @@
 import json
+import os
 
 from fogscout import config
 
@@ -95,3 +96,17 @@ def test_the_kills_average_on_the_map_card_is_off_once_and_can_come_back(tmp_pat
     assert Settings(str(p))["overlay"]["show_record"] is False
     p.write_text(json.dumps({"settings_version": 12, "overlay": {"show_record": True}, "hotkeys": {}}))
     assert Settings(str(p))["overlay"]["show_record"] is True
+
+
+def test_a_save_that_fails_says_so_once_in_the_log(tmp_path, caplog):
+    """1.12.3 (audit): a failed save (disk full, file locked) was swallowed without a word."""
+    import logging
+    from fogscout import config
+    s = config.Settings(str(tmp_path / "gone" / "settings.json"))     # the folder does not exist: every save fails
+    with caplog.at_level(logging.WARNING):
+        s.save()
+        s.save()
+    assert len([r for r in caplog.records if "nicht gespeichert" in r.getMessage()]) == 1
+    os.makedirs(tmp_path / "gone")
+    s.save()
+    assert os.path.exists(tmp_path / "gone" / "settings.json") and not s._save_failed

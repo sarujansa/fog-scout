@@ -171,8 +171,8 @@ class SettingsTab:
         self.alias_var = ui.StringVar(value="")
         self._reg("st.more.aliases", ui.Label(own, textvariable=self.alias_var, style="Dim.TLabel",
                                                wraplength=300)).pack(side="left", fill="x")
-        self._reg("st.more.aliases_clear", ui.Button(own, text=_("Alle löschen"),
-                                                      command=self._clear_aliases)).pack(side="right")
+        self._reg("st.more.aliases_clear", ui.danger(ui.Button(own, text=_("Alle löschen"),
+                                                                command=self._clear_aliases))).pack(side="right")
         self._show_aliases()
 
         om = self._reg("st.more.official", ui.LabelFrame(more, text=_("Offizielle Match-Daten"), padding=8))
@@ -415,10 +415,11 @@ class SettingsTab:
                                                command=self._export_settings)).pack(side="left")
         self._reg("st.more.import", ui.Button(bk, text=_("Einstellungen importieren …"),
                                                command=self._import_settings)).pack(side="left", padx=6)
-        self._reg("st.more.clear_hist", ui.Button(bk, text=_("Verlauf löschen"),      # 1.2.16: moved from the
-                                                   command=self._stats_clear)).pack(side="right")   # statistics
-        self._reg("st.more.reset_all", ui.Button(bk, text=_("Alle Einstellungen zurücksetzen"),   # 1.2.19
-                                                  command=self._reset_all_settings)).pack(side="right", padx=(0, 6))
+        self._reg("st.more.clear_hist", ui.danger(ui.Button(bk, text=_("Verlauf löschen"),    # 1.2.16: moved
+                                                             command=self._stats_clear))).pack(side="right")
+        self._reg("st.more.reset_all", ui.danger(ui.Button(bk, text=_("Alle Einstellungen zurücksetzen"),  # 1.2.19
+                                                            command=self._reset_all_settings))).pack(side="right",
+                                                                                                     padx=(0, 6))
         self.backup_var = ui.StringVar(value=self._backup_text())              # 1.8.80: the daily copies
         self._reg("st.more.backup_hint", ui.Label(bk, textvariable=self.backup_var, style="Dim.TLabel",
                                                    wraplength=420)).pack(anchor="w", pady=(6, 0))

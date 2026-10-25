@@ -266,6 +266,12 @@ class Label(Widget):
     "Big.TLabel" = big value, "Dim.TLabel" = grey hint."""
 
 
+def danger(w):
+    """1.12.3: a button that deletes or resets data – drawn in the warning colour (Qt object name "danger")."""
+    w._dbdms_danger = True
+    return w
+
+
 class Button(Widget):
     def invoke(self):
         cmd = self._opts.get("command")

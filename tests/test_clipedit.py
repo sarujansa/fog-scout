@@ -522,6 +522,11 @@ def test_marking_a_recording_shows_the_compact_editor_beside_the_table(four_trac
                                                        "welcome_seen": True,
                                                        "clip_mix_on": {"discord": False}}), encoding="utf-8")
     app = App(str(tmp_path), simulate=str(tmp_path / "sim"))
+    import threading
+    probed = []                                                 # 1.12.3: (thread, ffmpeg really run?)
+    real_run = clipedit._probe
+    clipedit._probe = lambda *a: probed.append(threading.current_thread()) or real_run(*a)
+    clipedit._PROBED.clear()
     try:
         qapp = QApplication.instance()
         app._rec_render()
@@ -537,6 +542,8 @@ def test_marking_a_recording_shows_the_compact_editor_beside_the_table(four_trac
         ed = host.content
         assert ed is not None and ed.compact and not ed.isWindow() and ui_shown(app.rec_host)
         assert ed.info.audio_tracks == 4 and ed.mix() == {"dbd": 1.0, "discord": 0.0, "mic": 1.0}
+        # 1.12.3 (audit): ffmpeg ran in the window's thread for every marked row – now in a thread, and only once
+        assert len(probed) == 1 and probed[0] is not threading.main_thread()
         assert ed.mix_boxes["dbd"].isVisibleTo(ed) and not ed.mix_sliders["dbd"].isVisibleTo(ed)   # on/off only
         assert ed.expand_btn is not None and not ed.open_btn.isVisibleTo(ed)
         app._rec_buttons()                                          # the same row again: the same editor
@@ -547,12 +554,14 @@ def test_marking_a_recording_shows_the_compact_editor_beside_the_table(four_trac
         full = app._clip_windows[-1]
         assert full is not ed and full.isWindow() and not full.compact
         assert (full.timeline.start, full.timeline.end) == (1.0, 3.0)
+        assert len(probed) == 1 and full.info == ed.info and full.info is not ed.info    # the kept probe, a copy
         full.close()
         app.rec_table.selection_remove(repr(t1))
         app.rec_table.event_generate("<<TreeviewSelect>>")
         qapp.processEvents()
         assert host.content is None and not ui_shown(app.rec_host)
     finally:
+        clipedit._probe = real_run
         app.quit()
 
 

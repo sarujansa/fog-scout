@@ -211,8 +211,8 @@ class StatsTab:
         b = ui.Button(rr, text=_("Farming an/aus"), command=self._stats_toggle_farming, state="disabled")   # 1.2.20
         b.pack(side="left", padx=(6, 0))
         self.stats_role_btns.append(b)
-        self.stats_delete_btn = ui.Button(rr, text=_("Runde löschen"), command=self._stats_delete_round,
-                                           state="disabled")
+        self.stats_delete_btn = ui.danger(ui.Button(rr, text=_("Runde löschen"), command=self._stats_delete_round,
+                                                     state="disabled"))
         self.stats_delete_btn.pack(side="left", padx=(6, 0))
         kr = ui.Frame(box2)                                 # 1.8.2: two tidy rows (the delete button stood alone)
         kr.pack(fill="x", pady=(6, 0))
@@ -244,7 +244,8 @@ class StatsTab:
         self.stats_alias_cb.pack(side="left")
         self.stats_alias_btn = ui.Button(ar, text=_("Zuordnen"), command=self._stats_alias_set, state="disabled")
         self.stats_alias_btn.pack(side="left", padx=(6, 0))
-        self.stats_alias_clear = ui.Button(ar, text=_("Zuordnungen löschen"), command=self._stats_alias_reset)
+        self.stats_alias_clear = ui.danger(ui.Button(ar, text=_("Zuordnungen löschen"),
+                                                     command=self._stats_alias_reset))
         self.stats_alias_clear.pack(side="left", padx=(6, 0))
         ui.Label(box_k, text=_("Ein Skin oder neuer Killer steht unter seinem eigenen Namen? Zeile markieren, Killer "
                                 "wählen, „Zuordnen“ – gilt auch rückwirkend."),

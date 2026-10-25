@@ -13,12 +13,13 @@ for %%V in (3.14 3.13 3.12) do if not defined PY (py -%%V -c "pass" <nul >nul 2>
 if not defined PY (python -c "import sys; sys.exit(not (3, 12) <= sys.version_info[:2] <= (3, 14))" <nul >nul 2>nul && set "PY=python")
 if not defined PY goto nopython
 
+rem Nur fertige Pakete (Wheels), nie ein Quellpaket bauen: dessen setup.py liefe mit Administratorrechten.
 rem Eine abgebrochene Ersteinrichtung (kein installed.ok) neu beginnen, z. B. mit einer anderen Python-Version
 if exist "%VENV%" rd /s /q "%VENV%"
 %PY% -m venv "%VENV%"
 if errorlevel 1 goto nopython
-"%VENV%\Scripts\python.exe" -m pip install --upgrade pip
-"%VENV%\Scripts\python.exe" -m pip install -r requirements.txt
+"%VENV%\Scripts\python.exe" -m pip install --only-binary=:all: --upgrade pip
+"%VENV%\Scripts\python.exe" -m pip install --only-binary=:all: -r requirements.txt
 if errorlevel 1 goto piperror
 echo ok> "%VENV%\installed.ok"
 
