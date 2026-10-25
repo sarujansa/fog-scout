@@ -30,7 +30,8 @@ CLIP_KIND_NAMES = {"clip": N_("Clip"), "instant": N_("Sofort-Clip"), "still": N_
 REC_REFRESH_S = 20            # the table re-reads the index this often while the tab is on display
 PREVIEW_DELAY_MS = 180               # 1.8.11: the clip preview is built once the marking stays
 SHOT_KINDS = [("all", N_("Alle Bilder")), ("taken", N_("Aufgenommen (F12)")), ("edited", N_("Bearbeitet"))]   # 1.12
-SHOT_PREVIEW_W = 420                 # 1.12: px of the picture beside the screenshots table
+SHOT_THUMBS = os.path.join("cache", "shots")   # 1.12.2: the gallery's thumbnails (thumbs.py), gitignored
+SHOT_GALLERY_MIN_H = 460             # 1.12.2: px (logical) the gallery keeps on the scrolling page
 
 
 def fmt_bytes(n: float) -> str:
@@ -131,14 +132,16 @@ class RecordingsTab:
 
         tf = ui.Frame(f)
         tf.pack(fill="both", expand=True)
+        # 1.12.2 (user: "ich find das nicht schön"): marks, keep and YouTube in one narrow column (symbols, explained
+        # below the table); the file name – date, map and role once more – hidden until the heading's menu shows it
         cols = (("when", _("Wann"), 100, "w"), ("map", _("Map"), 130, "w"), ("role", _("Rolle/Killer"), 110, "w"),
                 ("res", _("Ergebnis"), 65, "w"), ("dur", _("Dauer"), 55, "e"), ("size", _("Grösse"), 65, "e"),
-                ("marks", _("Marken"), 50, "e"), ("keep", _("Behalten"), 60, "w"), ("yt", _("YouTube"), 60, "w"),
-                ("file", _("Datei"), 110, "w"))
+                ("status", _("Status"), 70, "w"), ("file", _("Datei"), 110, "w"))
         self.rec_table = ui.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=12, selectmode="browse")
         for key, title, width, anchor in cols:
             self.rec_table.heading(key, text=title, anchor=anchor)
-            self.rec_table.column(key, width=width, anchor=anchor, stretch=key == "file")
+            self.rec_table.column(key, width=width, anchor=anchor, stretch=key == "map")
+        self.rec_table._dbdms_hide = ("file",)
         self.rec_table.pack(side="left", fill="both", expand=True)
         self.rec_table.bind("<<TreeviewSelect>>", lambda e: self._rec_buttons())
         # 1.8.8 (user: "click on it and a preview comes where I can play it and quickly edit, sound tracks on/off"):
@@ -148,9 +151,8 @@ class RecordingsTab:
         self._table_menu(self.rec_table, self._rec_menu_items, self._rec_menu_act)       # 1.8.10: right click
         self.rec_marks_var = ui.StringVar(value="")
         ui.Label(f, textvariable=self.rec_marks_var, style="Dim.TLabel", wraplength=560).pack(anchor="w", pady=(6, 0))
-        ui.Label(f, text=_("OBS nimmt jede Runde auf (Einstellungen → Aufnahmen). F8 setzt während "
-                            "der Runde eine Marke; „Behalten“ schützt eine Aufnahme vor dem Aufräumen, wenn die "
-                            "Platte Platz braucht."),
+        ui.Label(f, text=_("★ behalten (nie aufgeräumt) · ⚑ Marken (F8 in der Runde) · ▶ auf YouTube · "
+                            "Rechtsklick auf die Spaltenköpfe: Spalten ein-/ausblenden"),
                  style="Dim.TLabel", wraplength=560).pack(anchor="w", pady=(6, 0))
         self._tab_clips(cp)
         sp = ui.Frame(self.rec_nb, padding=6)                  # 1.12: Steam's F12 screenshots and edited copies
@@ -216,46 +218,49 @@ class RecordingsTab:
         tf.pack(fill="both", expand=True)
         cols = (("when", _("Wann"), 100, "w"), ("map", _("Map"), 130, "w"), ("role", _("Rolle/Killer"), 110, "w"),
                 ("kind", _("Art"), 85, "w"), ("dur", _("Länge"), 55, "e"), ("size", _("Grösse"), 65, "e"),
-                ("yt", _("YouTube"), 60, "w"), ("file", _("Datei"), 140, "w"))
+                ("status", _("Status"), 60, "w"), ("file", _("Datei"), 140, "w"))
         self.clip_table = ui.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=12,
                                       selectmode="browse")
         for key, title, width, anchor in cols:
             self.clip_table.heading(key, text=title, anchor=anchor)
-            self.clip_table.column(key, width=width, anchor=anchor, stretch=key == "file")
+            self.clip_table.column(key, width=width, anchor=anchor, stretch=key == "map")
+        self.clip_table._dbdms_hide = ("file",)                                                   # 1.12.2
         self.clip_table.pack(side="left", fill="both", expand=True)
         self.clip_table.bind("<<TreeviewSelect>>", lambda e: self._clip_buttons())
         self.clip_host = ui.Host(tf)             # 1.11.4 (user: "Clips soll ebenfalls eine Vorschau erhalten")
         self._clip_preview_key = None
         self._table_menu(self.clip_table, self._clip_menu_items, self._clip_menu_act)
-        ui.Label(f, text=_("Hier stehen die Clips aus dem Editor, die Sofort-Clips (F8) und die Standbilder – mit "
-                            "der Runde, aus der sie stammen. Gelöscht werden nur Dateien, die das Programm selbst "
-                            "angelegt hat."),
+        ui.Label(f, text=_("Clips aus dem Editor, Sofort-Clips (F8) und Standbilder, mit ihrer Runde · ▶ auf "
+                            "YouTube · gelöscht werden nur Dateien, die das Programm selbst angelegt hat"),
                  style="Dim.TLabel", wraplength=560).pack(anchor="w", pady=(6, 0))
 
     def _tab_shots(self, f):
         """1.12 (user: "Screenshots die ich mit F12 mache" → "lass es ruhig auf F12"): Steam's DBD screenshots (read
-        only, steamshots) and the copies edited here, newest first; "Bild bearbeiten …" opens qt_image."""
-        self._shot_rows = {}
-        self._shot_preview_key = None
-        hr = ui.Frame(f)
-        hr.pack(fill="x", pady=(0, 6))
-        self.shot_src_var = ui.StringVar(value="")
-        ui.Label(hr, textvariable=self.shot_src_var, style="Dim.TLabel", wraplength=620).pack(side="left")
-        self.shot_steam_btn = ui.Button(hr, text=_("Steam-Ordner verwenden"), command=self._shot_steam_folder)
-        self.shot_dir_btn = ui.Button(hr, text=_("Anderen Ordner …"), command=self._shot_pick_folder)
-        self.shot_dir_btn.pack(side="right")
-        self._shot_kinds = [(k, _(label)) for k, label in SHOT_KINDS]
+        only, steamshots) and the copies edited here, newest first; "Bild bearbeiten …" opens qt_image. 1.12.2
+        (user on the list of file names: "ich find das nicht schön"): a gallery of tiles (qt_gallery) instead of the
+        table, one line on top instead of Steam's long path (with the account number in it)."""
+        self._shot_items = []                    # [steamshots.Shot] on display
+        self._shot_sel = None                    # path of the picked picture
+        self._shot_count = 0
         fr = ui.Frame(f)
         fr.pack(fill="x", pady=(0, 6))
+        self._shot_kinds = [(k, _(label)) for k, label in SHOT_KINDS]
         self.shot_kind_var = ui.StringVar(value=self._shot_kinds[0][1])
         cb = ui.Combobox(fr, textvariable=self.shot_kind_var, values=[lbl for _k, lbl in self._shot_kinds],
                          state="readonly", width=18)
         cb.pack(side="left")
         cb.bind("<<ComboboxSelected>>", lambda e: self._shots_render())
+        self.shot_src_var = ui.StringVar(value="")
+        ui.Label(fr, textvariable=self.shot_src_var, style="Dim.TLabel", wraplength=620).pack(side="left",
+                                                                                             padx=(10, 0))
+        self.shot_dir_btn = ui.Button(fr, text=_("Anderen Ordner …"), command=self._shot_pick_folder)
+        self.shot_dir_btn.pack(side="right")
+        self.shot_steam_btn = ui.Button(fr, text=_("Steam-Ordner verwenden"), command=self._shot_steam_folder)
         row = ui.Frame(f)
         row.pack(fill="x", pady=(0, 6))
-        self.shot_sel_hint = ui.Label(row, text=_("Bild markieren: bearbeiten (zuschneiden, zeichnen, zensieren), im "
-                                                  "Explorer zeigen – oder Rechtsklick."), style="Dim.TLabel")
+        self.shot_sel_hint = ui.Label(row, text=_("Bild anklicken: bearbeiten (zuschneiden, zeichnen, zensieren), im "
+                                                  "Explorer zeigen – Doppelklick öffnet den Editor."),
+                                      style="Dim.TLabel")
         self.shot_sel_hint.pack(side="left")
         sel = self.shot_sel_row = ui.Frame(row)
         self.shot_edit_btn = ui.Button(sel, text=_("Bild bearbeiten …"), command=self._shot_edit)
@@ -264,22 +269,10 @@ class RecordingsTab:
         self.shot_show_btn.pack(side="left", padx=(6, 0))
         self.shot_folder_btn = ui.Button(row, text=_("Bearbeitete Bilder öffnen"), command=self._shot_open_folder)
         self.shot_folder_btn.pack(side="right")
-        tf = ui.Frame(f)
-        tf.pack(fill="both", expand=True)
-        cols = (("when", _("Wann"), 110, "w"), ("src", _("Quelle"), 90, "w"), ("size", _("Grösse"), 70, "e"),
-                ("file", _("Datei"), 220, "w"))
-        self.shot_table = ui.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=12, selectmode="browse")
-        for key, title, width, anchor in cols:
-            self.shot_table.heading(key, text=title, anchor=anchor)
-            self.shot_table.column(key, width=width, anchor=anchor, stretch=key == "file")
-        self.shot_table.pack(side="left", fill="both", expand=True)
-        self.shot_table.bind("<<TreeviewSelect>>", lambda e: self._shot_buttons())
-        self.shot_host = ui.Host(tf)
-        self._table_menu(self.shot_table, self._shot_menu_items, self._shot_menu_act)
-        ui.Label(f, text=_("F12 im Spiel ist Steams Screenshot-Taste – Steam legt die Bilder in seinem eigenen Ordner "
-                            "ab, das Programm liest sie dort nur. Bearbeitete Bilder sind Kopien im Ordner "
-                            "„Screenshots“ neben den Aufnahmen (ohne Aufnahmeordner: Bilder/Fog Scout); das Original "
-                            "bleibt immer unverändert."),
+        self.shot_host = ui.Host(f)              # the gallery (qt_gallery.ShotGallery), put in by _shot_gallery_sync
+        self.shot_host.pack(fill="both", expand=True)
+        ui.Label(f, text=_("F12 im Spiel ist Steams Screenshot-Taste; das Programm liest Steams Ordner nur. "
+                            "Bearbeitete Bilder sind Kopien im Ordner „Screenshots“ neben den Aufnahmen."),
                  style="Dim.TLabel", wraplength=620).pack(anchor="w", pady=(6, 0))
 
     # ============================================================ 1.12: screenshots
@@ -302,83 +295,71 @@ class RecordingsTab:
         own = str(self.settings.get("shots_folder") or "")
         steam = steamshots.steam_path()
         dirs = steamshots.folders(own or None, steam)
+        kind = next((k for k, lbl in self._shot_kinds if lbl == self.shot_kind_var.get()), "all")
+        shots = self._shots_list()
+        self._shot_count = len(shots)
+        n = _("1 Bild") if len(shots) == 1 else _("{n} Bilder", n=len(shots))
         if own:
-            self.shot_src_var.set(_("Eigener Ordner: {path}", path=own) if dirs else
+            self.shot_src_var.set(" · ".join([n, _("Eigener Ordner")]) if dirs else
                                   _("Eigener Ordner nicht gefunden: {path}", path=own))
         elif dirs:
-            self.shot_src_var.set(_("Steams Screenshots von DBD (F12): {path}", path=dirs[0][0]))
+            self.shot_src_var.set(" · ".join([n, _("Steam (F12)")]))
         else:
             self.shot_src_var.set(_("Kein Screenshot-Ordner von Steam für DBD gefunden – noch kein F12-Screenshot, "
                                     "oder Steam speichert woanders („Anderen Ordner …“)."))
         if own and not self.shot_steam_btn.winfo_manager():
-            self.shot_steam_btn.pack(side="right", padx=(6, 0))
+            self.shot_steam_btn.pack(side="right", padx=(0, 6))
         elif not own and self.shot_steam_btn.winfo_manager():
             self.shot_steam_btn.pack_forget()
-        kind = next((k for k, lbl in self._shot_kinds if lbl == self.shot_kind_var.get()), "all")
-        shots = self._shots_list()
-        self._shot_count = len(shots)
         if kind == "edited":
             shots = [s for s in shots if s.source == "edited"]
         elif kind == "taken":
             shots = [s for s in shots if s.source != "edited"]
-        t = self.shot_table
-        keep = t.selection()
-        t.delete(*t.get_children())
-        self._shot_rows = {}
-        names = {"steam": _("Steam (F12)"), "own": _("Eigener Ordner"), "edited": _("Bearbeitet")}
-        for i, s in enumerate(shots):
-            iid = f"s{i}:{os.path.basename(s.path)}"
-            self._shot_rows[iid] = s
-            t.insert("", "end", iid=iid, values=(time.strftime("%d.%m.%y %H:%M", time.localtime(s.t)),
-                                                 names.get(s.source, s.source), fmt_bytes(s.size),
-                                                 os.path.basename(s.path)))
-        if keep and t.exists(keep[0]):
-            t.selection_set(keep[0])
+        self._shot_items = shots
+        if self._shot_sel not in {s.path for s in shots}:
+            self._shot_sel = None
+        self._shot_gallery_sync()
         self._shot_buttons()
 
-    def _shot_selected(self):
-        sel = self.shot_table.selection()
-        return self._shot_rows.get(sel[0]) if sel else None
+    def _shot_tiles(self) -> list:
+        """(path, day · time, size [· own folder], badge) per picture – what a gallery tile shows."""
+        out = []
+        for s in self._shot_items:
+            sub = fmt_bytes(s.size) + (" · " + _("Eigener Ordner") if s.source == "own" else "")
+            out.append((s.path, time.strftime("%d.%m.%y · %H:%M", time.localtime(s.t)), sub,
+                        _("Bearbeitet") if s.source == "edited" else ""))
+        return out
 
-    def _shot_buttons(self):
-        s = self._shot_selected()
-        self._sel_buttons(self.shot_sel_row, self.shot_sel_hint, s is not None)
-        self._shot_preview_follow(s)
-
-    def _shot_preview_follow(self, s):
-        """The marked picture beside the table (scaled, read in the window thread – a screenshot is one file)."""
+    def _shot_gallery_sync(self):
+        """The gallery in the tab's host shows ``_shot_items`` (made once; nothing without the Qt window)."""
         if self.qt is None:
             return
         host = self.qt.host(str(self.shot_host))
         if host is None:
             return
-        key = s.path if s is not None else None
-        if key == self._shot_preview_key:
-            return
-        self._shot_preview_key = key
-        if s is None or not os.path.exists(s.path):
-            host.set_content(None)
-            self.shot_host.pack_forget()
-            return
-        from PySide6.QtCore import Qt
-        from PySide6.QtGui import QImageReader, QPixmap
-        from PySide6.QtWidgets import QLabel
-        reader = QImageReader(s.path)            # decoded at the shown size: a 3440×1440 JPG in half the time
-        reader.setAutoTransform(True)
-        size = reader.size()
-        if size.isValid() and max(size.width(), size.height()) > SHOT_PREVIEW_W:
-            reader.setScaledSize(size.scaled(SHOT_PREVIEW_W, SHOT_PREVIEW_W, Qt.KeepAspectRatio))
-        pm = QPixmap.fromImage(reader.read())
-        if pm.isNull():
-            host.set_content(None)
-            self.shot_host.pack_forget()
-            return
-        label = QLabel()
-        label.setObjectName("thumb")
-        label.setAlignment(Qt.AlignCenter)
-        label.setPixmap(pm)
-        host.set_content(label)
-        self.shot_host.pack(side="left", fill="both")
+        from .qt_gallery import ShotGallery
+        gallery = host.content if isinstance(host.content, ShotGallery) else None
+        if gallery is None:
+            gallery = ShotGallery(os.path.join(self.root_dir, SHOT_THUMBS),
+                                  dark=bool(self.settings.get("dark_mode", True)), on_pick=self._shot_pick,
+                                  on_open=self._shot_edit,
+                                  on_menu=lambda pos: self._context_menu(self._shot_menu_items(), pos,
+                                                                         self._shot_menu_act))
+            gallery.setMinimumHeight(SHOT_GALLERY_MIN_H)
+            host.set_content(gallery)
+        gallery.dark = bool(self.settings.get("dark_mode", True))
+        gallery.set_items(self._shot_tiles(), self._shot_sel)
+
+    def _shot_pick(self, path):
+        self._shot_sel = path
+        self._shot_buttons()
+        self._qt_refresh()
+
+    def _shot_selected(self):
+        return next((s for s in self._shot_items if s.path == self._shot_sel), None)
+
+    def _shot_buttons(self):
+        self._sel_buttons(self.shot_sel_row, self.shot_sel_hint, self._shot_selected() is not None)
 
     def _shot_menu_items(self):
         return [("edit", _("Bild bearbeiten …")), ("show", _("Bild im Explorer zeigen"))] \
@@ -499,14 +480,21 @@ class RecordingsTab:
             self._rec_rows[iid] = r
             t.insert("", "end", iid=iid, values=(time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), r.label or "–",
                                                  role_txt, res, fmt_duration(r.end - r.t) if r.end > r.t else "–",
-                                                 size, str(len(r.marks)) if r.marks else "", "✓" if r.keep else "",
-                                                 self._yt_mark(r.file, r.yt), r.file))
+                                                 size, self._rec_status(r.keep, len(r.marks),
+                                                                        self._yt_mark(r.file, r.yt)), r.file))
         if keep and t.exists(keep[0]):
             t.selection_set(keep[0])
         self._rec_buttons()
         self._clips_render(folder, recs)
         self._shots_render()                                    # 1.12
         self._rec_empty_shown(folder, recs)
+
+    @staticmethod
+    def _rec_status(keep: bool, marks: int, yt: str) -> str:
+        """1.12.2: the status column – ★ kept, ⚑ marks (F8), ▶ on YouTube (▶… waiting in the upload queue)."""
+        bits = (["★"] if keep else []) + ([f"⚑{marks}"] if marks else []) + \
+            (["▶"] if yt == "✓" else ["▶…"] if yt == "…" else [])
+        return "  ".join(bits)
 
     def _rec_empty_shown(self, folder, recs):
         """1.11.14: no recording and no clip – "Aufnahmen einrichten …" (recording off) or a note on when the first
@@ -576,10 +564,11 @@ class RecordingsTab:
                 who = self._role_name(c.role) or "–"
             if c.farming:
                 who += " · " + _("Farming")
+            label = c.label if c.label and c.label not in ("Clip", _("Clip")) else "–"    # an old clip without map
             t.insert("", "end", iid=c.file, values=(
-                time.strftime("%d.%m.%y %H:%M", time.localtime(c.t)), c.label or "–", who,
+                time.strftime("%d.%m.%y %H:%M", time.localtime(c.t)), label, who,
                 _(CLIP_KIND_NAMES.get(c.kind, "Clip")), fmt_duration(c.seconds) if c.seconds else "–",
-                fmt_bytes(c.size), self._yt_mark(self._clip_rel(c), c.yt), c.file))
+                fmt_bytes(c.size), self._rec_status(False, 0, self._yt_mark(self._clip_rel(c), c.yt)), c.file))
         if keep and t.exists(keep[0]):
             t.selection_set(keep[0])
         self._clip_buttons()
