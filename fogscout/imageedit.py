@@ -21,6 +21,7 @@ CENSOR_STYLES = ("pixel", "blur", "black")
 ASPECTS = (("free", None), ("16:9", 16 / 9), ("9:16", 9 / 16), ("1:1", 1.0), ("4:3", 4 / 3), ("4:5", 4 / 5))
 FORMATS = ("png", "jpg")
 JPG_QUALITY = 92
+PNG_LEVEL = 3                   # zlib level: 6 (Pillow's default) took 4× as long on a 3440×1440 picture
 ADJUST_RANGE = (0.2, 2.0)       # brightness/contrast/saturation factors offered (1 = unchanged)
 
 
@@ -200,7 +201,7 @@ def save(img: Image.Image, path: str, fmt: str = "png") -> str:
     if fmt == "jpg":
         img.convert("RGB").save(tmp, "JPEG", quality=JPG_QUALITY, optimize=True)
     else:
-        img.save(tmp, "PNG", optimize=False)
+        img.save(tmp, "PNG", compress_level=PNG_LEVEL)
     os.replace(tmp, path)
     return path
 

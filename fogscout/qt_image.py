@@ -9,6 +9,7 @@ turned and colour-adjusted picture exactly as imageedit.render will."""
 from __future__ import annotations
 
 import os
+import threading
 
 from PIL import Image
 from PySide6.QtCore import Qt, QTimer
@@ -28,6 +29,8 @@ CROP_LABELS = {"none": N_("Kein Ausschnitt"), "free": N_("Frei"), "16:9": "16:9"
 ADJUSTS = (("brightness", N_("Helligkeit")), ("contrast", N_("Kontrast")), ("saturation", N_("Sättigung")))
 UNDO_KEPT = 60                     # steps that can be undone
 ADJUST_DELAY_MS = 120              # a slider redraws the picture this long after it stopped
+PREVIEW_MAX = 1920                 # the canvas shows a copy at most this long (px) – saving uses the original
+SAVE_POLL_MS = 50                  # how often the window looks whether the saving thread is done
 
 
 def qimage(img: Image.Image) -> QImage:
@@ -57,6 +60,7 @@ class ImageWindow(QWidget):
             self.error = str(e)
         else:
             self.error = ""
+        self.preview = self._preview_copy(self.original)
         self.edit = imageedit.ImageEdit()
         self.undo_stack, self.redo_stack = [], []
         self.last_out = None
@@ -64,6 +68,10 @@ class ImageWindow(QWidget):
         self._adjust_timer.setSingleShot(True)
         self._adjust_timer.setInterval(ADJUST_DELAY_MS)
         self._adjust_timer.timeout.connect(self._adjust_apply)
+        self._saver, self._save_done = None, {}
+        self._save_timer = QTimer(self)
+        self._save_timer.setInterval(SAVE_POLL_MS)
+        self._save_timer.timeout.connect(self._save_poll)
         self._build()
         self.resize(1280, 860)
         self.setMinimumSize(900, 620)
@@ -322,8 +330,9 @@ class ImageWindow(QWidget):
         if self.original is None:
             return
         if frame:
-            pic = imageedit.adjust(imageedit.base(self.original, self.edit), self.edit.brightness,
+            pic = imageedit.adjust(imageedit.base(self.preview, self.edit), self.edit.brightness,
                                    self.edit.contrast, self.edit.saturation)
+            self.canvas.source_size = self._turned_size()
             self.canvas.set_frame(qimage(pic))
         self.canvas.set_boxes([list(b) for b in self.edit.censor])
         self.canvas.set_look(True, self.edit.censor_style)
@@ -340,6 +349,16 @@ class ImageWindow(QWidget):
             val.setText(f"{v} %")
         self._show_size()
         self._show_buttons()
+
+    @staticmethod
+    def _preview_copy(img):
+        """What the canvas turns and colours on every change: a 3440×1440 screenshot cost ~25 ms more per step
+        than a copy at ``PREVIEW_MAX`` – the canvas is never that large anyway."""
+        if img is None or max(img.size) <= PREVIEW_MAX:
+            return img
+        small = img.copy()
+        small.thumbnail((PREVIEW_MAX, PREVIEW_MAX), Image.LANCZOS)
+        return small
 
     def _turned_size(self) -> tuple:
         w, h = self.original.size
@@ -532,30 +551,64 @@ class ImageWindow(QWidget):
         self.status.setText(_("In die Zwischenablage kopiert – in Discord mit Strg+V einfügen."))
 
     def save(self):
-        img = self.result()
-        if img is None:
+        """Render and write the copy in a thread (3440×1440 with drawings: ~1 s – the window stays usable); the
+        thread only touches PIL and the file, the result is picked up by ``_save_poll`` in the window thread."""
+        if self.original is None or self._saver is not None:
             return
         fmt = self.fmt_box.currentData() or "png"
         name = "".join(ch for ch in self.name_edit.text() if ch not in '<>:"/\\|?*').strip()[:150] or \
             os.path.splitext(imageedit.out_name(self.path))[0]
         try:
             os.makedirs(self.out_dir, exist_ok=True)
-            out = os.path.join(self.out_dir, f"{name}.{fmt}")
-            n = 2
-            while os.path.exists(out) or os.path.abspath(out) == os.path.abspath(self.path):
-                out = os.path.join(self.out_dir, f"{name} ({n}).{fmt}")
-                n += 1
-            imageedit.save(img, out, fmt)
         except OSError as e:
-            self.status.setText(_("Bild nicht gespeichert: {error}", error=e))
-            self.log(_("Bild nicht gespeichert: {error}", error=e), "Fehler")
+            self._save_failed(e)
             return
+        out = os.path.join(self.out_dir, f"{name}.{fmt}")
+        n = 2
+        while os.path.exists(out) or os.path.abspath(out) == os.path.abspath(self.path):
+            out = os.path.join(self.out_dir, f"{name} ({n}).{fmt}")
+            n += 1
+        original, edit, done = self.original, self.edit.copy(), {}
+
+        def work():
+            try:
+                done["out"] = imageedit.save(imageedit.render(original, edit), out, fmt)
+            except (OSError, ValueError) as e:
+                done["error"] = e
+        self._save_done = done
+        self._saver = threading.Thread(target=work, name="image-save", daemon=True)
+        self.save_btn.setEnabled(False)
+        self.status.setText(_("Speichert …"))
+        self._saver.start()
+        self._save_timer.start()
+
+    def _save_poll(self):
+        if self._saver is None or self._saver.is_alive():
+            return
+        self._save_timer.stop()
+        self._saver = None
+        self.save_btn.setEnabled(True)
+        done = self._save_done
+        if "out" not in done:
+            self._save_failed(done.get("error", ""))
+            return
+        out = done["out"]
         self.last_out = out
         self.show_btn.setEnabled(True)
         self.status.setText(_("Gespeichert: {file}", file=os.path.basename(out)))
         self.log(_("Bild gespeichert: {file}", file=out), "System")
         if self.on_saved:
             self.on_saved(out)
+
+    def _save_failed(self, e):
+        self.status.setText(_("Bild nicht gespeichert: {error}", error=e))
+        self.log(_("Bild nicht gespeichert: {error}", error=e), "Fehler")
+
+    def wait_saved(self, timeout: float = 30.0):
+        """Tests: block until a running save is done and picked up."""
+        if self._saver is not None:
+            self._saver.join(timeout)
+        self._save_poll()
 
     def _show_saved(self):
         if not self.last_out:
