@@ -11,17 +11,17 @@ import base64
 import collections
 import sys
 
-from PySide6.QtCore import QByteArray, QEvent, QModelIndex, QObject, QSize, Qt, QTimer
+from PySide6.QtCore import QByteArray, QEvent, QModelIndex, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFontDatabase, QIcon, QPalette, QPixmap, QStandardItem
-from PySide6.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QAbstractSlider, QAbstractSpinBox, QApplication,
-                               QComboBox, QCompleter,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCompleter,
                                QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
                                QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget)
 
 from . import i18n, qt_theme
 from .i18n import N_, _
 from .mapimage import FONT as FIRA
-from .qt_common import (SLIDER_MAX, pixmap_from_pil, _label, _tip, _card, _set, _scroll_page)
+from .qt_common import (SLIDER_MAX, WheelGuard, guard_wheel, pixmap_from_pil, _label, _tip, _card, _set,
+                        _scroll_page)
 from .qt_views import (FactBox, CHECKS, _check, Table, LogView, HotkeyButton, Chart, HEAT_RAMP, BAR_NEUTRAL,
                        heat_colour, ink_on, MapBars, Heatmap, SwatchView, TilesView, DashboardView)
 from .qt_preview import (PREVIEW_NAMES, PreviewView)
@@ -35,6 +35,8 @@ from .qt_pages import (THUMB_H, SETUP_W, GAME_LANGS, SETUP_HOTKEYS, SETUP, Overv
 # stay reachable here (the App, the tests)
 __all__ = (
     'SLIDER_MAX',
+    'WheelGuard',
+    'guard_wheel',
     'pixmap_from_pil',
     '_label',
     '_tip',
@@ -315,31 +317,7 @@ def application() -> QApplication:
         app.setStyle("Fusion")
         app.setQuitOnLastWindowClosed(False)          # closing goes through the App (quit / tray)
         QFontDatabase.addApplicationFont(FIRA)         # map names like on the map pictures
-    global _WHEEL_GUARD
-    if _WHEEL_GUARD is None:
-        _WHEEL_GUARD = WheelGuard(app)
-        app.installEventFilter(_WHEEL_GUARD)
     return app
-
-
-_WHEEL_GUARD = None                                    # kept here: Python would free the filter otherwise
-
-
-class WheelGuard(QObject):
-    """The mouse wheel scrolls the page, never a setting (1.64.8, user: scrolling the page changed some random
-    field). Qt hands the wheel to the combo box or slider under the mouse; here it goes to the page's scroll bar."""
-
-    def eventFilter(self, obj, event):
-        if event.type() != QEvent.Wheel or not isinstance(obj, (QComboBox, QAbstractSlider, QAbstractSpinBox)):
-            return False
-        if isinstance(obj, QAbstractSlider) and obj.inherits("QScrollBar"):
-            return False                               # the scroll bars themselves scroll as usual
-        area = obj.parentWidget()
-        while area is not None and not isinstance(area, QAbstractScrollArea):
-            area = area.parentWidget()
-        if area is not None:
-            QApplication.sendEvent(area.verticalScrollBar(), event)
-        return True                                    # the setting never changes
 
 
 def nav_icon(key: str, colour: str, ratio: float = 1.0, alert: bool = False) -> QPixmap:

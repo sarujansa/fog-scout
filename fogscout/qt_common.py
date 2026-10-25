@@ -3,14 +3,46 @@
 from __future__ import annotations
 
 from PIL import Image
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QAbstractScrollArea, QAbstractSlider, QAbstractSpinBox, QApplication, QComboBox, QFrame,
+                               QLabel, QScrollArea, QVBoxLayout, QWidget)
 
 from .i18n import _
 
 
 SLIDER_MAX = 420                  # px (logical): longest slider (overlay position, size, opacity)
+
+
+class WheelGuard(QObject):
+    """The mouse wheel scrolls the page, never a setting (1.64.8, user: scrolling the page changed some random
+    field). Qt hands the wheel to the combo box or slider under the mouse; here it goes to the page's scroll bar.
+    1.11.13: installed on those widgets only (``guard_wheel``) – on the whole application every Qt event of every
+    widget went through this Python method (~14 000 while the statistics page was built)."""
+
+    def eventFilter(self, obj, event):
+        if event.type() != QEvent.Wheel or not isinstance(obj, (QComboBox, QAbstractSlider, QAbstractSpinBox)):
+            return False
+        if isinstance(obj, QAbstractSlider) and obj.inherits("QScrollBar"):
+            return False                               # the scroll bars themselves scroll as usual
+        area = obj.parentWidget()
+        while area is not None and not isinstance(area, QAbstractScrollArea):
+            area = area.parentWidget()
+        if area is not None:
+            QApplication.sendEvent(area.verticalScrollBar(), event)
+        return True                                    # the setting never changes
+
+
+_WHEEL_GUARD = None                                    # kept here: Python would free the filter otherwise
+
+
+def guard_wheel(w):
+    """``w`` (a combo box, slider or spin box) no longer takes the mouse wheel – every one the windows create."""
+    global _WHEEL_GUARD
+    if _WHEEL_GUARD is None:
+        _WHEEL_GUARD = WheelGuard()
+    w.installEventFilter(_WHEEL_GUARD)
+    return w
 
 
 def pixmap_from_pil(img: Image.Image, height: int, ratio: float = 1.0) -> QPixmap:
