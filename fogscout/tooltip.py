@@ -12,6 +12,8 @@ from .i18n import _, source
 
 # German label -> German info text (buttons/checkboxes with a fixed label); both translated via i18n
 TIPS = {
+    "Filter zurücksetzen": "Alle Filter der Statistik zurück auf „alle“ – Zeitraum, Rolle, Region, Killer, Map, Modus und "
+                           "„Farming ausblenden“.",                                                   # 1.11.14
     # main window
     "Map-Namen oben einfügen (wie bei den mitgelieferten Karten)":
         "Schreibt den Map-Namen weiss mit Schatten über die Karte, im Stil der mitgelieferten Karten. Hat das Bild "

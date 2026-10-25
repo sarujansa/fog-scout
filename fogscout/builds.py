@@ -89,7 +89,9 @@ def items(pairs) -> list:
             seen = set()
             for ref in _refs(m, kind):
                 key = _key(ref)
-                it = found.setdefault((kind, m.role, key), Item(kind, m.role, key, ref[1] or ref[0]))
+                it = found.get((kind, m.role, key))      # 1.11.14: get, not setdefault – no Item made per ref
+                if it is None:
+                    it = found[(kind, m.role, key)] = Item(kind, m.role, key, ref[1] or ref[0])
                 it.name = ref[1] or it.name              # the newest name the page gave
                 if key in seen:                          # the same item twice in one loadout counts once
                     continue
@@ -109,9 +111,11 @@ def builds(pairs, minimum=BUILD_MIN) -> list:
     for _r, m in pairs:
         if m.role not in ("killer", "survivor") or len(m.perks) < 4:
             continue
-        names = tuple(sorted((r[1] or r[0] for r in m.perks), key=str.lower))
         key = (m.role, m.character if m.role == "killer" else "", tuple(sorted(_key(r) for r in m.perks)))
-        b = found.setdefault(key, Build(m.role, key[1], names))
+        b = found.get(key)
+        if b is None:
+            names = tuple(sorted((r[1] or r[0] for r in m.perks), key=str.lower))
+            b = found[key] = Build(m.role, key[1], names)
         b.n += 1
         res = result(m)
         if res is not None:
@@ -187,7 +191,9 @@ def emblems(pairs) -> list:
         for key, name, quality in m.emblems:
             if quality not in QUALITIES:
                 continue
-            e = found.setdefault((m.role, key or name), Emblem(m.role, key or name, _title(name or key)))
+            e = found.get((m.role, key or name))
+            if e is None:
+                e = found[(m.role, key or name)] = Emblem(m.role, key or name, _title(name or key))
             e.counts[quality] = e.counts.get(quality, 0) + 1
     return sorted(found.values(), key=lambda e: (e.role, e.name.lower()))
 
@@ -197,7 +203,9 @@ def scores(pairs) -> list:
     found = {}
     for m in _own(pairs):
         for key, points in m.score.items():
-            s = found.setdefault((m.role, key), Score(m.role, key, key.rsplit("_", 1)[-1]))
+            s = found.get((m.role, key))
+            if s is None:
+                s = found[(m.role, key)] = Score(m.role, key, key.rsplit("_", 1)[-1])
             s.points.append(points)
     return sorted(found.values(), key=lambda s: (s.role, s.name.lower()))
 

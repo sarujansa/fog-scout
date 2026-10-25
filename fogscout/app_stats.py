@@ -3,6 +3,7 @@
 Mixin of App (app.py) – the methods use App's attributes; split out of app.py unchanged."""
 from __future__ import annotations
 
+import collections
 import datetime
 import logging
 import os
@@ -28,6 +29,7 @@ STATS_ROLES = [("all", N_("Alle Rollen")), ("killer", N_("Killer")), ("survivor"
 BUILD_KINDS = {"perk": N_("Perk"), "addon": N_("Add-on"), "offering": N_("Opfergabe"), "power": N_("Kraft/Item")}
 # 1.8.51: the stats page's mode ids as the user's matches showed them (others keep the page's name)
 MODE_LABELS = {"Online": N_("Öffentlich"), "SeasonalEvent": N_("Event-Modus")}
+BUILDS_KEPT = 6                  # 1.11.14: selections whose Builds rows are kept (_builds_rows)
 QUALITY_LABELS = (N_("keins"), N_("Bronze"), N_("Silber"), N_("Gold"), N_("Iri"))   # builds.QUALITIES, worst first
 STATS_WAIT_GROUPS = [("weekday", N_("nach Wochentag")), ("hour", N_("nach Uhrzeit")), ("region", N_("nach Region"))]
 # 1.8.76 (user review: thirteen sub-tabs in one row were not to be found): the parts of the statistics in four groups
@@ -88,53 +90,76 @@ class StatsTab:
         outer, f = self._scroll_tab()
         fr = ui.Frame(f)
         fr.pack(fill="x", pady=(0, 6))
+        # 1.11.14 (user picked "Filterzeile entschlacken"): period and role always, region/killer/map/mode/farming
+        # behind "Filter ▾" (a second row, opened by itself while one of them is set) – eight controls in one row
+        # broke into two rows on a 1400-px window
+        more = ui.Frame(f)                       # the second row, packed after fr while open
+        self.stats_more_row = more
+        self._stats_more_open = False
         self._stats_periods = [(k, _(label)) for k, label in STATS_PERIODS]
         self.stats_period_var = ui.StringVar(value=self._stats_periods[0][1])
         cb = ui.Combobox(fr, textvariable=self.stats_period_var, values=[lbl for _k, lbl in self._stats_periods],
                           state="readonly", width=16)
         cb.pack(side="left")
         cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
-        self._stats_regions = [(None, _("Alle Regionen"))]
-        self.stats_region_var = ui.StringVar(value=self._stats_regions[0][1])
-        self.stats_region_cb = ui.Combobox(fr, textvariable=self.stats_region_var, state="readonly", width=20,
-                                            values=[lbl for _c, lbl in self._stats_regions])
-        self.stats_region_cb.pack(side="left", padx=(8, 0))
-        self.stats_region_cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
         self._stats_roles = [(k, _(label)) for k, label in STATS_ROLES]
         self.stats_role_var = ui.StringVar(value=self._stats_roles[0][1])
         cb = ui.Combobox(fr, textvariable=self.stats_role_var, values=[lbl for _k, lbl in self._stats_roles],
                           state="readonly", width=13)
         cb.pack(side="left", padx=(8, 0))
         cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
+        self.stats_filter_btn = ui.Button(fr, text=_("Filter{count} ▾", count=""),
+                                        command=self._stats_more_toggle)
+        self.stats_filter_btn.pack(side="left", padx=(8, 0))
+        self.stats_reset_btn = ui.Button(fr, text=_("Filter zurücksetzen"), command=self._stats_filters_reset)
+        ui.Button(fr, text=_("Stats-Seite öffnen"),
+                  command=lambda: self._official_open(False)).pack(side="right")
+        self._stats_regions = [(None, _("Alle Regionen"))]
+        self.stats_region_var = ui.StringVar(value=self._stats_regions[0][1])
+        self.stats_region_cb = ui.Combobox(more, textvariable=self.stats_region_var, state="readonly", width=20,
+                                            values=[lbl for _c, lbl in self._stats_regions])
+        self.stats_region_cb.pack(side="left")
+        self.stats_region_cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
         self._stats_killers = [(None, _("Alle Killer"))]
         self.stats_killer_var = ui.StringVar(value=self._stats_killers[0][1])
-        self.stats_killer_cb = ui.Combobox(fr, textvariable=self.stats_killer_var, state="readonly", width=14,
+        self.stats_killer_cb = ui.Combobox(more, textvariable=self.stats_killer_var, state="readonly", width=14,
                                             values=[lbl for _k, lbl in self._stats_killers])
         self.stats_killer_cb.pack(side="left", padx=(8, 0))
         self.stats_killer_cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
-        self._farming_box(fr).pack(side="left", padx=(8, 0))                                    # 1.11.5
         # 1.2.16: map filter – set by hand or by a click on the dashboard (map bar, heatmap cell)
         self._stats_maps_f = [(None, _("Alle Maps"))]
         self.stats_map_var = ui.StringVar(value=self._stats_maps_f[0][1])
-        self.stats_map_cb = ui.Combobox(fr, textvariable=self.stats_map_var, state="readonly", width=18,
+        self.stats_map_cb = ui.Combobox(more, textvariable=self.stats_map_var, state="readonly", width=18,
                                          values=[lbl for _k, lbl in self._stats_maps_f])
         self.stats_map_cb.pack(side="left", padx=(8, 0))
         self.stats_map_cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
         # 1.8.49: game mode as the stats page names it (userscript 3) – only shown once a mode is known
         self._stats_modes = [(None, _("Alle Modi"))]
         self.stats_mode_var = ui.StringVar(value=self._stats_modes[0][1])
-        self.stats_mode_cb = ui.Combobox(fr, textvariable=self.stats_mode_var, state="readonly", width=16,
+        self.stats_mode_cb = ui.Combobox(more, textvariable=self.stats_mode_var, state="readonly", width=16,
                                           values=[lbl for _k, lbl in self._stats_modes])
         self.stats_mode_cb.bind("<<ComboboxSelected>>", lambda e: self._stats_mode_pick())
         self._stats_mode_want = self.settings.get("stats_mode") or None      # 1.8.51: the pick is remembered
-        ui.Button(fr, text=_("Stats-Seite öffnen"),
-                  command=lambda: self._official_open(False)).pack(side="right")
+        self.stats_farming_box = self._farming_box(more)                                         # 1.11.5
+        self.stats_farming_box.pack(side="left", padx=(8, 0))
         self._stats_last_limit = LAST_ROUNDS_STEP
         self._stats_filter_key = None
         # one thing at a time: the dashboard and each table on a sub-tab of its own, filling the window's height
         # (1.58.1 – before, dashboard and buttons stood above the tables and left them a few rows). 1.8.76 (user
         # review: thirteen tabs in one row): four groups, each a notebook of its own with three or four parts
+        # 1.11.14 (user picked "leere Zustände mit Handlung"): without any round a short note with the next step
+        # instead of filters and thirteen empty tabs
+        self.stats_empty = ui.Frame(f)
+        ui.Label(self.stats_empty, text=_("Noch keine Runden gespeichert"), style="Big.TLabel").pack(anchor="w")
+        ui.Label(self.stats_empty, text=_("Eine Runde zählt vom Map-Banner bis zum Rundenende (ab 1 Minute) und "
+                                          "erscheint hier von selbst. Kills, Escapes und Bloodpoints kommen von der "
+                                          "Stats-Seite – dafür einmal die Match-Daten einrichten."),
+                 style="Dim.TLabel", wraplength=560).pack(anchor="w", pady=(4, 0))
+        self.stats_empty_btn = ui.Button(self.stats_empty, text=_("Match-Daten einrichten …"),
+                                         command=self._reveal_official)
+        self.stats_empty_btn.pack(anchor="w", pady=(8, 0))
         self.stats_nb = ui.Notebook(f)
+        self.stats_nb._dbdms_segments = True     # 1.11.14: the four groups as a segment switch, the parts as tabs
         self.stats_nb.pack(fill="both", expand=True)
         self.stats_nb.bind("<<NotebookTabChanged>>", lambda e: self._stats_render_tab())
         self._stats_groups = {}                  # group key -> the notebook with its parts
@@ -379,6 +404,61 @@ class StatsTab:
         self._stats_sort = ("n", True)
         return outer
 
+    def _stats_filters_shown(self, hidden_set: int, shown_set: bool):
+        """1.11.14: "Filter ▾" names how many of its filters are set (and opens itself while one is – a click on the
+        dashboard sets the map), "Filter zurücksetzen" only while any filter is set."""
+        if hidden_set:
+            self._stats_more_open = True
+        if self._stats_more_open and not self.stats_more_row.winfo_manager() and self.stats_nb.winfo_manager():
+            self.stats_more_row.pack(fill="x", pady=(0, 6), after=self.stats_filter_btn.master)
+        elif not self._stats_more_open and self.stats_more_row.winfo_manager():
+            self.stats_more_row.pack_forget()
+        count = f" ({hidden_set})" if hidden_set else ""
+        self.stats_filter_btn.configure(text=_("Filter{count} ▴", count=count) if self._stats_more_open
+                                      else _("Filter{count} ▾", count=count))
+        if (hidden_set or shown_set) and not self.stats_reset_btn.winfo_manager():
+            self.stats_reset_btn.pack(side="left", padx=(6, 0), after=self.stats_filter_btn)
+        elif not (hidden_set or shown_set) and self.stats_reset_btn.winfo_manager():
+            self.stats_reset_btn.pack_forget()
+
+    def _stats_empty_shown(self, empty: bool, set_up: bool):
+        """1.11.14: no round yet – the note instead of the filter rows and the tabs (the button only while the
+        match data were never set up)."""
+        bar = self.stats_filter_btn.master
+        if empty and self.stats_nb.winfo_manager():
+            for w in (bar, self.stats_more_row, self.stats_nb):
+                w.pack_forget()
+            self.stats_empty.pack(fill="x", pady=(4, 0))
+        elif not empty and not self.stats_nb.winfo_manager():
+            self.stats_empty.pack_forget()
+            bar.pack(fill="x", pady=(0, 6), before=self.stats_empty)
+            self.stats_nb.pack(fill="both", expand=True)
+        if set_up and self.stats_empty_btn.winfo_manager():
+            self.stats_empty_btn.pack_forget()
+        elif not set_up and not self.stats_empty_btn.winfo_manager():
+            self.stats_empty_btn.pack(anchor="w", pady=(8, 0))
+
+    def _stats_more_toggle(self):
+        self._stats_more_open = not self._stats_more_open
+        self._stats_render()
+
+    def _stats_filters_reset(self):
+        """1.11.14: every filter of the statistics back to "all" (the box "Farming ausblenden" too – it is one
+        setting for statistics, recordings and clips)."""
+        for var, choices in ((self.stats_period_var, self._stats_periods), (self.stats_role_var, self._stats_roles),
+                             (self.stats_region_var, self._stats_regions), (self.stats_killer_var, self._stats_killers),
+                             (self.stats_map_var, self._stats_maps_f), (self.stats_mode_var, self._stats_modes)):
+            var.set(choices[0][1])
+        self._stats_mode_want = None
+        self.settings.set("stats_mode", "")
+        if self._farming_hidden():
+            self._farming_set(False)
+            if hasattr(self, "_rec_render"):
+                self._rec_render(force=True)
+        self.settings.save()
+        self._stats_more_open = False
+        self._stats_render()
+
     def _stats_page(self, title, group, part):
         """A part of the statistics: a page in the notebook of ``group`` (STATS_GROUPS), drawn by method ``part``."""
         nb = self._stats_groups[group]
@@ -494,6 +574,7 @@ class StatsTab:
     def _stats_render_all(self):
         j = self._joined()
         all_rounds, off, rescued = j.rounds, j.off, j.rescued
+        self._stats_empty_shown(not all_rounds, bool(j.matches))
         self._off_rescued = {repr(r.t) for r in rescued}   # rows in "Letzte Runden" not in rounds.jsonl
         # region filter: the regions that occur (kept selected even if the list changes)
         wanted = next((c for c, lbl in self._stats_regions if lbl == self.stats_region_var.get()), None)
@@ -568,6 +649,8 @@ class StatsTab:
         self._stats_ctx = SimpleNamespace(rounds=rounds, pairs=pairs, off=off, period=period, notes=notes,
                                           all_rounds=all_rounds, farm=farm, role=role, hide=hide)
         self._stats_dirty = set(self._stats_parts)
+        self._stats_filters_shown(sum((wanted is not None, killer is not None, wmap is not None, wmode is not None,
+                                       hide)), period != "all" or role != "all")
         self._stats_render_tab()
 
     def _stats_render_tab(self, page=None):
@@ -761,6 +844,25 @@ class StatsTab:
 
     def _stats_part_builds(self, c):
         """1.8.48: perks, add-ons, offerings and powers/items of the own loadouts, and the four-perk builds."""
+        rows = self._builds_rows(c)
+        self.stats_build_var.set(rows["hint"])
+        for t, values in ((self.stats_items, rows["items"]), (self.stats_builds, rows["builds"]),
+                          (self.stats_emblems, rows["emblems"]), (self.stats_scores, rows["scores"])):
+            t.delete(*t.get_children())
+            for v in values:
+                t.insert("", "end", values=v)
+        self.stats_rating_var.set(rows["rating"])
+
+    def _builds_rows(self, c) -> dict:
+        """The Builds tab's rows for the selection ``c`` – 1.11.14: kept for the last BUILDS_KEPT selections (same
+        matches, same join), so going back to a filter or tab costs nothing; worked out anew after a new round."""
+        j = self._joined()
+        key = (id(j), tuple(id(m) for _r, m in c.pairs))
+        memo = self.__dict__.setdefault("_builds_memo", collections.OrderedDict())
+        if key in memo and memo[key][0] is j:
+            memo.move_to_end(key)
+            return memo[key][1]
+
         def res(role, v):
             if v is None:
                 return "–"
@@ -769,7 +871,7 @@ class StatsTab:
         n = builds.with_loadout(c.pairs)
         # 1.8.68 (user: "Statistik → Perk funktioniert nicht", screenshot: the hint with "All roles"): the hint said
         # "userscript 3" even when the saved matches have loadouts and only the selection leaves them out
-        total = sum(1 for m in self._joined().matches if builds.has_loadout(m))
+        total = sum(1 for m in j.matches if builds.has_loadout(m))
         if n:
             hint = ""
         elif total:
@@ -779,31 +881,26 @@ class StatsTab:
         else:
             hint = _("Noch keine Matches mit Loadout in dieser Auswahl – die Stats-Seite liefert es ab Userscript "
                      "Version 3 (Einstellungen → Match-Daten → Offizielle Match-Daten → „Userscript kopieren“).")
-        self.stats_build_var.set(hint)
-        t = self.stats_items
-        t.delete(*t.get_children())
-        for it in builds.items(c.pairs):
-            t.insert("", "end", values=(it.name, _(BUILD_KINDS[it.kind]), self._role_name(it.role), it.n,
-                                        f"{it.share:.0%}", res(it.role, it.mean), res(it.role, it.mean_without)))
-        t = self.stats_builds
-        t.delete(*t.get_children())
-        for b in builds.builds(c.pairs):
-            who = killer_label(self._killer_of(b.character)) if b.character else self._role_name(b.role)
-            t.insert("", "end", values=(" · ".join(b.perks), who, b.n, res(b.role, b.mean)))
-        t = self.stats_emblems
-        t.delete(*t.get_children())
-        for e in builds.emblems(c.pairs):
-            t.insert("", "end", values=(e.name, self._role_name(e.role), e.n,
-                                        f"{_(QUALITY_LABELS[round(e.mean)])} ({e.mean:.1f})",
-                                        *(f"{e.share(q):.0%}" for q in ("Iridescent", "Gold", "Silver", "Bronze"))))
-        t = self.stats_scores
-        t.delete(*t.get_children())
-        for sc in builds.scores(c.pairs):
-            t.insert("", "end", values=(sc.name, self._role_name(sc.role), sc.n,
-                                        f"{sc.mean:,.0f}".replace(",", "."), f"{sc.full:.0%}"))
         rated = builds.ratings(c.pairs)
-        self.stats_rating_var.set(_("Killer-Wertung: {list}", list=" · ".join(f"{name} {n}×" for name, n in rated))
-                                  if rated else "")
+        rows = {
+            "hint": hint,
+            "items": [(it.name, _(BUILD_KINDS[it.kind]), self._role_name(it.role), it.n, f"{it.share:.0%}",
+                       res(it.role, it.mean), res(it.role, it.mean_without)) for it in builds.items(c.pairs)],
+            "builds": [(" · ".join(b.perks),
+                        killer_label(self._killer_of(b.character)) if b.character else self._role_name(b.role),
+                        b.n, res(b.role, b.mean)) for b in builds.builds(c.pairs)],
+            "emblems": [(e.name, self._role_name(e.role), e.n, f"{_(QUALITY_LABELS[round(e.mean)])} ({e.mean:.1f})",
+                         *(f"{e.share(q):.0%}" for q in ("Iridescent", "Gold", "Silver", "Bronze")))
+                        for e in builds.emblems(c.pairs)],
+            "scores": [(sc.name, self._role_name(sc.role), sc.n, f"{sc.mean:,.0f}".replace(",", "."), f"{sc.full:.0%}")
+                       for sc in builds.scores(c.pairs)],
+            "rating": (_("Killer-Wertung: {list}", list=" · ".join(f"{name} {n}×" for name, n in rated))
+                       if rated else ""),
+        }
+        memo[key] = (j, rows)
+        while len(memo) > BUILDS_KEPT:
+            memo.popitem(last=False)
+        return rows
 
     def _stats_mode_pick(self):
         """1.8.51 (user: "Merken"): the picked mode is saved and applies again after a restart."""

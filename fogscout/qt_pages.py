@@ -88,7 +88,7 @@ class OverviewPage(QWidget):
         scroll.setWidget(body)
         page = QVBoxLayout(body)
         page.setContentsMargins(22, 18, 22, 18)
-        page.setSpacing(14)
+        page.setSpacing(12)                       # 1.11.14: like every other page (_scroll_page), was 14
 
         top = FlowRow(spacing=12)                 # narrow window: the status goes below the title
         top.right = 1
@@ -239,6 +239,14 @@ class OverviewPage(QWidget):
         self.last_lay.addStretch()
         row.addWidget(last)
         page.addLayout(row)
+        # 1.11.14: rounds per day over the last two weeks (the room below the cards was empty)
+        self.days_card = _card()
+        dl = QVBoxLayout(self.days_card)
+        dl.setContentsMargins(14, 8, 14, 8)
+        self.days_chart = Chart()
+        dl.addWidget(self.days_chart)
+        self.days_card.setVisible(False)
+        page.addWidget(self.days_card)
         page.addStretch()
 
     # ------------------------------------------------------------- update
@@ -296,6 +304,10 @@ class OverviewPage(QWidget):
         self._show_system(o)
         self._show_rounds(o.rounds)
         self._show_news(o)
+        days = getattr(o, "days", None) or {}
+        if days:
+            self.days_chart.show_state({"data": days, "dark": getattr(o, "dark", True), "panels": ("killer",)})
+        self.days_card.setVisible(bool(days))
 
     def _show_news(self, o):
         while len(self.news_rows) < len(o.news):
@@ -804,16 +816,20 @@ class HostView(QWidget):
         pass
 
 
+SPLIT_FROM = 1080                 # px (logical): from this page width a "split" page shows its two columns beside
+
+
 class SideBySide(QWidget):
     """1.8.2: two cards next to each other while the page is wide enough (the overlay preview and the tools of the
     picked element), one below the other on a narrow page. The first card takes the larger share."""
 
     BESIDE_FROM = 820                 # px (logical): from this width the cards sit side by side
 
-    def __init__(self, beside_from=None):
+    def __init__(self, beside_from=None, weights=(3, 2)):
         super().__init__()
         if beside_from:
             self.BESIDE_FROM = beside_from
+        self.weights = weights               # share of the width: first card, the others
         self.box = QBoxLayout(QBoxLayout.TopToBottom, self)
         self.box.setContentsMargins(0, 0, 0, 0)
         self.box.setSpacing(10)
@@ -821,19 +837,24 @@ class SideBySide(QWidget):
 
     def add(self, card):
         self.cards.append(card)
-        self.box.addWidget(card, 3 if len(self.cards) == 1 else 2)
+        self.box.addWidget(card, self.weights[0] if len(self.cards) == 1 else self.weights[1])
 
     def beside(self) -> bool:
         return self.box.direction() == QBoxLayout.LeftToRight
 
     def resizeEvent(self, e):
-        want = QBoxLayout.LeftToRight if self.width() >= self.BESIDE_FROM else QBoxLayout.TopToBottom
+        self.arrange(self.width())
+        super().resizeEvent(e)
+
+    def arrange(self, width: int):
+        """Side by side from BESIDE_FROM px on, else below each other (1.11.14: apart from resizeEvent, so a test
+        does not depend on the screen size – a Windows runner's screen is smaller than a wide page)."""
+        want = QBoxLayout.LeftToRight if width >= self.BESIDE_FROM else QBoxLayout.TopToBottom
         if self.box.direction() != want:
             self.box.setDirection(want)
             for i, card in enumerate(self.cards):       # beside: the short card hangs at the top, not stretched
                 self.box.setAlignment(card, Qt.AlignTop if want == QBoxLayout.LeftToRight and i else Qt.Alignment())
             self.updateGeometry()
-        super().resizeEvent(e)
 
 
 class FitTabs(QTabWidget):
@@ -850,7 +871,7 @@ class FitTabs(QTabWidget):
 
     def eventFilter(self, obj, e):
         if e.type() == QEvent.LayoutRequest and obj is self.currentWidget():
-            QTimer.singleShot(0, self._fit)
+            QTimer.singleShot(0, self, self._fit)    # 1.11.14: bound to self – dropped once the tabs are deleted
         return False
 
     def resizeEvent(self, e):
@@ -902,6 +923,11 @@ class FormPage(QWidget, _Arranged):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(page)
+        self._items(spec, lay, page_key)
+        lay.addStretch()
+
+    def _items(self, spec, lay, page_key):
+        """The items of a page spec (or of one column of a "split") into ``lay``."""
         col = None
         for item in spec:
             kind = item[0]
@@ -948,9 +974,23 @@ class FormPage(QWidget, _Arranged):
                     self._add(c, row)
                 row.addStretch()
                 lay.addLayout(row)
+            elif kind == "split":
+                # 1.11.14 (user picked "Vorschau links, Einstellungen rechts"): two columns of items side by side
+                # from SPLIT_FROM px on (the overlay page: preview + tools | the tabs), below each other when narrow
+                split = SideBySide(SPLIT_FROM, weights=(1, 1))
+                split.setObjectName("split")
+                for items in item[1:]:
+                    w = QWidget()
+                    w.setObjectName("page")
+                    wl = QVBoxLayout(w)
+                    wl.setContentsMargins(0, 0, 0, 0)
+                    wl.setSpacing(12)
+                    self._items(items, wl, page_key)
+                    wl.addStretch()
+                    split.add(w)
+                lay.addWidget(split)
             else:
                 self._add(item, lay)
-        lay.addStretch()
 
     def _card_widget(self, item):
         """("card", key, rows) → (card, its head row): a titled card whose title is the "title" control of ``key``
@@ -1227,6 +1267,8 @@ class AutoPage(QWidget, _Arranged):
                 inner.addStretch()
             for c in last:
                 self._build(c, inner, keys, top=top and inner is v)
+            if inner is v and top and _grows(n):
+                v.addStretch()     # 1.11.14: the growing child hidden (empty statistics) – the rest stays on top
             if column is not None:
                 column[0].add(column[1], holder, hrow)
             else:
@@ -1235,13 +1277,17 @@ class AutoPage(QWidget, _Arranged):
             return
         if kind == "tabs":
             tw = QTabWidget()
+            if n.get("segments"):                      # 1.11.14: groups as a segment switch (statistics)
+                tw.setObjectName("segments")
+                tw.tabBar().setObjectName("segbar")
+                tw.tabBar().setDrawBase(False)
             fill = bool(n.get("fill"))
             pages = []
             ids = {}                                   # model tab index (str) -> the tab's widget
             for j, c in enumerate(n.get("children", [])):
                 pw = QWidget()
                 pl = QVBoxLayout(pw)
-                pl.setContentsMargins(8, 8, 8, 8)
+                pl.setContentsMargins(*((0, 0, 0, 0) if n.get("segments") else (8, 8, 8, 8)))   # segments: no frame
                 ks = []
                 self._build(c, pl, ks, top=fill)       # filling tabs: a table takes the height of its page
                 pl.addStretch()
@@ -1312,6 +1358,8 @@ class AutoPage(QWidget, _Arranged):
                         tw.blockSignals(True)
                         tw.setCurrentIndex(qi)
                         tw.blockSignals(False)
+                    if "visible" in st and tw.isHidden() == bool(st["visible"]):    # 1.11.14: hidden notebooks
+                        tw.setVisible(bool(st["visible"]))
                 continue
             if key.endswith("#title"):
                 st = states.get(key[:-6])

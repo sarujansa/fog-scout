@@ -774,9 +774,11 @@ def test_the_recordings_tab_lists_the_index_and_acts_on_the_marked_row(app_root)
         assert rows[0][5] == "2 KB"                                                        # size column
         assert "2 Aufnahmen" in app.rec_summary_var.get() and app.rec_hint_var.get() == str(folder)
         assert app.rec_play_btn.cget("state") == "disabled"
+        assert not app.rec_sel_row.winfo_manager() and app.rec_sel_hint.winfo_manager()   # 1.11.14: hint, no buttons
         t.selection_set(repr(t1))
         t.event_generate("<<TreeviewSelect>>")
         assert app.rec_play_btn.cget("state") == "normal" and "00:12" in app.rec_marks_var.get()
+        assert app.rec_sel_row.winfo_manager() and not app.rec_sel_hint.winfo_manager()
         assert [lbl for _m, lbl in app._rec_maps] == ["Alle Maps", "Coal Tower", "Gas Heaven"]
         app.rec_map_var.set("Coal Tower")
         app._rec_render(force=True)
@@ -1322,6 +1324,26 @@ def test_the_builds_tab_lists_the_own_loadout_with_its_results(app_root):
         builds_rows = [app.stats_builds.item(c, "values") for c in app.stats_builds.get_children()]
         assert len(builds_rows) == 1 and builds_rows[0][1:] == ("Nurse", 2, "Ø 3.00")
         assert app.stats_build_var.get() == ""
+        # 1.11.14: the same selection again takes the kept rows; a new round (another join) works them out anew
+        import fogscout.builds as builds_mod
+        calls = []
+        orig = builds_mod.items
+        builds_mod.items = lambda pairs: calls.append(1) or orig(pairs)
+        try:
+            app._stats_render()
+            assert calls == [] and len(app.stats_items.get_children()) == len(rows)
+            t = time.time() - 600
+            history.append(str(app_root / "rounds.jsonl"), history.Round(t, 600, "coal", "Coal Tower", role="killer"))
+            official.merge(str(app_root / official.FILE), [official.Match(
+                t=t - 38, map="Coal Tower", role="killer", character="The Nurse", seconds=560, opp=[sac] * 4,
+                perks=perks)])
+            app._stats_render()
+            assert calls == [1]
+            rows = {app.stats_items.item(c, "values")[0]: app.stats_items.item(c, "values")
+                    for c in app.stats_items.get_children()}
+            assert rows["Lethal Pursuer"][3] == 3
+        finally:
+            builds_mod.items = orig
     finally:
         app.quit()
 
@@ -2402,8 +2424,11 @@ def test_the_search_finds_statistics_tabs_and_log_categories(app_root):
     """1.8.82 (UI review idea 5): the search field (Ctrl+F) also lists the statistics' groups and parts and the
     log's categories; going to a statistics part opens its group and the part, and the model follows."""
     import json
+    from fogscout import history
     from fogscout.app import App
     (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    # 1.11.14: one round – without any the statistics show their empty note instead of the tabs
+    history.append(str(app_root / "rounds.jsonl"), history.Round(time.time() - 900, 600, "coal", "Coal Tower"))
     app = App(str(app_root), simulate=str(app_root / "sim"))
     try:
         app._qt_event("search_open")                                      # every page built and filled
@@ -2541,5 +2566,97 @@ def test_a_rounds_dropouts_are_counted_shown_and_the_overlay_warns(app_root):
         assert (r.stalls, r.stall_max) == (3, 0.9)
         assert any("3 × Aussetzer, längster 0.9 s" in e[2] for e in app._log_entries)
         assert app._server_cell(r).endswith("· 3× Aussetzer") and app._server_cell(history.Round(0, 1, "a", "A")) == "–"
+    finally:
+        app.quit()
+
+
+def test_the_statistics_filters_fold_away_count_and_reset(app_root):
+    """1.11.14 (user picked "Filterzeile entschlacken" and "Segment-Schalter"): period and role stay in the row,
+    region/killer/map/mode/farming sit behind "Filter ▾" – the button counts the set ones and the row opens by itself
+    while one is set (a click on the dashboard sets the map); "Filter zurücksetzen" shows only while any filter is
+    set and puts every one back. The four groups are a segment switch in the window."""
+    import json
+    from fogscout import history
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    history.append(str(app_root / "rounds.jsonl"), history.Round(time.time() - 900, 600, "coal", "Coal Tower"))
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._stats_render()
+        assert not app.stats_more_row.winfo_manager() and not app.stats_reset_btn.winfo_manager()
+        assert app.stats_filter_btn.cget("text") == "Filter ▾"
+        app._stats_more_toggle()
+        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter ▴"
+        app._stats_more_toggle()
+        app._dash_clicked(("map", "Coal Tower"))                       # a hidden filter set: the row opens
+        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter (1) ▴"
+        assert app.stats_reset_btn.winfo_manager()
+        app.stats_period_var.set(app._stats_periods[1][1])
+        app._farming_vars[0].set(True)
+        app._farming_switch(app._farming_vars[0])
+        assert app.stats_filter_btn.cget("text") == "Filter (2) ▴"
+        app._stats_filters_reset()
+        assert app.stats_map_var.get() == "Alle Maps" and app.stats_period_var.get() == app._stats_periods[0][1]
+        assert not app._farming_hidden() and not app.stats_reset_btn.winfo_manager()
+        assert not app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter ▾"
+        assert app.stats_filter_btn._dbdms_tip() and app.stats_reset_btn._dbdms_tip()
+        page = app.qt.forms["stats"]
+        seg = [tw for _k, tw, _p, _w in page._tabs if tw.objectName() == "segments"]
+        assert len(seg) == 1 and seg[0].count() == 4 and seg[0].tabBar().objectName() == "segbar"
+    finally:
+        app.quit()
+
+
+def test_the_server_regions_show_the_ping_beside_the_name_fastest_first(app_root):
+    """1.11.14 (user picked "Ping neben dem Namen, sortierbar"): the hosts column takes the rest of the width, so the
+    ping stands next to its region; after a measurement each group lists its fastest region first (unanswered last),
+    before one in the table's own order."""
+    from fogscout import regions
+    from fogscout.app import App
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        t = app.srv_tree
+        assert not t.column("#0", "stretch") and t.column("state", "stretch")
+        group = regions.GROUPS[0]
+        codes = [c for c, _n, g in regions.REGIONS if g == group]
+        assert [i[2:] for i in t.get_children(f"g:{group}")] == codes
+        fake = {c: {"ms": 200.0 - 10 * i} for i, c in enumerate(codes)}
+        fake[codes[-1]] = {"ms": None}                                        # no answer: last
+        app._srv_refresh = lambda *a, **k: app._srv_render()                  # never the real hosts file
+        app._srv_ping_done(fake)
+        got = [i[2:] for i in t.get_children(f"g:{group}")]
+        assert got == list(reversed(codes[:-1])) + [codes[-1]]
+        assert t.item(f"r:{got[0]}", "values")[0] == f"{200 - 10 * (len(codes) - 2):.0f} ms"
+    finally:
+        app.quit()
+
+
+def test_empty_statistics_and_recordings_say_the_next_step(app_root):
+    """1.11.14 (user picked "leere Zustände mit Handlung"): without a round the statistics show a short note (with
+    "Match-Daten einrichten …" while no match data came) instead of filters and empty tabs – the first round brings
+    them back; without recordings or clips the recordings page shows "Aufnahmen einrichten …" (recording off)."""
+    import json
+    from fogscout import history
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._stats_render()
+        assert app.stats_empty.winfo_manager() and app.stats_empty_btn.winfo_manager()
+        assert not app.stats_nb.winfo_manager() and not app.stats_filter_btn.master.winfo_manager()
+        assert app.stats_empty_btn._dbdms_tip()
+        from fogscout.app_qt import ui_layout
+        assert ui_layout(app.stats_nb, {})["fill"]                # hidden for now, still fills the page later
+        app._farming_set(True)                                   # a hidden filter set: its row stays away too
+        app._stats_render()
+        assert not app.stats_more_row.winfo_manager()
+        app._farming_set(False)
+        history.append(str(app_root / "rounds.jsonl"), history.Round(time.time() - 900, 600, "coal", "Coal Tower"))
+        app._stats_render()
+        assert not app.stats_empty.winfo_manager() and app.stats_nb.winfo_manager()
+        assert app.stats_filter_btn.master.winfo_manager()
+        app._rec_render(force=True)
+        assert app.rec_setup_btn.winfo_manager() and not app.rec_nb.winfo_manager()
+        assert app.rec_setup_btn._dbdms_tip() and app.rec_empty_var.get() == ""
     finally:
         app.quit()

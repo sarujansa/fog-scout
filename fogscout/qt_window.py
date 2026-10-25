@@ -126,55 +126,60 @@ SPECS = {
         # "Allgemein"; a click on an element in the preview opens its tab (MainWindow.open_tab)
         # 1.8.2: preview and the tools of the picked element side by side when the page is wide enough – the
         # tabs with the settings were below the fold on a 760-px window, every change needed scrolling
-        ("side", (
-            ("panel", (("preview", "ov.preview"),)),
-            ("panel", (
-                ("row", (("label", "ov.sel.label"), ("combo", "ov.sel"), ("stretch",))), ("slider", "ov.sel_size"),
-                ("slider", "ov.opacity"), ("hint", "ov.size_scope"), ("hint", "ov.size_cap"),
-                ("row", (("button", "ov.edit"), ("button", "ov.test"), ("button", "ov.undo"), ("stretch",))))))),
-        ("tabs", (
-            ("ov.look", N_("Karte"), (
-                ("row", (("label", "ov.anchor.label"), ("combo", "ov.anchor"), ("stretch",), ("button", "ov.reset"))),
-                ("slider", "ov.posx"), ("slider", "ov.posy"), ("hint", "ov.pos_hint"),
-                ("row", (("hint", "ov.map_size"), ("stretch",), ("button", "ov.map_size_reset"))),
-                ("row", (("label", "ov.map_style.label"), ("combo", "ov.map_style"), ("stretch",))),
-                ("row", (("label", "ov.info_pos.label"), ("combo", "ov.info_pos"), ("stretch",))),     # 1.8.24
-                ("sub", N_("Darstellung")), ("check", "ov.show_map"), ("check", "ov.caption"), ("check", "ov.floors"),
-                ("check", "ov.transparent"), ("check", "ov.map_backdrop"), ("check", "ov.keep_bar"), ("check", "ov.grow"), ("check", "ov.fill_bar"),
-                ("sub", N_("Infos (Timer, Bilanz, Server)")), ("check", "ov.timer"), ("check", "ov.server"), ("check", "ov.record"), ("check", "ov.notes"),
-                ("sub", N_("Wann zeigen")), ("check", "ov.focus"), ("check", "ov.waiting"))),
-            ("ov.sys", N_("Systemwerte"), (
-                ("row", (("label", "ov.sysinfo.label"), ("combo", "ov.sysinfo"), ("stretch",))),
-                ("hint", "ov.sys_text"), ("hint", "ov.sys_hint"), ("check", "ov.hud_backdrop"),
-                ("check", "ov.hud_row_cpu"), ("check", "ov.hud_row_gpu"), ("check", "ov.hud_row_spot"),
-                ("check", "ov.hud_row_vram"), ("check", "ov.hud_row_ram"))),
-            ("ov.today_f", N_("Heute"), (
-                ("check", "ov.today"),
-                ("row", (("label", "ov.today_pos.label"), ("combo", "ov.today_pos"), ("stretch",))),
-                ("check", "ov.today_backdrop"))),
-            ("ov.music_f", N_("Musik"), (
-                ("check", "ov.media"), ("row", (("label", "ov.media_pos.label"), ("combo", "ov.media_pos"), ("stretch",))),
-                ("row", (("label", "ov.media_style.label"), ("combo", "ov.media_style"), ("stretch",))),
-                ("check", "ov.media_cover"),
-                ("row", (("label", "ov.media_shape.label"), ("combo", "ov.media_shape"), ("stretch",))),   # 1.8.24
-                ("check", "ov.media_progress"), ("check", "ov.media_accent"),
-                ("check", "ov.media_remaining"), ("check", "ov.media_backdrop"), ("check", "ov.media_fade"),
-                ("check", "ov.media_videos"),
-                ("row", (("label", "ov.media_next.label"), ("combo", "ov.media_next"), ("stretch",))),   # 1.8
-                ("slider", "ov.media_next_n"), ("hint", "ov.media_next_hint"))),
-            ("ov.pos", N_("Allgemein"), (
-                ("check", "ov.master"),                                                          # 1.8.18
-                ("check", "ov.small_off"),                                                       # 1.8.62
-                ("row", (("label", "ov.style.label"), ("combo", "ov.style"), ("stretch",))),     # 1.3
-                ("slider", "ov.gap"),
-                ("row", (("label", "ov.bar_align.label"), ("combo", "ov.bar_align"), ("stretch",))),
-                ("check", "ov.limits"),                                                          # 1.8.14
-                ("row", (("check", "ov.limits_same"), ("button", "ov.limits_reset"), ("stretch",))),
-                ("hint", "ov.limits_hint"), ("check", "ov.keep_out"),                         # 1.8.25
-                ("row", (("check", "ov.same_width"), ("button", "ov.merge_column"), ("stretch",))),   # 1.8.29
-                ("row", (("label", "ov.preset.label"), ("combo", "ov.preset"), ("button", "ov.preset_apply"),
-                         ("stretch",))),
-                ("check", "ov.fade"), ("check", "ov.per_size"), ("hint", "ov.per_size_hint"))))),
+        # 1.11.14 (user picked "Vorschau links, Einstellungen rechts"): on a wide page the preview with the tools
+        # of the picked element on the left and the tabs on the right – no scrolling down to every setting
+        ("split", (
+            ("side", (
+                ("panel", (("preview", "ov.preview"),)),
+                ("panel", (
+                    ("row", (("label", "ov.sel.label"), ("combo", "ov.sel"), ("stretch",))), ("slider", "ov.sel_size"),
+                    ("slider", "ov.opacity"), ("hint", "ov.size_scope"), ("hint", "ov.size_cap"),
+                    ("row", (("button", "ov.edit"), ("button", "ov.test"), ("button", "ov.undo"), ("stretch",))))))),
+        ), (
+            ("tabs", (
+                ("ov.look", N_("Karte"), (
+                    ("row", (("label", "ov.anchor.label"), ("combo", "ov.anchor"), ("stretch",), ("button", "ov.reset"))),
+                    ("slider", "ov.posx"), ("slider", "ov.posy"), ("hint", "ov.pos_hint"),
+                    ("row", (("hint", "ov.map_size"), ("stretch",), ("button", "ov.map_size_reset"))),
+                    ("row", (("label", "ov.map_style.label"), ("combo", "ov.map_style"), ("stretch",))),
+                    ("row", (("label", "ov.info_pos.label"), ("combo", "ov.info_pos"), ("stretch",))),     # 1.8.24
+                    ("sub", N_("Darstellung")), ("check", "ov.show_map"), ("check", "ov.caption"), ("check", "ov.floors"),
+                    ("check", "ov.transparent"), ("check", "ov.map_backdrop"), ("check", "ov.keep_bar"), ("check", "ov.grow"), ("check", "ov.fill_bar"),
+                    ("sub", N_("Infos (Timer, Bilanz, Server)")), ("check", "ov.timer"), ("check", "ov.server"), ("check", "ov.record"), ("check", "ov.notes"),
+                    ("sub", N_("Wann zeigen")), ("check", "ov.focus"), ("check", "ov.waiting"))),
+                ("ov.sys", N_("Systemwerte"), (
+                    ("row", (("label", "ov.sysinfo.label"), ("combo", "ov.sysinfo"), ("stretch",))),
+                    ("hint", "ov.sys_text"), ("hint", "ov.sys_hint"), ("check", "ov.hud_backdrop"),
+                    ("check", "ov.hud_row_cpu"), ("check", "ov.hud_row_gpu"), ("check", "ov.hud_row_spot"),
+                    ("check", "ov.hud_row_vram"), ("check", "ov.hud_row_ram"))),
+                ("ov.today_f", N_("Heute"), (
+                    ("check", "ov.today"),
+                    ("row", (("label", "ov.today_pos.label"), ("combo", "ov.today_pos"), ("stretch",))),
+                    ("check", "ov.today_backdrop"))),
+                ("ov.music_f", N_("Musik"), (
+                    ("check", "ov.media"), ("row", (("label", "ov.media_pos.label"), ("combo", "ov.media_pos"), ("stretch",))),
+                    ("row", (("label", "ov.media_style.label"), ("combo", "ov.media_style"), ("stretch",))),
+                    ("check", "ov.media_cover"),
+                    ("row", (("label", "ov.media_shape.label"), ("combo", "ov.media_shape"), ("stretch",))),   # 1.8.24
+                    ("check", "ov.media_progress"), ("check", "ov.media_accent"),
+                    ("check", "ov.media_remaining"), ("check", "ov.media_backdrop"), ("check", "ov.media_fade"),
+                    ("check", "ov.media_videos"),
+                    ("row", (("label", "ov.media_next.label"), ("combo", "ov.media_next"), ("stretch",))),   # 1.8
+                    ("slider", "ov.media_next_n"), ("hint", "ov.media_next_hint"))),
+                ("ov.pos", N_("Allgemein"), (
+                    ("check", "ov.master"),                                                          # 1.8.18
+                    ("check", "ov.small_off"),                                                       # 1.8.62
+                    ("row", (("label", "ov.style.label"), ("combo", "ov.style"), ("stretch",))),     # 1.3
+                    ("slider", "ov.gap"),
+                    ("row", (("label", "ov.bar_align.label"), ("combo", "ov.bar_align"), ("stretch",))),
+                    ("check", "ov.limits"),                                                          # 1.8.14
+                    ("row", (("check", "ov.limits_same"), ("button", "ov.limits_reset"), ("stretch",))),
+                    ("hint", "ov.limits_hint"), ("check", "ov.keep_out"),                         # 1.8.25
+                    ("row", (("check", "ov.same_width"), ("button", "ov.merge_column"), ("stretch",))),   # 1.8.29
+                    ("row", (("label", "ov.preset.label"), ("combo", "ov.preset"), ("button", "ov.preset_apply"),
+                             ("stretch",))),
+                    ("check", "ov.fade"), ("check", "ov.per_size"), ("hint", "ov.per_size_hint"))))),
+        )),
     ),
     "settings": (
         # 1.8.90 (user: "Bei Settings ist es riesig geworden"): six tabs instead of one column of 15 cards and the
@@ -290,6 +295,9 @@ def _spec_keys(items):
             yield from _spec_keys(it[2])
         elif kind in ("row", "panel", "side"):
             yield from _spec_keys(it[1])
+        elif kind == "split":                       # 1.11.14: columns of items
+            for items in it[1:]:
+                yield from _spec_keys(items)
         elif kind == "tabs":
             for frame, _label_, rows in it[1]:
                 yield frame

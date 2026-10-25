@@ -487,6 +487,16 @@ class Treeview(Widget):
     def get_children(self, item=""):
         return tuple(self._kids.get(item, ()))
 
+    def move(self, iid, parent, index):
+        """Put row ``iid`` at ``index`` among the children of ``parent`` (like ttk; 1.11.14: regions by ping)."""
+        it = self._items[str(iid)]
+        old = self._kids.get(it["parent"], [])
+        if str(iid) in old:
+            old.remove(str(iid))
+        it["parent"] = parent
+        kids = self._kids.setdefault(parent, [])
+        kids.insert(len(kids) if index == "end" else max(0, min(int(index), len(kids))), str(iid))
+
     def exists(self, iid) -> bool:
         return str(iid) in self._items
 
