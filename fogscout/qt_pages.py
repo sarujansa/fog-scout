@@ -843,13 +843,18 @@ class SideBySide(QWidget):
         return self.box.direction() == QBoxLayout.LeftToRight
 
     def resizeEvent(self, e):
-        want = QBoxLayout.LeftToRight if self.width() >= self.BESIDE_FROM else QBoxLayout.TopToBottom
+        self.arrange(self.width())
+        super().resizeEvent(e)
+
+    def arrange(self, width: int):
+        """Side by side from BESIDE_FROM px on, else below each other (1.11.14: apart from resizeEvent, so a test
+        does not depend on the screen size – a Windows runner's screen is smaller than a wide page)."""
+        want = QBoxLayout.LeftToRight if width >= self.BESIDE_FROM else QBoxLayout.TopToBottom
         if self.box.direction() != want:
             self.box.setDirection(want)
             for i, card in enumerate(self.cards):       # beside: the short card hangs at the top, not stretched
                 self.box.setAlignment(card, Qt.AlignTop if want == QBoxLayout.LeftToRight and i else Qt.Alignment())
             self.updateGeometry()
-        super().resizeEvent(e)
 
 
 class FitTabs(QTabWidget):
@@ -866,7 +871,7 @@ class FitTabs(QTabWidget):
 
     def eventFilter(self, obj, e):
         if e.type() == QEvent.LayoutRequest and obj is self.currentWidget():
-            QTimer.singleShot(0, self._fit)
+            QTimer.singleShot(0, self, self._fit)    # 1.11.14: bound to self – dropped once the tabs are deleted
         return False
 
     def resizeEvent(self, e):
