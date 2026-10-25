@@ -32,10 +32,12 @@ THUMB_CACHE = os.path.join("cache", "thumbs")     # 1.8.72: the tiles' small pic
 
 def ui_shown(w) -> bool:
     """The widget and all its frames up to the tab or the dialog are placed (a row hidden with pack_forget is not)."""
-    while w is not None and not isinstance(w, (ui.Notebook, ui.Toplevel)):
+    # 1.11.14: a notebook inside a page hidden itself (pack_forget) counts too; a window's own notebook is shown
+    first = not (isinstance(w, ui.Notebook) and (w.master is None or isinstance(w.master, (ui.Root, ui.Toplevel))))
+    while w is not None and (first or not isinstance(w, (ui.Notebook, ui.Toplevel))):
         if not w.winfo_exists() or not w.winfo_manager():
             return False
-        w = w.master
+        w, first = w.master, False
     return True
 
 
@@ -61,9 +63,9 @@ def ui_layout(w, reg: dict):
         pages = [w.nametowidget(t) for t in w.tabs()]
         try:                                    # packed to fill: the tabs take the page's height (statistics)
             fill = bool(w.pack_info().get("expand"))
-        except ui.UIError:
-            fill = False
-        return {"kind": "tabs", "key": key, "fill": fill,
+        except ui.UIError:                      # 1.11.14: hidden for now (empty statistics) – how it was packed
+            fill = bool(getattr(w, "_pack", {}).get("expand"))
+        return {"kind": "tabs", "key": key, "fill": fill, "segments": bool(getattr(w, "_dbdms_segments", False)),
                 "children": [n for n in (ui_layout(p, reg) for p in pages) if n]}
     kind = next((k for cls, k in KINDS if isinstance(w, cls)), None)
     if kind is None and isinstance(w, ui.Label):

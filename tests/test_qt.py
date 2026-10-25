@@ -1558,21 +1558,31 @@ def test_the_settings_page_is_split_into_tabs_with_its_cards(qapp, keep):
 
 def test_the_overlay_preview_and_its_tools_sit_side_by_side_on_a_wide_page(qapp, keep):
     """1.8.2: preview left, the picked element's tools right while the page is wide; below each other when it
-    is narrow (the tabs with the settings were below the fold on a 760-px window)."""
+    is narrow (the tabs with the settings were below the fold on a 760-px window). 1.11.14 (user picked "Vorschau
+    links, Einstellungen rechts"): on a wider page the tabs stand beside preview and tools (a "split"), which then
+    sit below each other in the left column."""
     from fogscout import qt_pages, qt_window
     page = keep(qt_window.FormPage(lambda a, arg=None: None, "Overlay", qt_window.SPECS["overlay"], "overlay"))
-    side = page.findChild(qt_pages.SideBySide)
-    assert side is not None and len(side.cards) == 2
+    split = page.findChild(qt_pages.SideBySide, "split")
+    side = next(s for s in page.findChildren(qt_pages.SideBySide) if s is not split)
+    assert split is not None and len(split.cards) == 2 and len(side.cards) == 2
     assert page.controls["ov.preview"][1].parentWidget() is side.cards[0]
     assert page.controls["ov.edit"][1].parentWidget() is side.cards[1]
-    page.resize(1100, 700)
+    tabs = page.controls["ov.look"][1]
+    assert split.cards[1].isAncestorOf(tabs) and split.cards[0].isAncestorOf(side)
     page.show()
+    page.resize(1400, 800)
     qapp.processEvents()
-    assert side.beside() and side.cards[0].x() < side.cards[1].x()
+    assert split.beside() and not side.beside()                    # tabs beside, preview above the tools
+    assert side.cards[0].y() < side.cards[1].y() and split.cards[0].x() < split.cards[1].x()
+    page.resize(950, 700)
+    qapp.processEvents()
+    assert not split.beside() and side.beside() and side.cards[0].x() < side.cards[1].x()     # as before 1.11.14
     page.resize(600, 700)
     qapp.processEvents()
-    assert not side.beside() and side.cards[0].y() < side.cards[1].y()
+    assert not split.beside() and not side.beside() and side.cards[0].y() < side.cards[1].y()
     assert "ov.preview" in qt_window.page_keys("overlay") and "ov.undo" in qt_window.page_keys("overlay")
+    assert "ov.fade" in qt_window.page_keys("overlay")                # keys inside the split's columns
 
 
 def test_a_right_click_on_a_row_marks_it_and_asks_for_the_menu(qapp, keep):
@@ -1971,5 +1981,32 @@ def test_the_mouse_wheel_never_changes_a_setting_on_any_page(qapp, keep):
             w.setValue(50)
             _wheel(w)
             assert w.value() == 50, w.objectName() or w
+    win.allow_close = True
+    win.close()
+
+
+def test_the_overview_charts_the_rounds_of_the_last_two_weeks(qapp, keep):
+    """1.11.14 (user picked "Übersicht: freie Fläche nutzen"): a chart of the rounds per day over the last 14 days
+    below the cards, today the last column with its value; no card while none of those days has a round."""
+    from fogscout import qt_window
+    now = time.time()
+    app = fake_app()
+    assert overview.days(app, now) == {}
+    o = overview.overview_model(app, now, is_win=False)
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.show_model(o)
+    assert win.overview.days_card.isHidden()
+    day = history.period_start("day", now)
+    app = fake_app(rounds=[history.Round(day + 3600, 600, "coal", "Coal Tower", role="killer"),
+                  history.Round(day + 7200, 600, "coal", "Coal Tower", role="survivor"),
+                  history.Round(day - 3 * 86400 + 3600, 600, "coal", "Coal Tower", role="killer"),
+                  history.Round(day - 20 * 86400, 600, "coal", "Coal Tower", role="killer")])      # too old
+    d = overview.days(app, now)["killer"]
+    assert len(d["bars"]) == overview.DAYS and d["bars"][-1][0] == 2 and d["bars"][-4][0] == 1
+    assert sum(1 for b in d["bars"] if b[0]) == 2 and d["last"] == "2" and d["max"] == 2
+    assert "2 Runden (1 Killer, 1 Survivor)" in d["bars"][-1][2]
+    o = overview.overview_model(app, now, is_win=False)
+    win.show_model(o)
+    assert not win.overview.days_card.isHidden()
     win.allow_close = True
     win.close()

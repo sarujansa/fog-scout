@@ -527,6 +527,9 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                               "ohne DBD. Nochmal drücken beendet den Test."))
         if w is self.adv_btn:
             return _("Technische Optionen für die Fehlersuche ein- oder ausklappen.")
+        if w is getattr(self, "stats_filter_btn", None):                  # 1.11.14: "Filter (2) ▾"
+            return _("Region, Killer, Map, Modus und „Farming ausblenden“ ein- oder ausklappen. Die Zahl sagt, wie "
+                     "viele davon gerade filtern.")
         if w in getattr(self, "_export_col_checks", ()):            # 1.8.91: the export dialog's columns
             return lambda: _("Spalte „{name}“ mit ausgeben.", name=w.cget("text"))
         if w is self.edit_btn:
