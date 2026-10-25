@@ -770,7 +770,7 @@ def test_the_recordings_tab_lists_the_index_and_acts_on_the_marked_row(app_root)
         t = app.rec_table
         rows = [t.item(i, "values") for i in t.get_children()]                          # 1.11.5: farming counts
         assert [r[1] for r in rows] == ["Gas Heaven", "Coal Tower"]                     # newest first
-        assert rows[1][2] == "Nurse" and rows[1][4] == "10:00" and rows[1][6] == "2" and rows[0][2].endswith("Farming")
+        assert rows[1][2] == "Nurse" and rows[1][4] == "10:00" and rows[1][6] == "⚑2" and rows[0][2].endswith("Farming")
         assert rows[0][5] == "2 KB"                                                        # size column
         assert "2 Aufnahmen" in app.rec_summary_var.get() and app.rec_hint_var.get() == str(folder)
         assert app.rec_play_btn.cget("state") == "disabled"
@@ -802,7 +802,7 @@ def test_the_recordings_tab_lists_the_index_and_acts_on_the_marked_row(app_root)
         app._rec_render()
         t.selection_set(repr(t1))
         app._rec_buttons()
-        assert t.item(repr(t1), "values")[7] == "✓" and app.rec_keep_btn.cget("text") == "Nicht mehr behalten"
+        assert t.item(repr(t1), "values")[6].startswith("★") and app.rec_keep_btn.cget("text") == "Nicht mehr behalten"   # 1.12.2
         app._confirmed = True                                  # the question bar answered with OK
         app._rec_delete()
         deadline = time.time() + 5
@@ -2670,6 +2670,7 @@ def test_the_screenshots_tab_lists_pictures_and_opens_the_picture_editor(app_roo
     import json
     import os
     from PIL import Image
+    from fogscout import qt_gallery
     from fogscout.app import App
     shots = tmp_path / "shots"
     shots.mkdir()
@@ -2680,29 +2681,40 @@ def test_the_screenshots_tab_lists_pictures_and_opens_the_picture_editor(app_roo
     app = App(str(app_root), simulate=str(app_root / "sim"))
     try:
         app._rec_render(force=True)
-        t = app.shot_table
-        rows = [t.item(i, "values") for i in t.get_children()]
-        assert [r[3] for r in rows] == ["20261025_1.jpg"] and rows[0][1] == "Eigener Ordner"
+        assert [(os.path.basename(s.path), s.source) for s in app._shot_items] == [("20261025_1.jpg", "own")]
         assert app.rec_nb.winfo_manager() and not app.rec_setup_btn.winfo_manager()     # pictures: the tabs show
-        assert "Eigener Ordner" in app.shot_src_var.get() and app.shot_steam_btn.winfo_manager()
+        assert app.shot_src_var.get() == "1 Bild · Eigener Ordner" and app.shot_steam_btn.winfo_manager()
         assert not app.shot_sel_row.winfo_manager()
-        t.selection_set(t.get_children()[0])
-        t.event_generate("<<TreeviewSelect>>")
+        # 1.12.2: a gallery of tiles in the page's host – a click picks, a double click opens the editor
+        app.rec_nb.select(app.rec_nb.tabs()[2])
+        app.qt.show_page("recordings")
+        app._shots_render()
+        gallery = app.qt.host(str(app.shot_host)).content
+        assert gallery.paths() == [str(shots / "20261025_1.jpg")] and gallery.minimumHeight() >= 400
+        assert gallery.item(0).data(qt_gallery.INFO_ROLE)[2] == ""                         # no badge: not edited
+        gallery.load_all()
+        assert not gallery.pixmap(str(shots / "20261025_1.jpg")).isNull()
+        gallery.item(0).setSelected(True)                                                  # a click
+        assert app._shot_sel == str(shots / "20261025_1.jpg")
         assert app.shot_sel_row.winfo_manager() and app.shot_edit_btn._dbdms_tip()
         out_dir = tmp_path / "edited"
         app._shot_edit_dir = lambda: str(out_dir)
-        app._shot_edit()
+        gallery.itemActivated.emit(gallery.item(0))                                        # a double click
         win = app._clip_windows[-1]
+        assert win.path == str(shots / "20261025_1.jpg")
         win.turn(1)
         win.save()
         win.wait_saved()                                                   # 1.12.1: saved in a thread
         assert os.listdir(out_dir) == ["20261025_1 – bearbeitet.png"]
         assert Image.open(out_dir / "20261025_1 – bearbeitet.png").size == (180, 320)
-        sources = sorted(t.item(i, "values")[1] for i in t.get_children())
-        assert sources == ["Bearbeitet", "Eigener Ordner"]                                   # refreshed on save
+        assert sorted(s.source for s in app._shot_items) == ["edited", "own"]               # refreshed on save
+        assert app._shot_sel == str(shots / "20261025_1.jpg")                                # the pick stays
+        badges = [gallery.item(i).data(qt_gallery.INFO_ROLE)[2] for i in range(gallery.count())]
+        assert sorted(badges) == ["", "Bearbeitet"]
         app.shot_kind_var.set("Bearbeitet")
         app._shots_render()
-        assert [t.item(i, "values")[3] for i in t.get_children()] == ["20261025_1 – bearbeitet.png"]
+        assert [os.path.basename(p) for p in gallery.paths()] == ["20261025_1 – bearbeitet.png"]
+        assert app._shot_sel is None and not app.shot_sel_row.winfo_manager()            # the pick is filtered out
         win.close()
         app._shot_steam_folder()
         assert app.settings.get("shots_folder") == "" and not app.shot_steam_btn.winfo_manager()

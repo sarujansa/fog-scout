@@ -1682,12 +1682,10 @@ EN = {
     'Einschalten unter Einstellungen → Aufnahmen.': 'Turn it on under Settings → Recordings.',
     'Im Explorer zeigen': 'Show in Explorer',
     'Keine Marken – F8 während der Runde setzt eine.': 'No marks – F8 during the round sets one.',
-    'Marken': 'Marks',
     'Marken: {list}': 'Marks: {list}',
     'Mit Marke': 'With a mark',
     'Nicht mehr behalten': 'Stop keeping',
     'Noch kein Aufnahmeordner gewählt.': 'No recording folder chosen yet.',
-    'OBS nimmt jede Runde auf (Einstellungen → Aufnahmen). F8 setzt während der Runde eine Marke; „Behalten“ schützt eine Aufnahme vor dem Aufräumen, wenn die Platte Platz braucht.': 'OBS records every round (Settings → Recordings). F8 sets a mark during the round; "Keep" protects a recording from the clean-up when the drive needs room.',
     'fehlt': 'missing',
     '{file} von der Platte löschen?': 'Delete {file} from the drive?',
     'Spielt die markierte Aufnahme im Standard-Videoplayer ab.': 'Plays the marked recording in the default video player.',
@@ -2095,8 +2093,6 @@ EN = {
     'Clip im Explorer zeigen': 'Show clip in Explorer',
     'Clip löschen': 'Delete clip',
     'Clip nicht gelöscht ({error}): {file}': 'Clip not deleted ({error}): {file}',
-    'Hier stehen die Clips aus dem Editor, die Sofort-Clips (F8) und die Standbilder – mit der Runde, aus der sie stammen. Gelöscht werden nur Dateien, die das Programm selbst angelegt hat.':
-        'Here are the clips from the editor, the instant clips (F8) and the stills – with the round each came from. Only files the program made itself are deleted.',
     'Kein Aufnahmeordner – die Clips liegen in seinem Ordner „Clips“.':
         'No recording folder – the clips are kept in its folder "Clips".',
     'Länge': 'Length',
@@ -2294,8 +2290,6 @@ EN = {
         'Picture saved: {file}',
     'Bild im Explorer zeigen':
         'Show picture in Explorer',
-    'Bild markieren: bearbeiten (zuschneiden, zeichnen, zensieren), im Explorer zeigen – oder Rechtsklick.':
-        'Mark a picture: edit it (crop, draw, censor), show it in Explorer – or right-click.',
     'Bild nicht gespeichert: {error}':
         'Picture not saved: {error}',
     'Speichert …':
@@ -2316,8 +2310,6 @@ EN = {
         'Own folder',
     'Eigener Ordner nicht gefunden: {path}':
         'Own folder not found: {path}',
-    'Eigener Ordner: {path}':
-        'Own folder: {path}',
     'Einblenden':
         'Fade in',
     'Entfernt alle Abschnitte – gespeichert wird dann wieder der Bereich zwischen Start und Ende.':
@@ -2328,8 +2320,6 @@ EN = {
         'Removes the marked box (Del).',
     'Entfernt die markierte Zeichnung (Entf).':
         'Removes the marked drawing (Del).',
-    'F12 im Spiel ist Steams Screenshot-Taste – Steam legt die Bilder in seinem eigenen Ordner ab, das Programm liest sie dort nur. Bearbeitete Bilder sind Kopien im Ordner „Screenshots“ neben den Aufnahmen (ohne Aufnahmeordner: Bilder/Fog Scout); das Original bleibt immer unverändert.':
-        'F12 in the game is Steam\'s screenshot key – Steam puts the pictures in its own folder, the program only reads them there. Edited pictures are copies in the folder "Screenshots" next to the recordings (without a recording folder: Pictures/Fog Scout); the original always stays as it is.',
     'Farbe':
         'Colour',
     'Farbe zurücksetzen':
@@ -2394,8 +2384,6 @@ EN = {
         'PNG: lossless · JPG: smaller file.',
     'Pfeil':
         'Arrow',
-    'Quelle':
-        'Source',
     'Rahmen':
         'Box',
     'Rahmen bearbeiten':
@@ -2418,8 +2406,6 @@ EN = {
         'Steam (F12)',
     'Steam-Ordner verwenden':
         "Use Steam's folder",
-    'Steams Screenshots von DBD (F12): {path}':
-        "Steam's DBD screenshots (F12): {path}",
     'Strg+Z rückgängig · Strg+Y wiederholen · Strg+C kopieren · Strg+S speichern · Entf Markiertes löschen · Esc schliessen':
         'Ctrl+Z undo · Ctrl+Y redo · Ctrl+C copy · Ctrl+S save · Del removes the marked one · Esc close',
     'Strichstärke bzw. Textgrösse.':
@@ -2484,4 +2470,26 @@ EN = {
         'Show pictures from a folder of your own – e.g. when Steam saves uncompressed screenshots to another folder.',
     'Wieder die Screenshots aus Steams Ordner für DBD zeigen (F12 im Spiel).':
         "Show the screenshots from Steam's DBD folder again (F12 in the game).",
+    'Bild anklicken: bearbeiten (zuschneiden, zeichnen, zensieren), im Explorer zeigen – Doppelklick öffnet den Editor.':
+        'Click a picture: edit it (crop, draw, censor), show it in Explorer – a double click opens the editor.',
+    'F12 im Spiel ist Steams Screenshot-Taste; das Programm liest Steams Ordner nur. Bearbeitete Bilder sind Kopien im Ordner „Screenshots“ neben den Aufnahmen.':
+        'F12 in the game is Steam\'s screenshot key; the program only reads Steam\'s folder. Edited pictures are copies in the folder "Screenshots" next to the recordings.',
+    '1 Bild':
+        '1 picture',
+    '{n} Bilder':
+        '{n} pictures',
+    '★ behalten (nie aufgeräumt) · ⚑ Marken (F8 in der Runde) · ▶ auf YouTube · Rechtsklick auf die Spaltenköpfe: Spalten ein-/ausblenden':
+        '★ kept (never cleaned up) · ⚑ marks (F8 in the round) · ▶ on YouTube · right-click the headings: show/hide columns',
+    'Clips aus dem Editor, Sofort-Clips (F8) und Standbilder, mit ihrer Runde · ▶ auf YouTube · gelöscht werden nur Dateien, die das Programm selbst angelegt hat':
+        'Clips from the editor, instant clips (F8) and stills, with their round · ▶ on YouTube · only files the program made itself are deleted',
+    'Status':
+        'Status',
+    'Schnell (ohne Neukodieren)':
+        'Fast (no re-encoding)',
+    'Genau (neu kodiert)':
+        'Exact (re-encoded)',
+    'Für Discord (Zielgrösse)':
+        'For Discord (target size)',
+    'GIF (ohne Ton)':
+        'GIF (no sound)',
 }
