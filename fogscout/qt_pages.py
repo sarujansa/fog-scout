@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QBoxLayout, QComboBox, QDialog, QFrame, QGridLayo
 from . import qt_theme
 from .qt_layouts import FlowRow, TileGrid, WrapCheck
 from .i18n import N_, _
-from .qt_common import SLIDER_MAX, pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page
+from .qt_common import SLIDER_MAX, guard_wheel, pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page
 from .qt_views import FactBox, Table, LogView, HotkeyButton, Chart, SwatchView, TilesView, DashboardView
 from .qt_preview import PreviewView
 
@@ -417,7 +417,7 @@ def make_control(kind, key, post):
         w.setFocusPolicy(Qt.TabFocus)
         w.clicked.connect(lambda _c=False: post("act", (key, None)))
     elif kind == "combo":
-        w = QComboBox()
+        w = guard_wheel(QComboBox())
         w.setMinimumWidth(140)
         w.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         w.activated.connect(lambda i: post("act", (key, w.itemText(i))))
@@ -430,7 +430,7 @@ def make_control(kind, key, post):
         name.setMinimumWidth(110)
         value.setMinimumWidth(56)
         value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        s = CapSlider(Qt.Horizontal)
+        s = guard_wheel(CapSlider(Qt.Horizontal))
         s.setMaximumWidth(SLIDER_MAX)              # a wide window: no slider across the whole page
         s.valueChanged.connect(lambda v: post("act", (key, v)))
         r.addWidget(name)
