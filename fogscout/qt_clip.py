@@ -318,6 +318,7 @@ class PreviewView(QWidget):
         self.now = None                   # seconds of the recording on display: drawings of other times hide
         self.new_times = lambda: (None, None)   # (t0, t1) a new drawing gets (the clip editor: from the playhead)
         self._layer = None                # (key, QImage) of the drawings at the drawn size
+        self.source_size = None           # (w, h) of the real picture when the frame is a smaller copy of it
         self.setMinimumSize(*PREVIEW_MIN)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setFocusPolicy(Qt.NoFocus)
@@ -371,6 +372,8 @@ class PreviewView(QWidget):
 
     # ---- 1.12: crop and drawings
     def image_size(self) -> tuple:
+        if self.source_size:
+            return self.source_size
         return (self._img.width(), self._img.height()) if self._img is not None else (16, 9)
 
     def set_crop(self, box, ratio=None):
@@ -431,6 +434,20 @@ class PreviewView(QWidget):
         shown = [s for s in self.shapes if self.now is None or s.shown_at(self.now)]
         drawing = getattr(self, "_preview_new", None)
         return shown + [drawing] if drawing is not None else shown
+
+    def _active_shape(self):
+        """The drawing being drawn or moved right now (None without a drag)."""
+        kind = self._drag[0] if self._drag else None
+        if kind == "shape_new":
+            return getattr(self, "_preview_new", None)
+        if kind == "shape_move" and self.shape_sel is not None and 0 <= self.shape_sel < len(self.shapes):
+            return self.shapes[self.shape_sel]
+        return None
+
+    @staticmethod
+    def _shape_image(size, shapes) -> QImage:
+        img = annotate.layer(size.width(), size.height(), shapes)
+        return QImage(img.tobytes(), img.width, img.height, img.width * 4, QImage.Format_RGBA8888).copy()
 
     def _crop_box_for(self, x0, y0, x1, y1) -> tuple:
         """A crop box from two corners (fractions), held to ``crop_ratio`` (the width leads)."""
@@ -517,15 +534,18 @@ class PreviewView(QWidget):
         p.end()
 
     def _paint_shapes(self, p, f, size, accent):
-        """1.12: the drawings as the clip/picture will show them (annotate draws them at the shown size)."""
+        """1.12: the drawings as the clip/picture will show them (annotate draws them at the shown size). The ones
+        that stay still are kept as one picture; only the drawing under the mouse is drawn again on each move."""
         shown = self._shown_shapes()
-        if shown:
-            key = (size.width(), size.height(), repr(shown))
+        active = self._active_shape()
+        still = [s for s in shown if s is not active]
+        if still:
+            key = (size.width(), size.height(), repr(still))
             if self._layer is None or self._layer[0] != key:
-                img = annotate.layer(size.width(), size.height(), shown)
-                self._layer = (key, QImage(img.tobytes(), img.width, img.height, img.width * 4,
-                                           QImage.Format_RGBA8888).copy())
+                self._layer = (key, self._shape_image(size, still))
             p.drawImage(f.topLeft(), self._layer[1])
+        if active is not None and any(s is active for s in shown):
+            p.drawImage(f.topLeft(), self._shape_image(size, [active]))
         sel = self.selected_shape()
         if sel is not None and self.shape_tool is not None:
             x0, y0, x1, y1 = annotate.bounds(sel, int(f.width()), int(f.height()))
@@ -674,14 +694,12 @@ class PreviewView(QWidget):
             self._drag = (kind, (px, py), self._crop_box_for(ax, ay, fx, fy))
         elif kind == "shape_move":
             self.shapes[self.shape_sel] = orig.moved(fx - px, fy - py)
-            self._layer = None
         elif kind == "shape_new":
             if orig.kind == "free":
                 if math.dist(orig.pts[-1], (fx, fy)) > 0.003:
                     orig.pts.append((fx, fy))
             else:
                 orig.pts[1] = (fx, fy)
-            self._layer = None
             self._preview_new = orig
         self.update()
         return True

@@ -2695,6 +2695,7 @@ def test_the_screenshots_tab_lists_pictures_and_opens_the_picture_editor(app_roo
         win = app._clip_windows[-1]
         win.turn(1)
         win.save()
+        win.wait_saved()                                                   # 1.12.1: saved in a thread
         assert os.listdir(out_dir) == ["20261025_1 – bearbeitet.png"]
         assert Image.open(out_dir / "20261025_1 – bearbeitet.png").size == (180, 320)
         sources = sorted(t.item(i, "values")[1] for i in t.get_children())

@@ -2298,6 +2298,8 @@ EN = {
         'Mark a picture: edit it (crop, draw, censor), show it in Explorer – or right-click.',
     'Bild nicht gespeichert: {error}':
         'Picture not saved: {error}',
+    'Speichert …':
+        'Saving …',
     'Bild nicht lesbar: {error}':
         'Picture not readable: {error}',
     'Bild speichern':
