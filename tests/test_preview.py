@@ -160,6 +160,19 @@ def test_a_map_wider_than_the_bar_stays_at_its_outer_edge():
     assert layout.preview_rect(3440, 1440, "auto", 0, 0, 0.6, 0.012, True, 0.9)[2] <= 440 - 2 * 17
 
 
+def test_the_map_can_fill_its_bar_from_left_to_right():
+    """1.11.12 (user: "die linke Map links und rechts ausfüllt"): fill_bar – as wide as the bar, whatever the slider."""
+    from fogscout import layout
+    for frac in (0.2, 0.36):
+        x, _y, w, _h, _mh = layout.preview_rect(3440, 1440, "auto", 0, 0, frac, 0.012, True, 0.9, fill=True)
+        assert 440 - 2 * 17 - 1 <= w <= 440 - 2 * 17 and x == 17
+    assert layout.preview_rect(3440, 1440, "auto", 0, 0, 0.2, 0.012, True, 0.9)[2] < 300      # off: the slider
+    pic = Image.new("RGBA", (400, 500), (120, 120, 200, 255))
+    layers, _r = preview.layers(W, H, _o(fill_bar=True), "", ROWS, None, pic, "", {}, 0.2)
+    by = {n: (x, y, im.width, im.height) for n, im, x, y in layers}
+    assert by["map"][2] >= 440 - 2 * 17 - 2 and by["map"][0] + by["map"][2] <= 440
+
+
 def test_today_is_a_card_of_its_own():
     """1.2.6 (user: rounds/kills under the GPU/CPU counter made no sense): "today" is its own layer – below the
     system values by default (the music "below" then hangs under it), in the bar or at an own place."""

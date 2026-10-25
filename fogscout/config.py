@@ -45,6 +45,7 @@ DEFAULTS = {
         "keep_out": None,               # … own areas [[x, y, w, h], …] as shares of the window; None = Discord's
         "info_pos": "below",            # 1.8.24: timer/record/server below / above the map, custom or "inside" it (1.8.34: "inside_top" = inside, above the map)
         "info_xy": None,                # … their own place (centre as shares of the window)
+        "fill_bar": False,              # 1.11.12: the map as wide as its black bar, its height follows from that
         "grow_past_bar": False,         # a map bigger than the bar may reach into the game picture (1.65.4)            # ultrawide: shrink/move the map so it stays inside the black bar
         "map_heights": {},              # map id -> own size (hotkeys / mouse wheel with that map on display)
         "map_rotations": {},            # map id -> map turned clockwise by 90/180/270° (button / hotkey)

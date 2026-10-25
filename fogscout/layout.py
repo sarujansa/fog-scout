@@ -168,11 +168,11 @@ def preview_place(gw: int, gh: int, anchor: str, pos_x: float, pos_y: float, mar
 
 def preview_rect(gw: int, gh: int, anchor: str, pos_x: float, pos_y: float, height_frac: float,
                  margin_frac: float, keep_in_bar: bool, aspect: float, info_rows: int = 0, drop: int = 0,
-                 grow: bool = False, lift: int = 0):
+                 grow: bool = False, lift: int = 0, fill: bool = False):
     """Where the overlay sits on a full-screen DBD of gw × gh (the overlay tab's preview, since 1.61): (x, y, w,
     h, map_h) – the same rules as App._place_overlay for the common case (no window mode, no bars above/below).
     ``aspect`` = map width / height, ``info_rows`` = lines below the map (timer counts double), ``drop`` = room
-    of the system values above the map (1.64)."""
+    of the system values above the map (1.64), ``fill`` (1.11.12) = as wide as the bar (fill_bar)."""
     margin = int(gh * margin_frac)
     height = int(gh * min(0.9, max(0.05, height_frac)))
     height = max(40, min(height, gh - drop - lift - 2 * margin))
@@ -186,6 +186,9 @@ def preview_rect(gw: int, gh: int, anchor: str, pos_x: float, pos_y: float, heig
     x0, _y0 = preview_place(gw, gh, anchor, pos_x, pos_y, margin, False, w, h, drop)
     side = bar_side(anchor, x0, w, 0, gw, bar) if (anchor == "auto" or keep_in_bar) else None
     if side and not grow:
+        if fill:                                            # as big as the room: the bar's width decides
+            height = max(40, min(int(gh * 0.9), gh - drop - lift - 2 * margin))
+            w, h = size(height)
         avail = max_width(bar, margin)
         if w > avail:
             height = max(40, int(height * avail / w))
