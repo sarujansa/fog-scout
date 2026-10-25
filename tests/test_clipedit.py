@@ -758,3 +758,126 @@ def test_marking_a_clip_shows_the_compact_editor_beside_the_clips_table(four_tra
         assert not host.content.playing
     finally:
         app.quit()
+
+
+# ------------------------------------------------------------------ 1.12: the edit plan
+def test_the_tempo_chain_and_the_parts_are_cleaned():
+    assert clipedit.atempo(1.0) == "anull" and clipedit.atempo(2.0) == "atempo=2"
+    assert clipedit.atempo(0.25) == "atempo=0.5,atempo=0.5" and clipedit.atempo(4.0) == "atempo=2,atempo=2"
+    parts = clipedit.clean_parts([clipedit.Part(8, 9), clipedit.Part(1, 1.05), clipedit.Part(2, 30, 9.0)], 12)
+    assert [(p.start, p.end, p.speed) for p in parts] == [(2, 12, 4.0), (8, 9, 1.0)]
+    e = clipedit.Edit([clipedit.Part(0, 4, 2.0), clipedit.Part(6, 8)])
+    assert e.seconds() == pytest.approx(4.0) and not e.simple()
+    assert clipedit.Edit([clipedit.Part(0, 4)]).simple()
+
+
+def test_the_graph_cuts_parts_crops_draws_and_fades_in_that_order():
+    info = clipedit.Info(12, 320, 180, 30, 1)
+    e = clipedit.Edit([clipedit.Part(2, 4), clipedit.Part(6, 10, 2.0)], crop=(0.25, 0, 0.5, 1.0), fade_in=0.5,
+                      fade_out=1.0)
+    g, v, a, enc = clipedit.edit_graph(e, info, start=2.0, shape_inputs=[(1, 3.0, 5.0)])
+    assert v == "[vout]" and a == "[aend]" and "libx264" in enc
+    assert "overlay=0:0:format=auto:enable='between(t,1.000,3.000)'" in g      # 3–5 s of the recording, input from 2
+    assert g.index("overlay") < g.index("crop=160:180:80:0") < g.index("split=2")   # drawn on the whole picture
+    assert "trim=start=0.000:end=2.000" in g and "trim=start=4.000:end=8.000,setpts=(PTS-STARTPTS)/2" in g
+    assert "atempo=2" in g and "concat=n=2:v=1:a=1" in g
+    assert "fade=t=in:st=0:d=0.500" in g and "fade=t=out:st=3.000:d=1.000" in g and "afade=t=out" in g
+    gif, _v, a2, enc2 = clipedit.edit_graph(e, info, 2.0, mode="gif")
+    assert a2 is None and "palettegen" in gif and enc2 == [] and "atrim" not in gif
+    d, _v, _a, enc3 = clipedit.edit_graph(clipedit.Edit([clipedit.Part(0, 4, 0.5)]), info, 0.0, mode="discord")
+    assert "scale=-2:" in d and "-b:v" in enc3
+
+
+def test_an_edit_with_parts_tempo_crop_drawings_and_fades_is_written(clip, tmp_path):
+    """1.12: two parts (the second twice as fast), cut to 9:16-ish, an arrow for a second, faded – one mp4 of the
+    right length and size with sound."""
+    from fogscout import annotate
+    e = clipedit.Edit([clipedit.Part(1, 3), clipedit.Part(5, 9, 2.0)], crop=(0.25, 0.0, 0.5, 1.0),
+                      shapes=[annotate.Shape("arrow", [(0.3, 0.3), (0.6, 0.6)], t0=1.5, t1=2.5)],
+                      fade_in=0.3, fade_out=0.3)
+    out = str(tmp_path / "edit.mp4")
+    ok, why = clipedit.export(clip, e, out, "copy", FF)
+    assert ok, why
+    info = clipedit.probe(out, FF)
+    assert info.width == 160 and info.height == 180 and info.audio_tracks == 1
+    assert info.duration == pytest.approx(4.0, abs=0.25)                      # 2 s + 4 s at double speed
+    frame = clipedit.frame_at(out, 0.75, 180, info, FF)                       # 1.75 s of the recording: arrow on
+    plain = clipedit.frame_at(clip, 1.75, 180, None, FF).crop((80, 0, 240, 180))
+    assert frame is not None and plain is not None
+    assert sum(abs(x - y) for x, y in zip(frame.convert("L").tobytes(), plain.convert("L").tobytes())) > 50_000
+
+
+def test_a_gif_and_a_simple_edit(clip, tmp_path):
+    gif = str(tmp_path / "clip.gif")
+    ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(2, 4)], fade_in=0.2), gif, "gif", FF, gif_h=120)
+    assert ok, why
+    with open(gif, "rb") as fh:
+        assert fh.read(6) in (b"GIF89a", b"GIF87a")
+    from PIL import Image
+    im = Image.open(gif)
+    assert im.size[1] == 120 and getattr(im, "n_frames", 1) > 20
+    simple = str(tmp_path / "simple.mkv")
+    calls = []
+    real = clipedit.cut
+    try:
+        clipedit.cut = lambda *a, **k: calls.append(a[4]) or real(*a, **k)
+        ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(2, 5)]), simple, "copy", FF)
+    finally:
+        clipedit.cut = real
+    assert ok and calls == ["copy"]                                          # one part: stream copy as before
+
+
+def test_the_clip_window_saves_parts_with_tempo_a_crop_a_drawing_and_a_gif(clip, tmp_path):
+    """1.12 (user: "Bearbeitungstool top machen mit allen Funktionen"): parts with a tempo each, a 9:16 crop, an
+    arrow from the playhead on, fades – the window's plan becomes one mp4 of the right length; a GIF too."""
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QApplication
+    from fogscout import annotate, qt_clip
+    app = QApplication.instance() or QApplication([])
+    saved = []
+    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), mode="copy", sound=False, on_saved=saved.append)
+    try:
+        win.show()
+        win.timeline.set_range(1.0, 3.0)
+        win.add_part()
+        win.timeline.set_range(5.0, 9.0)
+        win.add_part()
+        assert [(p.start, p.end) for p in win._parts] == [(1.0, 3.0), (5.0, 9.0)]
+        assert win.timeline.parts == [(1.0, 3.0), (5.0, 9.0)] and "2 Abschnitte" in win.parts_hint.text()
+        win.part_list.setCurrentRow(1)
+        assert (win.timeline.start, win.timeline.end) == (5.0, 9.0)
+        win.speed_box.setCurrentIndex(win.speed_box.findData(2.0))
+        assert win._parts[1].speed == 2.0 and win.edit_plan().seconds() == pytest.approx(4.0)
+        win.crop_box.setCurrentIndex(win.crop_box.findData("9:16"))
+        assert win.preview.crop is not None and win.preview.crop_edit
+        win.tools.setCurrentIndex(3)                                     # leaving the picture tab ends the crop tool
+        assert not win.preview.crop_edit
+        win.goto(1.5)
+        win.draw_when_box.setCurrentIndex(win.draw_when_box.findData(1.0))
+        win.preview._new_shape(annotate.Shape("arrow", [(0.4, 0.3), (0.5, 0.6)]))
+        shape = win.preview.shapes[0]
+        assert (shape.t0, shape.t1) == (1.5, 2.5)                          # from the playhead, for a second
+        win.fade_out_box.setCurrentIndex(win.fade_out_box.findData(0.5))
+        plan = win.edit_plan()
+        assert plan.crop and len(plan.shapes) == 1 and plan.fade_out == 0.5 and not plan.simple()
+        assert "neu kodiert" in win.size_label.text() and "Ausschnitt" in win.size_label.text()
+        win.save()
+        deadline = time.time() + 60
+        while time.time() < deadline and not saved:
+            app.processEvents()
+            time.sleep(0.02)
+        assert saved and saved[0].endswith(".mp4"), win.status.text()
+        info = clipedit.probe(saved[0], FF)
+        assert info.duration == pytest.approx(4.0, abs=0.3) and info.height == 180 and info.width < 120
+        assert win.saved_seconds[saved[0]] == pytest.approx(4.0)
+        win.mode_box.setCurrentIndex(win.mode_box.findData("gif"))
+        assert win.gif_box.isVisibleTo(win) and "GIF" in win.size_label.text()
+        win.save()
+        deadline = time.time() + 60
+        while time.time() < deadline and len(saved) < 2:
+            app.processEvents()
+            time.sleep(0.02)
+        assert len(saved) == 2 and saved[1].endswith(".gif"), win.status.text()
+    finally:
+        win.close()
+        app.processEvents()

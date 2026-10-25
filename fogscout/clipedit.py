@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .obsrec import AUDIO_STREAM_RE, CLIPS_DIR as _CLIPS_DIR, NAME_CHARS, audio_graph, ffmpeg_exe
 
@@ -32,7 +32,8 @@ EDGE_PX = 2                                # delogo refuses a box that touches t
 NAMES_BOX = (0.004, 0.50, 0.26, 0.32)      # DBD's survivor list bottom left (portraits + names + status text), as
                                            # fractions of the 16:9 game picture – 1.7.4 after the user's screenshot:
                                            # the list sits higher (≈ 50–82 % of the height) and long names reach further
-MODES = ("copy", "exact", "discord")   # key frames, no re-encoding / frame exact / 1.6.1: fits a size (Discord)
+MODES = ("copy", "exact", "discord", "gif")   # key frames, no re-encoding / frame exact / 1.6.1: fits a size
+                                              # (Discord) / 1.12: an animated GIF (no sound)
 TARGETS_MB = (10, 25, 50, 500)  # 1.6.1: Discord's upload limits (free 10 MB, Nitro Basic 50, Nitro 500)
 DEFAULT_TARGET_MB = 10
 AUDIO_KBPS = 96                 # sound of a size-fitted clip
@@ -449,3 +450,236 @@ class FramePlayer(threading.Thread):
         finally:
             self.stop()
             self.on_end()                                 # the window ignores it when it stopped the player itself
+
+
+# ---------------------------------------------------------------------------------------------- 1.12: the edit plan
+SPEEDS = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 4.0)   # tempo of a part (slow motion … fast forward)
+FADES = (0.0, 0.5, 1.0, 2.0)                       # seconds of fade-in / fade-out offered
+GIF_FPS = 15
+GIF_HEIGHTS = (360, 480, 720)
+DEFAULT_GIF_H = 480
+ASPECTS = (("free", None), ("16:9", 16 / 9), ("9:16", 9 / 16), ("1:1", 1.0), ("4:5", 4 / 5))
+
+
+@dataclass
+class Part:
+    start: float                 # seconds of the recording
+    end: float
+    speed: float = 1.0
+
+
+@dataclass
+class Edit:
+    """1.12 (user: "Bildausschnitt / Hochformat, mehrere Abschnitte, Text, Pfeile, Markierungen, Tempo & Übergänge"):
+    everything the clip editor does to a recording besides censoring and the sound mix. ``parts`` play one after
+    the other (each with its own tempo), ``crop`` cuts a box (fractions) out of the picture, ``shapes``
+    (annotate.Shape, times in seconds of the recording) are drawn over it, ``fade_in``/``fade_out`` dim picture
+    and sound at the start/end of the finished clip."""
+    parts: list = field(default_factory=list)
+    crop: tuple | None = None
+    shapes: list = field(default_factory=list)
+    fade_in: float = 0.0
+    fade_out: float = 0.0
+
+    def simple(self) -> bool:
+        """One part at normal tempo and nothing else – cut() alone does it (stream copy possible)."""
+        return (len(self.parts) == 1 and abs(self.parts[0].speed - 1.0) < 1e-6 and not self.crop
+                and not self.shapes and self.fade_in <= 0 and self.fade_out <= 0)
+
+    def seconds(self) -> float:
+        """Length of the finished clip."""
+        return sum(max(0.0, p.end - p.start) / max(0.01, p.speed) for p in self.parts)
+
+
+def clean_parts(parts, duration: float = 0.0) -> list:
+    """Parts in time order, inside the recording, at least 0.1 s long, tempo within SPEEDS' range."""
+    lo, hi = SPEEDS[0], SPEEDS[-1]
+    out = []
+    for p in parts:
+        start, end = max(0.0, float(p.start)), float(p.end)
+        if duration > 0:
+            end = min(end, duration)
+        if end - start >= 0.1:
+            out.append(Part(start, end, max(lo, min(hi, float(p.speed or 1.0)))))
+    return sorted(out, key=lambda p: p.start)
+
+
+def atempo(speed: float) -> str:
+    """ffmpeg's atempo takes 0.5–2 per filter: a chain for any tempo (0.25 = 0.5 · 0.5)."""
+    parts, s = [], float(speed)
+    while s < 0.5 - 1e-9:
+        parts.append(0.5)
+        s /= 0.5
+    while s > 2.0 + 1e-9:
+        parts.append(2.0)
+        s /= 2.0
+    parts.append(s)
+    return ",".join(f"atempo={v:.4g}" for v in parts if abs(v - 1.0) > 1e-9) or "anull"
+
+
+def crop_px(box, width: int, height: int) -> tuple:
+    """(w, h, x, y) of a fraction crop box in even pixels (ffmpeg's crop filter, x264 wants even sizes)."""
+    x, y, w, h = box_px(box, width, height)
+    return w, h, x, y
+
+
+def edit_graph(edit: Edit, info: Info, start: float, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB,
+               censor=None, censor_style: str = "pixel", mix=None, shape_inputs=(), gif_h: int = DEFAULT_GIF_H):
+    """The filter graph of ``edit`` for an input that starts at ``start`` seconds of the recording (input seeking):
+    (graph, video label, audio label or None, encoder arguments). ``shape_inputs`` = [(input index, t0, t1)] of the
+    drawings' pictures (one PNG each, see export). Pure – tested without ffmpeg."""
+    w, h = info.width, info.height
+    chains, cur = [], "[0:v]"
+    if censor:                                                   # on the recording's own picture
+        chains.append(censor_graph(censor, censor_style, w, h).replace("[0:v]", cur, 1).replace("[vout]", "[vc]"))
+        cur = "[vc]"
+    for k, (idx, t0, t1) in enumerate(shape_inputs):
+        when = ""
+        if t0 is not None or t1 is not None:                     # times of the recording → of this input
+            a = max(0.0, (t0 if t0 is not None else 0.0) - start)
+            b = (t1 - start) if t1 is not None else 1e9
+            when = f":enable='between(t,{a:.3f},{b:.3f})'"
+        chains.append(f"{cur}[{idx}:v]overlay=0:0:format=auto{when}[vs{k}]")
+        cur = f"[vs{k}]"
+    out_w, out_h = w, h
+    if edit.crop:
+        cw, ch, cx, cy = crop_px(edit.crop, w, h)
+        chains.append(f"{cur}crop={cw}:{ch}:{cx}:{cy}[vcr]")
+        cur, out_w, out_h = "[vcr]", cw, ch
+    flt, amap = audio_graph(info.audio_tracks, mix)
+    sound = mode != "gif" and amap is not None and info.audio_tracks > 0
+    asrc = None
+    if sound:
+        if flt:
+            chains.append(flt)
+            asrc = "[aout]"
+        else:
+            asrc = f"[{amap}]" if amap != "0:a?" else "[0:a:0]"
+    parts = edit.parts
+    n = len(parts)
+    vlabels = [f"[v{i}]" for i in range(n)]
+    alabels = [f"[a{i}]" for i in range(n)]
+    chains.append(f"{cur}split={n}" + "".join(f"[vp{i}]" for i in range(n)) if n > 1 else f"{cur}null[vp0]")
+    if sound:
+        chains.append(f"{asrc}asplit={n}" + "".join(f"[ap{i}]" for i in range(n)) if n > 1 else f"{asrc}anull[ap0]")
+    for i, p in enumerate(parts):
+        a, b = max(0.0, p.start - start), max(0.0, p.end - start)
+        chains.append(f"[vp{i}]trim=start={a:.3f}:end={b:.3f},setpts=(PTS-STARTPTS)/{p.speed:.4g}{vlabels[i]}")
+        if sound:
+            chains.append(f"[ap{i}]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS,{atempo(p.speed)}"
+                          f"{alabels[i]}")
+    if n > 1:
+        ins = "".join(vlabels[i] + (alabels[i] if sound else "") for i in range(n))
+        chains.append(f"{ins}concat=n={n}:v=1:a={1 if sound else 0}[vcat]" + ("[acat]" if sound else ""))
+        vcur, acur = "[vcat]", "[acat]" if sound else None
+    else:
+        vcur, acur = vlabels[0], alabels[0] if sound else None
+    total = edit.seconds()
+    post = []
+    args = []
+    if mode == "discord":
+        kbps, dh, fps = discord_plan(total, target_mb, Info(total, out_w, out_h, info.fps, info.audio_tracks))
+        post += [f"scale=-2:{dh}", f"fps={fps:g}"]
+        args += ["-c:v", "libx264", "-preset", "veryfast", "-b:v", f"{kbps}k", "-maxrate", f"{int(kbps * 1.1)}k",
+                 "-bufsize", f"{kbps * 2}k", "-pix_fmt", "yuv420p"] + (["-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"]
+                                                                      if sound else [])
+    elif mode == "gif":
+        post += [f"fps={GIF_FPS}", f"scale=-2:{min(int(gif_h), out_h) // 2 * 2}:flags=lanczos"]
+    else:
+        args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"] + (
+            ["-c:a", "aac", "-b:a", "160k"] if sound else [])
+        if out_w % 2 or out_h % 2:
+            post.append("scale=trunc(iw/2)*2:trunc(ih/2)*2")
+    fi, fo = max(0.0, edit.fade_in), max(0.0, edit.fade_out)
+    if fi > 0:
+        post.append(f"fade=t=in:st=0:d={min(fi, total):.3f}")
+    if fo > 0:
+        post.append(f"fade=t=out:st={max(0.0, total - fo):.3f}:d={min(fo, total):.3f}")
+    if mode == "gif":
+        chains.append(f"{vcur}{','.join(post)},split[g1][g2];[g1]palettegen=stats_mode=diff[gp];"
+                      f"[g2][gp]paletteuse=dither=bayer:bayer_scale=4[vout]")
+    else:
+        chains.append(f"{vcur}{','.join(post) or 'null'}[vout]")
+    if sound:
+        apost = []
+        if fi > 0:
+            apost.append(f"afade=t=in:st=0:d={min(fi, total):.3f}")
+        if fo > 0:
+            apost.append(f"afade=t=out:st={max(0.0, total - fo):.3f}:d={min(fo, total):.3f}")
+        chains.append(f"{acur}{','.join(apost) or 'anull'}[aend]")
+    return ";".join(chains), "[vout]", "[aend]" if sound else None, args
+
+
+def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | None = None, run=None,
+           target_mb: float = DEFAULT_TARGET_MB, info: Info | None = None, censor=None, censor_style: str = "pixel",
+           mix=None, gif_h: int = DEFAULT_GIF_H, retry: bool = True) -> tuple[bool, str]:
+    """1.12: write ``edit`` of ``path`` to ``out`` (mp4, or gif in mode "gif"). A simple edit (one part, nothing
+    else) goes through cut() – stream copy stays possible; anything else re-encodes (mode "copy" becomes "exact").
+    The drawings are drawn by annotate into one transparent PNG each (temporary, removed afterwards) and laid over
+    the picture for their time. Returns (ok, ffmpeg's last words on failure)."""
+    ffmpeg = ffmpeg or ffmpeg_exe()
+    if not ffmpeg:
+        return False, "ffmpeg fehlt"
+    if info is None or not info.ok:
+        info = probe(path, ffmpeg)
+    parts = clean_parts(edit.parts, info.duration if info.ok else 0.0)
+    if not parts:
+        return False, "Ende vor Anfang"
+    edit = Edit(parts, edit.crop, list(edit.shapes), edit.fade_in, edit.fade_out)
+    if edit.simple() and mode != "gif":
+        extra = {"censor": censor, "censor_style": censor_style} if censor else {}
+        return cut(path, parts[0].start, parts[0].end, out, mode, ffmpeg, run=run, target_mb=target_mb, info=info,
+                   retry=retry, mix=mix, **extra)
+    if not info.ok:
+        return False, "Video nicht lesbar"
+    if mode == "copy":
+        mode = "exact"
+    start = max(0.0, min(p.start for p in parts) - 0.0)
+    end = max(p.end for p in parts)
+    tmpdir = tempfile.mkdtemp(prefix="dbdms-edit-")
+    try:
+        args = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-t",
+                f"{end - start:.3f}", "-i", path]
+        shape_inputs = []
+        if edit.shapes:
+            from . import annotate
+            for k, shape in enumerate(edit.shapes):
+                png = os.path.join(tmpdir, f"shape{k}.png")
+                annotate.layer(info.width, info.height, [shape]).save(png)
+                args += ["-i", png]
+                shape_inputs.append((k + 1, shape.t0, shape.t1))
+        graph, vmap, amap, enc = edit_graph(edit, info, start, mode, target_mb, censor, censor_style, mix,
+                                            shape_inputs, gif_h)
+        args += ["-filter_complex", graph, "-map", vmap] + (["-map", amap] if amap else ["-an"]) + enc
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        args += (["-movflags", "+faststart"] if out.lower().endswith(".mp4") else []) + [out]
+        if run is None:
+            def run(a):
+                p = subprocess.run(a, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                   timeout=3600, creationflags=_flags())
+                return p.returncode, p.stderr or b""
+        try:
+            rc, err = run(args)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            rc, err = 1, str(e).encode()
+    finally:
+        for name in os.listdir(tmpdir):
+            try:
+                os.remove(os.path.join(tmpdir, name))
+            except OSError:
+                pass
+        try:
+            os.rmdir(tmpdir)
+        except OSError:
+            pass
+    ok = rc == 0 and os.path.exists(out) and os.path.getsize(out) > 0
+    if not ok:
+        try:
+            os.remove(out)
+        except OSError:
+            pass
+        return False, err[-300:].decode("utf-8", "replace").strip()
+    if mode == "discord" and retry and os.path.getsize(out) > target_mb * 1024 * 1024:
+        return export(path, edit, out, mode, ffmpeg, run, target_mb * 0.8, info, censor, censor_style, mix, gif_h,
+                      retry=False)
+    return True, ""
