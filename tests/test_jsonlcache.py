@@ -58,3 +58,15 @@ def test_history_hands_out_fresh_rounds_from_the_cache(tmp_path):
     assert [r.map_id for r in history.load(path)] == ["a", "b"] and history._LINES.tail > tail
     assert history.set_role(path, 100, "custom").custom                            # rewritten: read anew
     assert [r.custom for r in history.load(path)] == [True, False]
+
+
+def test_a_number_too_big_for_an_int_skips_only_its_line(tmp_path):
+    """1.12.3 (audit): ``Infinity`` (json.dumps writes it for a float inf) made int() raise OverflowError, which the
+    cache did not catch – one such line in official.jsonl and the whole file could not be read."""
+    from fogscout import official
+    path = str(tmp_path / "official.jsonl")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write('{"t": 1000.0, "map": "Coal Tower", "bp": 25000}\n')
+        fh.write('{"t": 2000.0, "map": "Coal Tower", "bp": Infinity}\n')
+        fh.write('{"t": 3000.0, "map": "Coal Tower", "bp": 12000}\n')
+    assert [m.t for m in official.load(path)] == [1000.0, 3000.0]

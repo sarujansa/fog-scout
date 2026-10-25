@@ -421,11 +421,14 @@ def load_index(folder: str) -> list[Recording]:
     out = []
     adopt_old_file(folder, OLD_INDEX, INDEX)
     try:
-        with open(os.path.join(folder, INDEX), encoding="utf-8") as f:
+        # 1.12.3: errors="replace" and only objects – a line cut inside a character or one that is no object
+        # made the whole index unreadable (pruning, marks and the recordings page failed on every call)
+        with open(os.path.join(folder, INDEX), encoding="utf-8", errors="replace") as f:
             for line in f:
                 try:
                     d = json.loads(line)
-                    out.append(Recording(**{k: v for k, v in d.items() if k in Recording.__dataclass_fields__}))
+                    if isinstance(d, dict):
+                        out.append(Recording(**{k: v for k, v in d.items() if k in Recording.__dataclass_fields__}))
                 except (ValueError, TypeError):
                     continue
     except OSError:
@@ -439,6 +442,8 @@ def save_index(folder: str, recs: list[Recording]):
     with open(tmp, "w", encoding="utf-8") as f:
         for r in sorted(recs, key=lambda r: r.t):
             f.write(json.dumps(asdict(r), ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())           # 1.12.3: on disk before the rename (see history._rewrite)
     os.replace(tmp, path)
 
 
@@ -588,11 +593,12 @@ def load_clips(cdir: str) -> list[Clip]:
     out = []
     adopt_old_file(cdir, OLD_CLIPS_INDEX, CLIPS_INDEX)
     try:
-        with open(os.path.join(cdir, CLIPS_INDEX), encoding="utf-8") as f:
+        with open(os.path.join(cdir, CLIPS_INDEX), encoding="utf-8", errors="replace") as f:   # 1.12.3: as load_index
             for line in f:
                 try:
                     d = json.loads(line)
-                    out.append(Clip(**{k: v for k, v in d.items() if k in Clip.__dataclass_fields__}))
+                    if isinstance(d, dict):
+                        out.append(Clip(**{k: v for k, v in d.items() if k in Clip.__dataclass_fields__}))
                 except (ValueError, TypeError):
                     continue
     except OSError:
@@ -608,6 +614,8 @@ def save_clips(cdir: str, clips: list[Clip]):
             d = asdict(c)
             d.pop("adopted", None)
             f.write(json.dumps(d, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, path)
 
 
@@ -1148,7 +1156,8 @@ class Recorder(threading.Thread):
                 elif cmd == "stop":
                     self._stop_later(arg)
                 elif cmd == "game":
-                    self._game_changed(arg)
+                    if arg != self._game:               # 1.12.3: the ticks of a busy thread queued it again and
+                        self._game_changed(arg)         # again – each reset the once-per-DBD-start guards
                 elif cmd == "overlay":
                     self._overlay_moved(arg)
                 elif cmd == "mark":

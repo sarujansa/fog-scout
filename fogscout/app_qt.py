@@ -172,6 +172,8 @@ def ui_state(w) -> dict:
         st["text"] = w.cget("text")
     if hasattr(w, "_dbdms_pil"):                  # a picture (dialog previews): the PIL image itself
         st["pil"] = w._dbdms_pil
+    if getattr(w, "_dbdms_danger", False):       # 1.12.3: deletes or resets data (ui.danger)
+        st["danger"] = True
     if isinstance(w, (ui.Button, ui.Checkbutton, ui.Radiobutton, ui.Combobox, ui.Entry)):
         st["enabled"] = not w.instate(["disabled"])
         tip = getattr(w, "_dbdms_tip", None)

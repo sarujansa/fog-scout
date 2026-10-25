@@ -227,7 +227,10 @@ def sync_packages(root: str, venv: str, run=None) -> list:
         except OSError:
             pass
         print(_t(root, "Installiere Pakete aus {name} ...", name=name))
-        args = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-r", os.path.join(root, name)]
+        # 1.12.3: wheels only – pip never builds a source package here (its setup.py would run as administrator);
+        # every pinned package has wheels for Windows and Python 3.12–3.14
+        args = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--only-binary=:all:", "-r",
+                os.path.join(root, name)]
         if no_deps:
             args.insert(-2, "--no-deps")
         if run(args) == 0:
