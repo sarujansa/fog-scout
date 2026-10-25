@@ -51,6 +51,8 @@ def thumbnail(path: str, box: tuple, cache_dir: str | None = None) -> Image.Imag
             pass                                      # unreadable cache file: made anew below
     with Image.open(path) as im:
         im.seek(0)
+        if im.format == "JPEG":                       # 1.12.2: screenshots – decoded at a reduced scale (draft)
+            im.draft("RGB", (max(1, box[0]) * 2, max(1, box[1]) * 2))
         pic = im.convert("RGBA")
     pic.thumbnail((max(1, box[0]), max(1, box[1])), Image.LANCZOS)      # as the tiles were drawn before
     if target:
@@ -89,8 +91,9 @@ class Loader:
     already in hand is finished first); ``take()`` in the window thread gives the finished ones as
     (path, width, height, RGBA bytes) – a broken picture comes as (path, 0, 0, b"")."""
 
-    def __init__(self, box: tuple, cache_dir: str | None = None):
+    def __init__(self, box: tuple, cache_dir: str | None = None, name: str = "map-thumbs"):
         self.box = tuple(box)
+        self.name = name
         self.cache_dir = cache_dir
         self._done: queue.Queue = queue.Queue()
         self._lock = threading.Condition()
@@ -105,7 +108,7 @@ class Loader:
             self._todo = list(paths)
             self._gen += 1
             if self._thread is None or not self._thread.is_alive():
-                self._thread = threading.Thread(target=self._run, daemon=True, name="map-thumbs")
+                self._thread = threading.Thread(target=self._run, daemon=True, name=self.name)
                 self._thread.start()
             self._lock.notify()
 

@@ -103,6 +103,7 @@ class Table(QTreeWidget):
         self._stretch = 0
         self.hidden = set()               # 1.3.6: column ids the user hid (right-click on the heading)
         self._hidden_map = {}             # setting hidden_columns: {column ids joined by "|": [hidden ids]}
+        self._hide_default = ()           # 1.12.2: columns hidden until the user shows them (the model's _dbdms_hide)
         self.header().setContextMenuPolicy(Qt.CustomContextMenu)
         self.header().customContextMenuRequested.connect(self._column_menu)
         self.header().setToolTip(_("Klick: sortieren · Rechtsklick: Spalten ein-/ausblenden"))
@@ -117,7 +118,7 @@ class Table(QTreeWidget):
     def set_hidden_map(self, hidden: dict):
         """The setting hidden_columns; this table takes the entry of its columns (now or once it has them)."""
         self._hidden_map = dict(hidden or {})
-        self.set_hidden(self._hidden_map.get(self.col_key(), ()))
+        self.set_hidden(self._hidden_map.get(self.col_key(), self._hide_default))
 
     def set_hidden(self, cols):
         self.hidden = set(cols or ())
@@ -187,7 +188,8 @@ class Table(QTreeWidget):
             self._shape = shape
             self._cols = [c[0] for c in cols]
             self._titles = [c[1] for c in cols]
-            self.hidden = set(self._hidden_map.get(self.col_key(), ()))
+            self._hide_default = tuple(st.get("hide", ()))
+            self.hidden = set(self._hidden_map.get(self.col_key(), self._hide_default))
             tree = bool(cols) and cols[0][0] == "#0"
             self.setRootIsDecorated(tree and any(r[1] > 0 for r in rows))
             self.setHeaderLabels([c[1] for c in cols])

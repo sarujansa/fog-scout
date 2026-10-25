@@ -76,7 +76,7 @@ def test_the_app_queues_rounds_on_request_and_clips_by_themselves(app_root, tmp_
         assert added[0].title == "Coal Tower – Nurse · 17.10.2026 21:40" and "10:00" in added[0].description
         assert app.rec_yt_btn.cget("state") == "disabled" and app._yt_mark(added[0].rel, "") == "…"   # queued once
         app._rec_render(force=True)
-        assert app.rec_table.item(iid, "values")[8] == "…"
+        assert app.rec_table.item(iid, "values")[6] == "▶…"                       # 1.12.2: the status column
         # clips: by hand through the clips tab …
         app.clip_table.selection_set("clip1.mp4")
         app._clip_buttons()

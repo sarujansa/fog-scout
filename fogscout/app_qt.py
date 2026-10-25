@@ -80,6 +80,11 @@ def ui_layout(w, reg: dict):
                 node["fit"] = not w.pack_info().get("expand")
             except ui.UIError:
                 node["fit"] = False
+        if isinstance(w, ui.Host):               # 1.12.2: packed with expand – takes the free height (gallery)
+            try:
+                node["grow"] = bool(w.pack_info().get("expand"))
+            except ui.UIError:
+                node["grow"] = False
         return node
     nodes = []
     grid = False
@@ -148,7 +153,7 @@ def ui_state(w) -> dict:
         stretch = next((i for i, c in enumerate(cols) if w.column(c[0], "stretch")), 0)   # e.g. the map name
         widths = [int(w.column(c[0], "width") or 0) for c in cols]
         st.update(columns=cols, rows=rows, selection=list(w.selection()), colours=colours, stretch=stretch,
-                  widths=widths,
+                  widths=widths, hide=list(getattr(w, "_dbdms_hide", ())),
                   selectable=str(w.cget("selectmode")) != "none" or hasattr(w, "_dbdms_click"),
                   multi=str(w.cget("selectmode")) == "extended",          # 1.5.4: several rows at once
                   menu=hasattr(w, "_dbdms_menu"))                         # 1.8.10: right-click actions
