@@ -1148,15 +1148,17 @@ def test_old_oled_theme_becomes_the_switch(tmp_path):
 
 
 def test_the_mouse_wheel_scrolls_the_page_not_a_setting(qapp):
-    """User: scrolling the page with the mouse wheel changed some random field (combo box, slider)."""
+    """User: scrolling the page with the mouse wheel changed some random field (combo box, slider). 1.11.13: the
+    guard sits on each such widget (``guard_wheel``), see test_the_mouse_wheel_never_changes_a_setting_on_any_page."""
     from PySide6.QtCore import QPoint, QPointF, Qt
     from PySide6.QtGui import QWheelEvent
     from PySide6.QtWidgets import QComboBox, QScrollArea, QSlider, QVBoxLayout, QWidget
+    from fogscout.qt_window import guard_wheel
     sa = QScrollArea()
     sa.setWidgetResizable(True)
     body = QWidget()
     lay = QVBoxLayout(body)
-    combo, slider = QComboBox(), QSlider()
+    combo, slider = guard_wheel(QComboBox()), guard_wheel(QSlider())
     combo.addItems(["a", "b", "c"])
     slider.setRange(0, 100)
     slider.setValue(50)
@@ -1931,3 +1933,43 @@ def test_the_overview_says_when_hwinfo_is_missing():
     assert "HWiNFO" in overview.overview_model(app, now, is_win=True).system_note
     app.sysmon.hwinfo_seen = True
     assert overview.overview_model(app, now, is_win=True).system_note == ""
+
+
+def _wheel(w):
+    """One notch of the mouse wheel over ``w``, as Qt delivers it."""
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+    pos = QPointF(w.rect().center())
+    ev = QWheelEvent(pos, QPointF(w.mapToGlobal(pos.toPoint())), QPoint(0, 0), QPoint(0, -120), Qt.NoButton,
+                     Qt.NoModifier, Qt.NoScrollPhase, False)
+    QApplication.sendEvent(w, ev)
+
+
+def test_the_mouse_wheel_never_changes_a_setting_on_any_page(qapp, keep):
+    """1.64.8: the wheel scrolls the page, never a combo box or slider. 1.11.13: the guard sits on those widgets
+    (``qt_common.guard_wheel``), no longer on the whole application, where every Qt event went through Python –
+    so every combo box and slider of every page must have it."""
+    from PySide6.QtWidgets import QAbstractSlider, QAbstractSpinBox, QComboBox, QWidget
+    from fogscout import qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.resize(1200, 800)
+    win.build_all()
+    widgets = [w for w in win.findChildren(QWidget) if isinstance(w, (QComboBox, QAbstractSlider, QAbstractSpinBox))
+               and not w.inherits("QScrollBar")]
+    assert sum(isinstance(w, QComboBox) for w in widgets) >= 10 and sum(
+        isinstance(w, QAbstractSlider) for w in widgets) >= 3
+    for w in widgets:
+        if isinstance(w, QComboBox):
+            w.clear()
+            w.addItems(["a", "b", "c"])
+            w.setCurrentIndex(1)
+            _wheel(w)
+            assert w.currentIndex() == 1, w.objectName() or w
+        else:
+            w.setRange(0, 100)
+            w.setValue(50)
+            _wheel(w)
+            assert w.value() == 50, w.objectName() or w
+    win.allow_close = True
+    win.close()

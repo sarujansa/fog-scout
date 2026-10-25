@@ -649,17 +649,19 @@ def fills_bars(frame, ignore=None) -> bool:
     if bar < 40:
         return False                                      # no bars (16:9 or narrower)
     y0, y1 = int(0.15 * H), int(0.85 * H)
-    lit = cv2.cvtColor(frame[y0:y1], cv2.COLOR_BGR2GRAY) > 8
-    use = np.ones(lit.shape, bool)
-    if ignore is not None:
-        ix0, iy0, ix1, iy1 = (int(v) for v in ignore)
-        use[max(0, iy0 - y0):max(0, iy1 - y0), max(0, ix0):max(0, ix1)] = False
+    box = None if ignore is None else tuple(int(v) for v in ignore)
 
-    def share(cols):
-        n = int(use[:, cols].sum())
-        return float(lit[:, cols][use[:, cols]].mean()) if n >= 0.2 * use[:, cols].size else None
+    def share(c0, c1):
+        # 1.11.13: only the bar's own columns are made grey (before: the whole picture; 1.7 → 0.7 ms per look)
+        lit = cv2.cvtColor(np.ascontiguousarray(frame[y0:y1, c0:c1]), cv2.COLOR_BGR2GRAY) > 8
+        use = np.ones(lit.shape, bool)
+        if box is not None:
+            ix0, iy0, ix1, iy1 = box
+            use[max(0, iy0 - y0):max(0, iy1 - y0), max(0, ix0 - c0):max(0, ix1 - c0)] = False
+        n = int(np.count_nonzero(use))
+        return np.count_nonzero(lit & use) / n if n and n >= 0.2 * use.size else None
 
-    parts = [s for s in (share(slice(0, bar)), share(slice(W - bar, W))) if s is not None]
+    parts = [s for s in (share(0, bar), share(W - bar, W)) if s is not None]
     if not parts:
         return False
     if len(parts) == 1:                                   # one bar hidden by our overlay: judge by the other
