@@ -5,7 +5,8 @@ draws them into a transparent picture that ffmpeg lays over the video). Pure PIL
 Positions are fractions of the picture (0..1), sizes fractions of its height, so a shape drawn on the preview lands
 on the same spot of the full picture. Every shape is drawn three times larger on a tile of its own and scaled down
 (smooth edges without drawing the whole picture three times larger), with a dark outline that keeps it readable on
-light and dark game pictures.
+light and dark game pictures. A big shape (a box around the whole picture) is drawn in squares, and only in those
+its stroke touches – its empty inside costs nothing.
 """
 from __future__ import annotations
 
@@ -21,6 +22,9 @@ TEXT_SIZE = 0.05                # text height as a fraction of the picture heigh
 SIZES = (0.003, 0.006, 0.010, 0.016)
 TEXT_SIZES = (0.03, 0.05, 0.08, 0.12)
 SS = 3                          # supersampling of a shape's tile
+CHUNK = 160                     # big shapes: drawn in squares this wide (px), only those the stroke touches
+CHUNK_FROM = 400 * 400          # ... from a covered area this large (a box over the whole picture: 800 → 60 ms)
+SEAM = 4                        # px drawn around each square and cut off after scaling (Lanczos reaches 3 px)
 OUTLINE = (0, 0, 0, 170)        # the dark rim around every stroke
 
 
@@ -155,6 +159,40 @@ def _draw_text(tile: Image.Image, shape: Shape, ox: float, oy: float, w: int, h:
                   stroke_fill=(0, 0, 0, 230))
 
 
+def _tile(shape: Shape, x0: int, y0: int, x1: int, y1: int, w: int, h: int) -> Image.Image:
+    """The shape's part inside the pixel box (x0, y0, x1, y1) of a ``w`` × ``h`` picture: drawn ``SS`` times
+    larger, scaled down."""
+    tile = Image.new("RGBA", ((x1 - x0) * SS, (y1 - y0) * SS), (0, 0, 0, 0))
+    if shape.kind == "text":
+        _draw_text(tile, shape, x0 * SS, y0 * SS, w, h)
+    else:
+        pts = [((px - x0) * SS, (py - y0) * SS) for px, py in _px(shape, w, h)]
+        s = max(1.0, shape.size * h) * SS
+        d = ImageDraw.Draw(tile)
+        _draw_strokes(d, shape, pts, s, OUTLINE, rim=True)
+        _draw_strokes(d, shape, pts, s, _rgba(shape.colour), rim=False)
+    return tile.resize((x1 - x0, y1 - y0), Image.LANCZOS)
+
+
+def _squares(shape: Shape, x0: int, y0: int, x1: int, y1: int, w: int, h: int) -> list:
+    """Pixel boxes covering (x0, y0, x1, y1) where the shape has anything: one box for small shapes, text and
+    freehand (its many curved joints cost more per square than the squares save); for big ones the ``CHUNK``
+    squares its stroke touches (found on a rough mask drawn once at full size)."""
+    if shape.kind in ("text", "free") or (x1 - x0) * (y1 - y0) < CHUNK_FROM:
+        return [(x0, y0, x1, y1)]
+    mask = Image.new("L", (x1 - x0, y1 - y0), 0)
+    pts = [(px - x0, py - y0) for px, py in _px(shape, w, h)]
+    _draw_strokes(ImageDraw.Draw(mask), shape, pts, max(1.0, shape.size * h) + 2, 255, rim=True)
+    out = []
+    for cy in range(y0, y1, CHUNK):
+        for cx in range(x0, x1, CHUNK):
+            box = (cx, cy, min(x1, cx + CHUNK), min(y1, cy + CHUNK))
+            if mask.crop((max(x0, box[0] - SEAM) - x0, max(y0, box[1] - SEAM) - y0,
+                          min(x1, box[2] + SEAM) - x0, min(y1, box[3] + SEAM) - y0)).getbbox():
+                out.append(box)
+    return out
+
+
 def draw(img: Image.Image, shapes, t: float | None = None) -> Image.Image:
     """``img`` (any mode) with ``shapes`` on it, as RGBA; ``t`` (video): only shapes shown at that time."""
     out = img.convert("RGBA")
@@ -169,17 +207,15 @@ def draw(img: Image.Image, shapes, t: float | None = None) -> Image.Image:
         x1, y1 = min(w, x1 + 1), min(h, y1 + 1)
         if x1 <= x0 or y1 <= y0:
             continue
-        tile = Image.new("RGBA", ((x1 - x0) * SS, (y1 - y0) * SS), (0, 0, 0, 0))
-        if shape.kind == "text":
-            _draw_text(tile, shape, x0 * SS, y0 * SS, w, h)
-        else:
-            pts = [((px - x0) * SS, (py - y0) * SS) for px, py in _px(shape, w, h)]
-            s = max(1.0, shape.size * h) * SS
-            d = ImageDraw.Draw(tile)
-            _draw_strokes(d, shape, pts, s, OUTLINE, rim=True)
-            _draw_strokes(d, shape, pts, s, _rgba(shape.colour), rim=False)
-        tile = tile.resize((x1 - x0, y1 - y0), Image.LANCZOS)
-        out.alpha_composite(tile, (x0, y0))
+        boxes = _squares(shape, x0, y0, x1, y1, w, h)
+        if len(boxes) == 1:
+            out.alpha_composite(_tile(shape, *boxes[0], w, h), boxes[0][:2])
+            continue
+        for bx0, by0, bx1, by1 in boxes:                   # each square with a seam around it, cut off again
+            sx0, sy0 = max(x0, bx0 - SEAM), max(y0, by0 - SEAM)
+            sx1, sy1 = min(x1, bx1 + SEAM), min(y1, by1 + SEAM)
+            part = _tile(shape, sx0, sy0, sx1, sy1, w, h).crop((bx0 - sx0, by0 - sy0, bx1 - sx0, by1 - sy0))
+            out.alpha_composite(part, (bx0, by0))
     return out
 
 

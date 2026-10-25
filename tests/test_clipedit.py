@@ -778,6 +778,8 @@ def test_the_graph_cuts_parts_crops_draws_and_fades_in_that_order():
     g, v, a, enc = clipedit.edit_graph(e, info, start=2.0, shape_inputs=[(1, 3.0, 5.0)])
     assert v == "[vout]" and a == "[aend]" and "libx264" in enc
     assert "overlay=0:0:format=auto:enable='between(t,1.000,3.000)'" in g      # 3–5 s of the recording, input from 2
+    placed, _v, _a, _e = clipedit.edit_graph(e, info, 2.0, shape_inputs=[(1, None, None, 40, 12)])
+    assert "[1:v]overlay=40:12:format=auto[vs0]" in placed                    # a drawing cut to its size, at its spot
     assert g.index("overlay") < g.index("crop=160:180:80:0") < g.index("split=2")   # drawn on the whole picture
     assert "trim=start=0.000:end=2.000" in g and "trim=start=4.000:end=8.000,setpts=(PTS-STARTPTS)/2" in g
     assert "atempo=2" in g and "concat=n=2:v=1:a=1" in g
@@ -805,6 +807,41 @@ def test_an_edit_with_parts_tempo_crop_drawings_and_fades_is_written(clip, tmp_p
     plain = clipedit.frame_at(clip, 1.75, 180, None, FF).crop((80, 0, 240, 180))
     assert frame is not None and plain is not None
     assert sum(abs(x - y) for x, y in zip(frame.convert("L").tobytes(), plain.convert("L").tobytes())) > 50_000
+
+
+def test_drawings_go_to_ffmpeg_cut_to_their_size_and_land_on_their_spot(clip, tmp_path):
+    """1.12 optimisation: each drawing is a PNG only as large as the drawing, laid at its spot (a full-size picture
+    per drawing cost ffmpeg as much again); an empty text is left out. The arrow still lands where annotate draws
+    it on the whole picture."""
+    from PIL import Image, ImageChops
+    from fogscout import annotate
+    arrow = annotate.Shape("arrow", [(0.55, 0.2), (0.8, 0.7)], "#ff4d4d", 0.02)
+    e = clipedit.Edit([clipedit.Part(1, 3)], shapes=[arrow, annotate.Shape("text", [(0.1, 0.1)], text="  ")])
+    info = clipedit.probe(clip, FF)
+    seen = []
+
+    def run(args):
+        pngs = [args[i + 1] for i, a in enumerate(args) if a == "-i" and args[i + 1].endswith(".png")]
+        seen.extend(Image.open(p).size for p in pngs)
+        seen.append(next(args[i + 1] for i, a in enumerate(args) if a == "-filter_complex"))
+        import subprocess
+        r = subprocess.run(args, capture_output=True)
+        return r.returncode, r.stderr
+    out = str(tmp_path / "drawn.mp4")
+    ok, why = clipedit.export(clip, e, out, "exact", FF, run=run, info=info)
+    assert ok, why
+    (pw, ph), graph = seen
+    x0, y0, _x1, _y1 = annotate.layer(info.width, info.height, [arrow]).getbbox()
+    assert pw < info.width // 2 and ph < info.height and f"overlay={x0}:{y0}:" in graph
+    frame = clipedit.frame_at(out, 1.0, 180, None, FF).convert("RGB")
+    plain = clipedit.frame_at(clip, 2.0, 180, None, FF).convert("RGB")
+    want = annotate.draw(plain, [arrow]).convert("RGB")
+    mask = annotate.layer(*frame.size, [arrow]).getchannel("A").point(lambda v: 255 if v > 200 else 0)
+
+    def off(a, b):                                                       # mean difference where the arrow is
+        d = ImageChops.difference(a, b).convert("L")
+        return sum(ImageChops.multiply(d, mask).tobytes()) / max(1, mask.histogram()[255])
+    assert off(frame, want) < off(frame, plain) / 3                     # the arrow, and in the right place
 
 
 def test_a_gif_and_a_simple_edit(clip, tmp_path):

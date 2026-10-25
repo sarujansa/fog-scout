@@ -158,6 +158,7 @@ def test_the_image_window_crops_turns_draws_censors_saves_a_copy_and_undoes(tmp_
         win._adjust_apply()
         assert win.edit.brightness == pytest.approx(1.5)
         win.save()
+        win.wait_saved()
         assert saved and saved[0].startswith(str(tmp_path / "out")) and saved[0].endswith(" – bearbeitet.png")
         out = Image.open(saved[0])
         assert out.size[0] == out.size[1]                                 # the square crop, turned picture
@@ -186,3 +187,91 @@ def test_a_picture_that_cannot_be_read_says_so(tmp_path):
         assert "nicht lesbar" in win.status.text() and not win.save_btn.isEnabled() and win.result() is None
     finally:
         win.close()
+
+
+def test_a_big_shape_is_drawn_only_where_its_stroke_is_and_looks_the_same(monkeypatch):
+    """1.12 optimisation: a box around the whole picture was one tile three times the picture (3440×1440: 0.8 s,
+    ~180 MB); now only the squares its stroke touches are drawn – the same picture (an ellipse may differ in single
+    edge pixels: PIL rounds its curve per square)."""
+    from PIL import ImageChops
+    img = Image.new("RGB", (1600, 900), (90, 90, 90))
+    box = annotate.Shape("rect", [(0.05, 0.05), (0.95, 0.95)], "#ff4d4d", 0.008)
+    ring = annotate.Shape("ellipse", [(0.1, 0.1), (0.9, 0.9)], "#4dabff", 0.008)
+    line = annotate.Shape("line", [(0.0, 0.0), (1.0, 1.0)], size=0.01)
+    squares = annotate._squares(box, 0, 0, 1600, 900, 1600, 900)
+    grid = len(range(0, 1600, annotate.CHUNK)) * len(range(0, 900, annotate.CHUNK))
+    assert 1 < len(squares) < grid * 0.75                                 # the empty inside is skipped
+    assert annotate._squares(annotate.Shape("free", [(0, 0), (1, 1)]), 0, 0, 1600, 900, 1600, 900) == \
+        [(0, 0, 1600, 900)]                                               # freehand: one tile (cheaper)
+    split = annotate.draw(img, [box, ring, line])
+    monkeypatch.setattr(annotate, "CHUNK_FROM", 10 ** 12)
+    whole = annotate.draw(img, [box, ring, line])
+    diff = ImageChops.difference(split, whole).convert("L")
+    off = diff.point(lambda v: 255 if v > 24 else 0).histogram()[255]
+    assert ImageChops.difference(annotate.draw(img, [box]), annotate.draw(img, [box])).getbbox() is None
+    assert off < 0.002 * 1600 * 900 and max(diff.tobytes()) < 128        # no seams, only stray edge pixels
+
+
+def test_moving_a_drawing_redraws_only_that_drawing_on_the_canvas():
+    """1.12 optimisation: while a drawing is drawn or moved, the others stay one cached picture (10 drawings:
+    59 → 5 ms per mouse move on the test machine)."""
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtGui import QImage
+    from fogscout import qt_clip, qt_window
+    app = qt_window.application()
+    view = qt_clip.PreviewView()
+    try:
+        view.resize(640, 360)
+        view.set_frame(QImage(320, 180, QImage.Format_RGB888))
+        view.show()
+        view.set_shapes([annotate.Shape("arrow", [(0.1 * i, 0.1), (0.1 * i + 0.05, 0.4)]) for i in range(8)])
+        view.repaint()
+        app.processEvents()
+        cached = view._layer
+        assert cached is not None
+        new = annotate.Shape("rect", [(0.3, 0.5), (0.4, 0.6)])
+        view._drag = ("shape_new", (0.3, 0.5), new)
+        for k in range(5):
+            new.pts[1] = (0.4 + 0.02 * k, 0.6)
+            view._preview_new = new
+            view.repaint()
+        assert view._layer is cached and view._active_shape() is new       # the still ones were not drawn again
+        view._drag, view._preview_new = None, None                         # released (as _release_extra does)
+        view.shape_sel = 2
+        view._drag = ("shape_move", (0.2, 0.1), view.shapes[2])
+        view.repaint()
+        assert view._active_shape() is view.shapes[2]
+        assert view._layer is not cached and repr(view.shapes[2]) not in view._layer[0][2]   # left the cached picture
+        view._drag = None
+    finally:
+        view.close()
+
+
+def test_the_canvas_shows_a_smaller_copy_but_saving_keeps_every_pixel(tmp_path):
+    """1.12 optimisation: a large screenshot is turned and coloured on a copy of at most PREVIEW_MAX on every
+    change (3440×1440: ~40 → 9 ms per slider step); crop ratios and the saved picture use the original."""
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from fogscout import qt_image, qt_window
+    app = qt_window.application()
+    src = tmp_path / "big.png"
+    _picture(qt_image.PREVIEW_MAX + 480, 1000).save(src)
+    saved = []
+    win = qt_image.ImageWindow(str(src), str(tmp_path / "out"), on_saved=saved.append)
+    try:
+        win.show()
+        app.processEvents()
+        assert max(win.preview.size) == qt_image.PREVIEW_MAX and win.original.size == (qt_image.PREVIEW_MAX + 480,
+                                                                                         1000)
+        assert win.canvas.image_size() == win.original.size and win.canvas._img.width() == qt_image.PREVIEW_MAX
+        win.turn(1)
+        assert win.canvas.image_size() == (1000, qt_image.PREVIEW_MAX + 480)
+        win.save()
+        assert not win.save_btn.isEnabled() and win.status.text() == "Speichert …"   # in a thread, window free
+        win.save()                                                         # a second click while saving: ignored
+        win.wait_saved()
+        assert win.save_btn.isEnabled() and len(saved) == 1
+        assert Image.open(saved[0]).size == (1000, qt_image.PREVIEW_MAX + 480)
+    finally:
+        win.close()
+    small = qt_image.ImageWindow.__dict__["_preview_copy"].__func__(_picture(400, 200))
+    assert small.size == (400, 200)
