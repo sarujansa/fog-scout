@@ -1570,14 +1570,20 @@ def test_the_overlay_preview_and_its_tools_sit_side_by_side_on_a_wide_page(qapp,
     assert page.controls["ov.edit"][1].parentWidget() is side.cards[1]
     tabs = page.controls["ov.look"][1]
     assert split.cards[1].isAncestorOf(tabs) and split.cards[0].isAncestorOf(side)
-    page.show()
-    page.resize(1400, 800)
-    qapp.processEvents()
+    # the widths decided directly – a real window is limited to the screen (the Windows runner's is smaller)
+    split.arrange(qt_pages.SPLIT_FROM + 200)
+    side.arrange((qt_pages.SPLIT_FROM + 200) // 2)
     assert split.beside() and not side.beside()                    # tabs beside, preview above the tools
-    assert side.cards[0].y() < side.cards[1].y() and split.cards[0].x() < split.cards[1].x()
-    page.resize(950, 700)
+    split.arrange(950)
+    side.arrange(950)
+    assert not split.beside() and side.beside()                    # as before 1.11.14
+    split.arrange(600)
+    side.arrange(600)
+    assert not split.beside() and not side.beside()
+    page.show()                  # and in a real window, as wide as fits a Windows runner's screen (1100 did before)
+    page.resize(1100, 700)
     qapp.processEvents()
-    assert not split.beside() and side.beside() and side.cards[0].x() < side.cards[1].x()     # as before 1.11.14
+    assert not split.beside() and side.beside() and side.cards[0].x() < side.cards[1].x()
     page.resize(600, 700)
     qapp.processEvents()
     assert not split.beside() and not side.beside() and side.cards[0].y() < side.cards[1].y()
