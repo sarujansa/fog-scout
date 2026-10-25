@@ -213,6 +213,10 @@ class OverlayTab:
         self._reg("ov.grow", ui.Checkbutton(
             pos, text=_("Karte darf grösser als der Balken werden"),
             variable=self.grow_var, command=self._overlay_flags_changed)).pack(anchor="w", pady=(2, 0))
+        self.fill_bar_var = ui.BooleanVar(value=o.get("fill_bar", False))
+        self._reg("ov.fill_bar", ui.Checkbutton(
+            pos, text=_("Karte füllt den Balken aus"),
+            variable=self.fill_bar_var, command=self._overlay_flags_changed)).pack(anchor="w", pady=(2, 0))
         for key, text, var in (("show_map", N_("Karte anzeigen"), self.show_map_var),
                                ("focus", N_("Nur zeigen, wenn DBD das aktive Fenster ist"), self.focus_var),
                                ("caption", N_("Map-Namen über der Karte anzeigen"), self.caption_var),
@@ -557,6 +561,7 @@ class OverlayTab:
         o["show_server"] = bool(self.server_show_var.get())
         o["keep_in_bar"] = bool(self.keep_bar_var.get())
         o["grow_past_bar"] = bool(self.grow_var.get())
+        o["fill_bar"] = bool(self.fill_bar_var.get())
         o["show_waiting"] = bool(self.waiting_var.get())
         if bool(self.record_var.get()) != o.get("show_record", False):
             o["show_record"] = bool(self.record_var.get())

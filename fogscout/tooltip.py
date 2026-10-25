@@ -37,6 +37,9 @@ TIPS = {
         "Erlaubt jede Kartengrösse: Ist die Karte breiter als der schwarze Balken, bleibt sie an dessen Aussenrand "
         "und ragt ins Spielbild. Aus: Die Karte wird nie breiter als der Balken (auf 3440×1440 etwa 31 % der "
         "Bildhöhe).",
+    "Karte füllt den Balken aus":
+        "Die Karte wird so gross, dass sie den schwarzen Balken von links bis rechts ausfüllt (bis auf den Abstand "
+        "zum Rand); der Grössen-Regler gilt dann nicht. Eine hohe Karte stoppt an der Bildhöhe.",
     "Meldung testen": "Zeigt die Meldung und spielt den Ton – so siehst du, wo sie erscheint.",
     "Killer": "Diese Runde als Killer-Runde zählen (falls die Erkennung falsch lag).",
     "Zuordnen": "Der markierte Name (Skin oder neuer Killer) zählt ab jetzt als der gewählte Killer – auch in allen "

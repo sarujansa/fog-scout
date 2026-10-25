@@ -1901,6 +1901,33 @@ def test_the_maps_lines_never_sit_on_the_map_in_any_layout(app_root):
         app.quit()
 
 
+def test_a_map_that_fills_the_bar_is_as_wide_as_the_bar(app_root):
+    """1.11.12 (user: "die linke Map links und rechts ausfüllt"): fill_bar – the map in the left bar takes its full
+    width (minus the margin), whatever the size slider says; off: the slider's size as before."""
+    from fogscout import layout
+    from fogscout.app import App
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._game_rect = lambda: (0, 0, 3440, 1440)
+        o = app.settings["overlay"]
+        name = next(m for m in app.catalog.maps if "midwich" not in m.lower())
+        avail = layout.max_width(440, int(1440 * o["margin"]))
+        widths = {}
+        for fill in (False, True):
+            o.update(anchor="auto", height=0.2, fade=False, fill_bar=fill, show_timer=False, show_server=False)
+            app._force_until = time.time() + 30
+            app.show_map(name, 1, "manual")
+            app._place_overlay()
+            x, _y, w, _h = app._last_place
+            widths[fill] = w
+            assert x >= 0 and x + w <= 440
+        assert widths[False] < avail - 40
+        edge = app.overlay.backdrop_pad(app._text_height(1440))
+        assert avail - 4 <= widths[True] <= avail + 2 * edge
+    finally:
+        app.quit()
+
+
 def test_an_element_dropped_on_the_map_moves_off_it_and_keeps_out_of_discords_widgets(app_root):
     """1.8.25 (user screenshots: the lines dragged onto Midwich's top floor; Discord's overlay): an element at an
     own place that lies on the map moves to the nearest free place – shown there at once and in later ticks

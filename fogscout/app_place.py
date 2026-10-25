@@ -226,6 +226,10 @@ class OverlayPlacement:
         # 1.65.4 (user: "die Grösse beliebig ändern"): a map bigger than the bar may reach into the game picture;
         # it stays at the bar's outer edge
         grow = bool(o.get("grow_past_bar", False)) and side in ("left", "right")
+        if side and not grow and o.get("fill_bar", False):
+            # 1.11.12 (user: "die linke Map links und rechts ausfüllt"): as big as the room allows – the bar's width
+            # below then sets the size (a tall map stops at the room's height)
+            height = max(40, min(int(gh * MAX_HEIGHT), gh - drop - lift - 2 * margin))
         text_h = self._text_height(gh)
         edge = min(self.overlay.backdrop_pad(text_h), max(0, margin - 2))   # the dark area may use the margin
         if side and not grow:
