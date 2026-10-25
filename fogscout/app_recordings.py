@@ -60,6 +60,11 @@ class RecordingsTab:
         ui.Label(f, textvariable=self.rec_summary_var, style="Big.TLabel", wraplength=560).pack(anchor="w")
         self.rec_hint_var = ui.StringVar(value="")
         ui.Label(f, textvariable=self.rec_hint_var, style="Dim.TLabel", wraplength=560).pack(anchor="w")
+        # 1.11.14 (user picked "leere Zustände mit Handlung"): nothing recorded yet – the next step instead of an empty
+        # table (the button while recording is off, the note while it is on)
+        self.rec_setup_btn = ui.Button(f, text=_("Aufnahmen einrichten …"), command=self._reveal_rec)
+        self.rec_empty_var = ui.StringVar(value="")
+        self.rec_empty_label = ui.Label(f, textvariable=self.rec_empty_var, wraplength=560)
 
         # 1.8.13 (user: clips list, "filtern nach Killer/Survivor"): the rounds and the clips on sub-tabs
         self.rec_nb = ui.Notebook(f)
@@ -100,17 +105,23 @@ class RecordingsTab:
 
         row = ui.Frame(f)
         row.pack(fill="x", pady=(0, 6))          # above the table, like the server tab: seen without scrolling
-        self.rec_play_btn = ui.Button(row, text=_("Abspielen"), command=self._rec_play, state="disabled")
+        # 1.11.14 (user picked "nur bei Auswahl"): the buttons for a marked recording only show once one is marked –
+        # six greyed-out buttons were noise; until then a line says what marking one offers
+        self.rec_sel_hint = ui.Label(row, text=_("Aufnahme markieren: abspielen, Clip schneiden, behalten, löschen "
+                                                 "– oder Rechtsklick."), style="Dim.TLabel")
+        self.rec_sel_hint.pack(side="left")
+        sel = self.rec_sel_row = ui.Frame(row)
+        self.rec_play_btn = ui.Button(sel, text=_("Abspielen"), command=self._rec_play, state="disabled")
         self.rec_play_btn.pack(side="left")
-        self.rec_show_btn = ui.Button(row, text=_("Im Explorer zeigen"), command=self._rec_explorer, state="disabled")
+        self.rec_show_btn = ui.Button(sel, text=_("Im Explorer zeigen"), command=self._rec_explorer, state="disabled")
         self.rec_show_btn.pack(side="left", padx=(6, 0))
-        self.rec_keep_btn = ui.Button(row, text=_("Behalten"), command=self._rec_keep, state="disabled")
+        self.rec_keep_btn = ui.Button(sel, text=_("Behalten"), command=self._rec_keep, state="disabled")
         self.rec_keep_btn.pack(side="left", padx=(6, 0))
-        self.rec_delete_btn = ui.Button(row, text=_("Aufnahme löschen"), command=self._rec_delete, state="disabled")
+        self.rec_delete_btn = ui.Button(sel, text=_("Aufnahme löschen"), command=self._rec_delete, state="disabled")
         self.rec_delete_btn.pack(side="left", padx=(6, 0))
-        self.rec_clip_btn = ui.Button(row, text=_("Clip bearbeiten …"), command=self._rec_clip, state="disabled")   # 1.5.1
+        self.rec_clip_btn = ui.Button(sel, text=_("Clip bearbeiten …"), command=self._rec_clip, state="disabled")   # 1.5.1
         self.rec_clip_btn.pack(side="left", padx=(6, 0))
-        self.rec_yt_btn = ui.Button(row, text=_("Auf YouTube hochladen"), command=self._rec_youtube, state="disabled")  # 1.10
+        self.rec_yt_btn = ui.Button(sel, text=_("Auf YouTube hochladen"), command=self._rec_youtube, state="disabled")  # 1.10
         self.rec_yt_btn.pack(side="left", padx=(6, 0))
         self._clip_windows = []
         self.rec_folder_btn = ui.Button(row, text=_("Aufnahmeordner öffnen"), command=self._rec_open_folder)
@@ -174,17 +185,21 @@ class RecordingsTab:
 
         row = ui.Frame(f)
         row.pack(fill="x", pady=(0, 6))
-        self.clip_play_btn = ui.Button(row, text=_("Clip abspielen"), command=self._clip_play, state="disabled")
+        self.clip_sel_hint = ui.Label(row, text=_("Clip markieren: abspielen, im Editor öffnen, löschen – oder "
+                                                  "Rechtsklick."), style="Dim.TLabel")          # 1.11.14
+        self.clip_sel_hint.pack(side="left")
+        sel = self.clip_sel_row = ui.Frame(row)
+        self.clip_play_btn = ui.Button(sel, text=_("Clip abspielen"), command=self._clip_play, state="disabled")
         self.clip_play_btn.pack(side="left")
-        self.clip_edit_btn = ui.Button(row, text=_("Clip im Editor öffnen …"), command=self._clip_edit,
+        self.clip_edit_btn = ui.Button(sel, text=_("Clip im Editor öffnen …"), command=self._clip_edit,
                                        state="disabled")                   # 1.8.60
         self.clip_edit_btn.pack(side="left", padx=(6, 0))
-        self.clip_show_btn = ui.Button(row, text=_("Clip im Explorer zeigen"), command=self._clip_explorer,
+        self.clip_show_btn = ui.Button(sel, text=_("Clip im Explorer zeigen"), command=self._clip_explorer,
                                        state="disabled")
         self.clip_show_btn.pack(side="left", padx=(6, 0))
-        self.clip_delete_btn = ui.Button(row, text=_("Clip löschen"), command=self._clip_delete, state="disabled")
+        self.clip_delete_btn = ui.Button(sel, text=_("Clip löschen"), command=self._clip_delete, state="disabled")
         self.clip_delete_btn.pack(side="left", padx=(6, 0))
-        self.clip_yt_btn = ui.Button(row, text=_("Auf YouTube hochladen"), command=self._clip_youtube, state="disabled")
+        self.clip_yt_btn = ui.Button(sel, text=_("Auf YouTube hochladen"), command=self._clip_youtube, state="disabled")
         self.clip_yt_btn.pack(side="left", padx=(6, 0))                                                      # 1.10
         self.clip_folder_btn = ui.Button(row, text=_("Clips-Ordner öffnen"), command=self._clip_open_folder)
         self.clip_folder_btn.pack(side="right")
@@ -284,6 +299,24 @@ class RecordingsTab:
             t.selection_set(keep[0])
         self._rec_buttons()
         self._clips_render(folder, recs)
+        self._rec_empty_shown(folder, recs)
+
+    def _rec_empty_shown(self, folder, recs):
+        """1.11.14: no recording and no clip – "Aufnahmen einrichten …" (recording off) or a note on when the first
+        one comes, instead of the tabs with their empty tables."""
+        on = bool(self.settings.get("rec_on", False))
+        empty = not recs and not getattr(self, "_clip_count", 0)
+        self.rec_empty_var.set(_("Noch keine Aufnahmen – OBS nimmt ab dem nächsten Map-Banner auf. Runden erscheinen "
+                                 "hier, Clips (F8 oder aus dem Editor) im Reiter „Clips“.") if on and empty else "")
+        for w, show in ((self.rec_setup_btn, not on and empty), (self.rec_empty_label, on and empty),
+                        (self.rec_nb, not empty)):
+            if show and not w.winfo_manager():
+                if w is self.rec_nb:
+                    w.pack(fill="both", expand=True, pady=(8, 0))
+                else:
+                    w.pack(anchor="w", pady=(8, 0), before=self.rec_nb)
+            elif not show and w.winfo_manager():
+                w.pack_forget()
 
     # ============================================================ clips (1.8.13)
     def _clips_render(self, folder=None, recs=None):
@@ -292,6 +325,7 @@ class RecordingsTab:
                 else None
             recs = obsrec.load_index(folder) if folder else []
         clips = obsrec.list_clips(obsrec.clips_dir(folder), recs) if folder else []
+        self._clip_count = len(clips)
         j = self._joined()
         by_t = {r.t: r for r in j.rounds}
         for c in clips:                                    # the round knows the role when the recording did not
@@ -358,6 +392,7 @@ class RecordingsTab:
         c = self._clip_selected()
         self.clip_edit_btn.configure(state="normal" if c is not None and c.kind != "still" else "disabled")
         self.clip_yt_btn.configure(state="normal" if c is not None and self._clip_uploadable(c) else "disabled")
+        self._sel_buttons(self.clip_sel_row, self.clip_sel_hint, c is not None)
         self._clip_preview_follow(c)
 
     @staticmethod
@@ -571,6 +606,7 @@ class RecordingsTab:
             b.configure(state=state)
         self.rec_keep_btn.configure(text=_("Nicht mehr behalten") if r is not None and r.keep else _("Behalten"))
         self.rec_yt_btn.configure(state="normal" if r is not None and self._rec_uploadable(r) else "disabled")
+        self._sel_buttons(self.rec_sel_row, self.rec_sel_hint, r is not None)
         self._rec_preview_follow(r)
         if r is None:
             self.rec_marks_var.set("")
@@ -578,6 +614,16 @@ class RecordingsTab:
             self.rec_marks_var.set(_("Marken: {list}", list=" · ".join(fmt_duration(m) for m in r.marks)))
         else:
             self.rec_marks_var.set(_("Keine Marken – F8 während der Runde setzt eine."))
+
+    @staticmethod
+    def _sel_buttons(row, hint, marked: bool):
+        """1.11.14: the buttons of a marked row, or the hint line while none is marked."""
+        if marked and not row.winfo_manager():
+            hint.pack_forget()
+            row.pack(side="left")
+        elif not marked and row.winfo_manager():
+            row.pack_forget()
+            hint.pack(side="left")
 
     def _rec_menu_items(self):
         """1.8.10: right click on a recording – the buttons above the table, without looking for them."""
