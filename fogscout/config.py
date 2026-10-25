@@ -148,6 +148,7 @@ DEFAULTS = {
     "rec_volume": "",                   # the recording folder's drive (volume GUID) + path on it + last path
     "rec_rel": "",
     "rec_folder": "",
+    "shots_folder": "",          # 1.12: the user's own screenshot folder instead of Steam's (empty = Steam's DBD folder)
     "rec_limit_gb": 0,                  # 0 = the whole drive (older recordings go when it fills up)
     "rec_pre": False,                   # save OBS's replay buffer at the banner (1.5.5: off – it holds the lobby)
     "rec_tail_s": 5,                    # 1.4.1: seconds recorded after the detected end (result screen)
@@ -241,7 +242,7 @@ def export_settings(data: dict, path: str) -> None:
 # per-PC values that must not come along from a backup (other folder / other machine)
 LOCAL_KEYS = ("setup_version", "setup_root", "qt_geometry", "official_dir", "layouts", "layout_key",
               "rec_volume", "rec_rel", "rec_folder", "rec_password", "spotify_token", "seen_version",
-              "youtube_client_secret", "youtube_token", "youtube_queue", "youtube_quota")
+              "youtube_client_secret", "youtube_token", "youtube_queue", "youtube_quota", "shots_folder")
 
 
 def reset_data(current: dict) -> dict:

@@ -8,15 +8,17 @@ QWidget the App opens from the tab "Aufnahmen" (app_recordings._rec_clip)."""
 from __future__ import annotations
 
 import logging
+import math
 import os
 import threading
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QProgressBar,
-                               QPushButton, QSizePolicy, QSlider, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
+                               QListWidget, QProgressBar, QPushButton, QSizePolicy, QSlider, QTabWidget, QVBoxLayout,
+                               QWidget)
 
-from . import clipedit, obsrec, qt_theme
+from . import annotate, clipedit, imageedit, obsrec, qt_theme
 from .i18n import N_, _
 from .qt_common import guard_wheel
 
@@ -39,9 +41,18 @@ ABSENT_TIPS = {"other": N_("In OBS gab es bei dieser Aufnahme keine Hintergrund-
                          "ausgeschaltet.")}
 MODE_LABELS = {"copy": N_("Schnell (an Schlüsselbildern, Anfang bis zu ein paar Sekunden früher)"),
                "exact": N_("Genau (Bild neu kodiert, dauert etwas)"),
-               "discord": N_("Für Discord (passt unter die Zielgrösse)")}
-KEY_HINT = N_("Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg 1 Bild · I/O Start/Ende · M Marke · "
-              "Pos1/Ende Anfang/Schluss · Entf Kasten weg · Esc schliessen")
+               "discord": N_("Für Discord (passt unter die Zielgrösse)"),
+               "gif": N_("GIF (ohne Ton, für Chats)")}                                   # 1.12
+SPEED_LABELS = {0.25: "×0.25", 0.5: "×0.5", 0.75: "×0.75", 1.0: N_("normal"), 1.5: "×1.5", 2.0: "×2", 4.0: "×4"}
+CROP_LABELS = {"none": N_("Kein Ausschnitt"), "free": N_("Frei"), "16:9": "16:9", "9:16": N_("9:16 (Hochformat)"),
+               "1:1": "1:1", "4:5": "4:5"}
+DRAW_TOOLS = (("arrow", N_("Pfeil")), ("line", N_("Linie")), ("rect", N_("Rahmen")), ("ellipse", N_("Kreis")),
+              ("free", N_("Freihand")), ("text", N_("Text")))
+SIZE_LABELS = (N_("Dünn"), N_("Mittel"), N_("Dick"), N_("Sehr dick"))
+SHOW_FOR = ((None, N_("Immer")), (1.0, N_("1 s ab Abspielkopf")), (3.0, N_("3 s ab Abspielkopf")),
+            (5.0, N_("5 s ab Abspielkopf")), (10.0, N_("10 s ab Abspielkopf")))
+KEY_HINT = N_("Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg 1 Bild · I/O Start/Ende · A Abschnitt · M Marke · "
+              "Pos1/Ende Anfang/Schluss · Entf Kasten/Zeichnung weg · Esc schliessen")
 STEP_SMALL, STEP_BIG = 1.0, 5.0
 LOAD_TIMEOUT_MS = 30000           # 1.8.3: the loading screen gives up after this and frees the window
 PREVIEW_MIN = (640, 360)
@@ -133,6 +144,7 @@ class Timeline(QWidget):
         self.pos = 0.0
         self.start, self.end = 0.0, 1.0
         self.marks = []
+        self.parts = []                   # 1.12: [(start, end)] of the parts kept – bands above the strip
         self.thumbs = {}
         self.n_thumbs = clipedit.THUMBS
         self.dark = dark
@@ -194,6 +206,10 @@ class Timeline(QWidget):
         p.fillRect(QRectF(r.left(), r.top(), self._x(self.start) - r.left(), r.height()), shade)
         p.fillRect(QRectF(self._x(self.end), r.top(), r.right() - self._x(self.end), r.height()), shade)
         accent = QColor(c["accent"])
+        band = QColor(accent)
+        band.setAlpha(150)
+        for a, b in self.parts:                               # 1.12: the parts kept, a band each at the top
+            p.fillRect(QRectF(self._x(a), r.top() - 5, max(2.0, self._x(b) - self._x(a)), 4), band)
         p.setPen(QPen(accent, 2))
         p.setBrush(accent)
         for m in self.marks:                                  # marks: small triangles above the strip
@@ -273,6 +289,9 @@ class PreviewView(QWidget):
     saved clip will look (pixel blocks / blur / black). With the tool on (``editing``) a drag on free picture
     draws a new box, a drag inside a box moves it, its bottom-right corner resizes it, a click picks it."""
     boxes_changed = Signal()
+    crop_changed = Signal()               # 1.12: the crop box was drawn/moved/resized
+    shapes_changed = Signal()             # 1.12: a drawing was added/moved
+    shape_picked = Signal(int)            # 1.12: a drawing was clicked (-1: none)
     HANDLE = 10
     MIN_BOX = 0.01                        # fractions of the picture: smaller drags are dropped
 
@@ -287,6 +306,18 @@ class PreviewView(QWidget):
         self.editing = False              # the tool is on: boxes can be drawn/moved
         self.selected = None
         self._drag = None                 # (kind, press point, original box)
+        # 1.12: the crop box and the drawings (annotate.Shape), both in fractions of the picture
+        self.crop = None                  # (x, y, w, h) or None
+        self.crop_ratio = None            # width/height in pixels the box keeps (None: free)
+        self.crop_edit = False            # the crop tool is on
+        self.shapes = []
+        self.shape_tool = None            # annotate kind to draw, None = off
+        self.shape_sel = None             # index of the picked drawing
+        self.pen = {"colour": annotate.COLOURS[0], "size": annotate.DEFAULT_SIZE, "text_size": annotate.TEXT_SIZE,
+                    "text": ""}
+        self.now = None                   # seconds of the recording on display: drawings of other times hide
+        self.new_times = lambda: (None, None)   # (t0, t1) a new drawing gets (the clip editor: from the playhead)
+        self._layer = None                # (key, QImage) of the drawings at the drawn size
         self.setMinimumSize(*PREVIEW_MIN)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setFocusPolicy(Qt.NoFocus)
@@ -337,6 +368,84 @@ class PreviewView(QWidget):
             self.boxes, self.selected = [], None
             self.update()
             self.boxes_changed.emit()
+
+    # ---- 1.12: crop and drawings
+    def image_size(self) -> tuple:
+        return (self._img.width(), self._img.height()) if self._img is not None else (16, 9)
+
+    def set_crop(self, box, ratio=None):
+        self.crop = tuple(box) if box else None
+        self.crop_ratio = ratio
+        self.update()
+
+    def set_crop_edit(self, on: bool):
+        self.crop_edit = bool(on)
+        if on:
+            self.set_editing(False)
+            self.set_shape_tool(None)
+        self.setCursor(Qt.CrossCursor if on else Qt.ArrowCursor)
+        self.update()
+
+    def set_shapes(self, shapes):
+        self.shapes = list(shapes)
+        self.shape_sel = None if self.shape_sel is None or self.shape_sel >= len(self.shapes) else self.shape_sel
+        self._layer = None
+        self.update()
+
+    def set_shape_tool(self, kind):
+        self.shape_tool = kind
+        if kind:
+            self.crop_edit = False
+            if self.editing:
+                self.set_editing(False)
+        self.setCursor(Qt.CrossCursor if kind else Qt.ArrowCursor)
+        self.update()
+
+    def set_now(self, t):
+        if t != self.now:
+            self.now = t
+            self.update()
+
+    def selected_shape(self):
+        return self.shapes[self.shape_sel] if self.shape_sel is not None and self.shape_sel < len(self.shapes) else None
+
+    def replace_selected_shape(self, shape):
+        if self.selected_shape() is not None:
+            self.shapes[self.shape_sel] = shape
+            self._layer = None
+            self.update()
+            self.shapes_changed.emit()
+
+    def remove_selected_shape(self) -> bool:
+        if self.selected_shape() is None:
+            return False
+        del self.shapes[self.shape_sel]
+        self.shape_sel = None
+        self._layer = None
+        self.update()
+        self.shapes_changed.emit()
+        self.shape_picked.emit(-1)
+        return True
+
+    def _shown_shapes(self):
+        shown = [s for s in self.shapes if self.now is None or s.shown_at(self.now)]
+        drawing = getattr(self, "_preview_new", None)
+        return shown + [drawing] if drawing is not None else shown
+
+    def _crop_box_for(self, x0, y0, x1, y1) -> tuple:
+        """A crop box from two corners (fractions), held to ``crop_ratio`` (the width leads)."""
+        x, y, w, h = min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0)
+        if self.crop_ratio:
+            iw, ih = self.image_size()
+            h = w * iw / (self.crop_ratio * ih)
+            if y1 < y0:
+                y = y0 - h
+            if y + h > 1.0:                                   # too tall for the room: the height leads
+                h = 1.0 - y
+                w = h * ih * self.crop_ratio / iw
+                if x1 < x0:
+                    x = x0 - w
+        return imageedit.clamp_box((x, y, w, h), self.MIN_BOX)
 
     # ---- geometry
     def frame_rect(self) -> QRectF:
@@ -403,7 +512,48 @@ class PreviewView(QWidget):
             p.setPen(QPen(accent, 1, Qt.DashLine))
             p.setBrush(Qt.NoBrush)
             p.drawRect(self._box_rect(self._drag[2]))
+        self._paint_shapes(p, f, size, accent)
+        self._paint_crop(p, f, accent)
         p.end()
+
+    def _paint_shapes(self, p, f, size, accent):
+        """1.12: the drawings as the clip/picture will show them (annotate draws them at the shown size)."""
+        shown = self._shown_shapes()
+        if shown:
+            key = (size.width(), size.height(), repr(shown))
+            if self._layer is None or self._layer[0] != key:
+                img = annotate.layer(size.width(), size.height(), shown)
+                self._layer = (key, QImage(img.tobytes(), img.width, img.height, img.width * 4,
+                                           QImage.Format_RGBA8888).copy())
+            p.drawImage(f.topLeft(), self._layer[1])
+        sel = self.selected_shape()
+        if sel is not None and self.shape_tool is not None:
+            x0, y0, x1, y1 = annotate.bounds(sel, int(f.width()), int(f.height()))
+            p.setPen(QPen(accent, 1, Qt.DashLine))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(QRectF(f.left() + x0, f.top() + y0, x1 - x0, y1 - y0))
+
+    def _paint_crop(self, p, f, accent):
+        """1.12: outside the crop box darkened; with the tool on its frame and four corner handles."""
+        box = self._drag[2] if self._drag and self._drag[0].startswith("crop") else self.crop
+        if not box:
+            return
+        r = self._box_rect(box)
+        shade = QColor(0, 0, 0, 170 if self.crop_edit else 150)
+        for part in (QRectF(f.left(), f.top(), f.width(), r.top() - f.top()),
+                     QRectF(f.left(), r.bottom(), f.width(), f.bottom() - r.bottom()),
+                     QRectF(f.left(), r.top(), r.left() - f.left(), r.height()),
+                     QRectF(r.right(), r.top(), f.right() - r.right(), r.height())):
+            if part.width() > 0 and part.height() > 0:
+                p.fillRect(part, shade)
+        p.setPen(QPen(accent if self.crop_edit else QColor(255, 255, 255, 160), 2))
+        p.setBrush(Qt.NoBrush)
+        p.drawRect(r)
+        if self.crop_edit:
+            p.setBrush(accent)
+            p.setPen(Qt.NoPen)
+            for cx, cy in ((r.left(), r.top()), (r.right(), r.top()), (r.left(), r.bottom()), (r.right(), r.bottom())):
+                p.drawRect(QRectF(cx - self.HANDLE / 2, cy - self.HANDLE / 2, self.HANDLE, self.HANDLE))
 
     def _draw_censored(self, p, scaled, r, f):
         """The box as the clip will show it: coarse blocks, a blur, or black (same rules as clipedit.censor_graph)."""
@@ -443,8 +593,125 @@ class PreviewView(QWidget):
                 return "move", i
         return None, None
 
+    def _crop_hit(self, pt):
+        if not self.crop:
+            return None
+        r = self._box_rect(self.crop)
+        for name, (cx, cy) in (("crop_tl", (r.left(), r.top())), ("crop_tr", (r.right(), r.top())),
+                               ("crop_bl", (r.left(), r.bottom())), ("crop_br", (r.right(), r.bottom()))):
+            if abs(pt.x() - cx) <= self.HANDLE and abs(pt.y() - cy) <= self.HANDLE:
+                return name
+        return "crop_move" if r.contains(pt) else None
+
+    def _shape_hit(self, pt):
+        f = self.frame_rect()
+        x, y = pt.x() - f.left(), pt.y() - f.top()
+        shown = set(id(s) for s in self._shown_shapes())
+        for i in reversed(range(len(self.shapes))):
+            s = self.shapes[i]
+            if id(s) in shown and annotate.hit(s, x, y, int(f.width()), int(f.height())):
+                return i
+        return None
+
+    def _press_extra(self, pt) -> bool:
+        """1.12: a press for the crop tool or a drawing tool; True when taken."""
+        if self.crop_edit:
+            kind = self._crop_hit(pt)
+            fx, fy = self._to_frac(pt)
+            if kind is None:
+                if not self.frame_rect().contains(pt):
+                    return True
+                self._drag = ("crop_new", (fx, fy), (fx, fy, 0.0, 0.0))
+            else:
+                self._drag = (kind, (fx, fy), tuple(self.crop))
+            self.update()
+            return True
+        if self.shape_tool:
+            if not self.frame_rect().contains(pt):
+                return True
+            fx, fy = self._to_frac(pt)
+            i = self._shape_hit(pt)
+            if i is not None:
+                self.shape_sel = i
+                self._drag = ("shape_move", (fx, fy), self.shapes[i])
+                self.shape_picked.emit(i)
+            elif self.shape_tool == "text":
+                shape = annotate.Shape("text", [(fx, fy)], self.pen["colour"], self.pen["text_size"],
+                                       self.pen["text"] or _("Text"))
+                self._new_shape(shape)
+            else:
+                pts = [(fx, fy)] if self.shape_tool == "free" else [(fx, fy), (fx, fy)]
+                self._drag = ("shape_new", (fx, fy), annotate.Shape(self.shape_tool, pts, self.pen["colour"],
+                                                                    self.pen["size"]))
+            self.update()
+            return True
+        return False
+
+    def _new_shape(self, shape):
+        if shape.t0 is None and shape.t1 is None:
+            shape.t0, shape.t1 = self.new_times()
+        self.shapes.append(shape)
+        self.shape_sel = len(self.shapes) - 1
+        self._layer = None
+        self.update()
+        self.shapes_changed.emit()
+        self.shape_picked.emit(self.shape_sel)
+
+    def _move_extra(self, pt) -> bool:
+        if not self._drag or not (self._drag[0].startswith("crop") or self._drag[0].startswith("shape")):
+            return False
+        kind, (px, py), orig = self._drag
+        fx, fy = self._to_frac(pt)
+        if kind == "crop_new":
+            self._drag = (kind, (px, py), self._crop_box_for(px, py, fx, fy))
+        elif kind == "crop_move":
+            x, y, w, h = orig
+            self._drag = (kind, (px, py), imageedit.clamp_box((x + fx - px, y + fy - py, w, h), self.MIN_BOX))
+        elif kind.startswith("crop_"):
+            x, y, w, h = orig
+            ax = x + w if kind in ("crop_tl", "crop_bl") else x           # the opposite corner stays
+            ay = y + h if kind in ("crop_tl", "crop_tr") else y
+            self._drag = (kind, (px, py), self._crop_box_for(ax, ay, fx, fy))
+        elif kind == "shape_move":
+            self.shapes[self.shape_sel] = orig.moved(fx - px, fy - py)
+            self._layer = None
+        elif kind == "shape_new":
+            if orig.kind == "free":
+                if math.dist(orig.pts[-1], (fx, fy)) > 0.003:
+                    orig.pts.append((fx, fy))
+            else:
+                orig.pts[1] = (fx, fy)
+            self._layer = None
+            self._preview_new = orig
+        self.update()
+        return True
+
+    def _release_extra(self) -> bool:
+        if not self._drag or not (self._drag[0].startswith("crop") or self._drag[0].startswith("shape")):
+            return False
+        kind, _p, box = self._drag
+        self._drag = None
+        self._preview_new = None
+        if kind.startswith("crop"):
+            if box[2] >= self.MIN_BOX and box[3] >= self.MIN_BOX:
+                self.crop = tuple(box)
+                self.crop_changed.emit()
+        elif kind == "shape_new":
+            a = box.pts[0]
+            far = max(math.dist(a, q) for q in box.pts) if len(box.pts) > 1 else 0.0
+            if far > 0.01:
+                self._new_shape(box)
+        elif kind == "shape_move":
+            self.shapes_changed.emit()
+        self.update()
+        return True
+
     def mousePressEvent(self, e):
-        if not self.editing or e.button() != Qt.LeftButton or self._img is None:
+        if e.button() != Qt.LeftButton or self._img is None:
+            return
+        if self._press_extra(e.position()):
+            return
+        if not self.editing:
             return
         pt = e.position()
         kind, i = self._hit(pt)
@@ -460,6 +727,8 @@ class PreviewView(QWidget):
         self.update()
 
     def mouseMoveEvent(self, e):
+        if self._move_extra(e.position()):
+            return
         if not self.editing:
             return
         if self._drag is None:
@@ -484,6 +753,8 @@ class PreviewView(QWidget):
         self.update()
 
     def mouseReleaseEvent(self, e):
+        if self._release_extra():
+            return
         if self._drag is None:
             return
         kind, _p, box = self._drag
@@ -600,14 +871,16 @@ class ClipWindow(QWidget):
         # recordings) – a silent track of a source that was not there says "keine Quelle", not "still"
         self._recorded = None if sources is None else set(sources)
         self._absent = set()
+        self._parts = []                    # 1.12: [clipedit.Part] kept so far (empty: the start/end range alone)
+        self._range_speed = 1.0             # tempo of the start/end range while it is no part of its own
         self.setObjectName("page")
         self.setWindowTitle(title or _("Clip bearbeiten – {name}", name=os.path.basename(path)))
         if qss:
             self.setStyleSheet(qss)
         self._build(mode, sound)
         if not self.compact:
-            self.resize(1100, 780)
-            self.setMinimumSize(760, 600)
+            self.resize(1180, 900)
+            self.setMinimumSize(800, 680)
         self.setFocusPolicy(Qt.StrongFocus)
         self.loading = None                 # 1.8.3: LoadingScreen until picture + strip are there
         self._load_state = {"frame": False, "strip": False, "thumbs": 0}
@@ -639,6 +912,8 @@ class ClipWindow(QWidget):
         if self.compact:                                  # beside the table: the whole editor fits a screen
             self.preview.setMinimumSize(320, 180)
             self.preview.setMaximumHeight(COMPACT_PREVIEW_H)
+        else:                                             # 1.12: room for the tool tabs below
+            self.preview.setMinimumSize(480, 270)
         lay.addWidget(self.preview, 1)
         self.timeline = Timeline(self.dark)
         self.timeline.seek.connect(self.goto)
@@ -726,9 +1001,24 @@ class ClipWindow(QWidget):
         self.censor_hint.setWordWrap(True)
         zl.addWidget(self.censor_hint)
         zl.addStretch()
-        cards.addWidget(censor_card, 1)
-        censor_card.setVisible(not self.compact)          # censor boxes: in the full editor
-        lay.addLayout(cards)
+        if self.compact:                                  # censor boxes and the 1.12 tools: in the full editor
+            censor_card.setVisible(False)
+            cards.addWidget(censor_card, 1)
+            lay.addLayout(cards)
+        else:
+            # 1.12 (user: "Bearbeitungstool top machen mit allen Funktionen"): one tab per tool below the timeline –
+            # the clip, its parts (each with a tempo), the picture (crop, fades), drawings, censoring
+            self.tools = QTabWidget()
+            self.tools.setObjectName("cliptools")
+            cards.removeWidget(clip_card)
+            self.tools.addTab(clip_card, _("Clip"))
+            self.tools.addTab(self._parts_card(), _("Abschnitte"))
+            self.tools.addTab(self._picture_card(), _("Bild"))
+            self.tools.addTab(self._draw_card(), _("Zeichnen"))
+            self.tools.addTab(censor_card, _("Zensieren"))
+            self.tools.currentChanged.connect(self._tool_tab_changed)
+            self.tools.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+            lay.addWidget(self.tools)
 
         # export: name, format, target size, sound; save / show / folder
         export_card, el = self._card(_("Speichern"))
@@ -756,6 +1046,13 @@ class ClipWindow(QWidget):
         self.target_box.setToolTip(_("Discord: ohne Nitro 10 MB, Nitro Basic 50 MB, Nitro 500 MB."))
         self.target_box.currentIndexChanged.connect(self._target_changed)
         row2.addWidget(self.target_box)
+        self.gif_box = guard_wheel(QComboBox())                                     # 1.12: GIF height
+        for gh in clipedit.GIF_HEIGHTS:
+            self.gif_box.addItem(f"{gh}p", gh)
+        self.gif_box.setCurrentIndex(list(clipedit.GIF_HEIGHTS).index(clipedit.DEFAULT_GIF_H))
+        self.gif_box.setToolTip(_("Höhe des GIFs – kleiner = kleinere Datei (Discord, Chats)."))
+        self.gif_box.currentIndexChanged.connect(lambda _i: self._show_size())
+        row2.addWidget(self.gif_box)
         self.sound_box = QCheckBox(_("Ton"))
         self.sound_box.setChecked(bool(sound))
         self.sound_box.setToolTip(_("Beim Abspielen den Ton der Aufnahme mitlaufen lassen (Windows)."))
@@ -825,6 +1122,326 @@ class ClipWindow(QWidget):
         head.setProperty("class", "sub")
         lay.addWidget(head)
         return card, lay
+
+    # ---- 1.12: parts, picture, drawings
+    def _combo(self, row, items, current, tip, slot):
+        """A choice box of (data, label) with ``current`` picked (no mouse wheel, see guard_wheel)."""
+        box = guard_wheel(QComboBox())
+        for data, label in items:
+            box.addItem(label, data)
+        idx = next((i for i, (d, _l) in enumerate(items) if d == current), 0)
+        box.setCurrentIndex(idx)
+        box.setToolTip(tip)
+        box.currentIndexChanged.connect(slot)
+        row.addWidget(box)
+        return box
+
+    def _parts_card(self):
+        card, cl = self._card(_("Abschnitte"))
+        top = QHBoxLayout()
+        self.part_list = QListWidget()
+        self.part_list.setObjectName("parts")
+        self.part_list.setMaximumHeight(110)
+        self.part_list.setFocusPolicy(Qt.NoFocus)
+        self.part_list.currentRowChanged.connect(self._part_picked)
+        top.addWidget(self.part_list, 1)
+        side = QVBoxLayout()
+        self.part_add_btn = self._btn(side, _("+ Abschnitt"), self.add_part,
+                                      _("Nimmt den Bereich zwischen Start und Ende als Abschnitt auf (Taste A). Alle "
+                                        "Abschnitte werden nacheinander zu einem Clip zusammengefügt."))
+        self.part_del_btn = self._btn(side, _("Abschnitt entfernen"), self.remove_part,
+                                      _("Entfernt den markierten Abschnitt."))
+        self.part_clear_btn = self._btn(side, _("Alle Abschnitte entfernen"), self.clear_parts,
+                                        _("Entfernt alle Abschnitte – gespeichert wird dann wieder der Bereich "
+                                          "zwischen Start und Ende."))
+        side.addStretch()
+        top.addLayout(side)
+        cl.addLayout(top)
+        tr = QHBoxLayout()
+        tr.addWidget(QLabel(_("Tempo")))
+        self.speed_box = self._combo(tr, [(v, _(SPEED_LABELS[v]) if v == 1.0 else SPEED_LABELS[v])
+                                          for v in clipedit.SPEEDS], 1.0,
+                                     _("Zeitlupe oder Zeitraffer für den markierten Abschnitt (ohne Abschnitte: für "
+                                       "den Bereich zwischen Start und Ende). Der Ton läuft mit."), self._speed_picked)
+        tr.addStretch()
+        cl.addLayout(tr)
+        self.parts_hint = QLabel("")
+        self.parts_hint.setProperty("class", "dim")
+        self.parts_hint.setWordWrap(True)
+        cl.addWidget(self.parts_hint)
+        cl.addStretch()
+        self._parts_show()
+        return card
+
+    def _picture_card(self):
+        card, cl = self._card(_("Bild"))
+        cr = QHBoxLayout()
+        cr.addWidget(QLabel(_("Ausschnitt")))
+        self.crop_box = self._combo(cr, [(k, _(v) if k in ("none", "free", "9:16") else v)
+                                         for k, v in CROP_LABELS.items()], "none",
+                                    _("Schneidet einen Bereich aus dem Bild – 9:16 für YouTube Shorts und TikTok, 1:1 "
+                                      "für Instagram. Den Rahmen in der Vorschau verschieben und an den Ecken ziehen."),
+                                    self._crop_picked)
+        self.crop_btn = self._btn(cr, _("Rahmen bearbeiten"), self._crop_tool,
+                                  _("Rahmen in der Vorschau verschieben oder an den Ecken grösser/kleiner ziehen. "
+                                    "Nochmal drücken beendet das Werkzeug."))
+        self.crop_btn.setCheckable(True)
+        self.crop_btn.setProperty("class", "seg")
+        cr.addStretch()
+        cl.addLayout(cr)
+        fr = QHBoxLayout()
+        fades = [(v, _("aus") if v == 0 else f"{v:g} s") for v in clipedit.FADES]
+        fr.addWidget(QLabel(_("Einblenden")))
+        self.fade_in_box = self._combo(fr, fades, 0.0, _("Der Clip beginnt aus Schwarz und mit leisem Ton."),
+                                       lambda _i: self._show_size())
+        fr.addWidget(QLabel(_("Ausblenden")))
+        self.fade_out_box = self._combo(fr, fades, 0.0, _("Der Clip endet in Schwarz, der Ton wird leiser."),
+                                        lambda _i: self._show_size())
+        fr.addStretch()
+        cl.addLayout(fr)
+        hint = QLabel(_("Ausschnitt, Tempo, Blenden und Zeichnungen brauchen ein neu kodiertes Bild – „Schnell“ "
+                        "speichert dann wie „Genau“."))
+        hint.setProperty("class", "dim")
+        hint.setWordWrap(True)
+        cl.addWidget(hint)
+        cl.addStretch()
+        self.preview.crop_changed.connect(self._show_size)
+        return card
+
+    def _draw_card(self):
+        card, cl = self._card(_("Zeichnen"))
+        tr = QHBoxLayout()
+        self.draw_group = QButtonGroup(self)
+        self.draw_group.setExclusive(False)
+        self.draw_btns = {}
+        for kind, label in DRAW_TOOLS:
+            b = self._btn(tr, _(label), lambda _c=False, k=kind: self._draw_tool(k),
+                          _("Im Bild ziehen (Text: klicken). Eine Zeichnung anklicken markiert sie, ziehen verschiebt "
+                            "sie, Entf löscht sie."))
+            b.setCheckable(True)
+            b.setProperty("class", "seg")
+            self.draw_btns[kind] = b
+        tr.addStretch()
+        cl.addLayout(tr)
+        pr = QHBoxLayout()
+        self.colour_btns = {}
+        for colour in annotate.COLOURS:
+            b = QPushButton("")
+            b.setFixedSize(22, 22)
+            b.setFocusPolicy(Qt.NoFocus)
+            b.setCheckable(True)
+            b.setToolTip(_("Farbe"))
+            b.setStyleSheet(f"QPushButton {{ background: {colour}; border: 2px solid #555; border-radius: 4px; }}"
+                            f"QPushButton:checked {{ border: 2px solid #ffffff; }}")
+            b.clicked.connect(lambda _c=False, c=colour: self._draw_colour(c))
+            pr.addWidget(b)
+            self.colour_btns[colour] = b
+        self.colour_btns[annotate.COLOURS[0]].setChecked(True)
+        self.draw_size_box = self._combo(pr, list(enumerate(_(x) for x in SIZE_LABELS)), 1,
+                                         _("Strichstärke bzw. Textgrösse."), self._draw_size)
+        self.draw_when_box = self._combo(pr, [(v, _(lbl)) for v, lbl in SHOW_FOR], 3.0,
+                                         _("Wie lange die Zeichnung im Clip zu sehen ist – ab der Stelle des "
+                                           "Abspielkopfs. Gilt für neue und für die markierte Zeichnung."),
+                                         self._draw_when)
+        pr.addStretch()
+        cl.addLayout(pr)
+        xr = QHBoxLayout()
+        self.draw_text = QLineEdit()
+        self.draw_text.setPlaceholderText(_("Text für das Text-Werkzeug"))
+        self.draw_text.textEdited.connect(self._draw_text_edited)
+        xr.addWidget(self.draw_text, 1)
+        self.draw_del_btn = self._btn(xr, _("Zeichnung entfernen"), self._draw_remove,
+                                      _("Entfernt die markierte Zeichnung (Entf)."))
+        self.draw_clear_btn = self._btn(xr, _("Alle Zeichnungen entfernen"), self._draw_clear, "")
+        cl.addLayout(xr)
+        cl.addStretch()
+        self.preview.shapes_changed.connect(self._show_size)
+        self.preview.shape_picked.connect(self._draw_picked)
+        self.preview.new_times = self._times_from_here
+        return card
+
+    def _tool_tab_changed(self, _i):
+        """Leaving a tab ends its tool: the preview takes clicks only for the tab on display."""
+        page = self.tools.currentWidget()
+        if self.crop_btn.isChecked() and page is not self.tools.widget(2):
+            self.crop_btn.setChecked(False)
+            self.preview.set_crop_edit(False)
+        if page is not self.tools.widget(3):
+            for b in self.draw_btns.values():
+                b.setChecked(False)
+            self.preview.set_shape_tool(None)
+        if self.tool_btn.isChecked() and page is not self.tools.widget(4):
+            self.tool_btn.setChecked(False)
+            self.preview.set_editing(False)
+
+    # parts
+    def add_part(self):
+        tl = self.timeline
+        if tl.end - tl.start < 0.1:
+            return
+        self._parts = clipedit.clean_parts(self._parts + [clipedit.Part(tl.start, tl.end, self._range_speed)],
+                                           self.info.duration)
+        self._parts_show()
+        self._show_size()
+
+    def remove_part(self):
+        row = self.part_list.currentRow()
+        if 0 <= row < len(self._parts):
+            del self._parts[row]
+            self._parts_show()
+            self._show_size()
+
+    def clear_parts(self):
+        self._parts = []
+        self._parts_show()
+        self._show_size()
+
+    def _part_picked(self, row):
+        if 0 <= row < len(self._parts):
+            p = self._parts[row]
+            self.timeline.set_range(p.start, p.end)
+            self._show_range()
+            self.goto(p.start)
+            self._select_speed(p.speed)
+        self.part_del_btn.setEnabled(0 <= row < len(self._parts))
+
+    def _select_speed(self, speed):
+        i = self.speed_box.findData(speed)
+        if i >= 0 and i != self.speed_box.currentIndex():
+            self.speed_box.blockSignals(True)
+            self.speed_box.setCurrentIndex(i)
+            self.speed_box.blockSignals(False)
+
+    def _speed_picked(self, _i):
+        speed = float(self.speed_box.currentData() or 1.0)
+        row = self.part_list.currentRow() if hasattr(self, "part_list") else -1
+        if 0 <= row < len(self._parts):
+            self._parts[row].speed = speed
+            self._parts_show(keep=row)
+        else:
+            self._range_speed = speed
+        self._show_size()
+
+    def _parts_show(self, keep=None):
+        if not hasattr(self, "part_list"):
+            return
+        self.part_list.blockSignals(True)
+        self.part_list.clear()
+        for i, p in enumerate(self._parts):
+            tempo = "" if abs(p.speed - 1.0) < 1e-6 else f"  {SPEED_LABELS.get(p.speed, f'×{p.speed:g}')}"
+            self.part_list.addItem(f"{i + 1}.  {clipedit.fmt_pos(p.start)} – {clipedit.fmt_pos(p.end)}"
+                                   f"  ({p.end - p.start:.1f} s){tempo}")
+        if keep is not None and keep < len(self._parts):
+            self.part_list.setCurrentRow(keep)
+        self.part_list.blockSignals(False)
+        self.part_del_btn.setEnabled(keep is not None and keep < len(self._parts))
+        self.part_clear_btn.setEnabled(bool(self._parts))
+        self.timeline.parts = [(p.start, p.end) for p in self._parts]
+        self.timeline.update()
+        if self._parts:
+            self.parts_hint.setText(_("Gespeichert werden die {n} Abschnitte nacheinander ({length} s). Einen "
+                                      "Abschnitt anklicken zeigt ihn auf der Zeitleiste.", n=len(self._parts),
+                                      length=f"{self.edit_plan().seconds():.1f}"))
+        else:
+            self.parts_hint.setText(_("Noch keine Abschnitte: gespeichert wird der Bereich zwischen Start und Ende. "
+                                      "Für mehrere Szenen aus einer Runde: Bereich wählen, „+ Abschnitt“, nächsten "
+                                      "Bereich wählen …"))
+
+    # picture
+    def _crop_picked(self, _i):
+        key = self.crop_box.currentData()
+        ratio = dict(clipedit.ASPECTS).get(key)
+        if key == "none":
+            self.preview.set_crop(None)
+            self.crop_btn.setChecked(False)
+            self.preview.set_crop_edit(False)
+        else:
+            base = self.preview.crop or (0.0, 0.0, 1.0, 1.0)
+            box = imageedit.aspect_box(base if key == "free" else (0.0, 0.0, 1.0, 1.0), ratio,
+                                       (self.info.width or 16, self.info.height or 9))
+            self.preview.set_crop(box, ratio)
+            if not self.crop_btn.isChecked():
+                self.crop_btn.setChecked(True)
+                self._crop_tool()
+        self._show_size()
+
+    def _crop_tool(self):
+        on = self.crop_btn.isChecked()
+        if on and self.crop_box.currentData() == "none":
+            self.crop_box.setCurrentIndex(self.crop_box.findData("free"))      # draws a full box, tool on
+            return
+        self.preview.set_crop_edit(on)
+
+    # drawings
+    def _draw_tool(self, kind):
+        on = self.draw_btns[kind].isChecked()
+        for k, b in self.draw_btns.items():
+            if k != kind:
+                b.setChecked(False)
+        self.preview.set_shape_tool(kind if on else None)
+        self.preview.pen["text"] = self.draw_text.text()
+
+    def _draw_colour(self, colour):
+        for c, b in self.colour_btns.items():
+            b.setChecked(c == colour)
+        self.preview.pen["colour"] = colour
+        sel = self.preview.selected_shape()
+        if sel is not None:
+            sel.colour = colour
+            self.preview.replace_selected_shape(sel)
+
+    def _draw_size(self, _i):
+        i = int(self.draw_size_box.currentData() or 0)
+        self.preview.pen["size"] = annotate.SIZES[i]
+        self.preview.pen["text_size"] = annotate.TEXT_SIZES[i]
+        sel = self.preview.selected_shape()
+        if sel is not None:
+            sel.size = annotate.TEXT_SIZES[i] if sel.kind == "text" else annotate.SIZES[i]
+            self.preview.replace_selected_shape(sel)
+
+    def _times_from_here(self):
+        dur = self.draw_when_box.currentData()
+        t = self.timeline.pos
+        return (None, None) if dur is None else (t, min(self.info.duration or t + dur, t + float(dur)))
+
+    def _draw_when(self, _i):
+        sel = self.preview.selected_shape()
+        if sel is not None:
+            sel.t0, sel.t1 = self._times_from_here()
+            self.preview.replace_selected_shape(sel)
+
+    def _draw_text_edited(self, text):
+        self.preview.pen["text"] = text
+        sel = self.preview.selected_shape()
+        if sel is not None and sel.kind == "text":
+            sel.text = text or " "
+            self.preview.replace_selected_shape(sel)
+
+    def _draw_picked(self, i):
+        sel = self.preview.selected_shape()
+        if sel is None:
+            return
+        if sel.kind == "text":
+            self.draw_text.setText(sel.text)
+
+    def _draw_remove(self):
+        self.preview.remove_selected_shape()
+
+    def _draw_clear(self):
+        if self.preview.shapes:
+            self.preview.set_shapes([])
+            self.preview.shapes_changed.emit()
+
+    def edit_plan(self) -> clipedit.Edit:
+        """What will be saved: the parts (or the start/end range), crop, drawings, fades."""
+        tl = self.timeline
+        parts = list(self._parts) or [clipedit.Part(tl.start, tl.end, self._range_speed)]
+        full = not self.compact and hasattr(self, "crop_box")
+        crop = self.preview.crop if full and self.crop_box.currentData() != "none" else None
+        shapes = [s for s in self.preview.shapes if s.kind != "text" or s.text.strip()] if full else []
+        fi = float(self.fade_in_box.currentData() or 0) if full else 0.0
+        fo = float(self.fade_out_box.currentData() or 0) if full else 0.0
+        return clipedit.Edit([clipedit.Part(p.start, p.end, p.speed) for p in parts], crop, shapes, fi, fo)
 
     # ---- censor boxes (1.7.2)
     def _censor_toggled(self, on):
@@ -1086,6 +1703,7 @@ class ClipWindow(QWidget):
             self._stop_player()
         t = min(max(0.0, float(t)), self.info.duration or 0.0)
         self.timeline.set_position(t)
+        self.preview.set_now(t)                         # 1.12: drawings show at their times
         self._show_pos()
         with self._scrub_lock:
             self._want = (t, self._first_look)
@@ -1125,14 +1743,20 @@ class ClipWindow(QWidget):
 
     def _show_size(self):
         """1.6.1: what the chosen format makes of the clip – for Discord the picture size and frame rate."""
-        tl, mode = self.timeline, self.mode_box.currentData() if hasattr(self, "mode_box") else "copy"
-        secs = max(0.0, tl.end - tl.start)
+        mode = self.mode_box.currentData() if hasattr(self, "mode_box") else "copy"
+        edit = self.edit_plan()
+        secs = edit.seconds()
         parts = []                                                 # 1.8.8: joined by " · ", no dot in front
-        if mode == "discord":
+        if len(edit.parts) > 1 or abs(edit.parts[0].speed - 1.0) > 1e-6:
+            parts.append(_("{n} Abschnitt(e), {length} s", n=len(edit.parts), length=f"{secs:.1f}"))
+        if mode == "gif":
+            gh = int(self.gif_box.currentData() or clipedit.DEFAULT_GIF_H) if hasattr(self, "gif_box") else 0
+            parts.append(_("GIF {h}p, {fps} Bilder/s, ohne Ton", h=gh, fps=clipedit.GIF_FPS))
+        elif mode == "discord":
             kbps, h, fps = clipedit.discord_plan(secs, self._target_mb, self.info)
             parts.append(_("wird {h}p {fps} fps, ≈ {kbps} kbit/s, unter {mb} MB",
                            h=h, fps=f"{fps:g}", kbps=kbps, mb=self._target_mb))
-        elif self.info.ok and getattr(self.info, "duration", 0):
+        elif self.info.ok and getattr(self.info, "duration", 0) and mode != "gif":
             try:
                 size = os.path.getsize(self.path) * secs / self.info.duration
             except OSError:
@@ -1141,6 +1765,11 @@ class ClipWindow(QWidget):
                 parts.append(_("etwa {mb} MB", mb=f"{max(1.0, size / 1024 ** 2):.0f}"))
         if self._censor_args() and mode == "copy":                 # 1.7.2: boxes need the picture re-encoded
             parts.append(_("mit Zensur neu kodiert (wie „Genau“)"))
+        elif mode == "copy" and not edit.simple():                # 1.12: parts/tempo/crop/drawings/fades too
+            parts.append(_("neu kodiert (wie „Genau“)"))
+        if edit.crop and self.info.ok:
+            w, h, _x, _y = clipedit.crop_px(edit.crop, self.info.width, self.info.height)
+            parts.append(_("Ausschnitt {w}×{h}", w=w, h=h))
         if mode == "copy" and hasattr(self, "mix_boxes"):          # 1.8.6: a mix re-encodes only the sound
             flt, amap = obsrec.audio_graph(self.info.audio_tracks, self.mix())
             if flt or amap is None:
@@ -1150,6 +1779,7 @@ class ClipWindow(QWidget):
     def _mode_changed(self, _i, save=True):
         mode = self.mode_box.currentData()
         self.target_box.setVisible(mode == "discord")
+        self.gif_box.setVisible(mode == "gif")
         if save:
             self._setting("clip_mode", mode)
         self._show_size()
@@ -1174,6 +1804,7 @@ class ClipWindow(QWidget):
     def _show_played(self, t, img):
         if self.playing:
             self.timeline.set_position(t)
+            self.preview.set_now(t)
             self._show_pos()
             self._paint(img)
 
@@ -1252,25 +1883,26 @@ class ClipWindow(QWidget):
         tl = self.timeline
         name = clipedit.NAME_CHARS.sub("", self.name_edit.text()).strip() or clipedit.clip_name(self.path, tl.start, tl.end)
         mode = self.mode_box.currentData() or "copy"
+        edit = self.edit_plan()                                   # 1.12: parts, tempo, crop, drawings, fades
         try:
             os.makedirs(self.clips_dir, exist_ok=True)
         except OSError as e:
             self.status.setText(_("Clips-Ordner nicht anlegbar: {error}", error=e))
             return
-        out = clipedit.unique_path(self.clips_dir, name, ".mp4")
+        out = clipedit.unique_path(self.clips_dir, name, ".gif" if mode == "gif" else ".mp4")
         self.save_btn.setEnabled(False)
         self.status.setText(_("Schreibe {file} …", file=os.path.basename(out)))
-        start, end = tl.start, tl.end
-        self.saved_seconds[out] = round(max(0.0, end - start), 1)
+        self.saved_seconds[out] = round(edit.seconds(), 1)
 
         target, info, mix = self._target_mb, self.info, self.mix()
         censor = self._censor_args()
-        if mode != "copy" or censor:
+        gif_h = int(self.gif_box.currentData() or clipedit.DEFAULT_GIF_H)
+        if mode != "copy" or censor or not edit.simple():
             self.status.setText(_("Kodiere {file} … (dauert etwas)", file=os.path.basename(out)))
 
         def work():
-            ok, why = clipedit.cut(self.path, start, end, out, mode, self.ffmpeg, target_mb=target, info=info,
-                                   mix=mix, **censor)
+            ok, why = clipedit.export(self.path, edit, out, mode, self.ffmpeg, target_mb=target, info=info, mix=mix,
+                                      gif_h=gif_h, **censor)
             self.bridge.saved.emit(ok, out, why)
         threading.Thread(target=work, name="clip-save", daemon=True).start()
 
@@ -1382,8 +2014,12 @@ class ClipWindow(QWidget):
             self.goto(0.0)
         elif k == Qt.Key_End:
             self.goto(self.info.duration)
+        elif k in (Qt.Key_Delete, Qt.Key_Backspace) and self.preview.shape_tool and self.preview.selected_shape():
+            self.preview.remove_selected_shape()                # 1.12: a drawing
         elif k in (Qt.Key_Delete, Qt.Key_Backspace) and self.preview.editing:
             self.preview.remove_selected()
+        elif k == Qt.Key_A and not self.compact:
+            self.add_part()                                     # 1.12
         elif k == Qt.Key_Escape:
             self.close()
         else:
