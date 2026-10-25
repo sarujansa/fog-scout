@@ -2225,4 +2225,25 @@ EN = {
     'Gegner & Builds': 'Opponents & builds',
     'Maps & Server': 'Maps & servers',
     'Sonstiges': 'Other',
+    # 1.11.14: GUI pass
+    'Aufnahme markieren: abspielen, Clip schneiden, behalten, löschen – oder Rechtsklick.':
+        'Mark a recording: play, cut a clip, keep, delete – or right-click.',
+    'Clip markieren: abspielen, im Editor öffnen, löschen – oder Rechtsklick.':
+        'Mark a clip: play, open in the editor, delete – or right-click.',
+    'Filter{count} ▾': 'Filters{count} ▾',
+    'Filter{count} ▴': 'Filters{count} ▴',
+    'Filter zurücksetzen': 'Reset filters',
+    'Alle Filter der Statistik zurück auf „alle“ – Zeitraum, Rolle, Region, Killer, Map, Modus und „Farming ausblenden“.':
+        'Every filter of the statistics back to "all" – period, role, region, killer, map, mode and "Hide farming".',
+    'Region, Killer, Map, Modus und „Farming ausblenden“ ein- oder ausklappen. Die Zahl sagt, wie viele davon gerade filtern.':
+        'Show or hide region, killer, map, mode and "Hide farming". The number says how many of them filter right now.',
+    'Noch keine Runden gespeichert': 'No rounds saved yet',
+    'Eine Runde zählt vom Map-Banner bis zum Rundenende (ab 1 Minute) und erscheint hier von selbst. Kills, Escapes und Bloodpoints kommen von der Stats-Seite – dafür einmal die Match-Daten einrichten.':
+        'A round counts from the map banner to the end of the round (from 1 minute) and shows up here by itself. '
+        'Kills, escapes and bloodpoints come from the stats page – set up the match data once for that.',
+    'Noch keine Aufnahmen – OBS nimmt ab dem nächsten Map-Banner auf. Runden erscheinen hier, Clips (F8 oder aus dem Editor) im Reiter „Clips“.':
+        'No recordings yet – OBS records from the next map banner on. Rounds show up here, clips (F8 or from the '
+        'editor) on the "Clips" tab.',
+    'Runden pro Tag – letzte {n} Tage': 'Rounds per day – last {n} days',
+    '{when}: {n} Runden ({k} Killer, {s} Survivor)': '{when}: {n} rounds ({k} killer, {s} survivor)',
 }

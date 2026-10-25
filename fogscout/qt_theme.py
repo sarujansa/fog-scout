@@ -231,6 +231,12 @@ QTabBar::tab {{ background: transparent; color: {c['dim']}; padding: 7px 14px; b
 QTabBar[dense="true"]::tab {{ padding: 7px 9px; }}  /* 1.8.46/1.8.48: rows with many tabs (statistics) */
 QTabBar::tab:selected {{ color: {c['accent']}; border-bottom: 2px solid {c['accent']}; }}
 QTabBar::tab:hover:!selected {{ color: {c['fg']}; }}
+QTabWidget#segments::pane {{ border: none; top: 0; }}  /* 1.11.14: the statistics' groups as a segment switch */
+QTabBar#segbar::tab {{ background: {c['btn']}; color: {c['fg']}; border: 1px solid {c['border']}; border-radius: 6px;
+    padding: 5px 14px; margin: 0 6px 6px 0; }}
+QTabBar#segbar::tab:selected {{ background: {c['accent']}; color: {c['on_accent']}; border: 1px solid {c['accent']};
+    font-weight: 700; }}
+QTabBar#segbar::tab:hover:!selected {{ background: {c['btn_hover']}; }}
 QLabel[class="kpi"] {{ font-size: {px(24)}; font-weight: 700; color: {c['head']}; }}
 QLabel[class="sub"] {{ color: {c['dim']}; font-size: {px(11)}; font-weight: 700; letter-spacing: 1px; padding-top: 6px; }}
 QLabel[class="note"] {{ color: {DOT['warn']}; }}
