@@ -239,3 +239,16 @@ def test_without_an_id_nothing_is_sent_and_the_test_button_says_so(discord):
     finally:
         p.quit()
         p.join(timeout=3)
+
+
+def test_a_stuck_presence_thread_does_not_pile_up_the_same_state():
+    """1.12.3 (audit): update() compared with the thread's own state – while the thread hung on Discord's pipe,
+    every window tick (4 a second) queued the same state again, without end."""
+    from fogscout.discordrpc import GameState, Presence
+    p = Presence(lambda *a: None)                         # not started: a thread that never takes a command
+    state = GameState(running=True, map="Coal Tower")
+    for _i in range(40):
+        p.update(state)
+    assert p.cmds.qsize() == 1
+    p.update(GameState())
+    assert p.cmds.qsize() == 2

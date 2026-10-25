@@ -2016,3 +2016,36 @@ def test_the_overview_charts_the_rounds_of_the_last_two_weeks(qapp, keep):
     assert not win.overview.days_card.isHidden()
     win.allow_close = True
     win.close()
+
+
+def test_a_danger_button_is_readable_in_every_theme():
+    """1.12.3: buttons that delete or reset data (uimodel.danger) have red text – readable (4.5:1) on the button in
+    each state, dark, light and OLED, whatever the accent; disabled they look like any disabled button."""
+    try:
+        for key in qt_theme.THEMES:
+            for oled in (False, True):
+                qt_theme.set_theme(key, oled)
+                for dark in (True, False):
+                    c = qt_theme.colours(dark)
+                    for bg in ("btn", "btn_hover", "press", "card"):
+                        assert _contrast(c["danger"], c[bg]) >= 4.5, (key, oled, dark, bg)
+    finally:
+        qt_theme.set_theme("gold")
+    qss = qt_theme.stylesheet(True)
+    assert "QPushButton#danger {" in qss and "QPushButton#danger:disabled" in qss
+
+
+def test_danger_buttons_get_their_style_from_the_model():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QApplication
+    from fogscout import uimodel as ui
+    from fogscout.app_qt import ui_state
+    from fogscout.qt_pages import make_control, show_control
+    QApplication.instance() or QApplication([])
+    root = ui.Frame()
+    plain, gone = ui.Button(root, text="Exportieren"), ui.danger(ui.Button(root, text="Verlauf löschen"))
+    assert "danger" not in ui_state(plain) and ui_state(gone)["danger"] is True
+    for model, name in ((plain, ""), (gone, "danger")):
+        w, extra = make_control("button", str(model), lambda *a: None)
+        show_control("button", w, extra, ui_state(model))
+        assert w.objectName() == name
