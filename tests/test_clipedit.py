@@ -918,3 +918,50 @@ def test_the_clip_window_saves_parts_with_tempo_a_crop_a_drawing_and_a_gif(clip,
     finally:
         win.close()
         app.processEvents()
+
+
+def test_the_sound_line_beside_the_recordings_table_keeps_its_hint_below_the_sources(clip, four_track, tmp_path):
+    """1.12.2 (user's screenshot: "Silent in this recording …" squeezed into a column of single words beside the
+    sources, the format box cut off): the hint goes into a line of its own below the sources (indented to them), or
+    beside the label when there are no sources; the format box shows its whole (short) name, the long one is the
+    item's tip. Every source box sits in the window – a box added to a layout after it was placed got no parent."""
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+    from fogscout import qt_clip
+    app = QApplication.instance() or QApplication([])
+    win = qt_clip.ClipWindow(four_track, [], str(tmp_path / "Clips"), sound=False, compact=True)
+    try:
+        win.resize(600, 820)
+        win.show()
+        deadline = time.monotonic() + 20
+        while not win._silent and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.02)
+        app.processEvents()
+        assert win._silent == {"mic"} and not win.mix_hint.isHidden()
+        for box in win.mix_boxes.values():
+            assert box.window() is win and box.isVisibleTo(win)
+        top = lambda w: w.mapTo(win, w.rect().topLeft())                     # noqa: E731
+        assert top(win.mix_hint).y() > top(win.mix_boxes["dbd"]).y() + win.mix_boxes["dbd"].height() // 2
+        assert abs(top(win.mix_hint).x() - top(win.mix_boxes["dbd"]).x()) <= 12   # indented to the sources
+        assert win.mix_hint.width() > 300 and win.mix_hint.height() < 4 * win.fontMetrics().height()
+        box = win.mode_box
+        assert box.currentText() == qt_clip._(qt_clip.MODE_LABELS["copy"]) == "Schnell (ohne Neukodieren)"
+        assert box.itemData(0, Qt.ToolTipRole).startswith("Schnell (an Schlüsselbildern")
+        assert box.fontMetrics().horizontalAdvance(box.currentText()) < box.width()   # not cut off
+    finally:
+        win.close()
+        app.processEvents()
+    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), sound=False, compact=True)
+    try:
+        win.resize(600, 820)
+        win.show()
+        app.processEvents()
+        label, hint = win.mix_label, win.mix_hint
+        assert not hint.isHidden() and hint.window() is win
+        assert abs(label.mapTo(win, label.rect().center()).y() - hint.mapTo(win, hint.rect().topLeft()).y()) \
+            < 2 * win.fontMetrics().height()                                  # beside the label, not a line below
+    finally:
+        win.close()
+        app.processEvents()
