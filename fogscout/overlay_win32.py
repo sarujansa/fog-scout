@@ -145,8 +145,10 @@ FALLBACK_FONTS = ("segoeuib.ttf", "segoeui.ttf", "msyhbd.ttc", "msyh.ttc", "YuGo
                   "malgun.ttf", "Nirmala.ttf", "seguisym.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf", "DejaVuSans.ttf",
                   "NotoSansCJK-Bold.ttc", "NotoSansCJK-Regular.ttc", "NotoSans-Bold.ttf")
 _HAS: dict = {}                    # (font file, size, char) -> the font has a glyph for it
-_GLYPHS: dict = {}                 # (font id, char, stroke, x fraction) -> (L mask, offset) as ImageDraw.text uses it
-_CHAR_LEN: dict = {}               # (font id, char) -> textlength
+_GLYPHS: dict = {}                 # (font, char, stroke, x fraction) -> (L mask, offset) as ImageDraw.text uses it
+_CHAR_LEN: dict = {}               # (font, char) -> textlength
+# the keys hold the font itself, not id(font): a font freed by skin.inter's cache left its id to the next font
+# (1.12 review: text drawings at every canvas size – other glyphs and widths, garbled text, also in the overlay)
 GLYPHS_KEPT = 6000                 # the caches start over beyond this (a few hundred entries in practice)
 
 
@@ -210,7 +212,7 @@ def _ascent(font) -> int:
 
 
 def _char_len(font, ch: str) -> float:
-    key = (id(font), ch)
+    key = (font, ch)
     n = _CHAR_LEN.get(key)
     if n is None:
         if len(_CHAR_LEN) > GLYPHS_KEPT:
@@ -223,7 +225,7 @@ def _glyph(font, ch: str, stroke: int, fx: float):
     """Pillow's own mask of ``ch`` (with ``stroke``) at the fractional x start ``fx`` – exactly what
     ImageDraw.text((x, y), ch, …) draws, cached per font/char/stroke/fraction (the fractions repeat: the same
     text starts at the same x every second)."""
-    key = (id(font), ch, stroke, fx)
+    key = (font, ch, stroke, fx)
     hit = _GLYPHS.get(key)
     if hit is None:
         try:

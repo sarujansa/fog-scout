@@ -2492,4 +2492,10 @@ EN = {
         'For Discord (target size)',
     'GIF (ohne Ton)':
         'GIF (no sound)',
+    'Ein GIF ist höchstens {limit} s lang, dieser Clip {seconds} s – kürzer schneiden oder als Video speichern.':
+        'A GIF is at most {limit} s long, this clip {seconds} s – cut it shorter or save it as a video.',
+    'beim Beenden abgebrochen':
+        'stopped when the program quit',
+    'Update gesperrt: ein Clip wird noch gespeichert. Danach noch einmal auf „Aktualisieren und neu starten“ klicken.':
+        'Update locked: a clip is still being saved. Click “Update and restart” again afterwards.',
 }

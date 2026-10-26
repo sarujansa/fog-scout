@@ -11,6 +11,7 @@ its stroke touches – its empty inside costs nothing.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field, replace
 
 from PIL import Image, ImageDraw
@@ -26,6 +27,12 @@ CHUNK = 160                     # big shapes: drawn in squares this wide (px), o
 CHUNK_FROM = 400 * 400          # ... from a covered area this large (a box over the whole picture: 800 → 60 ms)
 SEAM = 4                        # px drawn around each square and cut off after scaling (Lanczos reaches 3 px)
 OUTLINE = (0, 0, 0, 170)        # the dark rim around every stroke
+ELLIPSE_SIDES = 64              # picking an ellipse: its outline as a polygon (≤ 0.12 % of its width off)
+_RING = [(math.cos(2 * math.pi * i / ELLIPSE_SIDES), math.sin(2 * math.pi * i / ELLIPSE_SIDES))
+         for i in range(ELLIPSE_SIDES + 1)]
+# every line break str.splitlines knows (a pasted "\r\n" stays in a QLineEdit): Pillow's raqm layout fails on
+# "\r", "\x85" and "\u2029" (RuntimeError) – they end a line like "\n"
+_BREAKS = re.compile(r"\r\n|[\n\r\x0b\x0c\x1c-\x1e\x85\u2028\u2029]")
 
 
 @dataclass
@@ -61,6 +68,11 @@ def _font(px: int):
     return inter("Bold", max(6, int(px)))
 
 
+def text_lines(text: str) -> list:
+    """The lines of a text drawing."""
+    return _BREAKS.split(text or "")
+
+
 def text_box(shape: Shape, w: int, h: int) -> tuple:
     """(x0, y0, x1, y1) of a text shape in pixels: the anchor is its top-left corner."""
     if not shape.pts:
@@ -68,7 +80,7 @@ def text_box(shape: Shape, w: int, h: int) -> tuple:
     from .overlay_win32 import _char_len
     size = max(6, int(shape.size * h))
     font = _font(size)
-    lines = (shape.text or " ").split("\n")
+    lines = text_lines(shape.text or " ")
     width = max(sum(_char_len(font, ch) for ch in line) for line in lines)
     x, y = shape.pts[0][0] * w, shape.pts[0][1] * h
     pad = size * 0.12
@@ -89,16 +101,35 @@ def bounds(shape: Shape, w: int, h: int) -> tuple:
 
 
 def hit(shape: Shape, x: float, y: float, w: int, h: int, slack: float = 6) -> bool:
-    """Is the pixel (x, y) on the shape (for picking it in the editor)?"""
+    """Is the pixel (x, y) on the shape (for picking it in the editor)? A box or ellipse only on its outline –
+    its empty inside stays free for a new drawing – unless it is too small to draw in."""
     x0, y0, x1, y1 = bounds(shape, w, h)
     if not (x0 - slack <= x <= x1 + slack and y0 - slack <= y <= y1 + slack):
         return False
-    if shape.kind in ("text", "rect", "ellipse"):
+    if shape.kind == "text":
         return True
     pts = _px(shape, w, h)
     tol = max(slack, shape.size * h * 1.5)
+    if shape.kind in ("rect", "ellipse"):
+        if len(pts) < 2 or min(abs(pts[1][0] - pts[0][0]), abs(pts[1][1] - pts[0][1])) <= 4 * tol:
+            return True
+        return _outline_dist(shape.kind, x, y, pts[0], pts[1], max(1.0, shape.size * h) / 2) <= tol
     return any(_seg_dist(x, y, a, b) <= tol for a, b in zip(pts, pts[1:])) or (
         len(pts) == 1 and math.dist((x, y), pts[0]) <= tol)
+
+
+def _outline_dist(kind: str, px: float, py: float, a, b, inset: float = 0.0) -> float:
+    """Distance of (px, py) from the outline of the box or ellipse spanned by the corners ``a`` and ``b``, moved
+    ``inset`` px inwards (Pillow draws the stroke inside the box: its middle is half a stroke in)."""
+    x0, x1, y0, y1 = min(a[0], b[0]), max(a[0], b[0]), min(a[1], b[1]), max(a[1], b[1])
+    x0, x1, y0, y1 = x0 + inset, x1 - inset, y0 + inset, y1 - inset
+    if kind == "rect":                          # square corners, as Pillow draws them
+        return abs(max(x0 - px, px - x1, y0 - py, py - y1))
+    # an ellipse has no closed-form distance – a polygon on it (the distance along the ray from the middle is far
+    # too large on a flat oval: half its visible stroke picked nothing)
+    cx, cy, rx, ry = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2
+    ring = [(cx + rx * c, cy + ry * s) for c, s in _RING]
+    return min(_seg_dist(px, py, ring[i], ring[i + 1]) for i in range(ELLIPSE_SIDES))
 
 
 def _seg_dist(px, py, a, b) -> float:
@@ -154,7 +185,7 @@ def _draw_text(tile: Image.Image, shape: Shape, ox: float, oy: float, w: int, h:
     font = _font(size)
     stroke = max(SS, int(size * 0.09))
     x, y = shape.pts[0][0] * w * SS - ox, shape.pts[0][1] * h * SS - oy
-    for i, line in enumerate((shape.text or "").split("\n")):
+    for i, line in enumerate(text_lines(shape.text)):
         _draw_run(tile, x, y + i * size * 1.25, line, font, _rgba(shape.colour), stroke=stroke,
                   stroke_fill=(0, 0, 0, 230))
 

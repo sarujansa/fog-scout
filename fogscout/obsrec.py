@@ -561,11 +561,16 @@ def select_recordings(recs: list[Recording], since: float | None = None, map_lab
 # ------------------------------------------------------------------ clips (1.8.13): the list in the tab "Aufnahmen"
 CLIPS_INDEX = "fogscout-clips.jsonl"     # in Clips/: what the program made there (only these are deleted)
 OLD_CLIPS_INDEX = "dbdmapscout-clips.jsonl"   # 1.9: the name until 1.8.91 – taken over when first read
-CLIP_EXTS = (".mp4", ".mkv", ".mov", ".webm", ".flv", ".png", ".jpg")
+CLIP_EXTS = (".mp4", ".mkv", ".mov", ".webm", ".flv", ".gif", ".png", ".jpg")   # .gif: the editor's GIFs (1.12)
 STILL_EXTS = (".png", ".jpg")
 CLIP_KINDS = ("clip", "instant", "still")
 _STAMP_RE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d-\d\d) (.+)$")
 _COPY_RE = re.compile(r" \(\d+\)$")                     # unique_path / _unique: "name (2)"
+PART_EXT = ".tmp"               # 1.12 review: the clip editor's ffmpeg writes "<clip>.mp4.tmp", renamed once whole –
+                                # a file still being written is never listed, uploaded or opened
+PART_STALE_S = 300.0            # … such a file nobody wrote to for this long was left by a quit or crash mid-save
+PARTS_CHECK_S = 60.0            # s between two looks for them (Recorder._settle_parts)
+PARTS_WRITING = set()           # part_key of every ".tmp" a save of this process writes now (clipedit) – never touched
 
 
 @dataclass
@@ -691,6 +696,89 @@ def list_clips(cdir: str, recs: list[Recording]) -> list[Clip]:
             c.t = st.st_mtime
         out.append(c)
     return sorted(out, key=lambda c: c.t, reverse=True)
+
+
+def part_key(path: str) -> str:
+    """One spelling of a path for PARTS_WRITING."""
+    return os.path.normcase(os.path.abspath(path))
+
+
+def whole(path: str) -> bool | None:
+    """1.12 review: did ffmpeg finish ``path``? mp4/mov: the top-level boxes fill the file exactly and the index box
+    "moov" is there (while ffmpeg writes, the data box has no size yet: 0); gif: it ends with the trailer. A ".tmp"
+    counts as the kind it is named for. None = cannot tell (another kind, the file not readable)."""
+    ext = os.path.splitext(path[:-len(PART_EXT)] if path.endswith(PART_EXT) else path)[1].lower()
+    if ext not in (".mp4", ".mov", ".gif"):
+        return None
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            if ext == ".gif":
+                if size < 14 or f.read(6) not in (b"GIF87a", b"GIF89a"):
+                    return False
+                f.seek(-1, os.SEEK_END)
+                return f.read(1) == b";"
+            pos, moov = 0, False
+            while pos < size:
+                f.seek(pos)
+                head = f.read(16)
+                if len(head) < 8:
+                    return False
+                n, kind = struct.unpack(">I4s", head[:8])
+                if n == 1 and len(head) == 16:               # 64-bit size
+                    n = struct.unpack(">Q", head[8:])[0]
+                if n < 8:                                    # 0 = "to the end": the size ffmpeg writes last
+                    return False
+                moov = moov or kind == b"moov"
+                pos += n
+            return pos == size and moov
+    except OSError:
+        return None
+
+
+def settle_parts(folder: str, now: float | None = None) -> list[str]:
+    """1.12 review: a clip the editor was writing when the program ended (quit, update restart, crash) – ffmpeg may
+    finish it on its own, but the rename after it never comes, so "<clip>.mp4.tmp" stayed unlisted for good. A ".tmp"
+    in Clips/ with one of the program's clip names (adopt_clip), untouched for PART_STALE_S and not written by a save
+    of this process: whole → it gets its name and the clips list takes it; cut short → it goes. Someone else's file,
+    or one whole() cannot judge, stays. Returns the names given."""
+    now = time.time() if now is None else now
+    cdir = clips_dir(folder)
+    try:
+        names = [n for n in os.listdir(cdir) if n.endswith(PART_EXT)
+                 and os.path.splitext(n[:-len(PART_EXT)])[1].lower() in (".mp4", ".mov", ".gif")]
+    except OSError:
+        return []
+    recs, given = None, []
+    for name in names:
+        final, p = name[:-len(PART_EXT)], os.path.join(cdir, name)
+        try:
+            if part_key(p) in PARTS_WRITING or not os.path.isfile(p) or now - os.path.getmtime(p) < PART_STALE_S:
+                continue
+        except OSError:
+            continue
+        recs = load_index(folder) if recs is None else recs
+        if adopt_clip(final, recs) is None:
+            continue                                         # not a name of ours: someone else's file
+        done = whole(p)
+        if done is False:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        if not done:
+            continue
+        stem, ext = os.path.splitext(final)
+        target, n = os.path.join(cdir, final), 2
+        while os.path.exists(target) or (n > 2 and os.path.exists(target + PART_EXT)):
+            target = os.path.join(cdir, f"{stem} ({n}){ext}")          # as unique_path: never a name being written
+            n += 1
+        try:
+            os.replace(p, target)
+        except OSError:
+            continue                                         # still open (Windows): next look
+        given.append(os.path.basename(target))
+    return given
 
 
 def select_clips(clips: list[Clip], since: float | None = None, role: str | None = None, killer: str | None = None,
@@ -823,13 +911,15 @@ def track_sources(n_tracks: int) -> dict:
     return {}
 
 
-def audio_graph(n_tracks: int, mix) -> tuple[str, str | None]:
+def audio_graph(n_tracks: int, mix, inp: int = 0, tag: str = "") -> tuple[str, str | None]:
     """(filter_complex part, ``-map`` value) for the wanted ``mix`` {source: volume, 1.0 = as recorded} of a file
     with ``n_tracks`` audio tracks: ("", "0:a?") = ffmpeg's default, nothing to mix; ("", None) = no sound at
     all; ("", "0:a:N") = one track as it is (stream copy possible); else a volume/amix graph ending in [aout]
-    with map "[aout]" – the sound is then re-encoded. Pure."""
+    with map "[aout]" – the sound is then re-encoded. ``inp`` = the ffmpeg input the tracks come from and ``tag``
+    = a suffix for the graph's labels (the clip editor mixes each part of a clip from an input of its own, one
+    graph each). Pure."""
     if mix is None or n_tracks < 2:
-        return "", "0:a?"
+        return "", f"{inp}:a?"
     srcs = track_sources(n_tracks)
     vol = {k: max(0.0, float(mix.get(k, 0) or 0)) for k in SOURCES}
     if srcs.get("discord") == LEGACY:                      # 1.8.5 file: all or all-but-Discord, one volume
@@ -842,12 +932,13 @@ def audio_graph(n_tracks: int, mix) -> tuple[str, str | None]:
     if not parts:
         return "", None
     if len(parts) == 1 and abs(parts[0][1] - 1.0) < 1e-3:
-        return "", f"0:a:{parts[0][0]}"
-    chain = ";".join(f"[0:a:{i}]volume={v:.3f}[a{k}]" for k, (i, v) in enumerate(parts))
+        return "", f"{inp}:a:{parts[0][0]}"
+    out = f"[aout{tag}]"
+    chain = ";".join(f"[{inp}:a:{i}]volume={v:.3f}[a{k}{tag}]" for k, (i, v) in enumerate(parts))
     if len(parts) == 1:
-        return chain.replace("[a0]", "[aout]"), "[aout]"
-    chain += ";" + "".join(f"[a{k}]" for k in range(len(parts))) + f"amix=inputs={len(parts)}:normalize=0[aout]"
-    return chain, "[aout]"
+        return chain.replace(f"[a0{tag}]", out), out
+    chain += ";" + "".join(f"[a{k}{tag}]" for k in range(len(parts))) + f"amix=inputs={len(parts)}:normalize=0{out}"
+    return chain, out
 
 
 def audio_tracks(path: str, ffmpeg: str | None = None, run=None) -> int:
@@ -1016,6 +1107,7 @@ class Recorder(threading.Thread):
         self.space = Space()         # 1.4.2: the drive and the index, for the overview's tile
         self._space_t = 0.0
         self._farming_t = 0.0        # 1.8.23: last look for expired farming recordings
+        self._parts_t = 0.0          # 1.12 review: last look for clips left as ".tmp" (settle_parts)
         self._routed = None          # 1.8.23: sources OBS had on their own track (None = unknown / not routed)
         self._ready = False          # 1.8.41: OBS was set up for this DBD session (else retried every RECHECK_S)
         self._buffer_tried = False   # 1.8.42: we asked OBS to start its replay buffer (once per DBD/OBS session)
@@ -1120,6 +1212,7 @@ class Recorder(threading.Thread):
                     self._recheck()
                     self._look_at_space()
                     self._expire_farming()
+                    self._settle_parts()
                 except ObsError as e:
                     self._say(str(e), False)
                 continue
@@ -1366,6 +1459,21 @@ class Recorder(threading.Thread):
         if deleted:
             self._post("deleted", files=deleted, farming=True, days=int(self.cfg.farming_days))
             self._look_at_space(force=True)
+
+    def _settle_parts(self):
+        """Every PARTS_CHECK_S: a clip the editor was writing when the program ended gets its name (settle_parts)."""
+        if time.time() - self._parts_t < PARTS_CHECK_S:
+            return
+        self._parts_t = time.time()
+        folder = self.folder()
+        try:
+            given = settle_parts(folder) if folder else []
+        except Exception:                              # never let the thread die (the idle look catches ObsError only)
+            log.exception("Clips nach dem Programmende")
+            return
+        for name in given:
+            log.info("Clip nach dem Programmende fertig geworden: %s", name)
+            self._post("changed", what="clip", file=name)
 
     def folder(self) -> str | None:
         return find_folder(self.cfg.volume, self.cfg.rel, self.cfg.folder)
