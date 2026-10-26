@@ -1721,6 +1721,12 @@ EN = {
     'Der Clip beginnt am Abspielkopf (Taste I).': 'The clip starts at the playhead (key I).',
     'Der Clip endet am Abspielkopf (Taste O).': 'The clip ends at the playhead (key O).',
     'Zur Marke ▸': 'To mark ▸',
+    'Marken (F8)': 'Marks (F8)',
+    'Clip um Marke': 'Clip around mark',
+    'Der Clip beginnt {before} s vor der markierten Marke (ohne Auswahl: der nächsten am Abspielkopf) und endet {after} s danach.':
+        'The clip starts {before} s before the picked mark (none picked: the one nearest the playhead) and ends {after} s after it.',
+    'Keine Marken in dieser Aufnahme – F8 im Spiel setzt eine.':
+        'No marks in this recording – F8 in the game sets one.',
     'Springt zur nächsten F8-Marke (Taste M).': 'Jumps to the next F8 mark (key M).',
     'Clip: {start} – {end} ({length} s)': 'Clip: {start} – {end} ({length} s)',
     'Ton': 'Sound',
@@ -2218,8 +2224,8 @@ EN = {
         'Farming partners (right click on a character on the "Opponents" tab): {names}',
     # 1.8.76: the statistics' groups
     'Gegner & Builds': 'Opponents & builds',
-    'Maps & Server': 'Maps & servers',
-    'Sonstiges': 'Other',
+    'Maps, Server & PC': 'Maps, servers & PC',
+    'Bloodpoints & Farming': 'Bloodpoints & farming',
     # 1.11.14: GUI pass
     'Aufnahme markieren: abspielen, Clip schneiden, behalten, löschen – oder Rechtsklick.':
         'Mark a recording: play, cut a clip, keep, delete – or right-click.',

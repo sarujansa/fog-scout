@@ -1278,12 +1278,13 @@ def test_the_statistics_tabs_are_short_and_the_last_rounds_come_second(app_root)
     app = App(str(app_root), simulate=str(app_root / "sim"))
     try:
         groups = [app.stats_nb.tab(t, "text") for t in app.stats_nb.tabs()]      # 1.8.76: four groups
-        assert groups == ["Runden", "Gegner & Builds", "Maps & Server", "Sonstiges"]
+        # 1.12.7 (user: "Bloodpoints und Farming bei Sonstiges macht keinen Sinn"): no "Sonstiges" any more
+        assert groups == ["Runden", "Bloodpoints & Farming", "Gegner & Builds", "Maps, Server & PC"]
         parts = {g: [nb.tab(t, "text") for t in nb.tabs()] for g, nb in zip(groups, app._stats_groups.values())}
         assert parts["Runden"] == ["Übersicht", "Letzte Runden", "Rekorde", "Verlauf"]
+        assert parts["Bloodpoints & Farming"] == ["Bloodpoints", "Farming"]
         assert parts["Gegner & Builds"] == ["Killer", "Gegner", "Builds"]
-        assert parts["Maps & Server"] == ["Maps", "Regionen", "Wartezeit"]
-        assert parts["Sonstiges"] == ["Bloodpoints", "System", "Farming"]
+        assert parts["Maps, Server & PC"] == ["Maps", "Regionen", "Wartezeit", "System"]
         assert sum(len(v) for v in parts.values()) == 13 and app._stats_current_title() == "Übersicht"
         app._stats_render()
         app._stats_select("Letzte Runden")

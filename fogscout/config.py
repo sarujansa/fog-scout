@@ -11,7 +11,7 @@ import time
 log = logging.getLogger(__name__)
 
 HUD_SHOWN = ("above", "left", "right", "custom")    # settings.sysinfo values that show the system values
-SETTINGS_VERSION = 12
+SETTINGS_VERSION = 13
 
 DEFAULTS = {
     "settings_version": SETTINGS_VERSION,
@@ -336,6 +336,8 @@ def _load(raw) -> dict:
         data["rec_clip_sources"] = list(DEFAULTS["rec_clip_sources"])
     if ver < 12:  # 1.11.11 (user: "entferne das Avg-Kill, damit falls es stockt nicht noch eine Zeile entsteht")
         ov["show_record"] = False
+    if ver < 13:  # 1.12.7: Bloodpoints/Farming/System moved to other groups – a saved order of the old rows would
+        (data.get("tab_order") or {}).pop("stats", None)   # put the wrong tabs first (tabs count by position)
     if data.get("color_theme") == "oled":            # 1.62.0: OLED was a theme of its own
         data["color_theme"], data["oled_black"] = "gold", True
     data["settings_version"] = SETTINGS_VERSION
