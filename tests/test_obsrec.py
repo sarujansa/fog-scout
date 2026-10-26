@@ -17,6 +17,16 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from fogscout import obsrec  # noqa: E402
 
+ROOMY = SimpleNamespace(total=4 * 2 ** 40, used=2 ** 40, free=3 * 2 ** 40)
+
+
+@pytest.fixture(autouse=True)
+def _roomy_drive(monkeypatch):
+    """1.12.7: the recorder measures the real drive (prune keeps RESERVE free, no round below MIN_FREE) – on a
+    machine with less than 10 GiB free 15 tests failed although the code was right (measured with 9 GiB faked).
+    The tests get a drive with room; the ones about space pass ``free=`` themselves."""
+    monkeypatch.setattr(obsrec.shutil, "disk_usage", lambda _p: ROOMY)
+
 
 # ------------------------------------------------------------------ a fake obs-websocket 5 server
 ALL_TRACKS = {str(n): True for n in range(1, 7)}

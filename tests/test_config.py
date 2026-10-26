@@ -110,3 +110,17 @@ def test_a_save_that_fails_says_so_once_in_the_log(tmp_path, caplog):
     os.makedirs(tmp_path / "gone")
     s.save()
     assert os.path.exists(tmp_path / "gone" / "settings.json") and not s._save_failed
+
+
+def test_a_saved_order_of_the_statistics_tabs_is_dropped_once_for_the_new_groups(tmp_path):
+    """1.12.7: Bloodpoints and Farming left "Sonstiges" for a group of their own, System moved to the maps – a
+    saved tab order counts tabs by position and would put the wrong ones first, so it is dropped once (others stay)."""
+    import json
+    from fogscout.config import Settings, SETTINGS_VERSION
+    p = tmp_path / "settings.json"
+    p.write_text(json.dumps({"settings_version": 12, "tab_order": {"stats": {"x": ["2", "0", "1"]},
+                                                                   "overlay": {"t": ["a"]}}, "hotkeys": {}}))
+    s = Settings(str(p))
+    assert s["tab_order"] == {"overlay": {"t": ["a"]}} and s["settings_version"] == SETTINGS_VERSION == 13
+    p.write_text(json.dumps({"settings_version": 13, "tab_order": {"stats": {"x": ["1", "0"]}}, "hotkeys": {}}))
+    assert Settings(str(p))["tab_order"] == {"stats": {"x": ["1", "0"]}}           # ordered after 1.12.7: kept

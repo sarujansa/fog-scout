@@ -33,8 +33,10 @@ BUILDS_KEPT = 6                  # 1.11.14: selections whose Builds rows are kep
 QUALITY_LABELS = (N_("keins"), N_("Bronze"), N_("Silber"), N_("Gold"), N_("Iri"))   # builds.QUALITIES, worst first
 STATS_WAIT_GROUPS = [("weekday", N_("nach Wochentag")), ("hour", N_("nach Uhrzeit")), ("region", N_("nach Region"))]
 # 1.8.76 (user review: thirteen sub-tabs in one row were not to be found): the parts of the statistics in four groups
-STATS_GROUPS = [("rounds", N_("Runden")), ("foes", N_("Gegner & Builds")), ("maps", N_("Maps & Server")),
-                ("other", N_("Sonstiges"))]
+# 1.12.7 (user: "Bloodpoints und Farming bei Sonstiges macht keinen Sinn"): Bloodpoints and Farming a group of their
+# own, System (the PC during the rounds) beside maps, regions and waiting – no "Sonstiges" any more
+STATS_GROUPS = [("rounds", N_("Runden")), ("bp", N_("Bloodpoints & Farming")), ("foes", N_("Gegner & Builds")),
+                ("maps", N_("Maps, Server & PC"))]
 WEEKDAYS = [N_("Montag"), N_("Dienstag"), N_("Mittwoch"), N_("Donnerstag"), N_("Freitag"), N_("Samstag"),
             N_("Sonntag")]
 STATS_SYS_GROUPS = [("map", N_("nach Map")), ("hour", N_("nach Uhrzeit")), ("weekday", N_("nach Wochentag")),
@@ -250,7 +252,7 @@ class StatsTab:
         ui.Label(box_k, text=_("Ein Skin oder neuer Killer steht unter seinem eigenen Namen? Zeile markieren, Killer "
                                 "wählen, „Zuordnen“ – gilt auch rückwirkend."),
                   style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
-        box_b = self._stats_page(_("Bloodpoints"), "other", "_stats_part_bp")   # 1.6.3: with the role filter "Farming" = the farming evaluation
+        box_b = self._stats_page(_("Bloodpoints"), "bp", "_stats_part_bp")   # 1.6.3: with the role filter "Farming" = the farming evaluation
         self.stats_bp_tiles = ui.Tiles(box_b)          # 1.7.1: a small dashboard above the table
         self.stats_bp_tiles.pack(fill="x", pady=(0, 6))
         self.bp_trend = TrendChart(box_b, bool(self.settings.get("dark_mode", True)), panels=("bp",))
@@ -275,7 +277,32 @@ class StatsTab:
         ui.Label(box_v, text=_("Nur Runden, die einem Match auf der Stats-Seite zugeordnet sind. Die Maus über einer "
                                 "Säule zeigt Wert und Anzahl der Runden."),
                   style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
-        box_s = self._stats_page(_("System"), "other", "_stats_part_sys")       # 1.60: tiles, highest values, table, trend (was a text block)
+        box_r = self._stats_page(_("Regionen"), "maps", "_stats_part_regions")           # 1.8.2: short names – all ten tabs fit
+        self.stats_regs = self._stats_tree(box_r, (("reg", _("Region"), 190, "w"), ("n", _("Runden"), 65, "e"),
+                                                   ("avg", _("Ø Dauer"), 75, "e"), ("share", _("Anteil"), 65, "e"),
+                                                   ("ping", _("Ø Ping"), 70, "e")), 5)
+        ui.Label(box_r, text=_("Region nur bekannt, wenn im Tab Server „Verbundener Spielserver“ an war."),
+                  style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+        box_w = self._stats_page(_("Wartezeit"), "maps", "_stats_part_wait")
+        self.stats_wait_tiles = ui.Tiles(box_w)          # 1.2.16: Ø / median / shortest / longest as tiles
+        self.stats_wait_tiles.pack(fill="x", pady=(0, 6))
+        wr = ui.Frame(box_w)
+        wr.pack(fill="x", pady=(0, 4))
+        self.stats_wait_var = ui.StringVar(value="")
+        ui.Label(wr, textvariable=self.stats_wait_var, wraplength=360).pack(side="left")
+        self._stats_wait_groups = [(k, _(label)) for k, label in STATS_WAIT_GROUPS]
+        self.stats_wait_by_var = ui.StringVar(value=self._stats_wait_groups[0][1])
+        cb = ui.Combobox(wr, textvariable=self.stats_wait_by_var, values=[lbl for _k, lbl in self._stats_wait_groups],
+                          state="readonly", width=16)
+        cb.pack(side="right")
+        cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
+        self.stats_wait = self._stats_tree(box_w, (("grp", _("Wann/Wo"), 230, "w"), ("n", _("Runden"), 70, "e"),
+                                                   ("avg", _("Ø Wartezeit"), 90, "e"), ("min", _("Kürzeste"), 80, "e")),
+                                           7)
+        ui.Label(box_w, text=_("Gemessen von „CANCEL“ (Suche läuft) bis zur gefundenen Lobby – nur wenn das Programm "
+                                "die Suche gesehen hat. Custom Games haben keine Wartezeit."),
+                  style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+        box_s = self._stats_page(_("System"), "maps", "_stats_part_sys")        # 1.60: tiles, highest values, table, trend; 1.12.7: after Wartezeit
         self.stats_sys_var = ui.StringVar(value="")       # only when there are no values
         ui.Label(box_s, textvariable=self.stats_sys_var, wraplength=400).pack(anchor="w")
         self.stats_sys_tiles = ui.Tiles(box_s)
@@ -315,31 +342,6 @@ class StatsTab:
                                 "Runden nicht erfasst – CPU-Temperatur, -Leistung, Kerne und FPS gibt es nur, solange HWiNFO "
                                 "läuft, und jeder Wert braucht mindestens 10 Sekunden Messwerte in der Runde."),
                   style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(6, 0))
-        box_r = self._stats_page(_("Regionen"), "maps", "_stats_part_regions")           # 1.8.2: short names – all ten tabs fit
-        self.stats_regs = self._stats_tree(box_r, (("reg", _("Region"), 190, "w"), ("n", _("Runden"), 65, "e"),
-                                                   ("avg", _("Ø Dauer"), 75, "e"), ("share", _("Anteil"), 65, "e"),
-                                                   ("ping", _("Ø Ping"), 70, "e")), 5)
-        ui.Label(box_r, text=_("Region nur bekannt, wenn im Tab Server „Verbundener Spielserver“ an war."),
-                  style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
-        box_w = self._stats_page(_("Wartezeit"), "maps", "_stats_part_wait")
-        self.stats_wait_tiles = ui.Tiles(box_w)          # 1.2.16: Ø / median / shortest / longest as tiles
-        self.stats_wait_tiles.pack(fill="x", pady=(0, 6))
-        wr = ui.Frame(box_w)
-        wr.pack(fill="x", pady=(0, 4))
-        self.stats_wait_var = ui.StringVar(value="")
-        ui.Label(wr, textvariable=self.stats_wait_var, wraplength=360).pack(side="left")
-        self._stats_wait_groups = [(k, _(label)) for k, label in STATS_WAIT_GROUPS]
-        self.stats_wait_by_var = ui.StringVar(value=self._stats_wait_groups[0][1])
-        cb = ui.Combobox(wr, textvariable=self.stats_wait_by_var, values=[lbl for _k, lbl in self._stats_wait_groups],
-                          state="readonly", width=16)
-        cb.pack(side="right")
-        cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
-        self.stats_wait = self._stats_tree(box_w, (("grp", _("Wann/Wo"), 230, "w"), ("n", _("Runden"), 70, "e"),
-                                                   ("avg", _("Ø Wartezeit"), 90, "e"), ("min", _("Kürzeste"), 80, "e")),
-                                           7)
-        ui.Label(box_w, text=_("Gemessen von „CANCEL“ (Suche läuft) bis zur gefundenen Lobby – nur wenn das Programm "
-                                "die Suche gesehen hat. Custom Games haben keine Wartezeit."),
-                  style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
         # 1.8.46: the characters met and how the survivors' matches ended (page data that was read but unused)
         box_o = self._stats_page(_("Gegner"), "foes", "_stats_part_opponents")
         self.stats_opp_var = ui.StringVar(value="")       # only when there is nothing to show
@@ -392,7 +394,7 @@ class StatsTab:
         # 1.8.64 (user: "wir haben so viele Kategorien, warum keine für Farming"): the farming rounds on a tab of
         # their own – whatever the role filter says (it keeps them out of every other evaluation). Last tab: the
         # saved tab order (tab_order) counts the tabs by position
-        box_f = self._stats_page(_("Farming"), "other", "_stats_part_farming")
+        box_f = self._stats_page(_("Farming"), "bp", "_stats_part_farming")
         self.stats_farm_note = ui.StringVar(value="")
         ui.Label(box_f, textvariable=self.stats_farm_note, wraplength=520).pack(anchor="w")
         self.stats_farm_tiles = ui.Tiles(box_f)

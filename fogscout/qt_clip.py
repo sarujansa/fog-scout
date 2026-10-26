@@ -31,6 +31,7 @@ log = logging.getLogger("fogscout")
 CENSOR_LABELS = {"pixel": N_("Verpixelt"), "blur": N_("Verwischt"), "black": N_("Schwarz"),
                  "retouch": N_("Retusche (aus der Umgebung übermalt)")}   # 1.7.2, retouch 1.7.3
 SIDE_W = 400                                     # 1.12.5: px of the big editor's side column (tools, saving)
+MARK_BEFORE_S, MARK_AFTER_S = 20.0, 10.0          # a clip around an F8 mark (on opening, „Clip um Marke“)
 COMPACT_PREVIEW_H = 360                          # 1.8.8: picture height of the preview beside the recordings
 MIX_MAX = 150                                    # 1.8.6: a source may be raised to 150 %
 SOURCE_LABELS = {"dbd": N_("Spiel"), "discord": N_("Discord"), "mic": N_("Mikrofon"), "other": N_("Hintergrund")}
@@ -1123,7 +1124,7 @@ class ClipWindow(QWidget):
         self.timeline.set_range(0.0, self.info.duration)
         first = self.marks[0] if self.marks else 0.0
         if self.marks:                                        # a mark: the clip starts 20 s before it, ends 10 s after
-            self.timeline.set_range(max(0.0, first - 20), min(self.info.duration, first + 10))
+            self.timeline.set_range(max(0.0, first - MARK_BEFORE_S), min(self.info.duration, first + MARK_AFTER_S))
         self._show_range()
         self._start_threads()
         self.goto(self.timeline.start)
@@ -1253,8 +1254,58 @@ class ClipWindow(QWidget):
         if self.compact:
             wr.addStretch()
         cl.addLayout(wr)
+        if not self.compact:
+            self._marks_section(cl)
         cl.addStretch()
         return clip_card
+
+    def _marks_section(self, cl):
+        """1.12.7, big editor (the clip tab was half empty below its buttons): the F8 marks of the round – a click
+        jumps there, „Clip um Marke“ (or a double click) makes the clip MARK_BEFORE_S before to MARK_AFTER_S after
+        it, like the editor does on opening for the first mark."""
+        head = QLabel(_("Marken (F8)"))
+        head.setProperty("class", "dim")
+        cl.addSpacing(8)
+        cl.addWidget(head)
+        self.mark_list = QListWidget()
+        self.mark_list.setObjectName("marks")
+        self.mark_list.setMaximumHeight(150)
+        self.mark_list.setFocusPolicy(Qt.NoFocus)           # the window keeps the keys (arrows seek, M = next mark)
+        for m in self.marks:
+            self.mark_list.addItem(f"⚑  {clipedit.fmt_pos(m)}")
+        self.mark_list.itemClicked.connect(lambda _it: self.goto(self._picked_mark()))
+        self.mark_list.itemDoubleClicked.connect(lambda _it: self.clip_around_mark())
+        self.mark_list.setVisible(bool(self.marks))
+        cl.addWidget(self.mark_list)
+        mr = FlowRow(spacing=6)
+        self.around_btn = self._btn(mr, _("Clip um Marke"), self.clip_around_mark,
+                                    _("Der Clip beginnt {before} s vor der markierten Marke (ohne Auswahl: der "
+                                      "nächsten am Abspielkopf) und endet {after} s danach.",
+                                      before=f"{MARK_BEFORE_S:g}", after=f"{MARK_AFTER_S:g}"))
+        self.around_btn.setEnabled(bool(self.marks))
+        cl.addLayout(mr)
+        if not self.marks:
+            none = QLabel(_("Keine Marken in dieser Aufnahme – F8 im Spiel setzt eine."))
+            none.setProperty("class", "dim")
+            none.setWordWrap(True)
+            cl.addWidget(none)
+
+    def _picked_mark(self):
+        """The mark picked in the list, else the one nearest the playhead (None without marks)."""
+        if not self.marks:
+            return None
+        row = self.mark_list.currentRow() if hasattr(self, "mark_list") else -1
+        if 0 <= row < len(self.marks):
+            return self.marks[row]
+        return min(self.marks, key=lambda m: abs(m - self.timeline.pos))
+
+    def clip_around_mark(self):
+        m = self._picked_mark()
+        if m is None:
+            return
+        self.timeline.set_range(max(0.0, m - MARK_BEFORE_S), min(self.info.duration, m + MARK_AFTER_S))
+        self._show_range()
+        self.goto(self.timeline.start)
 
     def _censor_card(self):
         """The censor boxes (1.7.2): apply when saving, style, draw / names / remove."""
@@ -2329,9 +2380,11 @@ class ClipWindow(QWidget):
             self.save_still(t)
 
     def save_still(self, t):
-        """1.8.10: the picture at ``t`` in full size as PNG next to the clips (Clips/<round> – Bild m:ss.png)."""
+        """1.8.10: the picture at ``t`` in full size as PNG next to the clips (Clips/<round> – Bild m:ss.png).
+        1.12.7: cut like the clip when a crop is chosen (big editor) – "Ohne schwarze Ränder" kept the borders."""
         if not self.info.ok or not self.ffmpeg:
             return
+        crop = self.edit_plan().crop
         name = clipedit.NAME_CHARS.sub("", "{} – {} {}".format(
             os.path.splitext(os.path.basename(self.path))[0], _("Bild"), clipedit.fmt_pos(t).replace(":", "-")))
         try:
@@ -2348,6 +2401,9 @@ class ClipWindow(QWidget):
             try:
                 img = clipedit.frame_at(path, t, info.height, info, ffmpeg)
                 if img is not None:
+                    if crop:                              # the same pixels as the clip's crop filter
+                        w, h, x, y = clipedit.crop_px(crop, img.width, img.height)
+                        img = img.crop((x, y, x + w, y + h))
                     img.save(out)
                     ok = True
             except Exception:                             # OSError, PIL: a result in any case
