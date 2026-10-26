@@ -566,3 +566,68 @@ def test_without_borders_nothing_is_cut_and_the_compact_editor_shows_what_it_sav
         assert compact.preview.view is None and compact.edit_plan().crop is None
     finally:
         compact.close()
+
+
+def test_a_still_is_cut_like_the_clip(qapp, bordered, clip, tmp_path):
+    """1.12.7: with „Ohne schwarze Ränder“ (or any crop) the still picture shows what the clip shows – it kept the
+    black borders. Without a crop, and in the compact editor (no crop there), it stays the whole picture."""
+    from PIL import Image
+    from fogscout import clipedit
+    win = _window(qapp, bordered, tmp_path)
+    folder = tmp_path / "Clips"
+    try:
+        assert _pump(qapp, lambda: win.crop_box.currentData() == "content")
+        win.save_still(1.0)
+        assert _pump(qapp, lambda: any(folder.glob("*.png")) and (win._last_out or "").endswith(".png"))
+        w, h, _x, _y = clipedit.crop_px(win.edit_plan().crop, 320, 180)
+        with Image.open(win._last_out) as img:
+            assert img.size == (w, h) and abs(w - 224) <= 4 and abs(h - 112) <= 4
+            assert min(img.convert("L").crop((0, 0, 1, h)).getextrema()[1],
+                       img.convert("L").crop((0, 0, w, 1)).getextrema()[1]) > clipedit.CONTENT_DARK   # no border left
+        first = win._last_out
+        win.crop_box.setCurrentIndex(win.crop_box.findData("none"))
+        win.save_still(2.0)
+        assert _pump(qapp, lambda: win._last_out != first)
+        with Image.open(win._last_out) as img:
+            assert img.size == (320, 180)
+    finally:
+        win.close()
+
+
+def test_the_clip_tab_lists_the_marks_and_makes_a_clip_around_one(qapp, clip, tmp_path, monkeypatch):
+    """1.12.7 (the clip tab of the big editor was half empty): the F8 marks as a list – a click jumps there,
+    „Clip um Marke“ makes the clip MARK_BEFORE_S before to MARK_AFTER_S after the picked one (without a pick: the
+    one nearest the playhead). Without marks: no list, the button off, a hint. The compact editor has none of it."""
+    from fogscout import qt_clip
+    monkeypatch.setattr(qt_clip, "MARK_BEFORE_S", 2.0)
+    monkeypatch.setattr(qt_clip, "MARK_AFTER_S", 1.0)
+    win = qt_clip.ClipWindow(clip, [8.0, 3.0], str(tmp_path / "Clips"), sound=False)
+    win.show()
+    try:
+        assert _pump(qapp, lambda: win.preview._img is not None and (win.loading is None or win.loading.finished))
+        assert win.tools.widget(0).isAncestorOf(win.mark_list) and win.mark_list.count() == 2
+        assert [win.mark_list.item(i).text() for i in range(2)] == ["⚑  0:03.0", "⚑  0:08.0"]
+        assert (win.timeline.start, win.timeline.end) == (1.0, 4.0)          # opened around the first mark
+        win.mark_list.setCurrentRow(1)
+        win.mark_list.itemClicked.emit(win.mark_list.item(1))
+        assert win.timeline.pos == pytest.approx(8.0, abs=0.01)
+        win.around_btn.click()
+        assert (win.timeline.start, win.timeline.end) == (6.0, 9.0) and win.timeline.pos == pytest.approx(6.0)
+        win.mark_list.setCurrentRow(-1)
+        win.goto(3.5)
+        win.clip_around_mark()                                               # no pick: the nearest mark
+        assert (win.timeline.start, win.timeline.end) == (1.0, 4.0)
+    finally:
+        win.close()
+    bare = _window(qapp, clip, tmp_path)
+    try:
+        assert bare.mark_list.isHidden() and not bare.around_btn.isEnabled()
+        bare.clip_around_mark()                                              # nothing happens
+        assert (bare.timeline.start, bare.timeline.end) == (0.0, pytest.approx(12.0, abs=0.1))
+    finally:
+        bare.close()
+    compact = qt_clip.ClipWindow(clip, [3.0], str(tmp_path / "Clips"), sound=False, compact=True)
+    try:
+        assert not hasattr(compact, "mark_list")
+    finally:
+        compact.close()
