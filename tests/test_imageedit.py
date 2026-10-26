@@ -275,3 +275,277 @@ def test_the_canvas_shows_a_smaller_copy_but_saving_keeps_every_pixel(tmp_path):
         win.close()
     small = qt_image.ImageWindow.__dict__["_preview_copy"].__func__(_picture(400, 200))
     assert small.size == (400, 200)
+
+
+# ---------------------------------------------------------------- review fixes (1.12 editing tools)
+
+def _marked(w=400, h=200):
+    """A dark picture with one white block (the "name" to censor) at the top left."""
+    img = Image.new("RGB", (w, h), (40, 40, 40))
+    img.paste((255, 255, 255), (40, 20, 60, 40))
+    return img
+
+
+def test_mirroring_and_then_turning_keeps_a_censor_box_on_what_it_covers():
+    """Review #1: base() turns before it mirrors – after a mirror, "Rechts drehen" turned the picture the other way
+    while the boxes turned clockwise, and the censored name showed in the saved copy."""
+    img = _marked()
+    box = (0.1, 0.1, 0.05, 0.1)                                           # exactly the white block
+    turns = {1: Image.ROTATE_270, 2: Image.ROTATE_180, 3: Image.ROTATE_90}
+    for horizontal in (True, False):
+        for q in (1, 2, 3):
+            e = imageedit.flipped(imageedit.ImageEdit(), horizontal, img.size)
+            e.censor = [imageedit._flip_box(box, horizontal)]
+            e.censor_style = "black"
+            size = imageedit.base(img, e).size
+            t = imageedit.turned(e, q, size)
+            mirror = Image.FLIP_LEFT_RIGHT if horizontal else Image.FLIP_TOP_BOTTOM
+            expected = img.transpose(mirror).transpose(turns[q])          # what the user did, in that order
+            assert imageedit.base(img, t).tobytes() == expected.tobytes(), (horizontal, q)
+            out = imageedit.render(img, t)
+            assert (255, 255, 255) not in {c for _n, c in out.getcolors(1 << 20)}, (horizontal, q)
+
+
+def test_text_drawn_at_many_sizes_never_gets_the_glyphs_of_another_font():
+    """Review #2/#5: the glyph caches were keyed by id(font); text drawings at every canvas size churn skin.inter's
+    64 fonts, a freed font's id went to the next one – other widths and glyphs in the editor, the saved copy and
+    the overlay's own text."""
+    from PIL import ImageDraw
+    from fogscout import skin
+    from fogscout.overlay_win32 import _char_len, _draw_run
+    shapes = [annotate.Shape("text", [(0.1, 0.1)], "#ffd23f", 0.05, "Killer hier"),
+              annotate.Shape("text", [(0.4, 0.6)], "#ffffff", 0.08, "Gen")]
+    before = annotate.layer(800, 600, shapes).tobytes()
+    for h in range(600, 1151, 10):                                        # a canvas dragged larger
+        annotate.layer(800, h, shapes)
+    assert annotate.layer(800, 600, shapes).tobytes() == before
+    text = "Coal Tower 12:34"
+    wrong = []
+    for weight, size in [("SemiBold", 15), ("Bold", 18), ("Medium", 13), ("Bold", 24), ("SemiBold", 20)] + \
+            [("Bold", s) for s in range(6, 160, 9)]:
+        f = skin.inter(weight, size)
+        a = Image.new("L", (600, 220))
+        _draw_run(a, 4, 4, text, f, 255)
+        b = Image.new("L", (600, 220))
+        d, x = ImageDraw.Draw(b), 4
+        for ch in text:
+            d.text((x, 4), ch, font=f, fill=255)
+            x += f.getlength(ch)
+        if a.tobytes() != b.tobytes() or any(_char_len(f, ch) != f.getlength(ch) for ch in text):
+            wrong.append((weight, size))
+    assert wrong == []
+
+
+def test_turning_keeps_a_text_drawing_whole_on_the_picture():
+    """Review #7/#14: turning moved only the text's top-left anchor – it became the top-right corner and the
+    upright text ran off the picture (1440 px wide after the turn: 64 px of "Killer hier" left)."""
+    img = Image.new("RGB", (3440, 1440), (40, 40, 40))
+    e = imageedit.ImageEdit(shapes=[annotate.Shape("text", [(0.05, 0.05)], "#ffffff", 0.08, "Killer hier")])
+
+    def ink(pic):
+        return pic.convert("L").point(lambda v: 255 if v > 250 else 0).getbbox()
+
+    x0, _y0, x1, _y1 = ink(imageedit.render(img, e))
+    for q in (1, 2, 3):
+        t = imageedit.turned(e, q, img.size)
+        nw, nh = (1440, 3440) if q % 2 else (3440, 1440)
+        bx0, by0, bx1, by1 = annotate.text_box(t.shapes[0], nw, nh)
+        assert bx0 >= -1e-6 and by0 >= -1e-6 and bx1 <= nw + 1e-6 and by1 <= nh + 1e-6, q
+        tx0, _ty0, tx1, _ty1 = ink(imageedit.render(img, t))
+        assert abs((tx1 - tx0) - (x1 - x0)) <= 2, q                       # the whole text, not a cut-off part
+    mid = imageedit.ImageEdit(shapes=[annotate.Shape("text", [(0.4, 0.45)], "#ffffff", 0.05, "GG")])
+    back, size = mid, img.size
+    for _i in range(4):                                                   # four turns: where it was
+        back = imageedit.turned(back, 1, size)
+        size = size[::-1]
+    assert back.shapes[0].pts[0] == pytest.approx((0.4, 0.45), abs=0.002)
+    assert back.shapes[0].size == pytest.approx(0.05)
+
+
+def test_a_box_or_ellipse_is_picked_on_its_outline_and_a_new_drawing_can_start_inside():
+    """Review #8: the whole inside of a frame counted as on it – no drawing could be started inside a frame around
+    the picture, the press moved the frame instead. A frame too small to draw in still counts whole."""
+    frame = annotate.Shape("rect", [(0.05, 0.05), (0.95, 0.95)])
+    ring = annotate.Shape("ellipse", [(0.1, 0.1), (0.9, 0.9)])
+    assert not annotate.hit(frame, 800, 450, 1600, 900) and not annotate.hit(ring, 800, 450, 1600, 900)
+    assert annotate.hit(frame, 80, 450, 1600, 900) and annotate.hit(frame, 800, 48, 1600, 900)
+    assert annotate.hit(frame, 84, 300, 1600, 900) and not annotate.hit(frame, 120, 300, 1600, 900)
+    assert annotate.hit(ring, 160, 450, 1600, 900) and annotate.hit(ring, 800, 92, 1600, 900)
+    assert not annotate.hit(ring, 200, 450, 1600, 900)
+    small = annotate.Shape("rect", [(0.2, 0.2), (0.4, 0.4)])
+    assert annotate.hit(small, 30, 30, 100, 100)
+
+
+def test_mirroring_a_text_mirrors_its_box_exactly():
+    """Review #28: flipped() counted the text box's padding twice – the text landed 2 × pad off its mirror."""
+    pw, ph = 3440, 1440
+    for size in annotate.TEXT_SIZES:
+        s = annotate.Shape("text", [(0.1, 0.1)], "#ffffff", size, "Killer")
+        e = imageedit.ImageEdit(shapes=[s])
+        x0, y0, x1, y1 = annotate.text_box(s, pw, ph)
+        h = annotate.text_box(imageedit.flipped(e, True, (pw, ph)).shapes[0], pw, ph)
+        assert h == pytest.approx((pw - x1, y0, pw - x0, y1), abs=1e-6)
+        v = annotate.text_box(imageedit.flipped(e, False, (pw, ph)).shapes[0], pw, ph)
+        assert v == pytest.approx((x0, ph - y1, x1, ph - y0), abs=1e-6)
+        twice = imageedit.flipped(imageedit.flipped(e, True, (pw, ph)), True, (pw, ph))
+        assert twice.shapes[0].pts[0] == pytest.approx((0.1, 0.1))
+
+
+def test_a_pasted_windows_line_break_in_a_text_is_a_line_break():
+    """Review #29: "\\r" (a pasted "\\r\\n" stays in the text field) went to Pillow as a character – with the raqm
+    layout RuntimeError('raqm_layout() failed') from the canvas and the save thread."""
+    img = Image.new("RGB", (400, 200), (90, 90, 90))
+    two = annotate.Shape("text", [(0.1, 0.1)], "#ffffff", 0.1, "Killer\nhier")
+    plain = annotate.draw(img, [two]).tobytes()
+    for text in ("Killer\r\nhier", "Killer\rhier", "Killer\x85hier", "Killer\u2029hier"):
+        s = annotate.Shape("text", [(0.1, 0.1)], "#ffffff", 0.1, text)
+        assert annotate.text_box(s, 400, 200) == annotate.text_box(two, 400, 200), repr(text)
+        assert annotate.draw(img, [s]).tobytes() == plain, repr(text)
+    assert annotate.text_lines("a\n") == ["a", ""] and annotate.text_lines("") == [""]
+
+
+def test_a_16_bit_grey_picture_is_scaled_not_cut_to_white(tmp_path):
+    """Review #30: convert("RGB") cuts 16-bit values above 255 – a mid-grey 16-bit PNG was white in the editor,
+    the saved copy and the gallery."""
+    from fogscout import thumbs
+    grey = Image.new("I;16", (60, 40), 40000)                            # 40000 / 65535 ≈ 156 of 255
+    assert abs(imageedit.render(grey, imageedit.ImageEdit()).getpixel((5, 5))[0] - 156) <= 1
+    assert abs(imageedit.render(grey.convert("I"), imageedit.ImageEdit()).getpixel((5, 5))[0] - 156) <= 1
+    p = tmp_path / "grey16.png"
+    grey.save(p)
+    assert Image.open(p).mode.startswith("I")
+    thumb = thumbs.thumbnail(str(p), (30, 20))
+    assert abs(thumb.getpixel((5, 5))[0] - 156) <= 1 and thumb.mode == "RGBA"
+    assert imageedit.converted(Image.new("L", (4, 4), 77)).getpixel((1, 1)) == (77, 77, 77)
+
+
+def _bomb(path):
+    """A real 1 × 1 PNG whose header says 20000 × 20000 (Image.open reads only the header)."""
+    import io
+    import struct
+    import zlib
+    buf = io.BytesIO()
+    Image.new("RGB", (1, 1)).save(buf, "PNG")
+    b = bytearray(buf.getvalue())
+    i = b.find(b"IHDR")
+    b[i + 4:i + 12] = struct.pack(">II", 20000, 20000)
+    b[i + 17:i + 21] = struct.pack(">I", zlib.crc32(bytes(b[i:i + 17])) & 0xffffffff)
+    path.write_bytes(bytes(b))
+    return str(path)
+
+
+def test_one_oversized_picture_never_ends_the_thumbnail_thread(tmp_path, monkeypatch):
+    """Review #21: Pillow's DecompressionBombError is no OSError – it ended the loader thread, no tile after it was
+    ever made and the gallery polled forever."""
+    import time
+    import warnings
+    from fogscout import thumbs
+    bomb = _bomb(tmp_path / "00_big.png")
+    good = tmp_path / "a.png"
+    Image.new("RGB", (64, 32), (200, 0, 0)).save(good)
+    good = str(good)
+    loader = thumbs.Loader((32, 32), str(tmp_path / "cache"), name="shot-thumbs")
+    assert loader.make(bomb) == (bomb, 0, 0, b"")
+    with warnings.catch_warnings():                                      # a picture over MAX_IMAGE_PIXELS only
+        warnings.simplefilter("error", Image.DecompressionBombWarning)   # warns – as an error: broken too
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 64 * 32 - 1)
+        assert loader.make(good) == (good, 0, 0, b"")
+    monkeypatch.undo()
+    loader.request([bomb, good])
+    got = {}
+    end = time.time() + 30
+    while len(got) < 2 and time.time() < end:
+        for path, w, h, _data in loader.take():
+            got[path] = (w, h)
+        time.sleep(0.01)
+    assert got == {bomb: (0, 0), good: (32, 16)}
+    loader.make = lambda path: 1 / 0                                      # whatever else goes wrong in one picture
+    loader.request([good])
+    end = time.time() + 30
+    while not (done := loader.take()) and time.time() < end:
+        time.sleep(0.01)
+    assert done == [(good, 0, 0, b"")] and not loader.busy
+
+
+def test_saving_uses_its_own_temporary_file_and_leaves_none_behind(tmp_path, monkeypatch):
+    """Review #35/#48/#54: one fixed "<name>.tmp" for every save – two editors saving the same name wrote into one
+    file; a failed rename and a quit during a save left the temporary file in the folder for good."""
+    import threading
+    img = _picture()
+    out = tmp_path / "shot – bearbeitet.png"
+    used = []
+    real = os.replace
+
+    def spy(src, dst):
+        used.append(os.path.basename(src))
+        return real(src, dst)
+
+    monkeypatch.setattr(imageedit.os, "replace", spy)
+    for _i in range(2):
+        t = threading.Thread(target=imageedit.save, args=(img, str(out)))
+        t.start()
+        t.join()
+    monkeypatch.undo()
+    assert len(used) == 2 and used[0] != used[1] and all(imageedit.TMP_NAME.match(n) for n in used)
+    assert Image.open(out).size == (400, 200)
+    blocked = tmp_path / "taken.png"
+    blocked.mkdir()                                                       # the rename fails
+    (blocked / "x").write_text("x")
+    with pytest.raises(OSError):
+        imageedit.save(img, str(blocked))
+    assert not [n for n in os.listdir(tmp_path) if n.endswith(".tmp")]
+    old = tmp_path / ("left – bearbeitet.png.%d-1.tmp" % os.getpid())     # a save cut off by quitting
+    fresh = tmp_path / "busy – bearbeitet.png.9-2.tmp"                    # another window saving right now
+    foreign = tmp_path / "notes.png.tmp"
+    for p in (old, fresh, foreign):
+        p.write_bytes(b"part")
+    os.utime(old, (1, 1))
+    os.utime(foreign, (1, 1))
+    imageedit.save(img, str(out), "jpg")
+    assert not old.exists() and fresh.exists() and foreign.exists()
+
+
+def test_edited_pictures_never_go_into_steams_screenshot_folder(tmp_path, monkeypatch):
+    """Review #55: a recordings folder in Steam's DBD screenshot folder made the edited copies land there (on NTFS
+    "…/381210/Screenshots" is Steam's own "screenshots") – the hard rule says nothing is ever written there."""
+    from fogscout import steamshots
+    steam = tmp_path / "Steam"
+    area = steam / "userdata" / "123" / "760" / "remote" / "381210"
+    shots = area / "screenshots"
+    shots.mkdir(parents=True)
+    monkeypatch.setattr(steamshots, "steam_path", lambda: str(steam))    # as the registry says on Windows
+    own = steamshots.edit_folder(None)
+    assert steamshots.edit_folder(str(shots)) == own
+    assert steamshots.edit_folder(str(area)) == own
+    assert steamshots.edit_folder(str(shots / "OBS")) == own
+    link = tmp_path / "rec-link"
+    try:
+        link.symlink_to(shots, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        link = None
+    if link is not None:
+        assert steamshots.edit_folder(str(link)) == own                   # a link into Steam's folder
+    rec = tmp_path / "Videos"
+    assert steamshots.edit_folder(str(rec)) == str(rec / "Screenshots")
+    assert steamshots.edit_folder(str(shots), None) == str(shots / "Screenshots")    # no Steam on this PC
+
+
+def test_every_visible_pixel_of_a_flat_oval_or_a_frame_picks_it_and_its_middle_does_not():
+    """Review #8, second pass: the distance along the ray from the middle is far too large on a flat oval – up to
+    half of its drawn stroke picked nothing (and its inside neither), a press on it started a new drawing. And
+    Pillow draws the stroke inside the box with square corners: its inner rim and the corner tips must pick it too."""
+    import numpy as np
+    for (pw, ph), kind, pts, size in [((1000, 419), "ellipse", [(0.10, 0.10), (0.40, 0.18)], 0.006),
+                                      ((1600, 670), "ellipse", [(0.40, 0.05), (0.60, 0.12)], 0.006),
+                                      ((1600, 900), "ellipse", [(0.05, 0.45), (0.95, 0.56)], 0.006),
+                                      ((1600, 900), "ellipse", [(0.30, 0.10), (0.36, 0.90)], 0.006),
+                                      ((1600, 900), "ellipse", [(0.05, 0.05), (0.95, 0.95)], 0.016),
+                                      ((1600, 900), "rect", [(0.05, 0.05), (0.95, 0.95)], 0.006),
+                                      ((1600, 900), "rect", [(0.20, 0.20), (0.80, 0.40)], 0.016)]:
+        s = annotate.Shape(kind, pts, "#ff4d4d", size)
+        alpha = np.asarray(annotate.layer(pw, ph, [s]))[:, :, 3]
+        ys, xs = np.nonzero(alpha > 128)
+        missed = [(x, y) for x, y in zip(xs, ys) if not annotate.hit(s, x + 0.5, y + 0.5, pw, ph)]
+        assert not missed, (kind, pts, len(missed), len(xs))
+        (x0, y0), (x1, y1) = pts
+        assert not annotate.hit(s, (x0 + x1) / 2 * pw, (y0 + y1) / 2 * ph, pw, ph), (kind, pts)

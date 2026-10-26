@@ -8,6 +8,8 @@ playback; the sound of the clip is played by Windows (winsound) from a temporary
 """
 from __future__ import annotations
 
+import copy
+import math
 import os
 import re
 import subprocess
@@ -17,7 +19,9 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 
-from .obsrec import AUDIO_STREAM_RE, CLIPS_DIR as _CLIPS_DIR, NAME_CHARS, audio_graph, ffmpeg_exe
+from .i18n import _
+from .obsrec import (AUDIO_STREAM_RE, CLIPS_DIR as _CLIPS_DIR, NAME_CHARS, PART_EXT, PARTS_WRITING, audio_graph,
+                     ffmpeg_exe, part_key)
 
 PREVIEW_H = 540                  # px: frames for the preview picture
 THUMB_H = 54                     # px: pictures of the timeline strip
@@ -39,6 +43,9 @@ TARGETS_MB = (10, 25, 50, 500)  # 1.6.1: Discord's upload limits (free 10 MB, Ni
 DEFAULT_TARGET_MB = 10
 AUDIO_KBPS = 96                 # sound of a size-fitted clip
 SIZE_MARGIN = 0.90              # aim this far below the limit (container overhead, rate control)
+MUXERS = {".mp4": "mp4", ".mkv": "matroska", ".mov": "mov", ".webm": "webm", ".flv": "flv", ".gif": "gif"}
+PUBLISH_TRIES = 5               # renaming the finished clip: a virus scanner may hold a new file for a moment (Windows)
+NO_COPY_EXTS = (".gif",)        # pictures that cannot be stream-copied into an mp4 clip (the editor's own GIFs)
 
 
 @dataclass
@@ -216,10 +223,45 @@ def clip_name(round_name: str, start: float, end: float) -> str:
 def unique_path(folder: str, name: str, ext: str) -> str:
     out = os.path.join(folder, name + ext)
     n = 2
-    while os.path.exists(out):
+    while os.path.exists(out) or os.path.exists(out + PART_EXT):       # … nor one another save is writing
         out = os.path.join(folder, f"{name} ({n}){ext}")
         n += 1
     return out
+
+
+def copyable(path: str) -> bool:
+    """False for a source whose picture cannot be stream-copied into a clip (an animated GIF): "copy" re-encodes it
+    like "exact" – the mp4 muxer has no tag for the gif codec, every save failed."""
+    return os.path.splitext(path)[1].lower() not in NO_COPY_EXTS
+
+
+def _writing(out: str) -> tuple[str, list]:
+    """(file ffmpeg writes, its ``-f`` arguments): ``out`` + PART_EXT in ``out``'s format, renamed by _publish once
+    ffmpeg succeeded; ``out`` itself for an extension without a known muxer."""
+    fmt = MUXERS.get(os.path.splitext(out)[1].lower())
+    return (out + PART_EXT, ["-f", fmt]) if fmt else (out, [])
+
+
+def _remove(path: str):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _publish(tmp: str, out: str) -> tuple[bool, str]:
+    """The finished file gets its real name (only now does the clips list see it) – tried again for a moment
+    before the encode is given up."""
+    for attempt in range(PUBLISH_TRIES if tmp != out else 0):
+        try:
+            os.replace(tmp, out)
+            break
+        except OSError as e:
+            if attempt == PUBLISH_TRIES - 1:
+                _remove(tmp)
+                return False, str(e)
+            time.sleep(0.2 * (attempt + 1))
+    return True, ""
 
 
 def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpeg: str | None = None,
@@ -230,14 +272,15 @@ def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpe
     frame exact, picture re-encoded (x264 veryfast, CRF 18; a 30-s clip takes some seconds), sound as AAC;
     "discord" (1.6.1) = re-encoded to stay under ``target_mb`` (discord_plan picks rate, size, frame rate).
     ``censor`` (1.7.2): boxes to hide (fractions of the picture, see censor_graph) – needs the picture re-encoded,
-    so "copy" becomes "exact". ``mix`` (1.8.6): {source: volume} over the recording's own audio tracks
-    (obsrec.audio_graph) – one track as it is stays a stream copy, anything else re-encodes the sound (AAC), the
-    picture stays as the mode says. Returns (ok, ffmpeg's last words on failure)."""
+    so "copy" becomes "exact" (as for a source that cannot be copied, see copyable). ``mix`` (1.8.6): {source:
+    volume} over the recording's own audio tracks (obsrec.audio_graph) – one track as it is stays a stream copy,
+    anything else re-encodes the sound (AAC), the picture stays as the mode says. ffmpeg writes ``out`` + PART_EXT,
+    renamed to ``out`` once it succeeded. Returns (ok, ffmpeg's last words on failure)."""
     ffmpeg = ffmpeg or ffmpeg_exe()
     if not ffmpeg:
         return False, "ffmpeg fehlt"
     censor = list(censor or ())
-    if censor and mode == "copy":
+    if mode == "copy" and (censor or not copyable(path)):
         mode = "exact"
     start, end = max(0.0, float(start)), float(end)
     if end <= start:
@@ -245,7 +288,10 @@ def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpe
     if (censor or mix) and (info is None or not info.ok):
         info = probe(path, ffmpeg)
     flt, amap = audio_graph(info.audio_tracks if info else 0, mix)
-    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    try:
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    except OSError as e:                                        # the drive is gone: an answer, not a dead thread
+        return False, str(e)
     args = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", path]
     vf = ""
     if mode == "discord":
@@ -273,28 +319,31 @@ def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpe
         args += ["-filter_complex", ";".join(graphs)]
     if censor or flt or amap != "0:a?":
         args += ["-map", vmap] + (["-an"] if amap is None else ["-map", amap])
-    args += ["-movflags", "+faststart", out] if out.lower().endswith(".mp4") else [out]
+    tmp, fmt = _writing(out)
+    args += (["-movflags", "+faststart"] if out.lower().endswith(".mp4") else []) + fmt + [tmp]
     if run is None:
         def run(a):
             p = subprocess.run(a, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                timeout=1800, creationflags=_flags())
             return p.returncode, p.stderr or b""
+    key = part_key(tmp)
+    PARTS_WRITING.add(key)                                      # obsrec.settle_parts leaves it alone meanwhile
     try:
         rc, err = run(args)
     except (OSError, subprocess.TimeoutExpired) as e:
         rc, err = 1, str(e).encode()
-    ok = rc == 0 and os.path.exists(out) and os.path.getsize(out) > 0
+    finally:
+        PARTS_WRITING.discard(key)
+    ok = rc == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0
     if not ok:
-        try:
-            os.remove(out)
-        except OSError:
-            pass
+        _remove(tmp)
         return False, err[-300:].decode("utf-8", "replace").strip()
-    if mode == "discord" and retry and os.path.getsize(out) > target_mb * 1024 * 1024:
+    if mode == "discord" and retry and os.path.getsize(tmp) > target_mb * 1024 * 1024:
         # the rate control overshot (very busy pictures): once more with less, never a file over the limit
+        _remove(tmp)
         return cut(path, start, end, out, mode, ffmpeg, run, target_mb * 0.8, info, retry=False, censor=censor,
                    censor_style=censor_style, mix=mix)
-    return True, ""
+    return _publish(tmp, out)
 
 
 def names_box(width: int, height: int) -> tuple:
@@ -319,14 +368,17 @@ def box_px(box, width: int, height: int) -> tuple:
     return x0, y0, max(2, x1 - x0), max(2, y1 - y0)
 
 
-def censor_graph(boxes, style: str, width: int, height: int, tail: str = "") -> str:
+def censor_graph(boxes, style: str, width: int, height: int, tail: str = "", src: str = "[0:v]",
+                 out: str = "[vout]", tag: str = "") -> str:
     """1.7.2 (user: censor the names on the left): the ffmpeg filter graph that hides ``boxes`` (fraction
     boxes) in a ``width`` × ``height`` picture – "pixel" = coarse blocks, "blur" = blurred, "black" = a black
-    box, "retouch" = ffmpeg's delogo (the area is interpolated from its surroundings, no visible box); ``tail`` = filters to run after it (scale/fps of the Discord mode). Ends in [vout]."""
-    parts, cur = [], "[0:v]"
+    box, "retouch" = ffmpeg's delogo (the area is interpolated from its surroundings, no visible box); ``tail`` =
+    filters to run after it (scale/fps of the Discord mode). From ``src`` (default [0:v]) to ``out`` (default
+    [vout]); ``tag`` = a suffix for the labels inside (one graph per part of an edit)."""
+    parts, cur = [], src
     for i, box in enumerate(boxes):
         x, y, w, h = box_px(box, width, height)
-        nxt = f"[c{i}]"
+        nxt = f"[c{i}{tag}]"
         if style == "black":
             parts.append(f"{cur}drawbox=x={x}:y={y}:w={w}:h={h}:color=black:t=fill{nxt}")
         elif style == "retouch":            # 1.7.3 (user: "retouchieren"): painted over from the surroundings
@@ -340,10 +392,10 @@ def censor_graph(boxes, style: str, width: int, height: int, tail: str = "") -> 
             else:
                 p = max(4, min(w, h) // 8)
                 inner = f"scale={max(1, w // p)}:{max(1, h // p)}:flags=area,scale={w}:{h}:flags=neighbor"
-            parts.append(f"{cur}split[a{i}][b{i}];[b{i}]crop={w}:{h}:{x}:{y},{inner}[p{i}];"
-                         f"[a{i}][p{i}]overlay={x}:{y}{nxt}")
+            a, b, pix = f"[a{i}{tag}]", f"[b{i}{tag}]", f"[p{i}{tag}]"
+            parts.append(f"{cur}split{a}{b};{b}crop={w}:{h}:{x}:{y},{inner}{pix};{a}{pix}overlay={x}:{y}{nxt}")
         cur = nxt
-    parts.append(f"{cur}{tail or 'null'}[vout]")
+    parts.append(f"{cur}{tail or 'null'}{out}")
     return ";".join(parts)
 
 
@@ -366,7 +418,7 @@ def discord_plan(seconds: float, target_mb: float, info: Info | None = None) -> 
         h, fps = 480, 30.0
     else:
         h, fps = 360, 30.0
-    return video, min(h, src_h), min(fps, src_fps)
+    return video, max(2, min(h, src_h) // 2 * 2), min(fps, src_fps)    # even: x264 refuses an odd 4:2:0 height
 
 
 def sound_wav(path: str, start: float, end: float, ffmpeg: str | None = None, mix=None,
@@ -484,6 +536,13 @@ FADES = (0.0, 0.5, 1.0, 2.0)                       # seconds of fade-in / fade-o
 GIF_FPS = 15
 GIF_HEIGHTS = (360, 480, 720)
 DEFAULT_GIF_H = 480
+GIF_MAX_S = 60.0                # a longer GIF is refused (a GIF is for chats): a whole round as GIF was one click in
+                                # the compact editor, minutes of encoding for a file of tens of MB
+JOIN_GAP_S = 5.0                # a part shares the input of the part before it when the gap between them is at most
+                                # this long: decoding the gap costs about what a new input's seek does (the key frame
+                                # before it), and no decoder more (part_inputs)
+MAX_INPUTS = 4                  # more far-apart scenes than this share inputs across the shortest gaps: every input
+                                # is a decoder for the whole run (measured 3440x1440: ~220 MB each, 20 parts 5 GB)
 ASPECTS = (("free", None), ("16:9", 16 / 9), ("9:16", 9 / 16), ("1:1", 1.0), ("4:5", 4 / 5))
 
 
@@ -549,60 +608,111 @@ def crop_px(box, width: int, height: int) -> tuple:
     return w, h, x, y
 
 
-def edit_graph(edit: Edit, info: Info, start: float, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB,
-               censor=None, censor_style: str = "pixel", mix=None, shape_inputs=(), gif_h: int = DEFAULT_GIF_H):
-    """The filter graph of ``edit`` for an input that starts at ``start`` seconds of the recording (input seeking):
-    (graph, video label, audio label or None, encoder arguments). ``shape_inputs`` = [(input index, t0, t1, x, y)]
-    of the drawings' pictures (one PNG each, cut to the drawing and laid at x, y – see export; without x, y at the
-    top left). Pure – tested without ffmpeg."""
-    w, h = info.width, info.height
-    chains, cur = [], "[0:v]"
-    if censor:                                                   # on the recording's own picture
-        chains.append(censor_graph(censor, censor_style, w, h).replace("[0:v]", cur, 1).replace("[vout]", "[vc]"))
-        cur = "[vc]"
-    for k, inp in enumerate(shape_inputs):
-        idx, t0, t1 = inp[:3]
-        x, y = inp[3:5] if len(inp) >= 5 else (0, 0)
-        when = ""
-        if t0 is not None or t1 is not None:                     # times of the recording → of this input
-            a = max(0.0, (t0 if t0 is not None else 0.0) - start)
-            b = (t1 - start) if t1 is not None else 1e9
-            when = f":enable='between(t,{a:.3f},{b:.3f})'"
-        chains.append(f"{cur}[{idx}:v]overlay={x}:{y}:format=auto{when}[vs{k}]")
-        cur = f"[vs{k}]"
-    out_w, out_h = w, h
-    if edit.crop:
-        cw, ch, cx, cy = crop_px(edit.crop, w, h)
-        chains.append(f"{cur}crop={cw}:{ch}:{cx}:{cy}[vcr]")
-        cur, out_w, out_h = "[vcr]", cw, ch
-    flt, amap = audio_graph(info.audio_tracks, mix)
-    sound = mode != "gif" and amap is not None and info.audio_tracks > 0
-    asrc = None
-    if sound:
-        if flt:
-            chains.append(flt)
-            asrc = "[aout]"
+def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -> list:
+    """How export reads ``parts`` (time order, see clean_parts): [(start, end, part indices)] per ffmpeg input,
+    seeked to ``start`` and read to ``end``. Parts that overlap never share an input – one input split for both kept
+    every frame they share as a raw picture until concat reached the later part (GBs for a part added twice). Parts
+    one after the other share one when the gap between them is at most ``join_gap`` (JOIN_GAP_S; the gap is
+    decoded and dropped), longer gaps get an input of their own while there are fewer than ``most`` (MAX_INPUTS) –
+    the longest gaps first – since every input stays a decoder for the whole run (one per part: 5 GB for 20 parts
+    of a 3440x1440 round). Pure."""
+    join_gap = JOIN_GAP_S if join_gap is None else join_gap
+    most = MAX_INPUTS if most is None else most
+    lanes = []                                       # parts that never overlap, as few lanes as the overlaps allow
+    for i, p in enumerate(parts):
+        free = [ln for ln in lanes if parts[ln[-1]].end <= p.start + 1e-6]
+        if free:
+            max(free, key=lambda ln: parts[ln[-1]].end).append(i)     # the lane with the shortest gap
         else:
-            asrc = f"[{amap}]" if amap != "0:a?" else "[0:a:0]"
+            lanes.append([i])
+    gaps = sorted(((parts[b].start - parts[a].end, k, j) for k, ln in enumerate(lanes)
+                   for j, (a, b) in enumerate(zip(ln, ln[1:]))), reverse=True)
+    cuts, count = set(), len(lanes)
+    for gap, k, j in gaps:
+        if gap <= join_gap or count >= most:
+            break
+        cuts.add((k, j))
+        count += 1
+    groups = []
+    for k, ln in enumerate(lanes):
+        groups.append([ln[0]])
+        for j, b in enumerate(ln[1:]):
+            if (k, j) in cuts:
+                groups.append([b])
+            else:
+                groups[-1].append(b)
+    groups.sort(key=lambda g: g[0])
+    return [(parts[g[0]].start, max(parts[i].end for i in g), g) for g in groups]
+
+
+def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB, censor=None,
+               censor_style: str = "pixel", mix=None, shape_inputs=(), gif_h: int = DEFAULT_GIF_H,
+               palette: int | None = None):
+    """The filter graph of ``edit`` (graph, video label, audio label or None, encoder arguments). The first inputs
+    are the recording as part_inputs reads it (each seeked to its first part); an input that holds several parts is
+    split and cut (trim) per part – the gaps are dropped right there, censor, drawings and crop work on the part
+    only. ``shape_inputs`` = [(input index, t0, t1, x, y)] of the drawings' pictures (one PNG each, cut to the
+    drawing and laid at x, y – see export; without x, y at the top left), laid over each part they show in. A GIF
+    takes two runs: ``palette`` None = the first, ending in the palette (palettegen), else the input index of that
+    palette for the second (paletteuse) – in one run ffmpeg kept every frame until the palette came at the end
+    (~32 MB per second of GIF). Pure – tested without ffmpeg."""
+    w, h = info.width, info.height
     parts = edit.parts
     n = len(parts)
-    vlabels = [f"[v{i}]" for i in range(n)]
-    alabels = [f"[a{i}]" for i in range(n)]
-    chains.append(f"{cur}split={n}" + "".join(f"[vp{i}]" for i in range(n)) if n > 1 else f"{cur}null[vp0]")
-    if sound:
-        chains.append(f"{asrc}asplit={n}" + "".join(f"[ap{i}]" for i in range(n)) if n > 1 else f"{asrc}anull[ap0]")
-    for i, p in enumerate(parts):
-        a, b = max(0.0, p.start - start), max(0.0, p.end - start)
-        chains.append(f"[vp{i}]trim=start={a:.3f}:end={b:.3f},setpts=(PTS-STARTPTS)/{p.speed:.4g}{vlabels[i]}")
+    sound = mode != "gif" and audio_graph(info.audio_tracks, mix)[1] is not None and info.audio_tracks > 0
+    chains = []
+    out_w, out_h = w, h
+    where, vsrc, asrc = {}, {}, {}                   # part → (input, its start, shared); its picture / sound
+    for k, (start, _end, members) in enumerate(part_inputs(parts)):
+        shared = len(members) > 1
+        for i in members:
+            where[i] = (k, start, shared)
+        if shared:
+            chains.append(f"[{k}:v]split={len(members)}" + "".join(f"[sv{i}]" for i in members))
+        vsrc.update({i: f"[sv{i}]" if shared else f"[{k}:v]" for i in members})
         if sound:
-            chains.append(f"[ap{i}]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS,{atempo(p.speed)}"
-                          f"{alabels[i]}")
+            flt, amap = audio_graph(info.audio_tracks, mix, inp=k, tag=f"_i{k}")   # (censor_graph has "_{part}")
+            if flt:
+                chains.append(flt)
+            a = amap if flt else (f"[{amap}]" if amap != f"{k}:a?" else f"[{k}:a:0]")
+            if shared:
+                chains.append(f"{a}asplit={len(members)}" + "".join(f"[sa{i}]" for i in members))
+            asrc.update({i: f"[sa{i}]" if shared else a for i in members})
+    for i, p in enumerate(parts):
+        k, base, shared = where[i]
+        cur = vsrc[i]
+        if shared:                                       # this part of the input (its times stay those of the input)
+            chains.append(f"{cur}trim=start={p.start - base:.3f}:end={p.end - base:.3f}[vt{i}]")
+            cur = f"[vt{i}]"
+        if censor:                                               # on the recording's own picture
+            chains.append(censor_graph(censor, censor_style, w, h, src=cur, out=f"[vc{i}]", tag=f"_{i}"))
+            cur = f"[vc{i}]"
+        for j, inp in enumerate(shape_inputs):
+            idx, t0, t1 = inp[:3]
+            x, y = inp[3:5] if len(inp) >= 5 else (0, 0)
+            if (t1 is not None and t1 <= p.start) or (t0 is not None and t0 >= p.end):
+                continue                                         # not shown in this part
+            when = ""
+            if t0 is not None or t1 is not None:                 # times of the recording → of this part's input
+                a = max(0.0, (t0 if t0 is not None else 0.0) - base)
+                b = (t1 - base) if t1 is not None else 1e9
+                when = f":enable='between(t,{a:.3f},{b:.3f})'"
+            chains.append(f"{cur}[{idx}:v]overlay={x}:{y}:format=auto{when}[vs{i}_{j}]")
+            cur = f"[vs{i}_{j}]"
+        if edit.crop:
+            cw, ch, cx, cy = crop_px(edit.crop, w, h)
+            chains.append(f"{cur}crop={cw}:{ch}:{cx}:{cy}[vcr{i}]")
+            cur, out_w, out_h = f"[vcr{i}]", cw, ch
+        chains.append(f"{cur}setpts=(PTS-STARTPTS)/{p.speed:.4g}[v{i}]")
+        if sound:
+            trim = f"atrim=start={p.start - base:.3f}:end={p.end - base:.3f}," if shared else ""
+            chains.append(f"{asrc[i]}{trim}asetpts=PTS-STARTPTS,{atempo(p.speed)}[a{i}]")
     if n > 1:
-        ins = "".join(vlabels[i] + (alabels[i] if sound else "") for i in range(n))
+        ins = "".join(f"[v{i}]" + (f"[a{i}]" if sound else "") for i in range(n))
         chains.append(f"{ins}concat=n={n}:v=1:a={1 if sound else 0}[vcat]" + ("[acat]" if sound else ""))
         vcur, acur = "[vcat]", "[acat]" if sound else None
     else:
-        vcur, acur = vlabels[0], alabels[0] if sound else None
+        vcur, acur = "[v0]", "[a0]" if sound else None
     total = edit.seconds()
     post = []
     args = []
@@ -613,8 +723,12 @@ def edit_graph(edit: Edit, info: Info, start: float, mode: str = "exact", target
                  "-bufsize", f"{kbps * 2}k", "-pix_fmt", "yuv420p"] + (["-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"]
                                                                       if sound else [])
     elif mode == "gif":
-        post += [f"fps={GIF_FPS}", f"scale=-2:{min(int(gif_h), out_h) // 2 * 2}:flags=lanczos"]
+        # rgb24 before the fades: palettegen wants RGBA, and a fade on RGBA fades the alpha too – the fade-in came
+        # out transparent, the fade-out froze on grey (paletteuse: alpha < 128 = "keep the previous picture")
+        post += [f"fps={GIF_FPS}", f"scale=-2:{min(int(gif_h), out_h) // 2 * 2}:flags=lanczos", "format=rgb24"]
     else:
+        # the file's own frame rate: setpts leaves the rate unknown, and ffmpeg then made 25 fps of a 60-fps round
+        post.append(f"fps={info.fps:g}")
         args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"] + (
             ["-c:a", "aac", "-b:a", "160k"] if sound else [])
         if out_w % 2 or out_h % 2:
@@ -624,9 +738,10 @@ def edit_graph(edit: Edit, info: Info, start: float, mode: str = "exact", target
         post.append(f"fade=t=in:st=0:d={min(fi, total):.3f}")
     if fo > 0:
         post.append(f"fade=t=out:st={max(0.0, total - fo):.3f}:d={min(fo, total):.3f}")
-    if mode == "gif":
-        chains.append(f"{vcur}{','.join(post)},split[g1][g2];[g1]palettegen=stats_mode=diff[gp];"
-                      f"[g2][gp]paletteuse=dither=bayer:bayer_scale=4[vout]")
+    if mode == "gif" and palette is None:
+        chains.append(f"{vcur}{','.join(post)},palettegen=stats_mode=diff[vout]")
+    elif mode == "gif":
+        chains.append(f"{vcur}{','.join(post)}[vg];[vg][{palette}:v]paletteuse=dither=bayer:bayer_scale=4[vout]")
     else:
         chains.append(f"{vcur}{','.join(post) or 'null'}[vout]")
     if sound:
@@ -639,15 +754,30 @@ def edit_graph(edit: Edit, info: Info, start: float, mode: str = "exact", target
     return ";".join(chains), "[vout]", "[aend]" if sound else None, args
 
 
+def _drop_dir(path: str):
+    """Remove export's temporary folder (the drawings' PNGs, the GIF palette)."""
+    if not path or not os.path.isdir(path):
+        return
+    for name in os.listdir(path):
+        _remove(os.path.join(path, name))
+    try:
+        os.rmdir(path)
+    except OSError:
+        pass
+
+
 def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | None = None, run=None,
            target_mb: float = DEFAULT_TARGET_MB, info: Info | None = None, censor=None, censor_style: str = "pixel",
            mix=None, gif_h: int = DEFAULT_GIF_H, retry: bool = True) -> tuple[bool, str]:
     """1.12: write ``edit`` of ``path`` to ``out`` (mp4, or gif in mode "gif"). A simple edit (one part, nothing
     else) goes through cut() – stream copy stays possible; anything else re-encodes (mode "copy" becomes "exact").
-    The drawings are drawn by annotate into one transparent PNG each (temporary, removed afterwards), cut to what
-    they cover and laid over the picture at their spot for their time – a full-size picture per drawing cost ffmpeg
-    as much again as the drawing (measured: 10 s 1080p60, four drawings, 5.5 s → 4.2 s). Returns (ok, ffmpeg's
-    last words on failure)."""
+    The recording is read as part_inputs says (input seeking: overlapping parts from inputs of their own, the gaps
+    between scenes far apart not decoded, at most a few decoders however many parts). The drawings are drawn by
+    annotate into one transparent PNG each (temporary, removed afterwards), cut to what they cover and laid over
+    the picture at their spot for their time – a full-size picture per drawing cost ffmpeg as much again as the
+    drawing (measured: 10 s 1080p60, four drawings, 5.5 s → 4.2 s). A GIF is made in two runs (palette, then the
+    GIF – memory stays flat) and is at most GIF_MAX_S long. ffmpeg writes ``out`` + PART_EXT, renamed to ``out``
+    once it succeeded. Returns (ok, ffmpeg's last words or the reason on failure)."""
     ffmpeg = ffmpeg or ffmpeg_exe()
     if not ffmpeg:
         return False, "ffmpeg fehlt"
@@ -656,65 +786,81 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
     parts = clean_parts(edit.parts, info.duration if info.ok else 0.0)
     if not parts:
         return False, "Ende vor Anfang"
-    edit = Edit(parts, edit.crop, list(edit.shapes), edit.fade_in, edit.fade_out)
+    # the editor's drawings as they are now: the window keeps changing its own (colour, size, times, text)
+    edit = Edit(parts, edit.crop, copy.deepcopy(list(edit.shapes)), edit.fade_in, edit.fade_out)
     if edit.simple() and mode != "gif":
         extra = {"censor": censor, "censor_style": censor_style} if censor else {}
         return cut(path, parts[0].start, parts[0].end, out, mode, ffmpeg, run=run, target_mb=target_mb, info=info,
                    retry=retry, mix=mix, **extra)
     if not info.ok:
         return False, "Video nicht lesbar"
+    if mode == "gif" and edit.seconds() > GIF_MAX_S + 0.05:
+        over = math.ceil(edit.seconds() * 10 - 1e-6) / 10     # rounded up: 60.06 s is no "60 s" over the limit
+        return False, _("Ein GIF ist höchstens {limit} s lang, dieser Clip {seconds} s – kürzer schneiden oder als "
+                        "Video speichern.", limit=f"{GIF_MAX_S:g}", seconds=f"{over:.1f}")
     if mode == "copy":
         mode = "exact"
-    start = max(0.0, min(p.start for p in parts) - 0.0)
-    end = max(p.end for p in parts)
-    tmpdir = tempfile.mkdtemp(prefix="dbdms-edit-")
-    try:
-        args = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-t",
-                f"{end - start:.3f}", "-i", path]
-        shape_inputs = []
-        if edit.shapes:
-            from . import annotate
-            for shape in edit.shapes:
-                pic = annotate.layer(info.width, info.height, [shape])
-                box = pic.getbbox()
-                if box is None:                                  # nothing to see (an empty text)
-                    continue
-                png = os.path.join(tmpdir, f"shape{len(shape_inputs)}.png")
-                pic.crop(box).save(png)
-                args += ["-i", png]
-                shape_inputs.append((len(shape_inputs) + 1, shape.t0, shape.t1, box[0], box[1]))
-        graph, vmap, amap, enc = edit_graph(edit, info, start, mode, target_mb, censor, censor_style, mix,
-                                            shape_inputs, gif_h)
-        args += ["-filter_complex", graph, "-map", vmap] + (["-map", amap] if amap else ["-an"]) + enc
-        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-        args += (["-movflags", "+faststart"] if out.lower().endswith(".mp4") else []) + [out]
-        if run is None:
-            def run(a):
-                p = subprocess.run(a, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                   timeout=3600, creationflags=_flags())
-                return p.returncode, p.stderr or b""
+    if run is None:
+        def run(a):
+            p = subprocess.run(a, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                               timeout=3600, creationflags=_flags())
+            return p.returncode, p.stderr or b""
+
+    def call(a):
         try:
-            rc, err = run(args)
+            return run(a)
         except (OSError, subprocess.TimeoutExpired) as e:
-            rc, err = 1, str(e).encode()
+            return 1, str(e).encode()
+    tmpdir = ""
+    tmp, fmt = _writing(out)
+    key = part_key(tmp)
+    PARTS_WRITING.add(key)                                      # obsrec.settle_parts leaves it alone meanwhile
+    try:
+        try:
+            tmpdir = tempfile.mkdtemp(prefix="dbdms-edit-")
+            args = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
+            inputs = part_inputs(parts)
+            for start, end, _members in inputs:
+                args += ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", path]
+            shape_inputs = []
+            if edit.shapes:
+                from . import annotate
+                for shape in edit.shapes:
+                    pic = annotate.layer(info.width, info.height, [shape])
+                    box = pic.getbbox()
+                    if box is None:                              # nothing to see (an empty text)
+                        continue
+                    png = os.path.join(tmpdir, f"shape{len(shape_inputs)}.png")
+                    pic.crop(box).save(png)
+                    # read as one PNG – image2 would take a "%d" in %TEMP% for a numbered sequence and fail
+                    args += ["-f", "png_pipe", "-i", png]
+                    shape_inputs.append((len(inputs) + len(shape_inputs), shape.t0, shape.t1, box[0], box[1]))
+            os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        except OSError as e:                                     # %TEMP% full or not writable, the drive gone
+            return False, str(e)
+
+        def graph(palette=None):
+            return edit_graph(edit, info, mode, target_mb, censor, censor_style, mix, shape_inputs, gif_h, palette)
+        if mode == "gif":
+            pal = os.path.join(tmpdir, "palette.png")              # "-update 1": a file name, not a pattern
+            rc, err = call(args + ["-filter_complex", graph()[0], "-map", "[vout]", "-frames:v", "1", "-update", "1",
+                                   "-f", "image2", pal])
+            if rc == 0:
+                rc, err = call(args + ["-f", "png_pipe", "-i", pal, "-filter_complex",
+                                       graph(len(inputs) + len(shape_inputs))[0], "-map", "[vout]", "-an", *fmt, tmp])
+        else:
+            g, vmap, amap, enc = graph()
+            rc, err = call(args + ["-filter_complex", g, "-map", vmap] + (["-map", amap] if amap else ["-an"]) + enc
+                           + (["-movflags", "+faststart"] if out.lower().endswith(".mp4") else []) + fmt + [tmp])
     finally:
-        for name in os.listdir(tmpdir):
-            try:
-                os.remove(os.path.join(tmpdir, name))
-            except OSError:
-                pass
-        try:
-            os.rmdir(tmpdir)
-        except OSError:
-            pass
-    ok = rc == 0 and os.path.exists(out) and os.path.getsize(out) > 0
+        PARTS_WRITING.discard(key)
+        _drop_dir(tmpdir)
+    ok = rc == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0
     if not ok:
-        try:
-            os.remove(out)
-        except OSError:
-            pass
+        _remove(tmp)
         return False, err[-300:].decode("utf-8", "replace").strip()
-    if mode == "discord" and retry and os.path.getsize(out) > target_mb * 1024 * 1024:
+    if mode == "discord" and retry and os.path.getsize(tmp) > target_mb * 1024 * 1024:
+        _remove(tmp)
         return export(path, edit, out, mode, ffmpeg, run, target_mb * 0.8, info, censor, censor_style, mix, gif_h,
                       retry=False)
-    return True, ""
+    return _publish(tmp, out)

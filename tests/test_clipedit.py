@@ -784,18 +784,28 @@ def test_the_graph_cuts_parts_crops_draws_and_fades_in_that_order():
     info = clipedit.Info(12, 320, 180, 30, 1)
     e = clipedit.Edit([clipedit.Part(2, 4), clipedit.Part(6, 10, 2.0)], crop=(0.25, 0, 0.5, 1.0), fade_in=0.5,
                       fade_out=1.0)
-    g, v, a, enc = clipedit.edit_graph(e, info, start=2.0, shape_inputs=[(1, 3.0, 5.0)])
+    g, v, a, enc = clipedit.edit_graph(e, info, shape_inputs=[(1, 3.0, 5.0)])
     assert v == "[vout]" and a == "[aend]" and "libx264" in enc
-    assert "overlay=0:0:format=auto:enable='between(t,1.000,3.000)'" in g      # 3–5 s of the recording, input from 2
-    placed, _v, _a, _e = clipedit.edit_graph(e, info, 2.0, shape_inputs=[(1, None, None, 40, 12)])
-    assert "[1:v]overlay=40:12:format=auto[vs0]" in placed                    # a drawing cut to its size, at its spot
-    assert g.index("overlay") < g.index("crop=160:180:80:0") < g.index("split=2")   # drawn on the whole picture
-    assert "trim=start=0.000:end=2.000" in g and "trim=start=4.000:end=8.000,setpts=(PTS-STARTPTS)/2" in g
-    assert "atempo=2" in g and "concat=n=2:v=1:a=1" in g
+    # the parts are 2 s apart: one input from 2 s, split and cut per part; the drawing at 3–5 s of the recording
+    # shows from 1 s of that input, in part 1 (2–4 s) and not at all in part 2 (6–10 s)
+    assert "[0:v]split=2[sv0][sv1]" in g and "[0:a:0]asplit=2[sa0][sa1]" in g
+    assert "[sv0]trim=start=0.000:end=2.000[vt0]" in g and "[sv1]trim=start=4.000:end=8.000[vt1]" in g
+    assert "[vt0][1:v]overlay=0:0:format=auto:enable='between(t,1.000,3.000)'" in g and "[vt1][1:v]" not in g
+    placed, _v, _a, _e = clipedit.edit_graph(e, info, shape_inputs=[(1, None, None, 40, 12)])
+    assert "[vt0][1:v]overlay=40:12:format=auto[vs0_0]" in placed             # a drawing cut to its size, at its spot
+    assert "[vt1][1:v]overlay=40:12:format=auto[vs1_0]" in placed             # … in every part when always shown
+    assert g.index("[vt0][1:v]overlay") < g.index("crop=160:180:80:0[vcr0]") < g.index("[vcr0]setpts")   # drawn on
+    assert "[vcr0]setpts=(PTS-STARTPTS)/1[v0]" in g and "[vcr1]setpts=(PTS-STARTPTS)/2[v1]" in g   # the whole picture
+    assert "[sa1]atrim=start=4.000:end=8.000,asetpts=PTS-STARTPTS,atempo=2[a1]" in g and "concat=n=2:v=1:a=1" in g
+    far, _v, _a, _e = clipedit.edit_graph(clipedit.Edit([clipedit.Part(0, 2), clipedit.Part(9, 11)]), info,
+                                          shape_inputs=[(2, 1.0, 9.5)])
+    assert "split" not in far and "trim" not in far                           # 7 s apart: an input each, as it is
+    assert "[0:v][2:v]overlay=0:0:format=auto:enable='between(t,1.000,9.500)'" in far
+    assert "[1:v][2:v]overlay=0:0:format=auto:enable='between(t,0.000,0.500)'" in far   # that input starts at 9 s
     assert "fade=t=in:st=0:d=0.500" in g and "fade=t=out:st=3.000:d=1.000" in g and "afade=t=out" in g
-    gif, _v, a2, enc2 = clipedit.edit_graph(e, info, 2.0, mode="gif")
-    assert a2 is None and "palettegen" in gif and enc2 == [] and "atrim" not in gif
-    d, _v, _a, enc3 = clipedit.edit_graph(clipedit.Edit([clipedit.Part(0, 4, 0.5)]), info, 0.0, mode="discord")
+    gif, _v, a2, enc2 = clipedit.edit_graph(e, info, mode="gif")
+    assert a2 is None and "palettegen" in gif and enc2 == [] and "asetpts" not in gif
+    d, _v, _a, enc3 = clipedit.edit_graph(clipedit.Edit([clipedit.Part(0, 4, 0.5)]), info, mode="discord")
     assert "scale=-2:" in d and "-b:v" in enc3
 
 
@@ -974,3 +984,414 @@ def test_the_sound_line_beside_the_recordings_table_keeps_its_hint_below_the_sou
     finally:
         win.close()
         app.processEvents()
+
+
+# ------------------------------------------------------------------ review fixes (ffmpeg)
+def _recording_run(seen):
+    """A run hook that notes each ffmpeg command line and runs it."""
+    def run(args):
+        seen.append(list(args))
+        r = subprocess.run(args, capture_output=True, timeout=300)
+        return r.returncode, r.stderr
+    return run
+
+
+def _graph(args):
+    return args[args.index("-filter_complex") + 1]
+
+
+def _inputs(args):
+    return [args[i + 1] for i, a in enumerate(args) if a == "-i"]
+
+
+def test_an_edit_keeps_the_frame_rate_of_the_recording(clip, tmp_path):
+    """Review fix: setpts leaves the frame rate unknown and ffmpeg fell back to 25 fps – a fade, a crop, a drawing,
+    a second part or a tempo turned a 60-fps round into a 25-fps clip with frames dropped."""
+    for name, e in (("fade", clipedit.Edit([clipedit.Part(1, 4)], fade_in=0.5)),
+                    ("slow", clipedit.Edit([clipedit.Part(1, 3, 0.5)])),
+                    ("parts", clipedit.Edit([clipedit.Part(1, 3), clipedit.Part(5, 7)]))):
+        out = str(tmp_path / f"{name}.mp4")
+        ok, why = clipedit.export(clip, e, out, "copy", FF)
+        assert ok, why
+        info = clipedit.probe(out, FF)
+        assert info.fps == 30 and info.duration == pytest.approx(e.seconds(), abs=0.1), name
+
+
+def test_a_gif_is_made_in_two_runs_and_is_never_longer_than_the_limit(clip, tmp_path):
+    """Review fix: in one run palettegen held back every frame until the end (~32 MB per second of GIF, a whole
+    round in GIF mode was one click and GBs); now the palette comes first (a PNG), then the GIF – and a GIF longer
+    than GIF_MAX_S is refused before ffmpeg runs, with a reason the editor shows."""
+    seen = []
+    gif = str(tmp_path / "two.gif")
+    ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(2, 4)]), gif, "gif", FF, run=_recording_run(seen),
+                              gif_h=90)
+    assert ok, why
+    first, second = seen
+    assert "palettegen" in _graph(first) and "paletteuse" not in _graph(first)
+    pal = first[-1]
+    assert pal.endswith(".png") and first[first.index("-update") + 1] == "1"
+    assert "paletteuse" in _graph(second) and "palettegen" not in _graph(second) and pal in _inputs(second)
+    assert not os.path.exists(pal)                                           # temporary, removed afterwards
+    from PIL import Image
+    assert Image.open(gif).size[1] == 90
+    calls = []
+    long = clipedit.Info(duration=600, width=320, height=180, fps=30, audio_tracks=1)
+    for e in (clipedit.Edit([clipedit.Part(10, 100)]),                        # a whole stretch of a round
+              clipedit.Edit([clipedit.Part(10, 30, 0.25)])):                  # 20 s in slow motion = 80 s of GIF
+        ok, why = clipedit.export(clip, e, str(tmp_path / "long.gif"), "gif", FF, run=calls.append, info=long)
+        assert not ok and f"höchstens {clipedit.GIF_MAX_S:g} s" in why
+    assert calls == [] and not os.path.exists(str(tmp_path / "long.gif"))
+
+
+def test_a_gif_fades_from_and_to_black_instead_of_turning_transparent(clip, tmp_path):
+    """Review fix: palettegen asks for RGBA, and a fade on RGBA fades the alpha too – the faded-in frames came out
+    transparent (the chat background shows through) and the fade-out froze on grey instead of reaching black."""
+    from PIL import Image, ImageStat
+    gif = str(tmp_path / "fade.gif")
+    ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(2, 4)], fade_in=0.5, fade_out=0.5), gif, "gif", FF,
+                              gif_h=90)
+    assert ok, why
+    im = Image.open(gif)
+
+    def frame(i):
+        im.seek(i)
+        f = im.convert("RGBA")
+        return f.getchannel("A").getextrema()[0], ImageStat.Stat(f.convert("L")).mean[0]
+    alpha, light = frame(0)
+    assert alpha == 255 and light < 20                                       # opaque black, not see-through
+    n = im.n_frames
+    assert all(frame(i)[0] == 255 for i in range(n))
+    tail = [frame(i)[1] for i in (n - 3, n - 2, n - 1)]
+    assert tail[0] > tail[1] > tail[2]                                       # still darkening at the very end
+
+
+def test_overlapping_parts_and_far_scenes_are_inputs_of_their_own(clip, tmp_path, monkeypatch):
+    """Review fix: one input split n ways queued every frame two parts share as a raw picture (a part added twice:
+    GBs) and decoded the whole gap between two parts (two scenes far apart: the whole round). Now overlapping parts
+    and scenes further apart than JOIN_GAP_S are read from their own start for their own length; the clip still
+    shows the right moments."""
+    seen = []
+    e = clipedit.Edit([clipedit.Part(1, 4), clipedit.Part(1, 4), clipedit.Part(2, 3, 0.5)], fade_in=0.2)
+    out = str(tmp_path / "overlap.mp4")
+    ok, why = clipedit.export(clip, e, out, "exact", FF, run=_recording_run(seen))
+    assert ok, why
+    [args] = seen
+    assert _inputs(args) == [clip, clip, clip] and "split" not in _graph(args) and "trim" not in _graph(args)
+    seeks = [(args[i + 1], args[i + 3]) for i, a in enumerate(args) if a == "-ss"]
+    assert seeks == [("1.000", "3.000"), ("1.000", "3.000"), ("2.000", "1.000")]
+    info = clipedit.probe(out, FF)
+    assert info.duration == pytest.approx(8.0, abs=0.15) and info.fps == 30   # 3 + 3 + 1 s at half speed
+    src = clipedit.probe(clip, FF)
+
+    def diff(a, b):
+        return sum(abs(x - y) for x, y in zip(a.convert("L").tobytes(), b.convert("L").tobytes()))
+
+    def at(t):
+        return clipedit.frame_at(clip, t, 180, src, FF)
+    got = clipedit.frame_at(out, 4.5, 180, info, FF)                          # second part, 1.5 s in: 2.5 s
+    assert diff(got, at(2.5)) < diff(got, at(1.5))
+    got = clipedit.frame_at(out, 7.0, 180, info, FF)                          # third part, 1 s in at half speed: 2.5 s
+    assert diff(got, at(2.5)) < diff(got, at(3.0))
+    seen.clear()
+    monkeypatch.setattr(clipedit, "JOIN_GAP_S", 5.0)                         # whatever the default: the clip is 12 s
+    ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(0.5, 1.5), clipedit.Part(10, 11)]),
+                              str(tmp_path / "far.mp4"), "exact", FF, run=_recording_run(seen),
+                              censor=[clipedit.names_box(320, 180)])
+    assert ok, why
+    assert [(a, seen[0][i + 1]) for i, a in enumerate(seen[0]) if a in ("-ss", "-t")] == [
+        ("-ss", "0.500"), ("-t", "1.000"), ("-ss", "10.000"), ("-t", "1.000")]   # not 0.5 s on for 10.5 s
+
+
+def test_a_gif_clip_is_edited_in_fast_mode_by_re_encoding_it(clip, tmp_path):
+    """Review fix: the mp4 muxer cannot hold the gif codec, so "Schnell" (stream copy) failed on every GIF clip with
+    a raw ffmpeg error – a GIF source is re-encoded as in "Genau"."""
+    gif = str(tmp_path / "Clips" / "a.gif")
+    ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(2, 4)]), gif, "gif", FF, gif_h=90)
+    assert ok, why
+    assert not clipedit.copyable(gif) and clipedit.copyable(clip)
+    out = str(tmp_path / "Clips" / "from-gif.mp4")
+    ok, why = clipedit.export(gif, clipedit.Edit([clipedit.Part(0, 1.5)]), out, "copy", FF)
+    assert ok, why
+    info = clipedit.probe(out, FF)
+    assert info.ok and info.height == 90 and info.duration == pytest.approx(1.5, abs=0.2)
+
+
+def test_the_editors_gifs_are_listed_and_deletable_but_foreign_gifs_are_not(tmp_path):
+    """Review fix: .gif was not a clip extension – an editor GIF that missed its index entry (the compact editor
+    replaced mid-save, the index not written, a quit) never showed up and could not be deleted. It is told by the
+    program's own name pattern like an mp4; someone else's GIF stays unlisted and untouched."""
+    folder = str(tmp_path)
+    cdir = obsrec.clips_dir(folder)
+    os.makedirs(cdir)
+    recs = [obsrec.Recording(t=100.0, file="2026-10-17 21-40 Coal Tower – Nurse.mkv", label="Coal Tower",
+                             role="killer", killer="Nurse")]
+    obsrec.save_index(folder, recs)
+    mine, foreign = "2026-10-17 21-40 Coal Tower – Nurse – Clip 0m10s-0m40s.gif", "holiday.gif"
+    for n in (mine, foreign):
+        with open(os.path.join(cdir, n), "wb") as f:
+            f.write(b"GIF89a")
+    [c] = obsrec.list_clips(cdir, recs)
+    assert (c.file, c.kind, c.adopted, c.source, c.killer) == (mine, "clip", True, 100.0, "Nurse")
+    posted = []
+    r = obsrec.Recorder(lambda kind, **d: posted.append((kind, d)))
+    r.folder = lambda: folder
+    r._delete_clip(foreign)
+    r._delete_clip(mine)
+    assert os.listdir(cdir) == [foreign]
+    assert [d["file"] for k, d in posted if k == "changed" and d.get("what") == "clip_delete"] == [mine]
+
+
+def test_a_failing_temp_folder_or_drive_is_an_answer_not_a_dead_save_thread(clip, tmp_path, monkeypatch):
+    """Review fix: an OSError while preparing the drawings (%TEMP% full or not writable) or making the clips folder
+    escaped export/cut, killed the editor's save thread and left it on "Kodiere …" forever."""
+    from PIL import Image
+    from fogscout import annotate
+    arrow = clipedit.Edit([clipedit.Part(1, 2)], shapes=[annotate.Shape("arrow", [(0.1, 0.1), (0.5, 0.5)])])
+
+    def full(*_a, **_k):
+        raise OSError(28, "No space left on device")
+    with monkeypatch.context() as m:
+        m.setattr(clipedit.tempfile, "mkdtemp", full)
+        ok, why = clipedit.export(clip, arrow, str(tmp_path / "a.mp4"), "exact", FF)
+    assert not ok and "No space left" in why
+    made = []
+    real = clipedit.tempfile.mkdtemp
+
+    def mkdtemp(**kw):
+        made.append(real(dir=str(tmp_path), **kw))
+        return made[-1]
+    with monkeypatch.context() as m:
+        m.setattr(clipedit.tempfile, "mkdtemp", mkdtemp)
+        m.setattr(Image.Image, "save", full)
+        ok, why = clipedit.export(clip, arrow, str(tmp_path / "b.mp4"), "exact", FF)
+    assert not ok and "No space left" in why and made and not os.path.exists(made[0])   # temp folder cleaned up
+    blocked = tmp_path / "a file"
+    blocked.write_bytes(b"x")
+    ok, why = clipedit.cut(clip, 1, 2, str(blocked / "c.mp4"), "copy", FF)  # the clips folder cannot be made
+    assert not ok and why
+    ok, why = clipedit.export(clip, arrow, str(blocked / "d.mp4"), "exact", FF)
+    assert not ok and why
+
+
+def test_discord_mode_takes_a_recording_with_an_odd_height(tmp_path):
+    """Review fix: the Discord size kept an odd source height (scale=-2:179), which x264 refuses for 4:2:0."""
+    assert clipedit.discord_plan(10, 50, clipedit.Info(10, 853, 479, 30))[1] == 478
+    src = str(tmp_path / "odd.mkv")
+    subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                    "-i", "testsrc=duration=4:size=321x179:rate=30", "-c:v", "libx264", "-preset", "veryfast",
+                    "-pix_fmt", "yuv444p", src], check=True, timeout=120)
+    for name, e in (("parts", clipedit.Edit([clipedit.Part(0.5, 1.5), clipedit.Part(2, 3)])),
+                    ("one", clipedit.Edit([clipedit.Part(0.5, 2)]))):
+        out = str(tmp_path / f"{name}.mp4")
+        ok, why = clipedit.export(src, e, out, "discord", FF, target_mb=50)
+        assert ok, why
+        assert clipedit.probe(out, FF).height == 178
+
+
+def test_drawings_and_the_gif_palette_survive_a_percent_sign_in_the_temp_folder(clip, tmp_path, monkeypatch):
+    """Review fix: ffmpeg read the drawings' PNGs with image2, which takes "%d" in a path (a user name in %TEMP%)
+    for a numbered sequence – every clip with a drawing failed."""
+    from fogscout import annotate
+    odd = tmp_path / "x%dx"
+    odd.mkdir()
+    monkeypatch.setattr(clipedit.tempfile, "tempdir", str(odd))
+    arrow = annotate.Shape("arrow", [(0.1, 0.1), (0.5, 0.5)])
+    ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(1, 2)], shapes=[arrow]), str(tmp_path / "a.mp4"),
+                              "exact", FF)
+    assert ok, why
+    ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(1, 2)], shapes=[arrow]), str(tmp_path / "a.gif"),
+                              "gif", FF, gif_h=90)
+    assert ok, why
+    assert os.listdir(str(odd)) == []                                        # temporary files removed
+
+
+def test_a_clip_gets_its_name_only_once_it_is_whole(clip, tmp_path):
+    """Review fix: ffmpeg wrote straight to the clip's name, so the clips table listed the half-written file (upload,
+    delete, preview offered for it). Now it writes "<name>.tmp", which the clips list never takes, and renames it
+    after success; a failure leaves nothing; a second save meanwhile picks another name."""
+    cdir = tmp_path / "Clips"
+    recs = [obsrec.Recording(t=100.0, file=os.path.basename(clip))]
+    name = clipedit.clip_name(clip, 1, 3)
+    seen = []
+
+    def run(args):
+        listed = lambda: sorted(c.file for c in obsrec.list_clips(str(cdir), recs))   # noqa: E731
+        seen.append((args[-1], listed()))
+        r = subprocess.run(args, capture_output=True, timeout=300)
+        seen.append((args[-1], listed()))                                    # written, not yet renamed
+        return r.returncode, r.stderr
+    for ext, mode, e in ((".mp4", "copy", clipedit.Edit([clipedit.Part(1, 3)])),               # cut()
+                         (".mp4", "exact", clipedit.Edit([clipedit.Part(1, 3)], fade_in=0.3)),  # an edit
+                         (".gif", "gif", clipedit.Edit([clipedit.Part(1, 3)]))):                # GIF, two runs
+        out = clipedit.unique_path(str(cdir), name, ext)
+        seen.clear()
+        ok, why = clipedit.export(clip, e, out, mode, FF, run=run, gif_h=90)
+        assert ok, why
+        written = seen[-1][0]
+        assert written == out + clipedit.PART_EXT and obsrec.adopt_clip(os.path.basename(written), recs) is None
+        assert all(os.path.basename(out) not in listed for _w, listed in seen)   # never listed while written
+        assert os.path.getsize(out) > 0 and not os.path.exists(written)
+        assert os.path.basename(out) in [c.file for c in obsrec.list_clips(str(cdir), recs)]
+    busy = str(cdir / (name + ".mkv" + clipedit.PART_EXT))
+    open(busy, "wb").close()                                                 # another save is writing that name
+    assert clipedit.unique_path(str(cdir), name, ".mkv").endswith(name + " (2).mkv")
+    bad = str(cdir / "bad.mp4")
+
+    def fails(args):
+        with open(args[-1], "wb") as f:                                      # ffmpeg wrote a little, then failed
+            f.write(b"x")
+        return 1, b"boom"
+    ok, why = clipedit.cut(clip, 1, 2, bad, "exact", FF, run=fails)
+    assert not ok and why == "boom" and not os.path.exists(bad) and not os.path.exists(bad + clipedit.PART_EXT)
+
+
+# ------------------------------------------------------------------ review fixes (ffmpeg), second pass
+def test_many_parts_share_a_few_inputs_and_still_show_the_right_moments(clip, tmp_path):
+    """Review fix (second pass): one input per part kept a decoder per part open for the whole run – memory grew with
+    every part (measured 3440x1440: 2 parts 1.1 GB, 20 parts 5 GB). Parts one after the other now share an input
+    (split, then cut per part: nothing is queued, the gap only decoded), far-apart scenes get one of their own only
+    up to MAX_INPUTS (the longest gaps first), and overlapping parts still never share one."""
+    import random
+    P = clipedit.Part
+    seq = [P(1 + 2 * i, 2 + 2 * i) for i in range(20)]
+    assert clipedit.part_inputs(seq) == [(1, 40, list(range(20)))]
+    far = [P(0, 1), P(30, 31), P(32, 33), P(100, 101), P(300, 301), P(320, 321)]   # gaps 29, 1, 67, 199, 19
+    assert clipedit.MAX_INPUTS == 4 and clipedit.JOIN_GAP_S < 19
+    assert clipedit.part_inputs(far) == [(0, 1, [0]), (30, 33, [1, 2]), (100, 101, [3]), (300, 321, [4, 5])]
+    over = [P(0, 10), P(0, 10), P(2, 4, 0.5), P(11, 12)]                     # a lane is used again once free
+    assert clipedit.part_inputs(over) == [(0, 12, [0, 3]), (0, 10, [1]), (2, 4, [2])]
+    rnd = random.Random(7)
+    for _ in range(300):
+        parts = clipedit.clean_parts([P(a, a + rnd.uniform(0.2, 30), rnd.choice(clipedit.SPEEDS))
+                                      for a in (rnd.uniform(0, 600) for _i in range(rnd.randint(1, 25)))])
+        got = clipedit.part_inputs(parts)
+        assert sorted(i for _s, _e, idx in got for i in idx) == list(range(len(parts)))   # each part once
+        depth = max(sum(q.start <= p.start < q.end for q in parts) for p in parts)
+        assert len(got) <= max(clipedit.MAX_INPUTS, depth)
+        for start, end, idx in got:
+            assert idx == sorted(idx) and start == parts[idx[0]].start and end == max(parts[i].end for i in idx)
+            assert all(parts[a].end <= parts[b].start + 1e-6 for a, b in zip(idx, idx[1:]))   # never overlapping
+    seen = []
+    parts = [P(0.5 + 1.4 * i, 1.5 + 1.4 * i) for i in range(8)]              # 8 scenes of 1 s, 0.4 s apart
+    out = str(tmp_path / "many.mp4")
+    ok, why = clipedit.export(clip, clipedit.Edit(parts, fade_in=0.2), out, "exact", FF, run=_recording_run(seen))
+    assert ok, why
+    [args] = seen
+    g = _graph(args)
+    assert _inputs(args) == [clip] and "[0:v]split=8" in g and "asplit=8" in g     # one decoder, not eight
+    assert g.count("]trim=start=") == 8 and g.count("atrim=start=") == 8
+    info = clipedit.probe(out, FF)
+    assert info.duration == pytest.approx(8.0, abs=0.15) and info.fps == 30
+    src = clipedit.probe(clip, FF)
+
+    def diff(a, b):
+        return sum(abs(x - y) for x, y in zip(a.convert("L").tobytes(), b.convert("L").tobytes()))
+
+    def at(t):
+        return clipedit.frame_at(clip, t, 180, src, FF)
+    for t_out, t_src in ((3.5, 4.7 + 0.5), (6.25, 8.9 + 0.25)):            # part 3 at 0.5 s, part 6 at 0.25 s
+        got = clipedit.frame_at(out, t_out, 180, info, FF)
+        assert diff(got, at(t_src)) < min(diff(got, at(t_src - 0.6)), diff(got, at(t_src + 0.6)))
+
+
+def test_a_gif_just_over_the_limit_says_by_how_much(clip, tmp_path):
+    """Review fix (second pass): the refusal rounded the length to whole seconds – a 60.3-s GIF read "dieser Clip
+    60 s", exactly the limit. Rounded up to a tenth now."""
+    long = clipedit.Info(duration=600, width=320, height=180, fps=30, audio_tracks=1)
+    for end, shown in ((70.06, "60.1"), (70.3, "60.3"), (70.5, "60.5")):
+        calls = []
+        ok, why = clipedit.export(clip, clipedit.Edit([clipedit.Part(10, end)]), str(tmp_path / "x.gif"), "gif", FF,
+                                  run=calls.append, info=long)
+        assert not ok and calls == [] and f"dieser Clip {shown} s" in why, why
+
+
+def test_a_clip_left_as_tmp_by_a_quit_gets_its_name_or_goes(clip, tmp_path):
+    """Review fix (second pass): ffmpeg writes "<clip>.tmp" and the save renames it – a quit or an update restart
+    mid-save (the save thread gone, ffmpeg finishing on its own) left the finished clip as an invisible ".tmp" for
+    good. The recorder looks for such files of ours nobody writes any more: whole → named and listed, cut short →
+    removed; someone else's file, a save still running and a file written a moment ago stay untouched."""
+    folder = str(tmp_path)
+    cdir = obsrec.clips_dir(folder)
+    os.makedirs(cdir)
+    recs = [obsrec.Recording(t=100.0, file=os.path.basename(clip))]
+    obsrec.save_index(folder, recs)
+
+    def named(a, b, ext=".mp4"):
+        return os.path.join(cdir, clipedit.clip_name(clip, a, b) + ext)
+
+    def dies(args):                                                          # the program quits after ffmpeg
+        r = subprocess.run(args, capture_output=True, timeout=300)
+        if args[-1].endswith(obsrec.PART_EXT):                               # (a GIF's palette run before)
+            assert obsrec.part_key(args[-1]) in obsrec.PARTS_WRITING          # a running save is known
+            raise SystemExit
+        return r.returncode, r.stderr
+    for out, mode in ((named(1, 3), "exact"), (named(4, 6, ".gif"), "gif")):
+        with pytest.raises(SystemExit):
+            clipedit.export(clip, clipedit.Edit([clipedit.Part(1, 3)], fade_in=0.3), out, mode, FF, run=dies, gif_h=90)
+        assert os.path.getsize(out + obsrec.PART_EXT) > 0 and not os.path.exists(out)
+    assert not obsrec.PARTS_WRITING and obsrec.list_clips(cdir, recs) == []
+    mp4 = open(named(1, 3) + obsrec.PART_EXT, "rb").read()
+    gif = open(named(4, 6, ".gif") + obsrec.PART_EXT, "rb").read()
+    assert obsrec.whole(named(1, 3) + obsrec.PART_EXT) and obsrec.whole(named(4, 6, ".gif") + obsrec.PART_EXT)
+    files = {named(7, 9) + obsrec.PART_EXT: mp4[:len(mp4) // 2],               # ffmpeg killed: cut short
+             named(9, 11, ".gif") + obsrec.PART_EXT: gif[:-1],
+             os.path.join(cdir, "holiday.mp4" + obsrec.PART_EXT): mp4,          # someone else's
+             named(2, 4) + obsrec.PART_EXT: mp4,                                # a save of this process writes it
+             named(3, 5) + obsrec.PART_EXT: mp4,                                # written a moment ago
+             named(5, 7): mp4, named(5, 7) + obsrec.PART_EXT: mp4}               # the name is taken meanwhile
+    for p, data in files.items():
+        with open(p, "wb") as f:
+            f.write(data)
+    assert obsrec.whole(named(7, 9) + obsrec.PART_EXT) is False and obsrec.whole(named(9, 11, ".gif")
+                                                                                 + obsrec.PART_EXT) is False
+    assert obsrec.whole(clip) is None and obsrec.whole(str(tmp_path / "gone.mp4")) is None
+    old = time.time() - obsrec.PART_STALE_S - 60
+    for p in os.listdir(cdir):
+        if p.endswith(obsrec.PART_EXT) and p != os.path.basename(named(3, 5)) + obsrec.PART_EXT:
+            os.utime(os.path.join(cdir, p), (old, old))
+    busy = obsrec.part_key(named(2, 4) + obsrec.PART_EXT)
+    posted = []
+    r = obsrec.Recorder(lambda kind, **d: posted.append((kind, d)))
+    r.folder = lambda: folder
+    obsrec.PARTS_WRITING.add(busy)
+    try:
+        r._settle_parts()
+        r._settle_parts()                                                    # once a PARTS_CHECK_S
+    finally:
+        obsrec.PARTS_WRITING.discard(busy)
+    given = sorted(d["file"] for k, d in posted if k == "changed" and d.get("what") == "clip")
+    expect = sorted(os.path.basename(p) for p in (named(1, 3), named(4, 6, ".gif"),
+                                                  named(5, 7)[:-len(".mp4")] + " (2).mp4"))
+    assert given == expect
+    assert sorted(os.listdir(cdir)) == sorted(expect + [
+        os.path.basename(named(5, 7)), "holiday.mp4" + obsrec.PART_EXT,
+        os.path.basename(named(2, 4)) + obsrec.PART_EXT, os.path.basename(named(3, 5)) + obsrec.PART_EXT])
+    listed = {c.file: c for c in obsrec.list_clips(cdir, recs)}
+    assert set(expect) <= set(listed) and all(listed[n].adopted for n in expect)
+
+
+def test_a_finished_clip_is_renamed_again_when_the_drive_holds_it_for_a_moment(clip, tmp_path, monkeypatch):
+    """Review note (second pass): a virus scanner may hold a new file for a moment on Windows – the rename after the
+    encode failed once and the whole encode was deleted. It is tried again for a moment now; a rename that keeps
+    failing still leaves no half file behind."""
+    real, fails = os.replace, []
+
+    def held(src, dst):
+        if src.endswith(clipedit.PART_EXT) and len(fails) < 2:
+            fails.append(src)
+            raise PermissionError(32, "used by another process")
+        return real(src, dst)
+    monkeypatch.setattr(clipedit.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(os, "replace", held)
+    out = str(tmp_path / "a.mp4")
+    ok, why = clipedit.cut(clip, 1, 2, out, "copy", FF)
+    assert ok, why
+    assert len(fails) == 2 and os.path.getsize(out) > 0 and not os.path.exists(out + clipedit.PART_EXT)
+
+    def never(src, dst):
+        raise PermissionError(32, "used by another process")
+    monkeypatch.setattr(os, "replace", never)
+    out = str(tmp_path / "b.mp4")
+    ok, why = clipedit.cut(clip, 1, 2, out, "copy", FF)
+    assert not ok and "another process" in why
+    assert not os.path.exists(out) and not os.path.exists(out + clipedit.PART_EXT)

@@ -31,6 +31,12 @@ UNDO_KEPT = 60                     # steps that can be undone
 ADJUST_DELAY_MS = 120              # a slider redraws the picture this long after it stopped
 PREVIEW_MAX = 1920                 # the canvas shows a copy at most this long (px) – saving uses the original
 SAVE_POLL_MS = 50                  # how often the window looks whether the saving thread is done
+RATIO_SAME = 0.005                 # a crop whose pixel aspect is this close to an offered ratio counts as it
+
+# Running saves: window -> the file it writes. Holds a window closed meanwhile until its save is picked up (the App
+# drops closed windows; the result still reaches on_saved), and keeps a second editor of the same picture from
+# picking the same free name before the first copy exists (code review 35/48). Only the window thread touches it.
+_SAVING = {}
 
 
 def qimage(img: Image.Image) -> QImage:
@@ -54,8 +60,8 @@ class ImageWindow(QWidget):
             self.setStyleSheet(qss)
         try:
             with Image.open(path) as im:
-                self.original = im.convert("RGB")
-        except (OSError, ValueError) as e:
+                self.original = imageedit.converted(im, "RGB")   # 16-bit grey scaled, not clipped
+        except (OSError, ValueError, Image.DecompressionBombError) as e:   # the last: > 2× MAX_IMAGE_PIXELS
             self.original = None
             self.error = str(e)
         else:
@@ -63,6 +69,9 @@ class ImageWindow(QWidget):
         self.preview = self._preview_copy(self.original)
         self.edit = imageedit.ImageEdit()
         self.undo_stack, self.redo_stack = [], []
+        self._step = None                  # what the last undo step was for while it may go on: "slider", ("text", i)
+        self._next_step = None             # what the canvas change under way continues (typing into a text)
+        self._crop_pick = None             # the aspect the user last picked other than "none" (free or a ratio)
         self.last_out = None
         self._adjust_timer = QTimer(self)
         self._adjust_timer.setSingleShot(True)
@@ -75,9 +84,10 @@ class ImageWindow(QWidget):
         self._build()
         self.resize(1280, 860)
         self.setMinimumSize(900, 620)
+        self.setFocusPolicy(Qt.StrongFocus)     # a click on the picture takes the keys back from a text field
         if self.original is None:
             self.status.setText(_("Bild nicht lesbar: {error}", error=self.error))
-            for b in (self.save_btn, self.copy_btn):
+            for b in (self.save_btn, self.copy_btn, self.tools):
                 b.setEnabled(False)
             return
         self._refresh(frame=True)
@@ -95,13 +105,14 @@ class ImageWindow(QWidget):
         row.addWidget(b)
         return b
 
-    def _combo(self, row, items, current, tip, slot):
+    def _combo(self, row, items, current, tip, slot, chosen=False):
+        """``chosen``: ``slot`` on every pick of the user, also of the entry already shown (``activated``)."""
         box = guard_wheel(QComboBox())
         for data, label in items:
             box.addItem(label, data)
         box.setCurrentIndex(next((i for i, (d, _l) in enumerate(items) if d == current), 0))
         box.setToolTip(tip)
-        box.currentIndexChanged.connect(slot)
+        (box.activated if chosen else box.currentIndexChanged).connect(slot)
         row.addWidget(box)
         return box
 
@@ -184,9 +195,14 @@ class ImageWindow(QWidget):
         wrap.setLayout(side)
         wrap.setFixedWidth(430)
         lay.addWidget(wrap)
-        for keys, slot in ((QKeySequence.Undo, self.undo), (QKeySequence.Redo, self.redo), ("Ctrl+Y", self.redo),
-                           (QKeySequence.Copy, self.copy), (QKeySequence.Save, self.save)):
-            sc = QShortcut(QKeySequence(keys), self)
+        for std, extra, slot in ((QKeySequence.Undo, (), self.undo), (QKeySequence.Redo, ("Ctrl+Y",), self.redo),
+                                 (QKeySequence.Copy, (), self.copy), (QKeySequence.Save, (), self.save)):
+            # every key of the platform plus Ctrl+Y, each once: two shortcuts on one key are ambiguous to Qt and
+            # neither fires (QKeySequence.Redo is Ctrl+Y on Windows – Ctrl+Y did nothing, code review 12)
+            keys = QKeySequence.keyBindings(std)
+            keys += [QKeySequence(k) for k in extra if QKeySequence(k) not in keys]
+            sc = QShortcut(self)
+            sc.setKeys(keys)
             sc.activated.connect(slot)
         self._show_buttons()
 
@@ -205,14 +221,17 @@ class ImageWindow(QWidget):
                                   _("Rahmen im Bild ziehen, verschieben, an den Ecken ändern."), check=True)
         r.addStretch()
         pl.addLayout(r)
+        # slots are bound methods, never lambdas or partials holding self: PySide keeps those as long as the button,
+        # the button lives as long as the window – a cycle through C++ the GC cannot see, so a closed editor kept
+        # its full-size picture until Fog Scout quit (code review 11). Bound methods are held weakly.
         r = QHBoxLayout()
-        self._btn(r, _("⟲ Links drehen"), lambda: self.turn(3), _("Um 90° gegen den Uhrzeigersinn drehen."))
-        self._btn(r, _("⟳ Rechts drehen"), lambda: self.turn(1), _("Um 90° im Uhrzeigersinn drehen."))
+        self._btn(r, _("⟲ Links drehen"), self._turn_left, _("Um 90° gegen den Uhrzeigersinn drehen."))
+        self._btn(r, _("⟳ Rechts drehen"), self._turn_right, _("Um 90° im Uhrzeigersinn drehen."))
         r.addStretch()
         pl.addLayout(r)
         r = QHBoxLayout()
-        self._btn(r, _("⇆ Spiegeln"), lambda: self.flip(True), _("Links und rechts tauschen."))
-        self._btn(r, _("⇅ Kippen"), lambda: self.flip(False), _("Oben und unten tauschen."))
+        self._btn(r, _("⇆ Spiegeln"), self._mirror, _("Links und rechts tauschen."))
+        self._btn(r, _("⇅ Kippen"), self._tip_over, _("Oben und unten tauschen."))
         r.addStretch()
         pl.addLayout(r)
         return page
@@ -222,7 +241,7 @@ class ImageWindow(QWidget):
         r = FlowRow(spacing=6)                    # six tools: they wrap in the narrow side column
         self.draw_btns = {}
         for kind, label in DRAW_TOOLS:
-            self.draw_btns[kind] = self._btn(r, _(label), lambda _c=False, k=kind: self._draw_tool(k),
+            self.draw_btns[kind] = self._btn(r, _(label), self._draw_tool_clicked,
                                              _("Im Bild ziehen (Text: klicken). Eine Zeichnung anklicken markiert "
                                                "sie, ziehen verschiebt sie, Entf löscht sie."), check=True)
         pl.addLayout(r)
@@ -236,18 +255,20 @@ class ImageWindow(QWidget):
             b.setToolTip(_("Farbe"))
             b.setStyleSheet(f"QPushButton {{ background: {colour}; border: 2px solid #555; border-radius: 4px; }}"
                             f"QPushButton:checked {{ border: 2px solid #ffffff; }}")
-            b.clicked.connect(lambda _c=False, c=colour: self._draw_colour(c))
+            b.clicked.connect(self._colour_clicked)
             r.addWidget(b)
             self.colour_btns[colour] = b
         self.colour_btns[annotate.COLOURS[0]].setChecked(True)
         self.draw_size_box = self._combo(r, list(enumerate(_(x) for x in SIZE_LABELS)), 1,
-                                         _("Strichstärke bzw. Textgrösse."), self._draw_size)
+                                         _("Strichstärke bzw. Textgrösse."), self._draw_size, chosen=True)
         r.addStretch()
         pl.addLayout(r)
         r = QHBoxLayout()
         self.draw_text = QLineEdit()
         self.draw_text.setPlaceholderText(_("Text für das Text-Werkzeug"))
         self.draw_text.textEdited.connect(self._draw_text_edited)
+        self.draw_text.editingFinished.connect(self._typing_done)
+        self.draw_text.returnPressed.connect(self.setFocus)     # Enter: done typing, the keys go to the editor
         r.addWidget(self.draw_text, 1)
         pl.addLayout(r)
         r = QHBoxLayout()
@@ -289,7 +310,7 @@ class ImageWindow(QWidget):
             sl.setToolTip(_("100 % = unverändert."))
             val = QLabel("100 %")
             val.setMinimumWidth(48)
-            sl.valueChanged.connect(lambda v, k=key, lbl=val: self._slid(k, v, lbl))
+            sl.valueChanged.connect(self._slider_moved)
             r.addWidget(sl, 1)
             r.addWidget(val)
             pl.addLayout(r)
@@ -301,11 +322,13 @@ class ImageWindow(QWidget):
         return page
 
     # ---- state
-    def _snapshot(self):
-        """Before a change: the edit as it was, for undo."""
+    def _snapshot(self, step=None):
+        """Before a change: the edit as it was, for undo. ``step``: what the change was, while more of the same
+        (moving a slider on, typing on into the same text) belongs to this one undo step."""
         self.undo_stack.append(self.edit.copy())
         del self.undo_stack[:-UNDO_KEPT]
         self.redo_stack.clear()
+        self._step = step
         self._show_buttons()
 
     def _show_buttons(self):
@@ -320,7 +343,8 @@ class ImageWindow(QWidget):
         new.crop = tuple(self.canvas.crop) if self.canvas.crop and self.crop_box.currentData() != "none" else None
         new.shapes = [annotate.Shape(s.kind, list(s.pts), s.colour, s.size, s.text) for s in self.canvas.shapes]
         if new != self.edit:
-            self._snapshot()
+            if self._next_step is None or self._next_step != self._step:
+                self._snapshot(self._next_step)
             self.edit = new
             self._show_size()
             self._show_buttons()
@@ -336,6 +360,11 @@ class ImageWindow(QWidget):
             self.canvas.set_frame(qimage(pic))
         self.canvas.set_boxes([list(b) for b in self.edit.censor])
         self.canvas.set_look(True, self.edit.censor_style)
+        i = self.censor_style.findData(self.edit.censor_style)      # undo/reset: the box says what is saved
+        if i >= 0 and i != self.censor_style.currentIndex():
+            self.censor_style.blockSignals(True)
+            self.censor_style.setCurrentIndex(i)
+            self.censor_style.blockSignals(False)
         self.canvas.set_shapes([annotate.Shape(s.kind, list(s.pts), s.colour, s.size, s.text)
                                 for s in self.edit.shapes])
         ratio = dict(imageedit.ASPECTS).get(self.crop_box.currentData())
@@ -378,6 +407,7 @@ class ImageWindow(QWidget):
             return
         self.redo_stack.append(self.edit.copy())
         self.edit = self.undo_stack.pop()
+        self._step = None                  # a slider moved or text typed next is a step of its own (code review 42)
         self._sync_crop_box()
         self._refresh(frame=True)
 
@@ -386,6 +416,7 @@ class ImageWindow(QWidget):
             return
         self.undo_stack.append(self.edit.copy())
         self.edit = self.redo_stack.pop()
+        self._step = None
         self._sync_crop_box()
         self._refresh(frame=True)
 
@@ -393,18 +424,30 @@ class ImageWindow(QWidget):
         if self.edit.changed():
             self._snapshot()
         self.edit = imageedit.ImageEdit()
+        self._step = None
         self._sync_crop_box()
         self._refresh(frame=True)
 
     def _sync_crop_box(self):
-        """The aspect choice follows an undo/redo that took the crop away or brought it back."""
-        if self.edit.crop is None and self.crop_box.currentData() != "none":
+        """The aspect choice follows an undo/redo/turn: none without a crop, else the ratio shown if the crop still
+        has it, else the user's last pick – free fits any crop –, else the offered ratio the crop has (a quarter turn
+        makes 16:9 9:16), else free. The canvas locks a corner drag to it, so a stale ratio made the crop jump (code
+        review 34); a ratio the user never picked must not lock it either – a free crop of a 16:9 picture starts as
+        exactly 16:9."""
+        cur = self.crop_box.currentData()
+        if self.edit.crop is None:
+            key = "none"
+        else:
+            w, h = self._turned_size()
+            aspect = (self.edit.crop[2] * w) / max(1e-9, self.edit.crop[3] * h)
+            ratios = dict(imageedit.ASPECTS)
+            shown = (cur,) if ratios.get(cur) else ()          # free/none shown may be this method's own fallback
+            offered = tuple(k for k, ratio in imageedit.ASPECTS if ratio)
+            key = next((k for k in shown + (self._crop_pick,) + offered if k in ratios
+                        and (ratios[k] is None or abs(aspect / ratios[k] - 1.0) <= RATIO_SAME)), "free")
+        if key != cur:
             self.crop_box.blockSignals(True)
-            self.crop_box.setCurrentIndex(self.crop_box.findData("none"))
-            self.crop_box.blockSignals(False)
-        elif self.edit.crop is not None and self.crop_box.currentData() == "none":
-            self.crop_box.blockSignals(True)
-            self.crop_box.setCurrentIndex(self.crop_box.findData("free"))
+            self.crop_box.setCurrentIndex(self.crop_box.findData(key))
             self.crop_box.blockSignals(False)
 
     # ---- tools
@@ -417,12 +460,17 @@ class ImageWindow(QWidget):
             for b in self.draw_btns.values():
                 b.setChecked(False)
             self.canvas.set_shape_tool(None)
+            self._draw_unpick()
         if page != 2 and self.censor_tool.isChecked():
             self.censor_tool.setChecked(False)
             self.canvas.set_editing(False)
 
     def _crop_picked(self, _i):
+        if self.original is None:
+            return
         key = self.crop_box.currentData()
+        if key != "none":
+            self._crop_pick = key
         if key == "none":
             if self.edit.crop is not None:
                 self._snapshot()
@@ -451,6 +499,7 @@ class ImageWindow(QWidget):
             return
         self._snapshot()
         self.edit = imageedit.turned(self.edit, quarters, self._turned_size())
+        self._sync_crop_box()
         self._refresh(frame=True)
 
     def flip(self, horizontal):
@@ -460,6 +509,23 @@ class ImageWindow(QWidget):
         self.edit = imageedit.flipped(self.edit, horizontal, self._turned_size())
         self._refresh(frame=True)
 
+    def _turn_left(self):
+        self.turn(3)
+
+    def _turn_right(self):
+        self.turn(1)
+
+    def _mirror(self):
+        self.flip(True)
+
+    def _tip_over(self):
+        self.flip(False)
+
+    def _draw_tool_clicked(self):
+        kind = next((k for k, b in self.draw_btns.items() if b is self.sender()), None)
+        if kind is not None:
+            self._draw_tool(kind)
+
     def _draw_tool(self, kind):
         on = self.draw_btns[kind].isChecked()
         for k, b in self.draw_btns.items():
@@ -467,6 +533,20 @@ class ImageWindow(QWidget):
                 b.setChecked(False)
         self.canvas.set_shape_tool(kind if on else None)
         self.canvas.pen["text"] = self.draw_text.text()
+        if not on:
+            self._draw_unpick()
+
+    def _draw_unpick(self):
+        """No draw tool on: no drawing stays picked. Its frame is only drawn while a tool is on – colour, size,
+        text and 'Zeichnung entfernen' changed a drawing nobody could see was meant (code review 37)."""
+        if self.canvas.shape_sel is not None:
+            self.canvas.shape_sel = None
+            self.canvas.update()
+
+    def _colour_clicked(self):
+        colour = next((c for c, b in self.colour_btns.items() if b is self.sender()), None)
+        if colour is not None:
+            self._draw_colour(colour)
 
     def _draw_colour(self, colour):
         for c, b in self.colour_btns.items():
@@ -490,9 +570,21 @@ class ImageWindow(QWidget):
         sel = self.canvas.selected_shape()
         if sel is not None and sel.kind == "text":
             sel.text = text or " "
-            self.canvas.replace_selected_shape(sel)
+            # typing on into the same text is one undo step, not one per key: a sentence pushed the crop and the
+            # censor boxes out of the UNDO_KEPT steps (code review 36)
+            self._next_step = ("text", self.canvas.shape_sel)
+            try:
+                self.canvas.replace_selected_shape(sel)
+            finally:
+                self._next_step = None
+
+    def _typing_done(self):
+        """Enter, leaving the field or picking a drawing: the next text typed is an undo step of its own."""
+        if isinstance(self._step, tuple):
+            self._step = None
 
     def _shape_picked(self, _i):
+        self._typing_done()
         sel = self.canvas.selected_shape()
         if sel is not None and sel.kind == "text":
             self.draw_text.setText(sel.text)
@@ -523,10 +615,15 @@ class ImageWindow(QWidget):
     def _censor_clear(self):
         self.canvas.clear_boxes()
 
+    def _slider_moved(self, v):
+        key = next((k for k, (sl, _val) in self.sliders.items() if sl is self.sender()), None)
+        if key is not None:
+            self._slid(key, v, self.sliders[key][1])
+
     def _slid(self, key, v, label):
         label.setText(f"{v} %")
-        if not self._adjust_timer.isActive():
-            self._snapshot()                       # one undo step per slider move, not per pixel
+        if self._step != "slider" or not self._adjust_timer.isActive():
+            self._snapshot("slider")               # one undo step per slider move, not per pixel
         setattr(self.edit, key, v / 100.0)
         self._adjust_timer.start()
 
@@ -563,9 +660,10 @@ class ImageWindow(QWidget):
         except OSError as e:
             self._save_failed(e)
             return
+        taken = {os.path.normcase(os.path.abspath(p)) for p in (*_SAVING.values(), self.path)}
         out = os.path.join(self.out_dir, f"{name}.{fmt}")
         n = 2
-        while os.path.exists(out) or os.path.abspath(out) == os.path.abspath(self.path):
+        while os.path.exists(out) or os.path.normcase(os.path.abspath(out)) in taken:
             out = os.path.join(self.out_dir, f"{name} ({n}).{fmt}")
             n += 1
         original, edit, done = self.original, self.edit.copy(), {}
@@ -577,6 +675,7 @@ class ImageWindow(QWidget):
                 done["error"] = e
         self._save_done = done
         self._saver = threading.Thread(target=work, name="image-save", daemon=True)
+        _SAVING[self] = out
         self.save_btn.setEnabled(False)
         self.status.setText(_("Speichert …"))
         self._saver.start()
@@ -587,6 +686,7 @@ class ImageWindow(QWidget):
             return
         self._save_timer.stop()
         self._saver = None
+        _SAVING.pop(self, None)
         self.save_btn.setEnabled(True)
         done = self._save_done
         if "out" not in done:
