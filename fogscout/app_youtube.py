@@ -281,7 +281,7 @@ class YouTubeUpload:
         yt = getattr(self, "youtube", None)
         if yt is None or not rel or rel in self._yt_queued:
             return False
-        if os.path.splitext(rel)[1].lower() not in ytupload.VIDEO_EXTS:
+        if not self._yt_video(rel):
             return False
         title, text = ytupload.describe(kind, label or "", self._yt_who(role, killer), t, seconds)
         yt.add(ytupload.Job(rel=rel.replace(os.sep, "/"), kind=kind, title=title, description=text))
@@ -295,6 +295,11 @@ class YouTubeUpload:
         if not self.settings.get("youtube_on", False) or not getattr(self, "youtube", None) or not self.youtube.linked:
             return
         self._yt_enqueue("clip", f"{obsrec.CLIPS_DIR}/{os.path.basename(name)}", label, role, killer, t, seconds)
+
+    @staticmethod
+    def _yt_video(rel: str) -> bool:
+        """A file YouTube takes – not a GIF of the clip editor (1.12): its upload button stays grey."""
+        return os.path.splitext(rel)[1].lower() in ytupload.VIDEO_EXTS
 
     def _yt_ready(self) -> bool:
         yt = getattr(self, "youtube", None)

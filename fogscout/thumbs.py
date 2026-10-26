@@ -17,7 +17,9 @@ import time
 
 from PIL import Image
 
-VERSION = 1                       # raise when the thumbnails change: the cache is made anew
+from .imageedit import converted
+
+VERSION = 2                       # raise when the thumbnails change: the cache is made anew (2: 16-bit grey)
 PRUNE_AFTER_S = 90 * 24 * 3600    # a cache file not used for this long goes (prune, once per session)
 
 
@@ -36,7 +38,7 @@ def cache_name(path: str, box: tuple) -> str:
 def thumbnail(path: str, box: tuple, cache_dir: str | None = None) -> Image.Image:
     """The picture at ``path`` shrunk to fit ``box`` (RGBA, first frame). From ``cache_dir`` when it is there
     (the file's mtime is refreshed – ``prune`` keeps what is used), else decoded and, with a cache folder, saved
-    for the next time. OSError/ValueError of a broken picture are the caller's."""
+    for the next time. The errors of a broken picture are the caller's."""
     target = os.path.join(cache_dir, cache_name(path, box)) if cache_dir else None
     if target and os.path.isfile(target):
         try:
@@ -53,7 +55,7 @@ def thumbnail(path: str, box: tuple, cache_dir: str | None = None) -> Image.Imag
         im.seek(0)
         if im.format == "JPEG":                       # 1.12.2: screenshots – decoded at a reduced scale (draft)
             im.draft("RGB", (max(1, box[0]) * 2, max(1, box[1]) * 2))
-        pic = im.convert("RGBA")
+        pic = converted(im, "RGBA")
     pic.thumbnail((max(1, box[0]), max(1, box[1])), Image.LANCZOS)      # as the tiles were drawn before
     if target:
         try:
@@ -147,7 +149,11 @@ class Loader:
                             return
                 continue
             idle_since = time.time()
-            self._done.put(self.make(path))
+            try:
+                item = self.make(path)
+            except Exception:                                # one bad picture never ends the thread
+                item = (path, 0, 0, b"")
+            self._done.put(item)
             if not self._pruned and self.cache_dir:
                 self._pruned = True
                 try:
@@ -156,9 +162,11 @@ class Loader:
                     pass
 
     def make(self, path: str) -> tuple:
-        """One thumbnail as (path, width, height, RGBA bytes) – also usable without the thread (tests)."""
+        """One thumbnail as (path, width, height, RGBA bytes) – also usable without the thread (tests). Any error
+        of the picture makes it a broken one: Pillow raises more than OSError/ValueError (DecompressionBombError
+        for a picture over 2 × MAX_IMAGE_PIXELS, SyntaxError for some broken files)."""
         try:
             pic = thumbnail(path, self.box, self.cache_dir)
-        except (OSError, ValueError):
+            return (path, pic.width, pic.height, pic.tobytes("raw", "RGBA"))
+        except Exception:
             return (path, 0, 0, b"")
-        return (path, pic.width, pic.height, pic.tobytes("raw", "RGBA"))
