@@ -88,9 +88,34 @@ def folders(settings_folder: str | None, steam: str | None) -> list[tuple[str, s
     return [(d, "steam") for d in shot_dirs(steam)]
 
 
-def edit_folder(rec_folder: str | None) -> str:
+def _steam_areas(steam: str | None) -> list[str]:
+    """Steam's DBD screenshot area of every account (``…/760/remote/381210``, its "screenshots" folder or not)."""
+    if not steam:
+        return []
+    root = os.path.join(steam, "userdata")
+    try:
+        accounts = os.listdir(root)
+    except OSError:
+        return []
+    return [os.path.join(root, acc, "760", "remote", APP_ID) for acc in accounts if acc.isdigit()]
+
+
+def _inside(path: str, folder: str) -> bool:
+    """Is ``path`` ``folder`` or in it (Windows: any case, links followed)?"""
+    p, f = (os.path.normcase(os.path.realpath(v)) for v in (path, folder))
+    return p == f or p.startswith(f.rstrip(os.sep) + os.sep)
+
+
+_FROM_REGISTRY = object()
+
+
+def edit_folder(rec_folder: str | None, steam=_FROM_REGISTRY) -> str:
     """Where edited pictures go: "Screenshots" in the recordings folder, else "Pictures/Fog Scout" of the user –
-    never Steam's folder."""
-    if rec_folder:
-        return os.path.join(rec_folder, "Screenshots")
-    return os.path.join(os.path.expanduser("~"), "Pictures", "Fog Scout")
+    never Steam's folder: a recordings folder in Steam's DBD screenshots (``steam``: Steam's folder, from the
+    registry when not given) gets "Pictures/Fog Scout" too."""
+    own = os.path.join(os.path.expanduser("~"), "Pictures", "Fog Scout")
+    if not rec_folder:
+        return own
+    out = os.path.join(rec_folder, "Screenshots")
+    steam = steam_path() if steam is _FROM_REGISTRY else steam
+    return own if any(_inside(out, area) for area in _steam_areas(steam)) else out
