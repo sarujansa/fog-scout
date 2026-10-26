@@ -57,6 +57,7 @@ class RecordingsTab:
     # ============================================================ tab
     def _tab_recordings(self):
         outer, f = self._scroll_tab()
+        page = f
         self._rec_dirty = True
         self._rec_rows = {}                       # iid -> Recording on display
         self._rec_rendered = 0.0
@@ -160,7 +161,18 @@ class RecordingsTab:
         self._tab_clips(cp)
         sp = ui.Frame(self.rec_nb, padding=6)                  # 1.12: Steam's F12 screenshots and edited copies
         self.rec_nb.add(sp, text=_("Screenshots"))
+        self.rec_shots_tab = sp
         self._tab_shots(sp)
+        # review of 1.12.2: nothing recorded and no screenshot found hides the tabs – the screenshot folder can still
+        # be chosen (Epic/Store, Steam saving elsewhere): the tab's source line and its "Anderen Ordner …"
+        self.rec_empty_shots = ui.Frame(page)
+        ui.Label(self.rec_empty_shots, textvariable=self.shot_src_var, style="Dim.TLabel",
+                 wraplength=560).pack(anchor="w")
+        row = ui.Frame(self.rec_empty_shots)
+        row.pack(anchor="w", pady=(4, 0))
+        ui.Button(row, text=_("Anderen Ordner …"), command=self._shot_pick_folder).pack(side="left")
+        # an own folder that is gone (drive unplugged, renamed) leaves the page empty: back to Steam's from here too
+        self.rec_empty_steam_btn = ui.Button(row, text=_("Steam-Ordner verwenden"), command=self._shot_steam_folder)
         return outer
 
     def _tab_clips(self, f):
@@ -291,7 +303,12 @@ class RecordingsTab:
         shots = []
         for folder, source in steamshots.folders(own or None, steam):
             shots += steamshots.list_shots([folder], source)
-        shots += steamshots.list_shots([self._shot_edit_dir()], "edited")
+        # review of 1.12.2: "Bilder/Fog Scout" too – it takes the copies edited while the recordings folder was not
+        # there (drive unplugged); they stayed out of the list once it was back
+        edit_dirs = list(dict.fromkeys([self._shot_edit_dir(), steamshots.edit_folder(None)]))
+        shots += steamshots.list_shots(edit_dirs, "edited")
+        # one tile per file: an own folder that is the edit folder listed every picture twice (edited wins)
+        shots = list({os.path.normcase(os.path.abspath(s.path)): s for s in shots}.values())
         shots.sort(key=lambda s: s.t, reverse=True)
         return shots[:steamshots.LIST_LIMIT]
 
@@ -313,8 +330,10 @@ class RecordingsTab:
                                     "oder Steam speichert woanders („Anderen Ordner …“)."))
         if own and not self.shot_steam_btn.winfo_manager():
             self.shot_steam_btn.pack(side="right", padx=(0, 6))
+            self.rec_empty_steam_btn.pack(side="left", padx=(6, 0))
         elif not own and self.shot_steam_btn.winfo_manager():
             self.shot_steam_btn.pack_forget()
+            self.rec_empty_steam_btn.pack_forget()
         if kind == "edited":
             shots = [s for s in shots if s.source == "edited"]
         elif kind == "taken":
@@ -366,7 +385,7 @@ class RecordingsTab:
         self._sel_buttons(self.shot_sel_row, self.shot_sel_hint, self._shot_selected() is not None)
 
     def _shot_menu_items(self):
-        return [("edit", _("Bild bearbeiten …")), ("show", _("Bild im Explorer zeigen"))] \
+        return [("edit", _("Bild bearbeiten …"), True), ("show", _("Bild im Explorer zeigen"), True)] \
             if self._shot_selected() is not None else []
 
     def _shot_menu_act(self, ident):
@@ -381,10 +400,23 @@ class RecordingsTab:
         win = ImageWindow(path, self._shot_edit_dir(), on_saved=self._shot_saved, log=self._log,
                           dark=bool(self.settings.get("dark_mode", True)),
                           qss=getattr(self.qt, "_qss", "") if self.qt is not None else "")
-        self._clip_windows = [w for w in self._clip_windows if w.isVisible()] + [win]
+        self._clip_windows_prune()
+        self._clip_windows.append(win)
         win.show()
         win.raise_()
         win.activateWindow()
+
+    def _clip_windows_prune(self):
+        """The editor windows still open; a closed one is let go (review of 1.12.2: it stayed in the list until the
+        next editor opened). A window whose Qt object is gone already counts as closed."""
+        alive = []
+        for w in self._clip_windows:
+            try:
+                if w.isVisible():
+                    alive.append(w)
+            except RuntimeError:                               # deleted on close
+                pass
+        self._clip_windows = alive
 
     def _shot_saved(self, out):
         self._shots_render()
@@ -411,12 +443,13 @@ class RecordingsTab:
         if path and os.path.isdir(path):
             self.settings.set("shots_folder", os.path.normpath(path))
             self._save_soon()
-            self._shots_render()
+            self.rec_nb.select(self.rec_shots_tab)              # also when chosen on the empty page
+            self._rec_render()                                  # the tabs come once there are pictures
 
     def _shot_steam_folder(self):
         self.settings.set("shots_folder", "")
         self._save_soon()
-        self._shots_render()
+        self._rec_render()
 
     # ============================================================ data
     def _rec_filters(self):
@@ -429,6 +462,7 @@ class RecordingsTab:
     def _rec_tab_tick(self):
         """From App._rec_tick (4×/s): a change from the recorder or the refresh interval re-reads the index –
         only while the tab is on display."""
+        self._clip_windows_prune()
         if self.nb.select() != str(self.tab_recordings):
             return
         if self._rec_dirty or time.time() - self._rec_rendered > REC_REFRESH_S:
@@ -507,15 +541,18 @@ class RecordingsTab:
         empty = not recs and not getattr(self, "_clip_count", 0) and not getattr(self, "_shot_count", 0)
         self.rec_empty_var.set(_("Noch keine Aufnahmen – OBS nimmt ab dem nächsten Map-Banner auf. Runden erscheinen "
                                  "hier, Clips (F8 oder aus dem Editor) im Reiter „Clips“.") if on and empty else "")
-        for w, show in ((self.rec_setup_btn, not on and empty), (self.rec_empty_label, on and empty),
-                        (self.rec_nb, not empty)):
+        below = None              # placed in the page's order, from the bottom up: before the next one that is shown
+        for w, show in reversed(((self.rec_setup_btn, not on and empty), (self.rec_empty_label, on and empty),
+                                 (self.rec_empty_shots, empty), (self.rec_nb, not empty))):
             if show and not w.winfo_manager():
-                if w is self.rec_nb:
-                    w.pack(fill="both", expand=True, pady=(8, 0))
-                else:
-                    w.pack(anchor="w", pady=(8, 0), before=self.rec_nb)
+                opts = dict(fill="both", expand=True) if w is self.rec_nb else dict(anchor="w")
+                if below is not None:
+                    opts["before"] = below
+                w.pack(pady=(8, 0), **opts)
             elif not show and w.winfo_manager():
                 w.pack_forget()
+            if show:
+                below = w
 
     # ============================================================ clips (1.8.13)
     def _clips_render(self, folder=None, recs=None):
@@ -600,13 +637,14 @@ class RecordingsTab:
         return f"{obsrec.CLIPS_DIR}/{c.file}"
 
     def _clip_uploadable(self, c) -> bool:
-        return c.kind != "still" and self._yt_ready() and not c.yt and self._clip_rel(c) not in self._yt_queued
+        return c.kind != "still" and self._yt_video(c.file) and self._yt_ready() and not c.yt and \
+            self._clip_rel(c) not in self._yt_queued
 
     def _clip_menu_items(self):
         if self._clip_selected() is None:
             return []
         c = self._clip_selected()
-        items = [("play", _("Abspielen"), True), ("edit", _("Im Editor öffnen …"), c.kind != "still"),
+        items = [("play", _("Abspielen"), True), ("edit", _("Im Editor öffnen …"), True),   # a still: picture editor
                  ("explorer", _("Im Explorer zeigen"), True), ("copy", _("Datei kopieren (zum Einfügen)"), True),
                  ("round", _("Zur Runde springen"), bool(c.source)), None]
         if c.yt:                                                                   # 1.10
@@ -660,7 +698,8 @@ class RecordingsTab:
             win.timeline.set_range(start, end)
             win._show_range()
             win.goto(pos)
-        self._clip_windows = [w for w in self._clip_windows if w.isVisible()] + [win]
+        self._clip_windows_prune()
+        self._clip_windows.append(win)
         win.show()
         win.raise_()
         win.activateWindow()
@@ -944,7 +983,8 @@ class RecordingsTab:
             win.timeline.set_range(start, end)
             win._show_range()
             win.goto(pos)
-        self._clip_windows = [w for w in self._clip_windows if w.isVisible()] + [win]
+        self._clip_windows_prune()
+        self._clip_windows.append(win)
         win.show()
         win.raise_()
         win.activateWindow()

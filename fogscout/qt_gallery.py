@@ -25,6 +25,7 @@ GAP = 12                           # px between tiles
 PUMP_MS = 30                       # how often finished thumbnails are taken from the loader
 PUMP_TAKE = 6                      # ... at most this many per tick (≈ 1 ms each: scrolling stays smooth)
 AHEAD_PX = 400                     # thumbnails are asked for this far below/above what is on display
+PIX_KEPT = 240                     # pixmaps kept at most (≈ 40 MB at 322×135): the longest unused far ones go
 PATH_ROLE = Qt.UserRole
 INFO_ROLE = Qt.UserRole + 1        # (caption, line below, badge or "")
 
@@ -123,8 +124,8 @@ class ShotGallery(QListWidget):
         self._loader = thumbs.Loader((round(THUMB_W * ratio), round(THUMB_H * ratio)), cache_dir, name="shot-thumbs")
         self._tile = QSize(TILE_W + 2 * PAD + GAP, TILE_H + 2 * PAD + GAP + CAPTION_H)
         self.aspect = 16 / 9
-        self._pix = {}                                         # path -> QPixmap (made once)
-        self._asked = set()                                    # paths handed to the loader
+        self._pix = {}                                         # path -> QPixmap, the longest unused first
+        self._awaited = set()                                  # paths of the latest request not yet in
         self._key = None
         self._pump = QTimer(self)
         self._pump.setInterval(PUMP_MS)
@@ -168,7 +169,7 @@ class ShotGallery(QListWidget):
             self.blockSignals(False)
             known = {i[0] for i in items}
             self._pix = {p: pm for p, pm in self._pix.items() if p in known}
-            self._asked &= known
+            self._awaited &= known
         self.select_path(selected)
         self._ask_soon.start()
 
@@ -197,28 +198,44 @@ class ShotGallery(QListWidget):
 
     # ---- thumbnails
     def _ask_visible(self):
-        """The thumbnails on display (and a little beyond) that are not yet made, top to bottom."""
+        """The thumbnails on display (and a little beyond) that are not yet made, top to bottom – all of them each
+        time: the loader keeps only the newest request, so what an earlier one still owed is asked for again
+        (review of 1.12.2: a path asked once was never asked again and its tile stayed black)."""
         view = self.viewport().rect().adjusted(0, -AHEAD_PX, 0, AHEAD_PX)
-        want = []
+        near, want = set(), []
         for i in range(self.count()):
             it = self.item(i)
-            path = it.data(PATH_ROLE)
-            if path in self._pix or path in self._asked:
+            if not self.visualItemRect(it).intersects(view):
                 continue
-            if self.visualItemRect(it).intersects(view):
+            path = it.data(PATH_ROLE)
+            near.add(path)
+            if path in self._pix:
+                self._pix[path] = self._pix.pop(path)          # used now: the last to go
+            else:
                 want.append(path)
+        self._forget_far(near)
+        self._awaited = set(want)
         if want:
-            self._asked.update(want)
             self._loader.request(want)
             self._pump.start()
+
+    def _forget_far(self, near: set):
+        """At most PIX_KEPT pixmaps: the longest unused ones away from the display go (a gallery of years of
+        screenshots scrolled through held all of them, ~370 MB for 2000) – scrolled back, they come again from
+        the disk cache."""
+        extra = len(self._pix) - PIX_KEPT
+        if extra > 0:
+            for path in [p for p in self._pix if p not in near][:extra]:
+                del self._pix[path]
 
     def _take(self):
         for path, w, h, data in self._loader.take(PUMP_TAKE):
             self._apply(path, w, h, data)
-        if not self._loader.busy:
+        if not self._awaited:          # not Loader.busy: that is False while the thread still makes the last one
             self._pump.stop()
 
     def _apply(self, path, w, h, data):
+        self._awaited.discard(path)
         if w and h and data:
             img = QImage(data, w, h, w * 4, QImage.Format_RGBA8888).copy()
             pm = QPixmap.fromImage(img)
@@ -261,4 +278,5 @@ class ShotGallery(QListWidget):
             self.select_path(it.data(PATH_ROLE))
             self._picked()
         if self.on_menu:
-            self.on_menu(self.viewport().mapToGlobal(pos))
+            gp = self.viewport().mapToGlobal(pos)
+            self.on_menu((gp.x(), gp.y()))                     # like the tables: popup_menu takes (x, y)
