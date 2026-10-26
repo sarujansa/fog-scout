@@ -52,6 +52,7 @@ MODE_TIPS = {"copy": N_("Schnell (an Schlüsselbildern, Anfang bis zu ein paar S
              "discord": N_("Für Discord (passt unter die Zielgrösse)"),
              "gif": N_("GIF (ohne Ton, für Chats)")}                                    # 1.12
 SPEED_LABELS = {0.25: "×0.25", 0.5: "×0.5", 0.75: "×0.75", 1.0: N_("normal"), 1.5: "×1.5", 2.0: "×2", 4.0: "×4"}
+CONTENT_LABEL = N_("Ohne schwarze Ränder")      # 1.12.6: crop to the game part, offered when the recording has borders
 CROP_LABELS = {"none": N_("Kein Ausschnitt"), "free": N_("Frei"), "16:9": "16:9", "9:16": N_("9:16 (Hochformat)"),
                "1:1": "1:1", "4:5": "4:5"}
 DRAW_TOOLS = (("arrow", N_("Pfeil")), ("line", N_("Linie")), ("rect", N_("Rahmen")), ("ellipse", N_("Kreis")),
@@ -105,7 +106,8 @@ class _Bridge:
              "sound",        # wav path (or None) ready for a playback from t
              "strip_done",   # 1.8.3: the thumbnail thread is through (all it could get)
              "still",        # 1.8.10: a still picture saved (ok, path)
-             "levels")       # 1.8.18: {track index: loudest moment in dB}
+             "levels",       # 1.8.18: {track index: loudest moment in dB}
+             "content")      # 1.12.6: the game part of a recording with black borders (x, y, w, h)
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
 
@@ -259,6 +261,7 @@ class Timeline(QWidget):
         self.parts = []                   # 1.12: [(start, end)] of the parts kept – bands above the strip
         self.thumbs = {}
         self.n_thumbs = clipedit.THUMBS
+        self.view = None                  # 1.12.6: the game part of each picture (x, y, w, h), None = all of it
         self.dark = dark
         self._drag = None                 # "start" / "end" / "pos"
         self.setMinimumHeight(clipedit.THUMB_H + self.TOP + 4)
@@ -288,6 +291,28 @@ class Timeline(QWidget):
         self.thumbs[i] = _qimage(img)
         self.update()
 
+    def set_view(self, box):
+        self.view = tuple(box) if box else None
+        self.update()
+
+    def tiles(self) -> list:
+        """1.12.6: [(target rect, thumbnail index)] along the strip – pictures side by side in their own shape (the
+        game part, ``view``), each the thumbnail nearest its middle; the last one cut at the end. They were squeezed
+        into THUMBS equal cells: in the narrower left column of the big editor a 21:9 round became slivers."""
+        img = next(iter(self.thumbs.values()), None)
+        r = self._strip()
+        if img is None or r.width() < 2 or r.height() < 2:
+            return []
+        _x, _y, vw, vh = self.view or (0.0, 0.0, 1.0, 1.0)
+        step = max(8.0, r.height() * img.width() * vw / max(1.0, img.height() * vh))
+        n = max(1, self.n_thumbs)
+        out, x = [], r.left()
+        while x < r.right() - 0.5:
+            mid = (x + step / 2 - r.left()) / r.width()
+            out.append((QRectF(x, r.top(), min(step, r.right() - x), r.height()), min(n - 1, max(0, int(mid * n)))))
+            x += step
+        return out
+
     # ---- geometry
     def _strip(self) -> QRectF:
         return QRectF(self.HANDLE, self.TOP, self.width() - 2 * self.HANDLE, self.height() - self.TOP - 2)
@@ -307,13 +332,16 @@ class Timeline(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
         r = self._strip()
         p.fillRect(r, QColor(c["field"]))
-        n = max(1, self.n_thumbs)
-        for i in range(n):
+        vx, vy, vw, vh = self.view or (0.0, 0.0, 1.0, 1.0)
+        gap = QColor(c["field"])
+        for target, i in self.tiles():
             img = self.thumbs.get(i)
-            x0, x1 = r.left() + r.width() * i / n, r.left() + r.width() * (i + 1) / n
-            if img is not None:
-                target = QRectF(x0, r.top(), x1 - x0, r.height())
-                p.drawImage(target, img, QRectF(0, 0, img.width(), img.height()))
+            if img is None:
+                continue
+            sw, sh = img.width() * vw, img.height() * vh          # the game part, the last tile its left share
+            full = r.height() * sw / max(1.0, sh)
+            p.drawImage(target, img, QRectF(img.width() * vx, img.height() * vy, sw * target.width() / full, sh))
+            p.fillRect(QRectF(target.right() - 1, r.top(), 1, r.height()), gap)
         shade = QColor(0, 0, 0, 150)
         p.fillRect(QRectF(r.left(), r.top(), self._x(self.start) - r.left(), r.height()), shade)
         p.fillRect(QRectF(self._x(self.end), r.top(), r.right() - self._x(self.end), r.height()), shade)
@@ -404,6 +432,7 @@ class PreviewView(QWidget):
     crop_changed = Signal()               # 1.12: the crop box was drawn/moved/resized
     shapes_changed = Signal()             # 1.12: a drawing was added/moved
     shape_picked = Signal(int)            # 1.12: a drawing was clicked (-1: none)
+    view_changed = Signal()               # 1.12.6: the part of the picture on display changed (zoom to the crop)
     HANDLE = 10
     MIN_BOX = 0.01                        # fractions of the picture: smaller drags are dropped
 
@@ -422,6 +451,7 @@ class PreviewView(QWidget):
         self.crop = None                  # (x, y, w, h) or None
         self.crop_ratio = None            # width/height in pixels the box keeps (None: free)
         self.crop_edit = False            # the crop tool is on
+        self.zoom_crop = False            # 1.12.6: show only the crop box, large (the clip editor's "no black borders")
         self.shapes = []
         self.shape_tool = None            # annotate kind to draw, None = off
         self.shape_sel = None             # index of the picked drawing
@@ -489,17 +519,37 @@ class PreviewView(QWidget):
         return (self._img.width(), self._img.height()) if self._img is not None else (16, 9)
 
     def set_crop(self, box, ratio=None):
+        was = self.view
         self.crop = tuple(box) if box else None
         self.crop_ratio = ratio
-        self.update()
+        self._view_moved(was)
 
     def set_crop_edit(self, on: bool):
+        was = self.view
         self.crop_edit = bool(on)
         if on:
             self.set_editing(False)
             self.set_shape_tool(None)
         self.setCursor(Qt.CrossCursor if on else Qt.ArrowCursor)
+        self._view_moved(was)
+
+    def set_zoom_crop(self, on: bool):
+        was = self.view
+        self.zoom_crop = bool(on)
+        self._view_moved(was)
+
+    @property
+    def view(self):
+        """1.12.6: the part of the picture on display (x, y, w, h), None = all of it. The crop box while
+        ``zoom_crop`` is on – but not while the crop tool is: its frame needs the picture around it."""
+        if self.zoom_crop and self.crop and not self.crop_edit:
+            return self.crop
+        return None
+
+    def _view_moved(self, was):
         self.update()
+        if self.view != was:
+            self.view_changed.emit()
 
     def set_shapes(self, shapes):
         self.shapes = list(shapes)
@@ -589,14 +639,22 @@ class PreviewView(QWidget):
 
     # ---- geometry
     def frame_rect(self) -> QRectF:
-        """Where the picture lies (aspect kept, centred); 16:9 while there is no picture yet."""
+        """Where the picture lies (aspect kept, centred); 16:9 while there is no picture yet. 1.12.6: with a
+        ``view`` that part fills the area and the rest of the picture lies beyond the edges (not drawn) – all
+        fractions (boxes, drawings, the crop) stay fractions of the whole picture."""
         area = QRectF(self.rect()).adjusted(2, 2, -2, -2)
         iw, ih = (self._img.width(), self._img.height()) if self._img is not None else (16, 9)
         if iw <= 0 or ih <= 0:
             return area
-        s = min(area.width() / iw, area.height() / ih)
+        vx, vy, vw, vh = self.view or (0.0, 0.0, 1.0, 1.0)
+        s = min(area.width() / (iw * vw), area.height() / (ih * vh))
         w, h = iw * s, ih * s
-        return QRectF(area.center().x() - w / 2, area.center().y() - h / 2, w, h)
+        return QRectF(area.center().x() - (vx + vw / 2) * w, area.center().y() - (vy + vh / 2) * h, w, h)
+
+    def view_rect(self) -> QRectF:
+        """1.12.6: the part of the widget that shows picture (the whole frame_rect without a view)."""
+        view = self.view
+        return self._box_rect(view) if view else self.frame_rect()
 
     def _box_rect(self, box) -> QRectF:
         f = self.frame_rect()
@@ -605,13 +663,21 @@ class PreviewView(QWidget):
 
     def _to_frac(self, pt) -> tuple:
         f = self.frame_rect()
-        return (min(max(0.0, (pt.x() - f.left()) / max(1.0, f.width())), 1.0),
-                min(max(0.0, (pt.y() - f.top()) / max(1.0, f.height())), 1.0))
+        vx, vy, vw, vh = self.view or (0.0, 0.0, 1.0, 1.0)          # 1.12.6: never into the part not shown
+        return (min(max(vx, (pt.x() - f.left()) / max(1.0, f.width())), vx + vw),
+                min(max(vy, (pt.y() - f.top()) / max(1.0, f.height())), vy + vh))
 
     # ---- drawing
-    def _frame_scaled(self, size):
-        if self._scaled is None or self._scaled[0] != size:
-            self._scaled = (size, self._img.scaled(size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+    def _frame_scaled(self, size, view=None):
+        """The frame at the drawn ``size`` – 1.12.6: of the ``view`` part only (a zoomed picture is not scaled up
+        whole to cut most of it away)."""
+        key = (size, view)
+        if self._scaled is None or self._scaled[0] != key:
+            img = self._img
+            if view:
+                x, y, w, h = view
+                img = img.copy(QRectF(x * img.width(), y * img.height(), w * img.width(), h * img.height()).toRect())
+            self._scaled = (key, img.scaled(size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
         return self._scaled[1]
 
     def paintEvent(self, e):
@@ -625,22 +691,26 @@ class PreviewView(QWidget):
         p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
         p.setPen(Qt.NoPen)
         f = self.frame_rect()
-        p.fillRect(f, QColor("#000000"))
+        vr = self.view_rect()
+        p.fillRect(vr, QColor("#000000"))
         if self._img is None:
             p.end()
             return
         size = f.toRect().size()
-        if size.width() < 2 or size.height() < 2:
+        shown = vr.toRect().size()
+        if size.width() < 2 or size.height() < 2 or shown.width() < 2 or shown.height() < 2:
             p.end()
             return
-        scaled = self._frame_scaled(size)
+        scaled = self._frame_scaled(shown, self.view)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
-        p.drawImage(f.topLeft(), scaled)
+        if self.view:
+            p.setClipRect(vr)                                   # 1.12.6: a zoomed picture stops at its part
+        p.drawImage(vr.topLeft(), scaled)
         accent = QColor(c["accent"])
         for i, box in enumerate(self.boxes):
             r = self._box_rect(box)
             if self.active:
-                self._draw_censored(p, scaled, r, f)
+                self._draw_censored(p, scaled, r, vr)
             if self.editing or not self.active:
                 pen = QPen(accent if i == self.selected else QColor(255, 255, 255, 170), 2 if i == self.selected else 1)
                 if not self.active:
@@ -681,9 +751,10 @@ class PreviewView(QWidget):
             p.drawRect(QRectF(f.left() + x0, f.top() + y0, x1 - x0, y1 - y0))
 
     def _paint_crop(self, p, f, accent):
-        """1.12: outside the crop box darkened; with the tool on its frame and four corner handles."""
+        """1.12: outside the crop box darkened; with the tool on its frame and four corner handles. 1.12.6: nothing
+        while the view is the crop – the picture shown is the clip."""
         box = self._drag[2] if self._drag and self._drag[0].startswith("crop") else self.crop
-        if not box:
+        if not box or self.view is not None:
             return
         r = self._box_rect(box)
         shade = QColor(0, 0, 0, 170 if self.crop_edit else 150)
@@ -703,7 +774,8 @@ class PreviewView(QWidget):
                 p.drawRect(QRectF(cx - self.HANDLE / 2, cy - self.HANDLE / 2, self.HANDLE, self.HANDLE))
 
     def _draw_censored(self, p, scaled, r, f):
-        """The box as the clip will show it: coarse blocks, a blur, or black (same rules as clipedit.censor_graph)."""
+        """The box as the clip will show it: coarse blocks, a blur, or black (same rules as clipedit.censor_graph).
+        ``scaled`` is the picture drawn at ``f`` (1.12.6: the view part at view_rect)."""
         if self.style == "black":
             p.fillRect(r, QColor("#000000"))
             return
@@ -774,7 +846,7 @@ class PreviewView(QWidget):
             self.update()
             return True
         if self.shape_tool:
-            if not self.frame_rect().contains(pt):
+            if not self.view_rect().contains(pt):
                 return True
             fx, fy = self._to_frac(pt)
             i = self._shape_hit(pt)
@@ -867,7 +939,7 @@ class PreviewView(QWidget):
         pt = e.position()
         kind, i = self._hit(pt)
         if kind is None:
-            if not self.frame_rect().contains(pt):
+            if not self.view_rect().contains(pt):
                 return
             fx, fy = self._to_frac(pt)
             self.selected = None
@@ -1024,6 +1096,9 @@ class ClipWindow(QWidget):
         self._absent = set()
         self._parts = []                    # 1.12: [clipedit.Part] kept so far (empty: the start/end range alone)
         self._range_speed = 1.0             # tempo of the start/end range while it is no part of its own
+        self._content = None                # 1.12.6: the game part when the recording has black borders
+        self._crop_chosen = False           # the crop was picked by hand: the found borders change nothing
+        self._crop_auto = False             # the crop box is being set by the program, not by a click
         self.setObjectName("page")
         self.setWindowTitle(title or _("Clip bearbeiten – {name}", name=os.path.basename(path)))
         if qss:
@@ -1062,6 +1137,7 @@ class ClipWindow(QWidget):
         the picture editor."""
         self.preview = PreviewView(self.dark)
         self.preview.boxes_changed.connect(self._boxes_changed)
+        self.preview.view_changed.connect(self._fit_preview)
         if self.compact:                                  # beside the table: the whole editor fits a screen
             self.preview.setMinimumSize(320, 180)
             self.preview.setMaximumHeight(COMPACT_PREVIEW_H)
@@ -1386,6 +1462,12 @@ class ClipWindow(QWidget):
         self.crop_btn.setCheckable(True)
         self.crop_btn.setProperty("class", "seg")
         cl.addLayout(cr)
+        self.content_hint = QLabel(_("Die Aufnahme hat schwarze Ränder: „Ohne schwarze Ränder“ speichert nur das "
+                                     "Spielbild, „Kein Ausschnitt“ das ganze Bild."))
+        self.content_hint.setProperty("class", "dim")
+        self.content_hint.setWordWrap(True)
+        self.content_hint.setVisible(False)              # 1.12.6: once black borders were found
+        cl.addWidget(self.content_hint)
         fr = FlowRow(spacing=8)
         fades = [(v, _("aus") if v == 0 else f"{v:g} s") for v in clipedit.FADES]
         fr.addWidget(QLabel(_("Einblenden")))
@@ -1401,8 +1483,19 @@ class ClipWindow(QWidget):
         hint.setWordWrap(True)
         cl.addWidget(hint)
         cl.addStretch()
-        self.preview.crop_changed.connect(self._show_size)
+        self.preview.crop_changed.connect(self._crop_moved)
         return card
+
+    def _crop_moved(self):
+        """The crop frame was drawn or moved by hand: „Ohne schwarze Ränder“ becomes „Frei“ (1.12.6) – the label
+        no longer says what is cut, and the whole picture with the frame stays on display."""
+        if self.crop_box.currentData() == "content":
+            self.crop_box.blockSignals(True)
+            self.crop_box.setCurrentIndex(self.crop_box.findData("free"))
+            self.crop_box.blockSignals(False)
+            self._crop_chosen = True
+            self.preview.set_zoom_crop(False)
+        self._show_size()
 
     def _draw_card(self):
         card, cl = self._card(_("Zeichnen"), head=False)
@@ -1547,10 +1640,17 @@ class ClipWindow(QWidget):
     def _crop_picked(self, _i):
         key = self.crop_box.currentData()
         ratio = dict(clipedit.ASPECTS).get(key)
+        if not self._crop_auto:
+            self._crop_chosen = True
+        self.preview.set_zoom_crop(key == "content")
         if key == "none":
             self.preview.set_crop(None)
             self.crop_btn.setChecked(False)
             self.preview.set_crop_edit(False)
+        elif key == "content":                            # 1.12.6: the game part, shown large (view = crop)
+            self.crop_btn.setChecked(False)
+            self.preview.set_crop_edit(False)
+            self.preview.set_crop(self._content or (0.0, 0.0, 1.0, 1.0), None)
         else:
             base = self.preview.crop or (0.0, 0.0, 1.0, 1.0)
             box = imageedit.aspect_box(base if key == "free" else (0.0, 0.0, 1.0, 1.0), ratio,
@@ -1867,6 +1967,7 @@ class ClipWindow(QWidget):
         b.still.connect(self._still_saved)
         b.sound.connect(self._sound_ready)
         b.levels.connect(self._show_levels)
+        b.content.connect(self._content_found)
         threading.Thread(target=self._scrub_loop, name="clip-scrub", daemon=True).start()
         if any(i >= 0 for i in self._sources.values()):
             threading.Thread(target=self._level_loop, name="clip-levels", daemon=True).start()
@@ -1909,21 +2010,56 @@ class ClipWindow(QWidget):
 
     def _thumb_loop(self):
         times = clipedit.thumb_times(self.info.duration, self.timeline.n_thumbs)
-        got = set()                                  # 1.7.1: one ffmpeg run for the whole strip (key frames only)
-        for i, img in clipedit.thumb_strip(self.path, times, clipedit.THUMB_H, self.info, self.ffmpeg,
+        got = {}                                     # 1.7.1: one ffmpeg run for the whole strip (key frames only)
+        for i, img in clipedit.thumb_strip(self.path, times, clipedit.THUMB_SRC_H, self.info, self.ffmpeg,
                                            stop=lambda: self._closed):
-            got.add(i)
+            got[i] = img
             self.bridge.thumb.emit(i, img)
         for i, t in enumerate(times):                # whatever the run did not deliver: the old way
             if self._closed:
                 return
             if i in got:
                 continue
-            img = clipedit.frame_at(self.path, t, clipedit.THUMB_H, self.info, self.ffmpeg)
+            img = clipedit.frame_at(self.path, t, clipedit.THUMB_SRC_H, self.info, self.ffmpeg)
             if img is not None and not self._closed:
+                got[i] = img
                 self.bridge.thumb.emit(i, img)
+        self._find_content(times, got)
         if not self._closed:
             self.bridge.strip_done.emit()
+
+    def _find_content(self, times, got):
+        """1.12.6 (thread, PIL only): black borders from the strip's pictures, the edges on one sharper picture –
+        the strip picture with the most game in it, fetched again at preview size (key frame, ~40 ms)."""
+        box = clipedit.content_box(got.values())
+        if box is None or self._closed:
+            return
+        best = max(got, key=lambda i: sum(got[i].convert("L").point(lambda v: v > clipedit.CONTENT_DARK and 255)
+                                          .histogram()[255:]))
+        sharp = clipedit.frame_at(self.path, times[best], clipedit.PREVIEW_H, self.info, self.ffmpeg, keyframe=True)
+        box = clipedit.refine_box(box, sharp)
+        if not self._closed:
+            self.bridge.content.emit(box)
+
+    def _content_found(self, box):
+        """1.12.6 (user's screenshot of the big editor: the round small in a big black box, the strip in slivers):
+        the recording has black borders around the game. The strip shows the game part; the big editor offers
+        the crop „Ohne schwarze Ränder“ and picks it while no crop was chosen by hand – the preview then shows the
+        game large and the clip is saved without the borders (re-encoded, the size line says so). „Kein
+        Ausschnitt“ brings back the whole picture. The compact editor has no crop: its preview stays as saved."""
+        self._content = tuple(box)
+        self.timeline.set_view(self._content)
+        if self.compact or not hasattr(self, "crop_box"):
+            return
+        if self.crop_box.findData("content") < 0:
+            self.crop_box.insertItem(1, _(CONTENT_LABEL), "content")
+        self.content_hint.setVisible(True)
+        if self.crop_box.currentData() == "none" and not self._crop_chosen:
+            self._crop_auto = True
+            try:
+                self.crop_box.setCurrentIndex(self.crop_box.findData("content"))
+            finally:
+                self._crop_auto = False
 
     # ---- loading screen (1.8.3)
     def _thumb_loaded(self, _i, _img):
@@ -1950,12 +2086,13 @@ class ClipWindow(QWidget):
 
     def _fit_preview(self):
         """1.12.5, full window: the preview no taller than the picture at the left column's width (a 21:9 round in
-        a tall box left large empty bands above and below it)."""
+        a tall box left large empty bands above and below it). 1.12.6: the part on display (no black borders)."""
         if self.compact or not self.info.ok or self.info.width <= 0 or self.info.height <= 0:
             return
+        _x, _y, vw, vh = self.preview.view or (0.0, 0.0, 1.0, 1.0)
         left_w = self.width() - SIDE_W - 36                # margins 2 × 12 + the gap to the side column
         self.preview.setMaximumHeight(max(self.preview.minimumHeight(),
-                                          int(left_w * self.info.height / self.info.width) + 6))
+                                          int(left_w * self.info.height * vh / (self.info.width * vw)) + 6))
 
     # ---- position
     def goto(self, t: float):

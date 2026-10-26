@@ -2350,6 +2350,10 @@ EN = {
         'To clipboard',
     'In die Zwischenablage kopiert – in Discord mit Strg+V einfügen.':
         'Copied to the clipboard – paste it in Discord with Ctrl+V.',
+    'Ohne schwarze Ränder':
+        'No black borders',
+    'Die Aufnahme hat schwarze Ränder: „Ohne schwarze Ränder“ speichert nur das Spielbild, „Kein Ausschnitt“ das ganze Bild.':
+        'The recording has black borders: "No black borders" saves only the game picture, "No crop" the whole picture.',
     'Kein Ausschnitt':
         'No crop',
     'Kein Screenshot-Ordner von Steam für DBD gefunden – noch kein F12-Screenshot, oder Steam speichert woanders („Anderen Ordner …“).':
