@@ -477,3 +477,92 @@ def test_the_big_editor_has_the_picture_left_and_tools_and_saving_in_a_side_colu
         assert compact.sound_box.window() is compact and compact.expand_btn is not None
     finally:
         compact.close()
+
+
+@pytest.fixture(scope="module")
+def bordered(tmp_path_factory):
+    """1.12.6: a round like the user's – the game picture centred in the video, black on all four sides (the OBS
+    source smaller than the canvas): 224×112 of game at (48, 34) in 320×180."""
+    path = str(tmp_path_factory.mktemp("border") / "2026-10-26 08-06 Blood Lodge – The Hillbilly.mp4")
+    subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                    "-i", "testsrc=duration=6:size=224x112:rate=30", "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
+                    "-vf", "pad=320:180:48:34:black", "-c:v", "libx264", "-preset", "veryfast", "-g", "30",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path], check=True, timeout=120)
+    return path
+
+
+def test_black_borders_of_a_round_are_found_shown_large_and_cut_in_the_big_editor(qapp, bordered, tmp_path):
+    """1.12.6 (user's screenshot of the big editor: the round small in a big black box, the strip in slivers): the
+    borders are found from the strip, „Ohne schwarze Ränder“ is picked – the preview shows the game part filling
+    the box, the clip is saved without the borders, the strip keeps the picture's shape. Boxes drawn on the zoomed
+    picture are fractions of the whole one; the hidden border takes no clicks. „Kein Ausschnitt“ shows it all again,
+    a frame moved by hand is „Frei“."""
+    from PySide6.QtCore import QRectF, Qt
+    from PySide6.QtTest import QTest
+    from fogscout import clipedit
+    win = _window(qapp, bordered, tmp_path)
+    try:
+        win.resize(1200, 800)
+        assert _pump(qapp, lambda: win._content is not None)
+        x, y, w, h = win._content
+        assert x * 320 == pytest.approx(48, abs=2.5) and (x + w) * 320 == pytest.approx(272, abs=2.5)
+        assert y * 180 == pytest.approx(34, abs=2.5) and (y + h) * 180 == pytest.approx(146, abs=2.5)
+        assert x * 320 >= 48 and (x + w) * 320 <= 272                      # inside: no black line left in the clip
+        assert win.crop_box.currentData() == "content" and not win.content_hint.isHidden()
+        assert win.preview.view == win.preview.crop == win._content == win.edit_plan().crop
+        _pump(qapp, lambda: False, 0.2)
+        vr, area = win.preview.view_rect(), QRectF(win.preview.rect()).adjusted(2, 2, -2, -2)
+        assert abs(vr.width() - area.width()) < 1.5 or abs(vr.height() - area.height()) < 1.5      # fills the box
+        assert vr.width() / vr.height() == pytest.approx(224 / 112, rel=0.05)
+        tiles = win.timeline.tiles()
+        assert len(tiles) >= 3
+        for t, _i in tiles[:-1]:                                            # the strip: the game part's shape
+            assert t.width() / t.height() == pytest.approx(224 / 112, rel=0.05)
+        win.preview.set_editing(True)
+        _drag(win.preview, (0.3, 0.3), (0.5, 0.5))
+        assert win.preview.boxes[-1] == pytest.approx([0.3, 0.3, 0.2, 0.2], abs=0.01)
+        n = len(win.preview.boxes)
+        _drag(win.preview, (0.05, 0.5), (0.1, 0.6))                         # in the hidden border: nothing
+        assert len(win.preview.boxes) == n
+        win.preview.set_editing(False)
+        win.crop_box.setCurrentIndex(win.crop_box.findData("none"))
+        assert win.preview.view is None and win.edit_plan().crop is None
+        win.crop_box.setCurrentIndex(win.crop_box.findData("content"))
+        assert win.preview.view == win._content
+        QTest.mouseClick(win.crop_btn, Qt.LeftButton)                       # the frame tool: the whole picture
+        assert win.preview.crop_edit and win.preview.view is None
+        cx, cy = x + w / 2, y + h / 2
+        _drag(win.preview, (cx, cy), (cx + 0.03, cy))
+        assert win.crop_box.currentData() == "free" and win.preview.crop[0] == pytest.approx(x + 0.03, abs=0.01)
+        QTest.mouseClick(win.crop_btn, Qt.LeftButton)
+        assert not win.preview.crop_edit and win.preview.view is None       # „Frei“ shows the frame on the picture
+    finally:
+        win.close()
+    out = str(tmp_path / "cut.mp4")
+    ok, why = clipedit.export(bordered, clipedit.Edit([clipedit.Part(0.0, 2.0)], crop=(x, y, w, h)), out, "exact", FF)
+    assert ok, why
+    info = clipedit.probe(out, FF)
+    assert info.width == pytest.approx(224, abs=4) and info.height == pytest.approx(112, abs=4)
+
+
+def test_without_borders_nothing_is_cut_and_the_compact_editor_shows_what_it_saves(qapp, clip, bordered, tmp_path):
+    """1.12.6: a round without borders gets no „Ohne schwarze Ränder“; the compact editor (no crop there) keeps
+    the whole picture in its preview – only its strip shows the game part."""
+    from fogscout import qt_clip
+    win = _window(qapp, clip, tmp_path)
+    try:
+        assert _pump(qapp, lambda: win._load_state["strip"])
+        _pump(qapp, lambda: False, 0.2)
+        assert win._content is None and win.crop_box.findData("content") < 0
+        assert win.crop_box.currentData() == "none" and win.preview.view is None
+        assert win.content_hint.isHidden()
+    finally:
+        win.close()
+    compact = qt_clip.ClipWindow(bordered, [], str(tmp_path / "Clips"), sound=False, compact=True)
+    compact.show()
+    try:
+        assert _pump(qapp, lambda: compact._content is not None)
+        assert compact.timeline.view == compact._content
+        assert compact.preview.view is None and compact.edit_plan().crop is None
+    finally:
+        compact.close()

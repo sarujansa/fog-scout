@@ -27,6 +27,14 @@ PREVIEW_H = 540                  # px: frames for the preview picture
 THUMB_H = 54                     # px: pictures of the timeline strip
 THUMBS = 24                      # pictures along the strip
 THUMB_WORKERS = 4                # 1.8.3: key-frame seeks for the strip running at once
+THUMB_SRC_H = 108                # 1.12.6: pictures of the strip fetched this tall – they show the game part only
+CONTENT_DARK = 24                # 1.12.6, black borders of a recording: brightest colour at most this (H.264 black ≈ 0–16)
+CONTENT_SHARE = 0.01             # a row/column holds picture from 1 % of its pixels on
+CONTENT_MARGIN = 0.03            # a border from 3 % of the width/height on (less: compression noise, nothing to gain)
+CONTENT_SKEW = 0.02              # both borders of an axis alike within 2 % – a centred picture
+CONTENT_FRAMES = 6               # pictures with anything in them before borders are trusted
+CONTENT_MIN = 0.3                # a game part smaller than this share of the recording is no border case
+CONTENT_SLACK = 0.02             # refine_box: how far a side may move on the sharper picture
 FPS_CAP = 30.0                   # playback: at most this many frames a second (preview, not the file)
 SIZE_RE = re.compile(rb"Video: .*?, (\d{2,5})x(\d{2,5})")
 FPS_RE = re.compile(rb"(\d+(?:\.\d+)?) fps")
@@ -202,6 +210,89 @@ def thumb_times(duration: float, n: int = THUMBS) -> list[float]:
     """Moments for the strip: the middle of n equal stretches."""
     n = max(1, n)
     return [duration * (i + 0.5) / n for i in range(n)]
+
+
+def _lit(img, dark: int, share: float):
+    """Rows and columns of ``img`` that hold picture: at least ``share`` of their pixels brighter than ``dark`` in
+    any colour (a saturated red is dim as grey). numpy bool arrays, or None for a picture that is black all over."""
+    import numpy as np
+    a = np.asarray(img.convert("RGB")).max(axis=2) > dark
+    if not a.any():
+        return None
+    return a.mean(axis=1) >= share, a.mean(axis=0) >= share
+
+
+def _sides(lit) -> tuple:
+    """(before, after) of the first and last True as fractions of the length: the empty share at each end."""
+    import numpy as np
+    on = np.flatnonzero(lit)
+    return on[0] / len(lit), 1.0 - (on[-1] + 1) / len(lit)
+
+
+def content_box(images, dark: int = CONTENT_DARK, share: float = CONTENT_SHARE, margin: float = CONTENT_MARGIN,
+                skew: float = CONTENT_SKEW, frames: int = CONTENT_FRAMES):
+    """1.12.6 (user's screenshot: the round small in a big black box, the strip in slivers): the part of the
+    recording that holds the game when it has black borders, as fractions (x, y, w, h) – None without borders.
+    From the strip's pictures together: a row or column belongs to the game when it holds picture in any of
+    them (a dark corner of one moment is lit in another). Borders count only in pairs: both sides of an axis at
+    least ``margin`` and alike within ``skew`` – a source centred in a bigger canvas (or DBD's 16:9 in a 21:9
+    window) has even bars, a dark ceiling over a whole round would be one side only. Needs ``frames`` pictures
+    with anything in them; pictures of another size are left out. Pure."""
+    rows = cols = None
+    seen = 0
+    shape = None
+    for img in images:
+        if img is None:
+            continue
+        if shape is None:
+            shape = img.size
+        elif img.size != shape:
+            continue
+        lit = _lit(img, dark, share)
+        if lit is None:
+            continue
+        seen += 1
+        rows = lit[0] if rows is None else rows | lit[0]
+        cols = lit[1] if cols is None else cols | lit[1]
+    if seen < frames or rows is None or not rows.any() or not cols.any():
+        return None
+
+    def pair(a, b):
+        return (a, b) if min(a, b) >= margin and abs(a - b) <= skew else (0.0, 0.0)
+
+    top, bottom = pair(*_sides(rows))
+    left, right = pair(*_sides(cols))
+    w, h = 1.0 - left - right, 1.0 - top - bottom
+    if not (left or top) or w < CONTENT_MIN or h < CONTENT_MIN:
+        return None
+    return left, top, w, h
+
+
+def refine_box(box, img, dark: int = CONTENT_DARK, share: float = CONTENT_SHARE, slack: float = CONTENT_SLACK):
+    """``box`` from content_box (small pictures: one of their pixels is ~13 px of a 1440p round) moved to the
+    edges of one sharper picture ``img``: each side with a border goes to the first row/column of picture within
+    ``slack`` of it, one more inwards – the outermost is blended with the black and would stay a thin dark line
+    in the clip. A side without picture near it in this frame (dark there right now) stays where it was. Pure."""
+    if not box or img is None:
+        return box
+    lit = _lit(img, dark, share)
+    if lit is None:
+        return box
+    x, y, w, h = box
+    edges = []
+    for start, size, line in ((x, w, lit[1]), (y, h, lit[0])):
+        n = len(line)
+        if start <= 0:
+            edges.append((start, size))
+            continue
+        near = int(slack * n) + 1
+        lo, hi = int(start * n), int((start + size) * n)
+        first = [i for i in range(max(0, lo - near), min(n, lo + near + 1)) if line[i]]
+        last = [i for i in range(max(0, hi - near - 1), min(n, hi + near)) if line[i]]
+        a = (first[0] + 1) / n if first else start
+        b = last[-1] / n if last else start + size
+        edges.append((a, b - a) if b - a >= CONTENT_MIN else (start, size))
+    return edges[0][0], edges[1][0], edges[0][1], edges[1][1]
 
 
 def fmt_pos(seconds: float) -> str:
