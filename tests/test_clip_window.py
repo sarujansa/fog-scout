@@ -425,3 +425,55 @@ def test_an_update_waits_for_a_clip_save_and_quitting_hands_a_finished_one_over(
         if win is not None:
             win.close()
         app.quit()
+
+
+def test_the_big_editor_has_the_picture_left_and_tools_and_saving_in_a_side_column(qapp, clip, tmp_path):
+    """1.12.5 (user on two screenshots of the big editor: "gefallen mir nicht" – a big black box with the picture
+    small in it, an almost empty clip card, the save card squeezed into two lines): picture, timeline and playback on
+    the left, the tool tabs with saving below them in a side column of SIDE_W; the preview no taller than the picture
+    at that width; start/end/mark in the clip tab, the playback sound beside the position; one line per sound source.
+    Nothing sticks out of the window or hangs without a parent."""
+    from PySide6.QtWidgets import QCheckBox, QPushButton, QWidget
+    from fogscout import qt_clip
+    four = str(tmp_path / "2026-10-26 07-10 Coal Tower – Nurse.mkv")                 # OBS's tracks 1–4
+    sines = sum((["-f", "lavfi", "-i", f"sine=frequency={f}:duration=3"] for f in (440, 550, 660, 770)), [])
+    maps = ["-map", "0:v"] + sum((["-map", f"{i}:a"] for i in range(1, 5)), [])
+    subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                    "testsrc=duration=3:size=320x180:rate=30"] + sines + maps
+                   + ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", four],
+                   check=True, timeout=120)
+    win = _window(qapp, four, tmp_path)
+    try:
+        win.resize(1200, 935)
+        _pump(qapp, lambda: False, 0.3)
+        assert win.side.width() == qt_clip.SIDE_W and win.side.isAncestorOf(win.tools)
+        assert win.side.isAncestorOf(win.save_btn) and win.side.isAncestorOf(win.mix_label)
+        assert not win.side.isAncestorOf(win.preview) and not win.side.isAncestorOf(win.sound_box)
+        side_x = win.side.mapTo(win, win.side.rect().topLeft()).x()
+        assert win.preview.mapTo(win, win.preview.rect().topRight()).x() < side_x          # the picture left of it
+        assert win.preview.height() <= win.preview.width() * 180 / 320 + 8                # no empty bands (16:9)
+        assert win.tools.widget(0).isAncestorOf(win.mark_btn) and win.tools.widget(0).isAncestorOf(win.watch_btn)
+        shown = [k for k in win.mix_boxes if win.mix_boxes[k].isVisibleTo(win)]
+        box_y = [win.mix_boxes[k].mapTo(win, win.mix_boxes[k].rect().topLeft()).y() for k in shown]
+        assert len(shown) >= 3 and len(set(box_y)) == len(box_y)                          # one source per line
+        for w in win.findChildren(QWidget):
+            if isinstance(w, (QPushButton, QCheckBox)) and w.isVisibleTo(win):
+                assert w.window() is win
+                r = w.rect().translated(w.mapTo(win, w.rect().topLeft()))
+                assert win.rect().contains(r), (w.text(), r)                                # nothing cut off
+        for i in range(win.tools.count()):                                                  # every tab fits
+            win.tools.setCurrentIndex(i)
+            _pump(qapp, lambda: False, 0.05)
+            page = win.tools.currentWidget()
+            for w in page.findChildren(QPushButton):
+                if w.isVisibleTo(page):
+                    r = w.rect().translated(w.mapTo(page, w.rect().topLeft()))
+                    assert page.rect().contains(r), (i, w.text())
+    finally:
+        win.close()
+    compact = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), sound=False, compact=True)
+    try:
+        assert not hasattr(compact, "side") and not hasattr(compact, "tools")              # beside the table as before
+        assert compact.sound_box.window() is compact and compact.expand_btn is not None
+    finally:
+        compact.close()
