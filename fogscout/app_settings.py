@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 import time
 from . import __version__, backups, i18n, obsoverlay, obsrec, qt_theme, regions, status, whatsnew
@@ -889,12 +890,36 @@ class SettingsTab:
         """1.8.63: a round is open (map detected, no end yet) or OBS records – no restart for an update now."""
         return self._hist is not None or self.recorder.recording
 
+    @staticmethod
+    def _clip_editor():
+        """The clip editor's module once an editor was opened (else None: no save can run, nothing to import)."""
+        return sys.modules.get(__package__ + ".qt_clip")
+
+    def _clips_saving(self) -> list:
+        """The clips the editors are still writing (qt_clip.running_saves) – the restart would stop them."""
+        mod = self._clip_editor()
+        return mod.running_saves() if mod is not None else []
+
+    def _clip_saves_stop(self):
+        """On quit: running clip saves are stopped – ffmpeg wrote on without the program (the clip never reached the
+        clips list, the temp folder of its drawings stayed); a save that was done anyway still reaches the list
+        (before the recorder stops)."""
+        mod = self._clip_editor()
+        if mod is not None:
+            mod.stop_saves()
+
     def apply_update(self):
         # 1.8.63 (user: "mach eine Sperre rein, dass wenn es in einer Runde ist, kein Update stattfinden kann"): the
         # update restarts the program (start.bat installs it) – that would end the round's record and recording
         if self._round_running():
             self.upd_status.set(_("Update gesperrt: eine Runde läuft. Nach dem Rundenende noch einmal auf „Aktualisieren und neu starten“ klicken."))
             self._log(_("Update gesperrt: eine Runde läuft. Nach dem Rundenende noch einmal auf „Aktualisieren und neu starten“ klicken."), "System")
+            return
+        if self._clips_saving():                  # the same for a clip the editor is still writing
+            msg = _("Update gesperrt: ein Clip wird noch gespeichert. Danach noch einmal auf „Aktualisieren und neu "
+                    "starten“ klicken.")
+            self.upd_status.set(msg)
+            self._log(msg, "System")
             return
         from . import restart
         try:
