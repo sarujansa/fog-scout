@@ -445,10 +445,9 @@ class QtShell:
         elif action == "table_cols":                 # 1.3.6: columns hidden by a right-click on a table's heading
             key, cols = arg
             hidden = dict(self.settings.get("hidden_columns") or {})
-            if cols:
-                hidden[str(key)] = [str(c) for c in cols]
-            else:
-                hidden.pop(str(key), None)
+            # kept when empty too: a table without an entry hides the model's _dbdms_hide columns (1.12.2), so
+            # "every column" must stay remembered or "Datei" was hidden again after a restart
+            hidden[str(key)] = [str(c) for c in cols]
             self.settings.set("hidden_columns", hidden)
             self._save_soon()
         elif action == "card_order":                 # a card dragged to another place: remember the order

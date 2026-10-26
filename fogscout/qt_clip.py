@@ -10,13 +10,16 @@ from __future__ import annotations
 import logging
 import math
 import os
+import subprocess
 import threading
+import time
+from dataclasses import replace
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
-                               QListWidget, QProgressBar, QPushButton, QSizePolicy, QSlider, QTabWidget, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel,
+                               QLineEdit, QListWidget, QProgressBar, QPushButton, QSizePolicy, QSlider, QTabWidget,
+                               QVBoxLayout, QWidget)
 
 from . import annotate, clipedit, imageedit, obsrec, qt_theme
 from .i18n import N_, _
@@ -60,6 +63,9 @@ STEP_SMALL, STEP_BIG = 1.0, 5.0
 LOAD_TIMEOUT_MS = 30000           # 1.8.3: the loading screen gives up after this and frees the window
 PREVIEW_MIN = (640, 360)
 PUMP_MS = 15                      # 1.8.66: how often the window takes what its threads produced
+CLOSED_PUMP_MS = 200              # how often the saves of closed editors are looked after (_drain_closed)
+SAVE_TIMEOUT_S = 3600             # one ffmpeg run of a save at most (clipedit.export's own limit)
+STOP_WAIT_S = 2.0                 # quitting waits this long for the stopped saves to tidy up (within QUIT_WATCHDOG_S)
 
 
 def _qimage(img) -> QImage:
@@ -130,6 +136,107 @@ class _Bridge:
                     fn(*args)
                 except Exception:
                     log.exception("Clip-Editor: %s", name)
+
+
+class _SaveJob:
+    """A clip or still being saved in a thread. It outlives the window that started it: a compact editor beside
+    the tables is deleted when another row is picked, its pump with it – the result then comes through
+    ``_drain_closed`` and still reaches the log and the clips list (else: no index entry, no automatic upload, a GIF
+    the program never listed). ``run`` is clipedit's ``run`` with ffmpeg as a child ``stop`` can end: quitting must
+    not leave ffmpeg writing on its own (half file, temp folder of the drawings) – clipedit removes both when the
+    run fails."""
+
+    def __init__(self, win, out: str):
+        self.win, self.out = win, out
+        self.thread = None
+        self.stopped = False
+        self._proc = None
+        self._lock = threading.Lock()
+
+    def run(self, args):
+        with self._lock:
+            if self.stopped:
+                return 1, b""
+            self._proc = proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                                 stderr=subprocess.PIPE,
+                                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        try:
+            _out, err = proc.communicate(timeout=SAVE_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            raise                                       # clipedit reports it like its own timeout
+        return proc.returncode, err or b""
+
+    def stop(self):
+        with self._lock:
+            self.stopped = True
+            proc = self._proc
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+
+
+_SAVES = []                       # the _SaveJob of every editor still running or not yet handed over (GUI thread)
+_closed_pumping = False
+
+
+def running_saves() -> list:
+    """The files the clip editors are still writing (the App holds back an update restart meanwhile)."""
+    return [job.out for job in _SAVES]
+
+
+def stop_saves(wait: float = STOP_WAIT_S) -> list:
+    """The program quits: every running save is stopped (ffmpeg ended; clipedit removes the half file and its temp
+    folder), its thread gets up to ``wait`` s in all, then each result goes to its editor – a save that was done
+    anyway still reaches the clips list. Returns the files of the saves stopped."""
+    jobs = list(_SAVES)
+    for job in jobs:
+        job.stop()
+    deadline = time.monotonic() + wait
+    for job in jobs:
+        if job.thread is not None:
+            job.thread.join(max(0.0, deadline - time.monotonic()))
+    wins = []
+    for job in jobs:
+        if all(w is not job.win for w in wins):
+            wins.append(job.win)
+    for w in wins:
+        w._drain()
+    return [job.out for job in jobs]
+
+
+def _forget_save(win, out):
+    """The result of ``win``'s save of ``out`` was handled: off the list (the job, or None)."""
+    for job in _SAVES:
+        if job.win is win and job.out == out:
+            _SAVES.remove(job)
+            return job
+    return None
+
+
+def _watch_closed():
+    global _closed_pumping
+    if not _closed_pumping:
+        _closed_pumping = True
+        QTimer.singleShot(CLOSED_PUMP_MS, _drain_closed)
+
+
+def _drain_closed():
+    """The results of editors closed while saving (their own pump may be gone with them); again while any runs."""
+    global _closed_pumping
+    wins = []
+    for job in _SAVES:
+        if job.win._closed and all(w is not job.win for w in wins):
+            wins.append(job.win)
+    for w in wins:
+        w._drain()
+    if any(job.win._closed for job in _SAVES):
+        QTimer.singleShot(CLOSED_PUMP_MS, _drain_closed)
+    else:
+        _closed_pumping = False
 
 
 class Timeline(QWidget):
@@ -396,7 +503,14 @@ class PreviewView(QWidget):
         self.shapes = list(shapes)
         self.shape_sel = None if self.shape_sel is None or self.shape_sel >= len(self.shapes) else self.shape_sel
         self._layer = None
+        self._end_shape_move()
         self.update()
+
+    def _end_shape_move(self):
+        """The drawings were replaced or one removed (Entf, undo) while one is dragged: that drag ends – it held the
+        old drawing and wrote it back at its index on every move (TypeError once the index was gone)."""
+        if self._drag and self._drag[0] == "shape_move":
+            self._drag = None
 
     def set_shape_tool(self, kind):
         self.shape_tool = kind
@@ -428,6 +542,7 @@ class PreviewView(QWidget):
         del self.shapes[self.shape_sel]
         self.shape_sel = None
         self._layer = None
+        self._end_shape_move()
         self.update()
         self.shapes_changed.emit()
         self.shape_picked.emit(-1)
@@ -453,18 +568,21 @@ class PreviewView(QWidget):
         return QImage(img.tobytes(), img.width, img.height, img.width * 4, QImage.Format_RGBA8888).copy()
 
     def _crop_box_for(self, x0, y0, x1, y1) -> tuple:
-        """A crop box from two corners (fractions), held to ``crop_ratio`` (the width leads)."""
+        """A crop box from the corner that stays (``x0``, ``y0``) and the mouse (fractions), held to ``crop_ratio``
+        (the width leads). A box under MIN_BOX comes back empty – the release drops it (clamp_box raised it to a
+        1 % box of the wrong shape)."""
         x, y, w, h = min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0)
         if self.crop_ratio:
             iw, ih = self.image_size()
             h = w * iw / (self.crop_ratio * ih)
-            if y1 < y0:
-                y = y0 - h
-            if y + h > 1.0:                                   # too tall for the room: the height leads
-                h = 1.0 - y
+            room = y0 if y1 < y0 else 1.0 - y0                # above / below the corner that stays
+            if h > room:                                      # too tall for the room: the height leads (upwards
+                h = room                                      # too – clamp_box cut only h there, 9:16 became 0.8)
                 w = h * ih * self.crop_ratio / iw
-                if x1 < x0:
-                    x = x0 - w
+            y = y0 - h if y1 < y0 else y0
+            x = x0 - w if x1 < x0 else x0
+        if w < self.MIN_BOX or h < self.MIN_BOX:
+            return x, y, 0.0, 0.0
         return imageedit.clamp_box((x, y, w, h), self.MIN_BOX)
 
     # ---- geometry
@@ -686,7 +804,10 @@ class PreviewView(QWidget):
         kind, (px, py), orig = self._drag
         fx, fy = self._to_frac(pt)
         if kind == "crop_new":
-            self._drag = (kind, (px, py), self._crop_box_for(px, py, fx, fy))
+            f = self.frame_rect()                             # a click (a pixel of hand jitter) is no new box
+            moved = abs(fx - px) * f.width() + abs(fy - py) * f.height()
+            far = moved >= QApplication.startDragDistance()
+            self._drag = (kind, (px, py), self._crop_box_for(px, py, fx, fy) if far else (px, py, 0.0, 0.0))
         elif kind == "crop_move":
             x, y, w, h = orig
             self._drag = (kind, (px, py), imageedit.clamp_box((x + fx - px, y + fy - py, w, h), self.MIN_BOX))
@@ -696,7 +817,10 @@ class PreviewView(QWidget):
             ay = y + h if kind in ("crop_tl", "crop_tr") else y
             self._drag = (kind, (px, py), self._crop_box_for(ax, ay, fx, fy))
         elif kind == "shape_move":
-            self.shapes[self.shape_sel] = orig.moved(fx - px, fy - py)
+            if self.shape_sel is None or not 0 <= self.shape_sel < len(self.shapes):
+                self._drag = None                             # the drawing is gone
+            else:
+                self.shapes[self.shape_sel] = orig.moved(fx - px, fy - py)
         elif kind == "shape_new":
             if orig.kind == "free":
                 if math.dist(orig.pts[-1], (fx, fy)) > 0.003:
@@ -994,7 +1118,7 @@ class ClipWindow(QWidget):
                                      "Bild neu kodiert, auch im Format „Schnell“)."))
         self.censor_box.toggled.connect(self._censor_toggled)
         zr.addWidget(self.censor_box)
-        self.style_box = guard_wheel(QComboBox())
+        self.style_box = self._choice()
         for key in clipedit.CENSOR_STYLES:
             self.style_box.addItem(_(CENSOR_LABELS[key]), key)
         self.style_box.setCurrentIndex(max(0, list(clipedit.CENSOR_STYLES).index(self._censor_style)
@@ -1051,7 +1175,7 @@ class ClipWindow(QWidget):
             el.addLayout(row2)
             row2 = QHBoxLayout()
         row2.addWidget(QLabel(_("Format")))
-        self.mode_box = guard_wheel(QComboBox())
+        self.mode_box = self._choice()
         self.mode_box.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         for key in clipedit.MODES:
             self.mode_box.addItem(_(MODE_LABELS[key]), key)
@@ -1059,14 +1183,14 @@ class ClipWindow(QWidget):
         self.mode_box.setCurrentIndex(max(0, list(clipedit.MODES).index(mode) if mode in clipedit.MODES else 0))
         self.mode_box.currentIndexChanged.connect(self._mode_changed)
         row2.addWidget(self.mode_box)
-        self.target_box = guard_wheel(QComboBox())
+        self.target_box = self._choice()
         for mb in clipedit.TARGETS_MB:
             self.target_box.addItem(_("≤ {n} MB", n=mb), mb)
         self.target_box.setCurrentIndex(list(clipedit.TARGETS_MB).index(self._target_mb))
         self.target_box.setToolTip(_("Discord: ohne Nitro 10 MB, Nitro Basic 50 MB, Nitro 500 MB."))
         self.target_box.currentIndexChanged.connect(self._target_changed)
         row2.addWidget(self.target_box)
-        self.gif_box = guard_wheel(QComboBox())                                     # 1.12: GIF height
+        self.gif_box = self._choice()                                               # 1.12: GIF height
         for gh in clipedit.GIF_HEIGHTS:
             self.gif_box.addItem(f"{gh}p", gh)
         self.gif_box.setCurrentIndex(list(clipedit.GIF_HEIGHTS).index(clipedit.DEFAULT_GIF_H))
@@ -1143,10 +1267,19 @@ class ClipWindow(QWidget):
         lay.addWidget(head)
         return card, lay
 
+    @staticmethod
+    def _choice() -> QComboBox:
+        """A choice box: no mouse wheel (guard_wheel), no keyboard focus – like the buttons the keys stay with the
+        window. A box picked with the mouse kept the focus and took the window's keys: Home/End set the tempo to
+        ×0.25/×4 or the crop to none/4:5, letters picked an item ("A" on a fade: "aus"), Space opened it."""
+        box = guard_wheel(QComboBox())
+        box.setFocusPolicy(Qt.NoFocus)
+        return box
+
     # ---- 1.12: parts, picture, drawings
     def _combo(self, row, items, current, tip, slot):
-        """A choice box of (data, label) with ``current`` picked (no mouse wheel, see guard_wheel)."""
-        box = guard_wheel(QComboBox())
+        """A choice box of (data, label) with ``current`` picked (see _choice)."""
+        box = self._choice()
         for data, label in items:
             box.addItem(label, data)
         idx = next((i for i, (d, _l) in enumerate(items) if d == current), 0)
@@ -1353,6 +1486,8 @@ class ClipWindow(QWidget):
                                    f"  ({p.end - p.start:.1f} s){tempo}")
         if keep is not None and keep < len(self._parts):
             self.part_list.setCurrentRow(keep)
+        else:                                       # no part marked: the box shows the tempo new parts get
+            self._select_speed(self._range_speed)
         self.part_list.blockSignals(False)
         self.part_del_btn.setEnabled(keep is not None and keep < len(self._parts))
         self.part_clear_btn.setEnabled(bool(self._parts))
@@ -1380,9 +1515,8 @@ class ClipWindow(QWidget):
             box = imageedit.aspect_box(base if key == "free" else (0.0, 0.0, 1.0, 1.0), ratio,
                                        (self.info.width or 16, self.info.height or 9))
             self.preview.set_crop(box, ratio)
-            if not self.crop_btn.isChecked():
-                self.crop_btn.setChecked(True)
-                self._crop_tool()
+            self.crop_btn.setChecked(True)                # also when the button asked for the box (_crop_tool):
+            self.preview.set_crop_edit(True)              # it is checked already, the tool was never switched on
         self._show_size()
 
     def _crop_tool(self):
@@ -1453,12 +1587,14 @@ class ClipWindow(QWidget):
             self.preview.shapes_changed.emit()
 
     def edit_plan(self) -> clipedit.Edit:
-        """What will be saved: the parts (or the start/end range), crop, drawings, fades."""
+        """What will be saved: the parts (or the start/end range), crop, drawings, fades. The drawings are copies:
+        the save thread draws them while the window may change the marked one (colour, size, text, times)."""
         tl = self.timeline
         parts = list(self._parts) or [clipedit.Part(tl.start, tl.end, self._range_speed)]
         full = not self.compact and hasattr(self, "crop_box")
         crop = self.preview.crop if full and self.crop_box.currentData() != "none" else None
-        shapes = [s for s in self.preview.shapes if s.kind != "text" or s.text.strip()] if full else []
+        shapes = [replace(s, pts=list(s.pts)) for s in self.preview.shapes
+                  if s.kind != "text" or s.text.strip()] if full else []
         fi = float(self.fade_in_box.currentData() or 0) if full else 0.0
         fo = float(self.fade_out_box.currentData() or 0) if full else 0.0
         return clipedit.Edit([clipedit.Part(p.start, p.end, p.speed) for p in parts], crop, shapes, fi, fo)
@@ -1942,12 +2078,20 @@ class ClipWindow(QWidget):
         gif_h = int(self.gif_box.currentData() or clipedit.DEFAULT_GIF_H)
         if mode != "copy" or censor or not edit.simple():
             self.status.setText(_("Kodiere {file} … (dauert etwas)", file=os.path.basename(out)))
+        job = _SaveJob(self, out)                         # outlives the window, stoppable on quit (_SaveJob)
+        path, ffmpeg, bridge = self.path, self.ffmpeg, self.bridge
 
         def work():
-            ok, why = clipedit.export(self.path, edit, out, mode, self.ffmpeg, target_mb=target, info=info, mix=mix,
-                                      gif_h=gif_h, **censor)
-            self.bridge.saved.emit(ok, out, why)
-        threading.Thread(target=work, name="clip-save", daemon=True).start()
+            try:
+                ok, why = clipedit.export(path, edit, out, mode, ffmpeg, run=job.run, target_mb=target, info=info,
+                                          mix=mix, gif_h=gif_h, **censor)
+            except Exception as e:                        # a result in any case: the save must not hang on
+                log.exception("Clip speichern")
+                ok, why = False, f"{type(e).__name__}: {e}"
+            bridge.saved.emit(ok, out, why)
+        job.thread = threading.Thread(target=work, name="clip-save", daemon=True)
+        _SAVES.append(job)
+        job.thread.start()
 
     def _timeline_pick(self, ident, t):
         """1.8.10: the right-click menu of the strip."""
@@ -1977,52 +2121,63 @@ class ClipWindow(QWidget):
             return
         out = clipedit.unique_path(self.clips_dir, name, ".png")
         path, info, ffmpeg, b = self.path, self.info, self.ffmpeg, self.bridge
+        job = _SaveJob(self, out)
 
         def work():
-            img = clipedit.frame_at(path, t, info.height, info, ffmpeg)
             ok = False
-            if img is not None:
-                try:
+            try:
+                img = clipedit.frame_at(path, t, info.height, info, ffmpeg)
+                if img is not None:
                     img.save(out)
                     ok = True
-                except OSError:
-                    pass
+            except Exception:                             # OSError, PIL: a result in any case
+                log.exception("Standbild speichern")
             b.still.emit(ok, out)
-        threading.Thread(target=work, name="clip-still", daemon=True).start()
+        job.thread = threading.Thread(target=work, name="clip-still", daemon=True)
+        _SAVES.append(job)
+        job.thread.start()
 
     def _still_saved(self, ok, out):
+        _forget_save(self, out)
         if ok:
             self._last_out = out
-            self.show_btn.setEnabled(True)
-            self.status.setText(_("Standbild gespeichert: {file}", file=os.path.basename(out)))
+        if not self._closed:                        # closed: a compact editor may be deleted, widgets and all
+            self.show_btn.setEnabled(bool(self._last_out))
+            self.status.setText(_("Standbild gespeichert: {file}", file=os.path.basename(out)) if ok
+                                else _("Standbild nicht gespeichert."))
+        if ok:
             self.log(_("Standbild gespeichert: {file}", file=out), "System")
             if self.on_saved:                       # 1.8.13: stills are in the clips list too
                 self.on_saved(out)
-        else:
-            self.status.setText(_("Standbild nicht gespeichert."))
 
     def _saved(self, ok, out, why):
-        self.save_btn.setEnabled(True)
+        job = _forget_save(self, out)
+        if job is not None and job.stopped and not ok:
+            why = _("beim Beenden abgebrochen")
         if ok:
             self._last_out = out
-            self.show_btn.setEnabled(True)
-            try:
-                mb = os.path.getsize(out) / 1024 ** 2
-            except OSError:
-                mb = 0.0
-            self.status.setText(_("Gespeichert: {file} ({mb} MB)", file=os.path.basename(out), mb=f"{mb:.1f}"))
+        if not self._closed:                        # closed: a compact editor may be deleted, widgets and all
+            self.save_btn.setEnabled(True)
+            if ok:
+                self.show_btn.setEnabled(True)
+                try:
+                    mb = os.path.getsize(out) / 1024 ** 2
+                except OSError:
+                    mb = 0.0
+                self.status.setText(_("Gespeichert: {file} ({mb} MB)", file=os.path.basename(out), mb=f"{mb:.1f}"))
+            else:
+                self.status.setText(_("Clip nicht gespeichert: {why}", why=why or "ffmpeg"))
+        if ok:
             self.log(_("Clip gespeichert: {file}", file=out), "System")
             if self.on_saved:
                 self.on_saved(out)
         else:
-            self.status.setText(_("Clip nicht gespeichert: {why}", why=why or "ffmpeg"))
             self.log(_("Clip nicht gespeichert: {why}", why=why or "ffmpeg"), "Fehler")
 
     def _show_saved(self):
         if not self._last_out:
             return
         if os.name == "nt":
-            import subprocess
             subprocess.Popen(["explorer", "/select,", os.path.normpath(self._last_out)])   # noqa: S603,S607
         else:
             self.status.setText(self._last_out)
@@ -2079,4 +2234,6 @@ class ClipWindow(QWidget):
         self._stop_player()
         with self._scrub_lock:
             self._scrub_lock.notify_all()
+        if any(job.win is self for job in _SAVES):  # its result must come even when the window is deleted now
+            _watch_closed()
         super().closeEvent(e)

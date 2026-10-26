@@ -1527,7 +1527,9 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             # 1.8.38: every step on its own – one that raises must not skip saving or the other stops
             wins = [w for w in (self.media_win, getattr(self, "today_win", None), getattr(self, "info_win", None))
                     if w is not None]
-            steps = [self._qt_close, self.settings.save, self.tray.stop, self.conn.stop, self.sysmon.stop,
+            # first the clip saves still running: stopped, or done ones into the clips list while the recorder runs
+            steps = [self._clip_saves_stop,
+                     self._qt_close, self.settings.save, self.tray.stop, self.conn.stop, self.sysmon.stop,
                      self.media.stop, self.recorder.quit, self.presence.quit, self.spotify.quit, self.youtube.quit,
                      self.worker.stop,
                      self.hotkeys.stop,
