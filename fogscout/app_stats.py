@@ -1405,6 +1405,7 @@ class StatsTab:
         self._hist = {"t": now, "map_id": map_id, "map": m.label(variant) if m else map_id,
                       "region": "", "source": source}
         self._sysrec = sysinfo.SysRecorder()          # system values during this round
+        self.bloodpoints.round_started(now)           # 1.13: the balance read in the lobby is the one before
         f = self._queue.get("found")                  # the lobby this match came from (once, max. 15 min old)
         brief = f is None and lobby is not None
         f = f or lobby
@@ -1454,6 +1455,7 @@ class StatsTab:
                                                        or (rec.get("region") and rec.get("region") == farm_region))))
         sysrec, self._sysrec = self._sysrec, None
         if rec is None:
+            self.bloodpoints.round_ended(t, counts=False)
             return
         if sysrec is not None and sysrec.summary():
             rec["sys"] = sysrec.summary()
@@ -1470,12 +1472,16 @@ class StatsTab:
                             s=f"{max(stalls):.1f}"), "System")
         seconds = max(0.0, t - rec["t"])
         if not history.should_record(seconds):
+            self.bloodpoints.round_ended(t, counts=False)
             return
         try:
             history.append(self._hist_path(), history.Round(seconds=seconds, **rec))
         except OSError as e:
             self._report_once("history", f"{e}")
+            self.bloodpoints.round_ended(t, counts=False)
             return
+        # 1.13: the next balance read in the lobby tells what the round brought (a custom game brings nothing)
+        self.bloodpoints.round_ended(t, counts=not rec.get("custom"))
         self._off_open.round_recorded()              # worth opening the stats page once DBD is closed
         if self.nb.select() == str(self.tab_stats):
             self._stats_render()

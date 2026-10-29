@@ -211,6 +211,7 @@ SPECS = {
                 ("card", "st.more.own", (("row", (("hint", "st.more.aliases"), ("button", "st.more.aliases_clear"))),)),
                 ("card", "st.notify", (
                     ("check", "st.lobby_notify"), ("check", "st.lobby_remind"), ("check", "st.notify_background_only"),
+                    ("check", "st.bp_cap_notify"),
                     ("hint", "st.notify_text"), ("row", (("button", "st.notify_test"), ("stretch",))))))),
             ("st.tab.hotkeys", N_("Hotkeys"), (
                 ("card", "st.hotkeys", (

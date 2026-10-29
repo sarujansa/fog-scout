@@ -36,6 +36,10 @@ TIPS = {
         "Noch einmal melden, wenn der Countdown der Lobby unter 15 s fällt und du READY nicht gedrückt hast.",
     "Nur wenn DBD nicht das aktive Fenster ist":
         "Keine Meldung, solange DBD im Vordergrund ist – dann siehst du die Lobby ja selbst.",
+    "Melden, wenn eine Runde keine Blutpunkte gebracht hat (Cap erreicht)":
+        "Fog Scout liest in der Lobby den Blutpunkte-Stand oben rechts. Ist er nach einer gezählten Runde derselbe "
+        "wie davor, ist das Cap erreicht (normal 5 Millionen, nach Tome-Belohnungen auch mehr) – die Punkte der "
+        "Runde sind verfallen. Ton und Meldung kommen auch, wenn DBD im Vordergrund ist; Custom Games zählen nicht.",
     "Einstellungen exportieren …": "Speichert alle Einstellungen in eine Datei: Hotkeys, Grösse und Drehung pro Map, "
                                    "eigene Map-Zuordnungen, Overlay, Regionen … Die Statistik (rounds.jsonl) gehört "
                                    "nicht dazu.",
