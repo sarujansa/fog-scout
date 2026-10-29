@@ -579,6 +579,57 @@ class SettingsTab:
                              farming_days=next((d for d, lbl in self._rec_farming_days
                                                 if lbl == self.rec_farming_days_var.get()), 0))
 
+    # --------------------------------------------------------- 1.14: the overview's card "Schnell ein/aus"
+    def quick_switch(self, key, on):
+        """A tick box of the overview (overview.switches): the same setting as its box on the settings, overlay or
+        server page – that box's variable is set and its handler runs, so both stay in step and every side effect
+        (recorder/presence/Spotify/YouTube configured, the overlay re-placed, the netwatch helper started or
+        stopped) is the one the user knows. Nothing happens when the setting already has that value."""
+        on = bool(on)
+        sw = next((s for s in self._overview_switches() if s.key == key), None)
+        if sw is None or sw.on == on or not sw.enabled:
+            return
+        if key == "detect":
+            self.auto_var.set(on)
+            self._detect_flags_changed()
+        elif key == "rec":
+            self.rec_on_var.set(on)
+            self._rec_setting()
+        elif key == "notify":
+            self.notify_vars["lobby_notify"].set(on)
+            self._notify_flags_changed()
+        elif key == "conn":
+            self.conn_show_var.set(on)
+            self._conn_toggled()
+        elif key == "sysinfo":
+            from .app_sysinfo import HUD_SIDES
+            side = (getattr(self, "_sysinfo_last", "") or "right") if on else "off"   # back to where it was
+            self.sysinfo_var.set(_(dict(HUD_SIDES)[side]))
+            self._sysinfo_changed()
+        elif key == "today":
+            self.today_var.set(on)
+            self._look_flags_changed()
+        elif key == "media":
+            self.media_var.set(on)
+            self._look_flags_changed()
+        elif key == "discord":
+            self.dc_on_var.set(on)
+            self._discord_setting()
+        elif key == "spotify":
+            self.sp_on_var.set(on)
+            self._spotify_setting()
+        elif key == "youtube":
+            self.yt_on_var.set(on)
+            self._youtube_setting()
+        else:
+            return
+        self._log(_("{name} eingeschaltet.", name=sw.label) if on else _("{name} ausgeschaltet.", name=sw.label),
+                  "Overlay" if key in ("sysinfo", "today", "media") else "System")
+
+    def _overview_switches(self):
+        from .overview import switches
+        return switches(self)
+
     def _rec_setting(self, save=True):
         cfg = self._rec_cfg()
         if save:

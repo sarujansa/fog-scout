@@ -438,6 +438,38 @@ TIPS = {
     'Spiel': 'Nur der Ton von DBD im Sofort-Clip.',
     'Als Farming markieren': 'Markiert alle genannten Runden als Farming-Runden (und nicht mehr als Custom Game); ihre Aufnahmen wandern in den Ordner „Farming“. Einzeln zurück: „Farming an/aus“ unter „Letzte Runden“.',
     'Ignorieren': 'Diese Runden nicht mehr vorschlagen – sie bleiben, wie sie sind.',
+    # 1.14: the overview's card "Schnell ein/aus" (overview.switches)
+    "Automatische Erkennung":
+        "Erkennt die Map beim Match-Start am Banner und blendet die Karte ein. Aus: nur noch von Hand (Scannen, "
+        "Map wählen). Dasselbe Häkchen steht unter Einstellungen → Erkennung.",
+    "Aufnahmen mit OBS":
+        "OBS nimmt jede Runde auf: Start beim Map-Banner, Stopp beim Rundenende. Aus: keine neue Aufnahme und keine "
+        "F8-Clips – eine laufende Aufnahme endet normal mit der Runde. Alles Weitere unter Einstellungen → Aufnahmen.",
+    "Lobby-Meldung":
+        "Ton und Hinweisfenster, sobald DBD eine Lobby gefunden hat. Die Erinnerung beim Countdown und „nur wenn DBD "
+        "nicht vorne ist“ bleiben unter Einstellungen → Erkennung → Benachrichtigungen.",
+    "Spielserver anzeigen":
+        "Zeigt Region und Ping des verbundenen Spielservers – hier, im Overlay und in der Statistik. Einschalten "
+        "fragt Windows einmal nach Administratorrechten; gelesen werden nur Paketköpfe, nie Inhalte. Mehr im Tab "
+        "Server.",
+    "Systemwerte im Spiel":
+        "Die Karte mit CPU-/GPU-Temperatur, Last und Speicher im schwarzen Balken. Einschalten bringt sie an die "
+        "Position, an der sie zuletzt stand; Position und Zeilen unter Overlay → Systemwerte.",
+    "„Heute“ im Spiel":
+        "Die Karte „Heute“ im Spiel: Runden, Spielzeit, Ø Kills/Entkommen, Uhrzeit. Position unter Overlay → Heute.",
+    "Musik im Spiel":
+        "Die Musikkarte „Läuft gerade“ im Spiel (Titel, Interpret, Cover aus der Windows-Mediensteuerung). Position "
+        "und Aussehen unter Overlay → Musik.",
+    "Discord-Status":
+        "Rich Presence: Map, Rolle und Rundenzeit in deinem Discord-Status. Application-ID und Einzelheiten unter "
+        "Einstellungen → Verbindungen → Discord.",
+    "Spotify „Als nächstes“":
+        "Die Liste „Als nächstes“ aus Spotify in der Musikkarte. Client-ID und Anmeldung unter Einstellungen → "
+        "Verbindungen → Spotify.",
+    "YouTube-Upload":
+        "Neue Clips (F8, Editor) gehen von selbst auf YouTube. Aus: nichts Neues wird eingereiht – was schon in der "
+        "Warteschlange steht, lädt fertig; Runden lädst du weiter per Rechtsklick hoch. Einstellungen → "
+        "Verbindungen → YouTube.",
 }
 _PREFIX = [("Hintergrund entfernen", "Macht Dunkelblau (#282a42) und Graulila (#535781) der "
             "Community-Karten transparent, schneidet den gleichfarbigen Rand ab und bringt das Bild auf "

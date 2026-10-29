@@ -991,6 +991,9 @@ class SysInfo:
     def _sysinfo_changed(self):
         self._layout_mark()
         key = dict((_(label), k) for k, label in HUD_SIDES).get(self.sysinfo_var.get(), "off")
+        old = self.settings.get("sysinfo", "off")
+        if old != "off" and key == "off":
+            self._sysinfo_last = old           # 1.14: the overview's switch brings the card back to this side
         self.settings.set("sysinfo", key)
         self._save_soon()
         self._sysinfo_status()
