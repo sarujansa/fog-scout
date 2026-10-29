@@ -827,6 +827,63 @@ EN = {
     "Ordner öffnen": "Open folder",
     "Animiertes GIF: wird unverändert übernommen.": "Animated GIF: used unchanged.",
 
+    # ------------------------------------------------------------------ 1.14: overview card "Schnell ein/aus"
+    "Schnell ein/aus": "Quick on/off",
+    "Automatische Erkennung": "Automatic detection",
+    "Aufnahmen mit OBS": "Recordings with OBS",
+    "Lobby-Meldung": "Lobby notification",
+    "Spielserver anzeigen": "Show game server",
+    "Systemwerte im Spiel": "System values in game",
+    "„Heute“ im Spiel": "“Today” in game",
+    "Musik im Spiel": "Music in game",
+    "Discord-Status": "Discord status",
+    "Spotify „Als nächstes“": "Spotify “Up next”",
+    "YouTube-Upload": "YouTube upload",
+    "{name} eingeschaltet.": "{name} switched on.",
+    "{name} ausgeschaltet.": "{name} switched off.",
+    "Erkennt die Map beim Match-Start am Banner und blendet die Karte ein. Aus: nur noch von Hand (Scannen, "
+    "Map wählen). Dasselbe Häkchen steht unter Einstellungen → Erkennung.":
+        "Reads the map from the banner when the match starts and shows the map. Off: by hand only (scan, choose "
+        "map). The same box is under Settings → Detection.",
+    "OBS nimmt jede Runde auf: Start beim Map-Banner, Stopp beim Rundenende. Aus: keine neue Aufnahme und keine "
+    "F8-Clips – eine laufende Aufnahme endet normal mit der Runde. Alles Weitere unter Einstellungen → Aufnahmen.":
+        "OBS records every round: start at the map banner, stop at the end of the round. Off: no new recording and "
+        "no F8 clips – a running recording ends with the round as usual. Everything else under Settings → "
+        "Recordings.",
+    "Ton und Hinweisfenster, sobald DBD eine Lobby gefunden hat. Die Erinnerung beim Countdown und „nur wenn DBD "
+    "nicht vorne ist“ bleiben unter Einstellungen → Erkennung → Benachrichtigungen.":
+        "Sound and notification window as soon as DBD has found a lobby. The countdown reminder and “only while "
+        "DBD is not in front” stay under Settings → Detection → Notifications.",
+    "Zeigt Region und Ping des verbundenen Spielservers – hier, im Overlay und in der Statistik. Einschalten "
+    "fragt Windows einmal nach Administratorrechten; gelesen werden nur Paketköpfe, nie Inhalte. Mehr im Tab "
+    "Server.":
+        "Shows region and ping of the connected game server – here, in the overlay and in the statistics. "
+        "Switching it on asks Windows once for administrator rights; only packet headers are read, never "
+        "contents. More in the Server tab.",
+    "Die Karte mit CPU-/GPU-Temperatur, Last und Speicher im schwarzen Balken. Einschalten bringt sie an die "
+    "Position, an der sie zuletzt stand; Position und Zeilen unter Overlay → Systemwerte.":
+        "The card with CPU/GPU temperature, load and memory in the black bar. Switching it on puts it back where "
+        "it last stood; position and rows under Overlay → System values.",
+    "Die Karte „Heute“ im Spiel: Runden, Spielzeit, Ø Kills/Entkommen, Uhrzeit. Position unter Overlay → Heute.":
+        "The “Today” card in game: rounds, play time, avg kills/escaped, clock. Position under Overlay → Today.",
+    "Die Musikkarte „Läuft gerade“ im Spiel (Titel, Interpret, Cover aus der Windows-Mediensteuerung). Position "
+    "und Aussehen unter Overlay → Musik.":
+        "The “Now playing” music card in game (title, artist, cover from the Windows media controls). Position "
+        "and look under Overlay → Music.",
+    "Rich Presence: Map, Rolle und Rundenzeit in deinem Discord-Status. Application-ID und Einzelheiten unter "
+    "Einstellungen → Verbindungen → Discord.":
+        "Rich Presence: map, role and round time in your Discord status. Application ID and details under "
+        "Settings → Connections → Discord.",
+    "Die Liste „Als nächstes“ aus Spotify in der Musikkarte. Client-ID und Anmeldung unter Einstellungen → "
+    "Verbindungen → Spotify.":
+        "The “Up next” list from Spotify on the music card. Client ID and login under Settings → Connections → "
+        "Spotify.",
+    "Neue Clips (F8, Editor) gehen von selbst auf YouTube. Aus: nichts Neues wird eingereiht – was schon in der "
+    "Warteschlange steht, lädt fertig; Runden lädst du weiter per Rechtsklick hoch. Einstellungen → "
+    "Verbindungen → YouTube.":
+        "New clips (F8, editor) go to YouTube by themselves. Off: nothing new is queued – what is already in the "
+        "queue finishes; rounds are still uploaded by right-click. Settings → Connections → YouTube.",
+
     # ------------------------------------------------------------------ tooltips
     "Technische Optionen für die Fehlersuche ein- oder ausklappen.": "Show or hide technical options for troubleshooting.",
     "Klicken und die neue Tastenkombination drücken: Strg/Alt + Taste, oder eine Taste allein (F1–F12, Numpad, "
