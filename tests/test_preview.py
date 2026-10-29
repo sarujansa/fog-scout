@@ -72,6 +72,36 @@ def test_centre_guides_are_thin_lines_and_blacked_out_for_the_detection():
     assert img[:, 1719:1722].max() == 0 and img[719:722].max() == 0 and img[100, 100].min() == 200
 
 
+def test_every_look_blacks_out_our_windows_only_for_screen_pictures():
+    """1.13.1: one test for all looks (_mask_screen, before copied at seven places): nothing happens for a picture
+    from the window capture or a simulation, or while none of our windows is up; a screen picture with one of them
+    up is blacked out in place, and the map's box comes back for fills_bars."""
+    import numpy as np
+    from fogscout.worker import DetectionWorker
+    w = DetectionWorker.__new__(DetectionWorker)
+    w.overlay_rect = w.hud_rect = w.media_rect = w.today_rect = w.info_rect = w.toast_rect = None
+    w.guide_rects = ()
+    assert not w._own_windows()
+    img = np.full((200, 300, 3), 200, np.uint8)
+    assert w._mask_screen(img, True, 0, 0) is None and img.min() == 200          # nothing of ours is up
+    w.hud_rect = (1050, 2010, 40, 20)                                              # screen pixels, picture at 1000/2000
+    assert w._own_windows()
+    assert w._mask_screen(img, False, 1000, 2000) is None and img.min() == 200    # window capture: not in it
+    assert w._mask_screen(img, True, 1000, 2000) is None                          # no map: no box to ignore
+    assert img[10:30, 50:90].max() == 0 and img[31:, :].min() == 200 and img[:, 91:].min() == 200
+    w.overlay_rect = (1000, 2100, 100, 50)
+    assert w._mask_screen(img, True, 1000, 2000) == (0, 100, 100, 150)
+    assert img[100:150, 0:100].max() == 0
+    for name in ("media_rect", "today_rect", "info_rect", "toast_rect"):            # every own window counts
+        w2 = DetectionWorker.__new__(DetectionWorker)
+        w2.overlay_rect = w2.hud_rect = w2.media_rect = w2.today_rect = w2.info_rect = w2.toast_rect = None
+        w2.guide_rects = ()
+        setattr(w2, name, (0, 0, 10, 10))
+        assert w2._own_windows()
+    w2.guide_rects, w2.toast_rect = ((0, 0, 3, 100),), None
+    assert w2._own_windows()
+
+
 def test_onnxruntime_telemetry_is_off_before_it_is_loaded():
     """1.64.7: onnxruntime sends Microsoft telemetry (measured in the container: mobile.events.data.microsoft.com,
     4 tries in 40 s) unless ORT_DISABLE_TELEMETRY is set before it loads – the package sets it on import, so even
