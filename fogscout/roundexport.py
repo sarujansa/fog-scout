@@ -21,7 +21,8 @@ from .textnorm import fmt_duration
 COLUMNS = (("start", N_("Start")), ("end", N_("Ende")), ("duration", N_("Dauer")), ("map", N_("Map")),
            ("realm", N_("Realm")), ("role", N_("Rolle")), ("killer", N_("Killer")), ("kind", N_("Art")),
            ("wait", N_("Wartezeit")), ("region", N_("Region")), ("ping", N_("Ping (ms)")), ("kills", N_("Kills")),
-           ("escaped", N_("Entkommen")), ("bp", N_("Bloodpoints")), ("opponents", N_("Gegner")))
+           ("escaped", N_("Entkommen")), ("bp", N_("Bloodpoints")), ("opponents", N_("Gegner")),
+           ("balance", N_("BP-Stand")))         # 1.13: balance read in the lobby after the round
 DEFAULT_COLUMNS = ("start", "duration", "map", "role", "killer", "kills", "escaped", "bp")
 PRESETS = (("day", N_("Heute")), ("yesterday", N_("Gestern")), ("7d", N_("Letzte 7 Tage")),
            ("30d", N_("Letzte 30 Tage")), ("week", N_("Diese Woche")), ("month", N_("Dieser Monat")),
@@ -148,6 +149,8 @@ def cell(key: str, r, m, names: Names) -> str:
         return str(m.bp) if m is not None and m.bp else ""
     if key == "opponents":
         return ", ".join(sorted(official.opponent_names(m))) if m is not None else ""
+    if key == "balance":
+        return str(r.balance) if r.balance is not None else ""
     return ""
 
 

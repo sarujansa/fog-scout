@@ -12,10 +12,12 @@ from dataclasses import dataclass
 
 import cv2
 
+from . import bloodpoints
 from .capture import (IS_WIN, ImageSource, ScreenGrabber, cursor_state, find_game_window, foreground_root,
                       overlaps, windows_above)
 from .i18n import _
-from .detector import ROI, Accumulator, BannerReader, OutOfMatchWatcher, has_loading_bar, is_dark, letterbox_rows
+from .detector import (ROI, Accumulator, BannerReader, OutOfMatchWatcher, currency_box, has_loading_bar, is_dark,
+                       letterbox_rows)
 from .layout import MIN_VBAR
 from .lobby import LobbyReader, QueueTracker, corner_box, crossplay_box, crossplay_off, result_box
 from .matchstart import MatchStart
@@ -113,6 +115,7 @@ class DetectionWorker(threading.Thread):
         self.queue = QueueTracker()                          # lobby: search / waiting time / role
         self.match_start = MatchStart()                      # 1.6: end of the loading screen (recording start)
         self.lobby_info = "–"                                # last look at the lobby button (diagnosis)
+        self.bp_info = "–"                                   # 1.13: last look at the bloodpoint counter (diagnosis)
         self.banner_history = collections.deque(maxlen=20)  # every banner-like sighting and its outcome (diagnosis)
         self.role_misses = collections.deque(maxlen=5)      # 1.11.1: result screens without a role read (diagnosis)
         self._scanner = None
@@ -427,6 +430,9 @@ class DetectionWorker(threading.Thread):
                                     if view.crossplay_off is None and tick - self._globe_saved > GLOBE_SAVE_EVERY:
                                         self._globe_saved = tick    # 1.5.4 (user: farming not recognised): keep the
                                         self._save_globe(globe, view.button)   # unreadable crop for a look
+                                # 1.13: the bloodpoint counter top right – before and after a round (cap reached?)
+                                self._bp_look(grab, fw, fh, tick, origin, source is None and via["screen"],
+                                              out_of_match)
                             fit = "–" if view.fit is None else f"{view.fit:.1f}"
                             cross = {True: " · Crossplay aus", False: " · Crossplay an"}.get(view.crossplay_off, "")
                             self.lobby_info = (f"{view.button or '–'} ({fit}) "
@@ -598,6 +604,25 @@ class DetectionWorker(threading.Thread):
     def _status(self, text, last):
         if text != last:
             self.post("status", text=text)
+
+    def _bp_look(self, grab, fw, fh, tick, origin, from_screen, watcher):
+        """1.13: one reading of the currency bar top right while the lobby button is on screen – the bloodpoints
+        before and after a round (bloodpoints.py: unchanged after a counted round = the cap is reached). A small
+        grab of its own (the strip of ``currency_box``), our own windows blacked out first when it came from the
+        screen; the text of every look goes to the app, which confirms and compares. Only read, nothing else."""
+        box = currency_box(fw, fh)
+        img = grab(box)
+        if img is None:                                  # covered by another window: nothing of DBD to read
+            return
+        if from_screen and (self.overlay_rect or self.hud_rect or self.media_rect or self.today_rect
+                            or self.info_rect or self.guide_rects or self.toast_rect):
+            self._mask_overlay(img, origin[0] + box[0], origin[1] + box[1])
+        text = watcher.currency_text(img, fh)
+        value = bloodpoints.parse(text)
+        self.bp_info = (f"{time.strftime('%H:%M:%S', time.localtime(tick))} „{text}“ → "
+                        f"{bloodpoints.fmt(value) if value is not None else '–'}")
+        if text:
+            self.post("bloodpoints", value=value, text=text, t=tick)
 
     # ---------------------------------------------------------- full scan
     def _manual_scan(self, rec, grabber, source, window, wcap=None):

@@ -605,6 +605,19 @@ def _right_region(frame, x0, y0, y1, full_width=False):
     return frame[int(y0 * H):int(y1 * H), x_start:x_end]
 
 
+CURRENCY_X0, CURRENCY_Y1 = 0.62, 0.12      # the strip of the currency counters top right (bloodpoints, shards, cells)
+
+
+def currency_box(frame_w: int, frame_h: int):
+    """1.13: (x, y, w, h) of the currency bar top right in a window of this size – the same strip the round end
+    reads as "Lobby/Menü" (``_right_region(frame, CURRENCY_X0, 0.0, CURRENCY_Y1, full_width=True)``: lobby and
+    menus fill the bars of an ultrawide window, so it reaches the window edge). One small grab of its own for the
+    bloodpoint balance while the lobby button is on screen (bloodpoints.py)."""
+    vx, vw = viewport(frame_w, frame_h)
+    x0 = min(int(vx + CURRENCY_X0 * vw), int(frame_w - (1.0 - CURRENCY_X0) * vw))
+    return x0, 0, frame_w - x0, int(CURRENCY_Y1 * frame_h)
+
+
 BAR_FILLED = 0.6        # share of non-black pixels for a side bar to count as "picture"
 
 
@@ -814,11 +827,17 @@ class OutOfMatchWatcher:
                 best, text = fit, self.rec.text(p)
         return best, text
 
-    def _currency(self, img, frame_h):
-        """Number groups in the currency bar top right, e.g. „823“ „4 628“ „1 499 484“.
+    def currency_text(self, img, frame_h) -> str:
+        """1.13: the leftmost counter of the currency bar as text ("1 499 484" – the bloodpoints; shards and cells
+        follow to the right and are not read), "" without any; ``img`` = the strip of ``currency_box``."""
+        return self._currency(img, frame_h, first_only=True)[2]
+
+    def _currency(self, img, frame_h, first_only=False):
+        """Number groups in the currency bar top right, e.g. „1 499 484“ „4 628“ „823“.
 
         The counters sit on one row, separated by coloured icons, so every
         digit group is read on its own. Returns (groups with ≥ 3 digits, digits, text).
+        ``first_only`` (1.13): stop after the first digit group – the bloodpoints, a third of the OCR.
         """
         if img.size == 0:
             return 0, 0, ""
@@ -864,4 +883,6 @@ class OutOfMatchWatcher:
                     groups += 1
                     digits += n
                     texts.append(t)
+                    if first_only:
+                        return groups, digits, t
         return groups, digits, " | ".join(texts[:4])
