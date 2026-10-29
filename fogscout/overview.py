@@ -36,6 +36,15 @@ class Fact:
 
 
 @dataclass
+class Switch:
+    """1.14: one tick box of the card "Schnell ein/aus" – a setting the user wants off (or on) for a moment."""
+    key: str
+    label: str
+    on: bool
+    enabled: bool = True
+
+
+@dataclass
 class Overview:
     status_kind: str = "idle"                 # DOT style: ok | warn | err | info | idle
     status_text: str = ""
@@ -45,6 +54,7 @@ class Overview:
     thumb_rev: int = 0
     facts: list = field(default_factory=list)          # round time, server, ping, role
     actions: dict = field(default_factory=dict)        # name -> (enabled, label) / None = not shown
+    switches: list = field(default_factory=list)       # 1.14: Switch per feature the overview can flip
     note: str = ""                            # doubtful detection
     unknown: str = ""                         # banner without a known map
     today: list = field(default_factory=list)
@@ -124,6 +134,31 @@ def actions(app) -> dict:
         f = app._floor
         out["floor"] = (True, (_("Etage {n} von {total}", n=f + 1, total=len(floors)) if f is not None
                                else _("Beide Etagen")) + " ▸")
+    return out
+
+
+def switches(app) -> list:
+    """1.14 (user: "in der Übersicht Knöpfe … wo man schnell Sachen ausschalten kann (OBS-Aufnahmen etc.)"): the
+    card "Schnell ein/aus". Every entry is the same setting as its box on the settings/overlay/server page
+    (App.quick_switch flips that box); a connection shows up only once it is set up (client id), recordings once
+    OBS has a folder or is on – a switch that can do nothing useful is not shown (like actions())."""
+    st = app.settings
+    o = st.get("overlay") or {}
+    out = [Switch("detect", _("Automatische Erkennung"), bool(st.get("auto_detect", True)))]
+    if st.get("rec_on", False) or st.get("rec_folder"):
+        out.append(Switch("rec", _("Aufnahmen mit OBS"), bool(st.get("rec_on", False))))
+    out.append(Switch("notify", _("Lobby-Meldung"), bool(st.get("lobby_notify", True))))
+    out.append(Switch("conn", _("Spielserver anzeigen"), bool(st.get("show_connection", False)),
+                      enabled=not getattr(app, "_conn_busy", False)))      # Windows is asking for admin rights
+    out.append(Switch("sysinfo", _("Systemwerte im Spiel"), st.get("sysinfo", "off") != "off"))
+    out.append(Switch("today", _("„Heute“ im Spiel"), bool(o.get("show_today", True))))
+    out.append(Switch("media", _("Musik im Spiel"), bool(o.get("show_media", True))))
+    if st.get("discord_client_id"):
+        out.append(Switch("discord", _("Discord-Status"), bool(st.get("discord_on", False))))
+    if st.get("spotify_client_id"):
+        out.append(Switch("spotify", _("Spotify „Als nächstes“"), bool(st.get("spotify_on", False))))
+    if st.get("youtube_client_id"):
+        out.append(Switch("youtube", _("YouTube-Upload"), bool(st.get("youtube_on", False))))
     return out
 
 
@@ -373,6 +408,7 @@ def overview_model(app, now: float, is_win: bool) -> Overview:
     o.thumb_rev = getattr(app, "_thumb_rev", 0)
     o.facts = map_facts(app, now)
     o.actions = actions(app)
+    o.switches = switches(app)
     u = app._unsure
     if u and u.get("shown"):
         o.note = _("Unsicher erkannt: {map} (gelesen „{name}“)", map=u["label"], name=u["name"])

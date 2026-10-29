@@ -518,6 +518,9 @@ class QtShell:
             self._stats_render()
         elif action == "rec_setup":                  # 1.4.2: tile "Aufnahmen" without a folder/drive
             self._reveal_rec()
+        elif action == "switch":                     # 1.14: a tick box of the card "Schnell ein/aus"
+            key, on = arg
+            self.quick_switch(key, on)
         else:
             {"scan": self.scan_now, "rotate": self.rotate_map, "toggle": self.toggle_overlay,
              "power": self.toggle_overlay_master,
