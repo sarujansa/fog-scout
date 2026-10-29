@@ -355,6 +355,25 @@ def test_a_later_result_role_changes_only_the_role(tmp_path):
         h.set_result_role(path, 100, "custom")
 
 
+def test_a_later_balance_is_stored_with_the_round(tmp_path):
+    """1.13: the bloodpoint balance read in the lobby after the round – set after the round was saved; old lines
+    without it and odd values read as "not read"."""
+    path = str(tmp_path / "rounds.jsonl")
+    h.append(path, h.Round(100, 600, "a", "A", role="killer"))
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write('{"t": 200, "seconds": 600, "map_id": "a", "map": "A", "balance": "5000000"}\n')
+        fh.write('{"t": 300, "seconds": 600, "map_id": "a", "map": "A", "balance": true}\n')
+    assert [r.balance for r in h.load(path)] == [None, None, None]
+    assert h.set_balance(path, 100, 5000000).balance == 5000000
+    assert h.set_balance(path, 100, 5000000) is None and h.set_balance(path, 999, 1) is None
+    got = {r.t: r for r in h.load(path)}
+    assert (got[100].balance, got[100].role, got[200].balance) == (5000000, "killer", None)
+    with pytest.raises(ValueError):
+        h.set_balance(path, 100, -1)
+    with pytest.raises(ValueError):
+        h.set_balance(path, 100, True)
+
+
 def test_a_rounds_dropouts_are_stored_and_read_back(tmp_path):
     """1.11.9: stalls / stall_max per round; old lines without them and broken values read as not measured."""
     import json
