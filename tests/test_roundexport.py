@@ -76,7 +76,10 @@ def test_cells_table_csv_and_text():
     assert dict(zip(keys, row)) == {"start": "23.10.2026 18:32", "end": "23.10.2026 18:44", "duration": "12:34",
                                     "map": "Coal Tower", "realm": "MacMillan", "role": "Killer", "killer": "Nurse",
                                     "kind": "Normal", "wait": "01:23", "region": "Frankfurt", "ping": "47",
-                                    "kills": "1", "escaped": "", "bp": "31500", "opponents": "Dwight Fairfield, Meg Thomas"}
+                                    "kills": "1", "escaped": "", "bp": "31500", "opponents": "Dwight Fairfield, Meg Thomas",
+                                    "balance": ""}
+    r.balance = 5000000                                                                   # 1.13
+    assert rx.cell("balance", r, m, names) == "5000000"
     farm = _round(t0 + 900, 120, role="survivor", farming=True)
     surv = official.Match(t=t0 + 900 - 38, map="Coal Tower", role="survivor", status="Escaped")
     row2 = rx.table([farm], {id(farm): surv}, keys, names)[0]

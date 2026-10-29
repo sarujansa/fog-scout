@@ -135,6 +135,9 @@ def collect(app) -> str:
                      f"{getattr(q, 'cross_looks', None)}), letzte Lobby={getattr(q, 'found', None)}")
         lines.append(f"Matchbeginn (Aufnahme ab Ladebildschirm): {w.match_start.describe()}"
                      if getattr(w, "match_start", None) is not None else "Matchbeginn: –")
+        bp = getattr(app, "bloodpoints", None)               # 1.13: balance from the lobby, cap check
+        lines.append(f"Blutpunkte: {bp.describe() if bp is not None else '–'} · letzter Blick "
+                     f"{getattr(w, 'bp_info', '–')}")
         lines.append(f"Runde: {getattr(app, '_hist', None)} · Lobby der App: "
                      f"{ {k: v for k, v in getattr(app, '_queue', {}).items() if k != 'since'} }")
         seen = list(getattr(w, "banner_history", []))

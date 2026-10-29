@@ -33,6 +33,7 @@ class Round:
     sys: dict | None = None     # system values during the round (sysinfo.SysRecorder: averages and maxima)
     stalls: int | None = None   # 1.11.9: receive gaps ≥ netwatch.STALL_S from the game server (None: not measured)
     stall_max: float | None = None   # … the longest one in seconds
+    balance: int | None = None  # 1.13: bloodpoint balance read in the lobby after the round (bloodpoints.py), None: not read
 
 
 def should_record(seconds: float) -> bool:
@@ -165,7 +166,13 @@ def _round_line(line: str):
                  role=str(d.get("role") or "") if d.get("role") in ROLES else "",
                  custom=bool(d.get("custom")), farming=bool(d.get("farming")),
                  ping=float(d["ping"]) if isinstance(d.get("ping"), (int, float)) and d["ping"] >= 0 else None,
-                 killer=str(d.get("killer") or ""), sys=_sys(d.get("sys")), **_stalls(d))
+                 killer=str(d.get("killer") or ""), sys=_sys(d.get("sys")), **_stalls(d),
+                 balance=_balance(d.get("balance")))
+
+
+def _balance(v) -> int | None:
+    """1.13: the stored bloodpoint balance – a whole number ≥ 0, else None."""
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
 
 
 _LINES = jsonlcache.LineCache(_round_line)   # 1.11.10: a new round parses one line, not the whole file
@@ -395,6 +402,20 @@ def set_result_role(path: str, t: float, role: str):
     if hit is None or hit.role == role:
         return None
     hit.role = role
+    _rewrite(path, rounds, _lost_lines(path))
+    return hit
+
+
+def set_balance(path: str, t: float, balance: int):
+    """1.13: the bloodpoint balance read in the lobby after the round that started at ``t`` (it is saved at its
+    end, the lobby comes later). Returns the changed round, or None (no such round / already that value)."""
+    if not isinstance(balance, int) or isinstance(balance, bool) or balance < 0:
+        raise ValueError(balance)
+    rounds = load(path)
+    hit = next((r for r in rounds if abs(r.t - t) < 1e-6), None)
+    if hit is None or hit.balance == balance:
+        return None
+    hit.balance = balance
     _rewrite(path, rounds, _lost_lines(path))
     return hit
 

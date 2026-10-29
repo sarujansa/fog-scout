@@ -51,7 +51,9 @@ class SettingsTab:
         for key, label in (("lobby_notify", N_("Ton und Meldung, wenn eine Lobby gefunden wurde")),
                            ("lobby_remind", N_("Erinnern, wenn der Lobby-Countdown abläuft und READY noch nicht "
                                                "gedrückt ist")),
-                           ("notify_background_only", N_("Nur wenn DBD nicht das aktive Fenster ist"))):
+                           ("notify_background_only", N_("Nur wenn DBD nicht das aktive Fenster ist")),
+                           ("bp_cap_notify", N_("Melden, wenn eine Runde keine Blutpunkte gebracht hat (Cap "
+                                                "erreicht)"))):
             v = self.notify_vars[key] = ui.BooleanVar(value=bool(self.settings.get(key, True)))
             self._reg(f"st.{key}", ui.Checkbutton(nt, text=_(label), variable=v,
                                                    command=self._notify_flags_changed)).pack(anchor="w")

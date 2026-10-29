@@ -4,7 +4,9 @@ Mixin of App (app.py) – the methods use App's attributes; split out of app.py 
 from __future__ import annotations
 
 import logging
+import time
 
+from . import bloodpoints, history
 from .capture import IS_WIN, foreground_root, is_game_window
 from .i18n import _
 from .lobby import killer_label, resolve_killer
@@ -37,6 +39,34 @@ class LobbyInfo:
         # own window instead of a Windows notification: those are swallowed by "Do not disturb",
         # which Windows turns on by itself while a game runs
         self.toast.show(title, text)
+
+    # ---------------------------------------------------------- 1.13: bloodpoint balance (cap reached?)
+    def _bp_reading(self, d):
+        """A reading of the bloodpoint counter from the lobby (worker, once a second while the lobby button is on
+        screen). The watch confirms it; the first confirmed one after a counted round says what the round brought –
+        nothing: the cap is reached (log line, and sound + window unless switched off – also with DBD in front, that
+        is where the player is), else a log line. The balance after the round goes to the saved round."""
+        res = self.bloodpoints.note(d.get("value"), d.get("t") or time.time(), d.get("text") or "")
+        if res is None:
+            return
+        after = bloodpoints.fmt(res.after)
+        if res.capped:
+            self._log(_("Blutpunkte unverändert: {bp} vor und nach der Runde – das Cap ist erreicht, die Punkte "
+                        "dieser Runde sind verfallen.", bp=after), "Erkennung")
+            if self.settings.get("bp_cap_notify", True):
+                self._notify(_("Blutpunkte-Cap erreicht"),
+                             _("{bp} BP vor und nach der Runde – im Blutnetz ausgeben, sonst bringt auch die "
+                               "nächste Runde nichts.", bp=after), force=True)
+        elif res.gain > 0:
+            self._log(_("Blutpunkte: +{gain} in dieser Runde, Stand {bp}.", gain=bloodpoints.fmt(res.gain),
+                        bp=after), "Erkennung")
+        else:
+            self._log(_("Blutpunkte: Stand {bp} nach der Runde, vorher {before}.", bp=after,
+                        before=bloodpoints.fmt(res.before)), "Erkennung")
+        try:
+            history.set_balance(self._hist_path(), res.round_t, res.after)
+        except OSError as e:
+            self._report_once("history", f"{e}")
 
     # ---------------------------------------------------------- lobby: search, waiting time, role
     def _killer_of(self, name):
