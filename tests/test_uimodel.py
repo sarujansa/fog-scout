@@ -369,23 +369,48 @@ def test_quitting_ends_the_loop_although_the_window_refuses_to_close():
 
 
 def test_slow_callbacks_are_noted_for_the_diagnosis():
+    """1.13.1: the loop reads its own clock (``loop.clock``), here one that moves only inside the slow callback – the
+    test no longer sleeps, and a busy machine cannot make the fast callback look late (it did: the lambda fired
+    > 60 ms after its due time once in a loaded container)."""
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from fogscout import diagnose, qt_window
     from fogscout.mainloop import MainLoop
     loop = MainLoop(qt_window.application())
+    now = {"t": 1000.0}
+    loop.clock = lambda: now["t"]
 
     def slow():
-        time.sleep(0.05)
+        now["t"] += 0.05                                       # "took" 50 ms, however long it really takes
 
     loop.after(0, slow)
-    loop.after(0, lambda: None)                               # fast: not noted
+    loop.after(0, lambda: None)                               # fast, and only 50 ms "late" after slow: not noted
     loop.after(120, loop.quit)
     loop.mainloop()
     assert [s[1] for s in loop.slow] == ["test_slow_callbacks_are_noted_for_the_diagnosis.<locals>.slow"]
-    assert loop.slow[0][2] >= 45
+    assert loop.slow[0][2] == pytest.approx(50.0) and loop.slow[0][3] == 0.0
     text = "\n".join(diagnose.lag_lines(loop.slow))
     assert "Fenster-Hänger" in text and "slow" in text and " ms" in text
     assert diagnose.lag_lines([]) == ["Fenster-Hänger (≥ 30 ms): keine"]
+
+
+def test_a_late_callback_is_noted_with_how_late_it_was():
+    """A callback that ran quickly but long after its due time (the loop was busy elsewhere) is noted too – from
+    2 × SLOW_MS late; one just under is not. No timers: _fire with a due time on the injected clock."""
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from fogscout import mainloop, qt_window
+    loop = mainloop.MainLoop(qt_window.application())
+    now = {"t": 10.0}
+    loop.clock = lambda: now["t"]
+
+    def quick():
+        pass
+
+    loop._fire(None, quick, due=now["t"] - 0.050)                 # 50 ms late: under 2 × SLOW_MS
+    assert list(loop.slow) == []
+    loop._fire(None, quick, due=now["t"] - 0.064)                 # 64 ms late: noted, took 0 ms
+    assert [(s[1], round(s[2]), round(s[3])) for s in loop.slow] == \
+        [("test_a_late_callback_is_noted_with_how_late_it_was.<locals>.quick", 0, 64)]
+    assert 2 * mainloop.SLOW_MS == 60
 
 
 def test_the_longest_hangs_survive_a_flood_of_short_ones():

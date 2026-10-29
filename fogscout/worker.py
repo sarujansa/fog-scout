@@ -207,6 +207,12 @@ class DetectionWorker(threading.Thread):
         wcap_failed = None                # hwnd the window capture could not be started for
         wcap_told = False
         via = {"screen": True}            # last picture came from the screen (-> our overlay is in it)
+
+        def from_screen() -> bool:
+            """The last picture came from the screen – not the window capture, not a simulation – so our own
+            windows may be in it (1.13.1: one place for the test every look makes before _mask_screen)."""
+            return source is None and via["screen"]
+
         role_retry = None                 # 1.11.8: {"gen", "t", "due": [tick …], "crop", "text"} after a role-less end
         self.hidden_looks = 0
         self.scan_rate = 0.0                                 # 1.6.4: banner scans per second right now (diagnosis)
@@ -356,10 +362,9 @@ class DetectionWorker(threading.Thread):
                     if img is None:
                         sep = res = None                # covered by another window: nothing of DBD to read
                     else:
-                        if source is None and via["screen"] and (self.overlay_rect or self.hud_rect or self.media_rect or self.today_rect or self.info_rect or self.guide_rects or self.toast_rect):
-                            self._mask_overlay(img, origin[0] + box[0], origin[1] + box[1])
+                        self._mask_screen(img, from_screen(), origin[0] + box[0], origin[1] + box[1])
                         if not self.map_on_screen:
-                            self._vbar_strip(grab, fw, fh, tick, origin, lambda: source is None and via["screen"])
+                            self._vbar_strip(grab, fw, fh, tick, origin, from_screen)
                         boxed = self._letterboxed(fw, fh)
                         # 1.8.62: without a line, read at the banner's spot – not well into a round (game world)
                         mid = self.map_on_screen and tracker.in_trial and tick - trial_since >= MID_MATCH_AFTER
@@ -415,8 +420,7 @@ class DetectionWorker(threading.Thread):
                         cb = corner_box(fw, fh)
                         corner = grab(cb)
                         if corner is not None:
-                            if source is None and via["screen"] and (self.overlay_rect or self.hud_rect or self.media_rect or self.today_rect or self.info_rect or self.guide_rects or self.toast_rect):
-                                self._mask_overlay(corner, origin[0] + cb[0], origin[1] + cb[1])
+                            self._mask_screen(corner, from_screen(), origin[0] + cb[0], origin[1] + cb[1])
                             view = lobby_reader.read(corner, fw, fh)
                             if view.button is not None:
                                 lobby_button_t = tick
@@ -424,15 +428,13 @@ class DetectionWorker(threading.Thread):
                                 xb = crossplay_box(fw, fh)
                                 globe = grab(xb)
                                 if globe is not None:
-                                    if source is None and via["screen"] and (self.overlay_rect or self.hud_rect or self.media_rect or self.today_rect or self.info_rect or self.guide_rects or self.toast_rect):
-                                        self._mask_overlay(globe, origin[0] + xb[0], origin[1] + xb[1])
+                                    self._mask_screen(globe, from_screen(), origin[0] + xb[0], origin[1] + xb[1])
                                     view.crossplay_off = crossplay_off(globe, fw, fh)
                                     if view.crossplay_off is None and tick - self._globe_saved > GLOBE_SAVE_EVERY:
                                         self._globe_saved = tick    # 1.5.4 (user: farming not recognised): keep the
                                         self._save_globe(globe, view.button)   # unreadable crop for a look
                                 # 1.13: the bloodpoint counter top right – before and after a round (cap reached?)
-                                self._bp_look(grab, fw, fh, tick, origin, source is None and via["screen"],
-                                              out_of_match)
+                                self._bp_look(grab, fw, fh, tick, origin, from_screen(), out_of_match)
                             fit = "–" if view.fit is None else f"{view.fit:.1f}"
                             cross = {True: " · Crossplay aus", False: " · Crossplay an"}.get(view.crossplay_off, "")
                             self.lobby_info = (f"{view.button or '–'} ({fit}) "
@@ -454,8 +456,7 @@ class DetectionWorker(threading.Thread):
                     try:
                         look = grab((0, 0, fw, fh))
                         if look is not None:             # None: covered -> no look, nothing changes
-                            if source is None and via["screen"] and (self.overlay_rect or self.hud_rect or self.media_rect or self.today_rect or self.info_rect or self.guide_rects or self.toast_rect):
-                                self._mask_overlay(look, origin[0], origin[1])
+                            self._mask_screen(look, from_screen(), origin[0], origin[1])
                             bar, dark = has_loading_bar(look), is_dark(look)
                             if bar and dark:
                                 last_loading = tick
@@ -496,9 +497,7 @@ class DetectionWorker(threading.Thread):
                         try:
                             full = look = grab((0, 0, fw, fh))
                             if look is not None:                 # None: covered -> no observation, nothing changes
-                                ignore = None
-                                if source is None and via["screen"] and (self.overlay_rect or self.hud_rect or self.media_rect or self.today_rect or self.info_rect or self.guide_rects or self.toast_rect):
-                                    ignore = self._mask_overlay(look, origin[0], origin[1])   # in place: no 14 MB copy
+                                ignore = self._mask_screen(look, from_screen(), origin[0], origin[1])   # in place: no 14 MB copy
                                 obs = out_of_match.observe(look, ignore)
                                 self._note_vbars(look, fw, fh)
                         except Exception:
@@ -614,9 +613,7 @@ class DetectionWorker(threading.Thread):
         img = grab(box)
         if img is None:                                  # covered by another window: nothing of DBD to read
             return
-        if from_screen and (self.overlay_rect or self.hud_rect or self.media_rect or self.today_rect
-                            or self.info_rect or self.guide_rects or self.toast_rect):
-            self._mask_overlay(img, origin[0] + box[0], origin[1] + box[1])
+        self._mask_screen(img, from_screen, origin[0] + box[0], origin[1] + box[1])
         text = watcher.currency_text(img, fh)
         value = bloodpoints.parse(text)
         self.bp_info = (f"{time.strftime('%H:%M:%S', time.localtime(tick))} „{text}“ → "
@@ -672,14 +669,27 @@ class DetectionWorker(threading.Thread):
         strip = grab(box)
         if strip is None:
             return
-        if from_screen():
-            self._mask_overlay(strip, origin[0] + box[0], origin[1] + box[1])
+        self._mask_screen(strip, from_screen(), origin[0] + box[0], origin[1] + box[1])
         self._note_vbars(strip, fw, fh)
 
     def _letterboxed(self, fw, fh) -> bool:
         """The last whole-screen look (≤ ~1 s old) showed black bars above and below: a trial in a narrow window."""
         last = self._vbar_looks[-1] if self._vbar_looks else None
         return bool(last and last[2] == (fw, fh) and min(last[0], last[1]) >= MIN_VBAR)
+
+    def _own_windows(self) -> bool:
+        """Any of our own windows up (the UI sets their screen rectangles): a screen picture needs them blacked out."""
+        return bool(self.overlay_rect or self.hud_rect or self.media_rect or self.today_rect or self.info_rect
+                    or self.guide_rects or self.toast_rect)
+
+    def _mask_screen(self, img, from_screen: bool, left, top):
+        """1.13.1: the one test before every look – black out our own windows in ``img`` (picture of the screen
+        at ``left``/``top``) when it came from the screen and any of them is up. Returns what ``_mask_overlay``
+        returns (the map's box in picture coordinates, for ``fills_bars``), None when nothing was done. Before,
+        this condition stood copied at every look (seven times, each a chance to forget a window)."""
+        if not from_screen or not self._own_windows():
+            return None
+        return self._mask_overlay(img, left, top)
 
     def _mask_overlay(self, img, left, top):
         """Black out our own overlay in a screenshot (it is always on top and would
@@ -747,10 +757,7 @@ class DetectionWorker(threading.Thread):
         try:
             frame = grab((0, 0, fw, fh)) if grab is not None else None
             if frame is not None:
-                if source is None and via["screen"] and (self.overlay_rect or self.hud_rect or self.media_rect
-                                                         or self.today_rect or self.info_rect or self.guide_rects
-                                                         or self.toast_rect):
-                    self._mask_overlay(frame, origin[0], origin[1])
+                self._mask_screen(frame, source is None and via["screen"], origin[0], origin[1])
                 rx, ry, rw, rh = result_box(fw, fh)
                 crop = frame[ry:ry + rh, rx:rx + rw]
                 role = lobby_reader.result_role(crop)

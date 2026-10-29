@@ -39,11 +39,12 @@ class MainLoop:
         # (time, what, took ms, late ms) of slow or late callbacks – "Diagnose kopieren" shows them
         self.slow = collections.deque(maxlen=SLOW_KEPT)
         self.worst = []                     # the WORST_KEPT longest of them since the start, longest first
+        self.clock = time.perf_counter      # 1.13.1: the clock the lag measurement reads – tests feed their own
 
     def after(self, ms, fn):
         t = QTimer()
         t.setSingleShot(True)
-        due = time.perf_counter() + max(0, int(ms)) / 1000
+        due = self.clock() + max(0, int(ms)) / 1000
         t.timeout.connect(lambda: self._fire(t, fn, due))
         self._jobs.add(t)
         t.start(max(0, int(ms)))
@@ -65,7 +66,7 @@ class MainLoop:
 
     def _fire(self, t, fn, due=None):
         self._jobs.discard(t)
-        start = time.perf_counter()
+        start = self.clock()
         try:
             fn()
         except Exception:
@@ -74,7 +75,7 @@ class MainLoop:
             else:
                 traceback.print_exc()
         late = (start - due) * 1000 if due is not None else 0.0      # the loop was busy elsewhere (paint, Qt …)
-        self.note(_name(fn), (time.perf_counter() - start) * 1000, late)
+        self.note(_name(fn), (self.clock() - start) * 1000, late)
 
     def clipboard_set(self, text: str):
         QGuiApplication.clipboard().setText(text)
