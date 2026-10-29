@@ -1897,6 +1897,66 @@ def test_the_overview_lists_what_is_new_until_it_is_understood(qapp, keep):
     assert page.news_card.isHidden()
 
 
+def test_the_overview_offers_quick_switches_for_what_is_set_up():
+    """1.14 (user: "in der Übersicht Knöpfe … wo man schnell Sachen ausschalten kann (OBS-Aufnahmen etc.)"): one
+    tick box per feature with its current state; recordings only once OBS has a folder or is on, a connection
+    (Discord, Spotify, YouTube) only with a client id; the server switch waits while Windows asks for rights."""
+    app = fake_app()
+    sw = {s.key: s for s in overview.switches(app)}
+    assert list(sw) == ["detect", "notify", "conn", "sysinfo", "today", "media"]
+    assert sw["detect"].on and sw["notify"].on and not sw["conn"].on and not sw["sysinfo"].on
+    assert sw["today"].on and sw["media"].on and all(s.enabled for s in sw.values())
+    assert [s.label for s in sw.values()] == ["Automatische Erkennung", "Lobby-Meldung", "Spielserver anzeigen",
+                                              "Systemwerte im Spiel", "„Heute“ im Spiel", "Musik im Spiel"]
+    app.settings.update({"rec_folder": "D:\\Aufnahmen", "discord_client_id": "123", "spotify_client_id": "abc",
+                         "youtube_client_id": "x.apps.googleusercontent.com", "sysinfo": "right", "youtube_on": True,
+                         "overlay": {"show_today": False}})
+    app._conn_busy = True
+    sw = {s.key: s for s in overview.switches(app)}
+    assert list(sw) == ["detect", "rec", "notify", "conn", "sysinfo", "today", "media", "discord", "spotify",
+                        "youtube"]
+    assert not sw["rec"].on and not sw["conn"].enabled and sw["sysinfo"].on and not sw["today"].on
+    assert not sw["discord"].on and not sw["spotify"].on and sw["youtube"].on
+    app.settings["rec_folder"], app.settings["rec_on"] = "", True             # on without a folder: still shown
+    assert [s.key for s in overview.switches(app)][1] == "rec"
+    app.recorder = SimpleNamespace(space=SimpleNamespace(t=0))                 # the tile "Aufnahmen" reads it
+    o = overview.overview_model(app, time.time(), is_win=True)
+    assert [s.key for s in o.switches] == list(sw)
+
+
+def test_the_overview_shows_the_quick_switches_and_posts_only_a_click(qapp, keep):
+    """1.14: the card "Schnell ein/aus" – boxes with label, tooltip and state from the model; a click posts
+    ("switch", (key, on)); the model setting a box posts nothing; a feature no longer set up hides its box."""
+    from fogscout import qt_window
+    posted = queue.Queue()
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.put((a, arg))))
+    win.apply_theme(True, 1.0)
+    now = time.time()
+    app = fake_app(recorder=SimpleNamespace(space=SimpleNamespace(t=0)))
+    app.settings["rec_folder"] = "D:\\Aufnahmen"
+    win.show_model(overview.overview_model(app, now, is_win=True))
+    page = win.overview
+    assert not page.switch_card.isHidden()
+    shown = [w for w in page.switches if not w.isHidden()]
+    assert [w.text() for w in shown] == ["Automatische Erkennung", "Aufnahmen mit OBS", "Lobby-Meldung",
+                                         "Spielserver anzeigen", "Systemwerte im Spiel", "„Heute“ im Spiel",
+                                         "Musik im Spiel"]
+    assert shown[0].isChecked() and not shown[1].isChecked() and "OBS" in shown[1].toolTip()
+    shown[1].click()
+    assert posted.get_nowait() == ("switch", ("rec", True))
+    shown[0].click()
+    assert posted.get_nowait() == ("switch", ("detect", False))
+    app.settings.update({"rec_on": True, "auto_detect": False, "show_connection": False})
+    app._conn_busy = True
+    win.show_model(overview.overview_model(app, now, is_win=True))
+    assert shown[1].isChecked() and not shown[0].isChecked() and not shown[3].isEnabled() and posted.empty()
+    app.settings.update({"rec_on": False, "rec_folder": ""})
+    app._conn_busy = False
+    win.show_model(overview.overview_model(app, now, is_win=True))
+    assert [w.text() for w in page.switches if not w.isHidden()][1] == "Lobby-Meldung" and shown[3].isEnabled()
+    assert len(page.switches) == 7 and page.switches[6].isHidden()           # boxes by position: the last one rests
+
+
 def test_the_overview_compares_this_week_with_the_last_one(qapp, keep):
     """1.8.83 (UI review idea 6): a tile row "Diese Woche" – rounds, Ø kills, escapes, Ø wait and bloodpoints of
     Monday until now, each with last week's value and the change; hidden while neither week has a round."""

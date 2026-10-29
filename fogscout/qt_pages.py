@@ -153,6 +153,18 @@ class OverviewPage(QWidget):
         card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)    # without a picture: only as tall as its text
         page.addWidget(card)
 
+        # 1.14: "Schnell ein/aus" – one tick box per feature (overview.switches), made as the model names them
+        self.switch_card = _card()
+        swl = QVBoxLayout(self.switch_card)
+        swl.setContentsMargins(14, 12, 14, 12)
+        swl.setSpacing(8)
+        swl.addWidget(_label(_("Schnell ein/aus").upper(), "h2"))
+        self.switch_row = FlowRow(spacing=18)
+        swl.addLayout(self.switch_row)
+        self.switches = []
+        self.switch_card.setVisible(False)
+        page.addWidget(self.switch_card)
+
         # 1.8.79: what changed since the version last run (HISTORY.md rows), until "Verstanden"
         self.news_card = _card()
         self.news_lay = QVBoxLayout(self.news_card)
@@ -301,6 +313,7 @@ class OverviewPage(QWidget):
             if i < len(o.week):
                 box.show_fact(o.week[i])
             card.setVisible(i < len(o.week))
+        self._show_switches(getattr(o, "switches", None) or [])
         self._show_system(o)
         self._show_rounds(o.rounds)
         self._show_news(o)
@@ -308,6 +321,33 @@ class OverviewPage(QWidget):
         if days:
             self.days_chart.show_state({"data": days, "dark": getattr(o, "dark", True), "panels": ("killer",)})
         self.days_card.setVisible(bool(days))
+
+    def _show_switches(self, switches):
+        """The boxes follow the model: text, tooltip (by the German label, tooltip.TIPS), state – setChecked
+        does not emit clicked, so only the user's click posts ("switch", (key, on))."""
+        from .tooltip import tip_for_label
+        while len(self.switches) < len(switches):
+            w = WrapCheck()
+            w.key = ""
+            w.clicked.connect(lambda on, w=w: self._post("switch", (w.key, bool(on))))
+            self.switch_row.addWidget(w)
+            self.switches.append(w)
+        for i, w in enumerate(self.switches):
+            shown = i < len(switches)
+            if w.isHidden() == shown:
+                w.setVisible(shown)
+            if not shown:
+                continue
+            sw = switches[i]
+            w.key = sw.key
+            if w.text() != sw.label:
+                w.setText(sw.label)
+                w.setToolTip(tip_for_label(sw.label) or "")
+            if w.isChecked() != sw.on:
+                w.setChecked(sw.on)
+            if w.isEnabled() != sw.enabled:
+                w.setEnabled(sw.enabled)
+        self.switch_card.setVisible(bool(switches))
 
     def _show_news(self, o):
         while len(self.news_rows) < len(o.news):
