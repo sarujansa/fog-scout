@@ -230,6 +230,24 @@ EN = {
         "Notify again when the lobby countdown drops below 15 s and you have not pressed READY.",
     "Keine Meldung, solange DBD im Vordergrund ist – dann siehst du die Lobby ja selbst.":
         "No notification while DBD is in front – then you see the lobby yourself.",
+    # 1.13: bloodpoint cap
+    "Melden, wenn eine Runde keine Blutpunkte gebracht hat (Cap erreicht)":
+        "Notify when a round brought no bloodpoints (cap reached)",
+    "Fog Scout liest in der Lobby den Blutpunkte-Stand oben rechts. Ist er nach einer gezählten Runde derselbe wie "
+    "davor, ist das Cap erreicht (normal 5 Millionen, nach Tome-Belohnungen auch mehr) – die Punkte der Runde sind "
+    "verfallen. Ton und Meldung kommen auch, wenn DBD im Vordergrund ist; Custom Games zählen nicht.":
+        "Fog Scout reads the bloodpoint balance top right in the lobby. If it is the same after a counted round as "
+        "before, the cap is reached (normally 5 million, more after tome rewards) – the round's points are lost. "
+        "Sound and notification also come while DBD is in front; custom games do not count.",
+    "Blutpunkte unverändert: {bp} vor und nach der Runde – das Cap ist erreicht, die Punkte dieser Runde sind "
+    "verfallen.":
+        "Bloodpoints unchanged: {bp} before and after the round – the cap is reached, this round's points are lost.",
+    "Blutpunkte-Cap erreicht": "Bloodpoint cap reached",
+    "{bp} BP vor und nach der Runde – im Blutnetz ausgeben, sonst bringt auch die nächste Runde nichts.":
+        "{bp} BP before and after the round – spend them in the bloodweb, or the next round brings nothing either.",
+    "Blutpunkte: +{gain} in dieser Runde, Stand {bp}.": "Bloodpoints: +{gain} this round, balance {bp}.",
+    "Blutpunkte: Stand {bp} nach der Runde, vorher {before}.": "Bloodpoints: balance {bp} after the round, {before} before.",
+    "BP-Stand": "BP balance",
     "Rolle für {map} ({when}) auf {role} geändert.": "Role for {map} ({when}) changed to {role}.",
     "Rolle konnte nicht gespeichert werden: {error}": "Could not save the role: {error}",
     "Diese Runde als Killer-Runde zählen (falls die Erkennung falsch lag).":

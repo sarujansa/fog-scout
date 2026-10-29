@@ -16,6 +16,7 @@ from .capture import IS_WIN, find_game_window
 from .catalog import Catalog
 from .config import DEFAULTS as CONFIG_DEFAULTS, Settings
 from .toast import Toast
+from .bloodpoints import BloodpointWatch
 from .connwatch import ConnectionWatch, IdlePause
 from .official import OpenAfterGame
 from .i18n import N_, _
@@ -101,6 +102,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._off_told = set()           # files / statuses already reported in the log
         self.toast = Toast(self.root)
         self._queue = {"state": "idle"}  # lobby (worker "queue" events): search since / role / found lobby
+        self.bloodpoints = BloodpointWatch()   # 1.13: balance from the lobby, before/after a round (cap reached?)
         self.game = None
         self._game_checked = 0.0
         self._save_job = None
@@ -899,6 +901,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 self._unknown = (txt, d.get("realm_text") or "")
         elif k == "queue":
             self._queue_event(d)
+        elif k == "bloodpoints":                  # 1.13: a reading of the bloodpoint counter in the lobby
+            self._bp_reading(d)
         elif k == "match_start":                  # 1.6: end of the loading screen (recording from the spawn)
             self._match_started(d)
         elif k == "match_end":
