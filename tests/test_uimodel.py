@@ -1711,6 +1711,56 @@ def test_a_small_dbd_window_hides_the_overlay_and_the_round_still_counts(app_roo
         app.quit()
 
 
+def test_the_quick_switches_flip_the_same_boxes_as_the_settings_pages(app_root):
+    """1.14 (user: "in der Übersicht Knöpfe … wo man schnell Sachen ausschalten kann (OBS-Aufnahmen etc.)"): the
+    card "Schnell ein/aus" posts ("switch", (key, on)); the App sets the variable of the matching box on the
+    settings/overlay/server page and runs its handler, so setting, box and side effects agree; the system values
+    come back to the side they had; a switch at its value does nothing; what is not set up has no switch."""
+    from fogscout import overview
+    from fogscout.app import App
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        state = lambda: {s.key: s.on for s in overview.switches(app)}
+        assert list(state()) == ["detect", "notify", "conn", "sysinfo", "today", "media"]   # no OBS, Discord, …
+        n = len(app._log_entries)
+        app._qt_event("switch", ("detect", True))                             # already on: nothing, no log line
+        assert len(app._log_entries) == n and app.settings["auto_detect"] is True
+        app._qt_event("switch", ("detect", False))
+        assert app.settings["auto_detect"] is False and app.auto_var.get() is False and not state()["detect"]
+        assert app._log_entries[-1][1:] == ("System", "Automatische Erkennung ausgeschaltet.")
+        app._qt_event("switch", ("notify", False))
+        assert app.settings["lobby_notify"] is False and app.notify_vars["lobby_notify"].get() is False
+        assert app.settings["lobby_remind"] is True                           # the other boxes of the card stay
+        assert app.settings["sysinfo"] == "right"
+        app._qt_event("switch", ("sysinfo", False))
+        assert app.settings["sysinfo"] == "off" and app.sysinfo_var.get() == "Aus" and not state()["sysinfo"]
+        assert app._log_entries[-1][1:] == ("Overlay", "Systemwerte im Spiel ausgeschaltet.")
+        app._qt_event("switch", ("sysinfo", True))
+        assert app.settings["sysinfo"] == "right" and app.sysinfo_var.get() == "Rechts oben"    # back where it was
+        app._qt_event("switch", ("today", False))
+        app._qt_event("switch", ("media", False))
+        assert app.settings["overlay"]["show_today"] is False and app.settings["overlay"]["show_media"] is False
+        assert app.today_var.get() is False and app.media_var.get() is False
+        app._qt_event("switch", ("rec", True))                                # no switch without a folder: ignored
+        assert app.settings["rec_on"] is False
+        app.settings.set("rec_folder", str(app_root))
+        app.dc_id_var.set("123456789")                                        # typed on the settings page
+        assert list(state()) == ["detect", "rec", "notify", "conn", "sysinfo", "today", "media", "discord"]
+        app._qt_event("switch", ("rec", True))
+        assert app.settings["rec_on"] is True and app.rec_on_var.get() is True and state()["rec"]
+        assert app._log_entries[-1][2] == "Aufnahmen mit OBS eingeschaltet."
+        app._qt_event("switch", ("discord", True))
+        assert app.settings["discord_on"] is True and app.dc_on_var.get() is True and state()["discord"]
+        app._qt_event("switch", ("conn", False))                              # off already: no helper, no log line
+        assert app.settings["show_connection"] is False and app._log_entries[-1][2] != "Anzeige des Spielservers beendet."
+        app.qt.show_page("overview")                                          # the page draws the card
+        app._qt_refresh(force=True)
+        boxes = {w.key: w for w in app.qt.overview.switches if not w.isHidden()}
+        assert boxes["rec"].isChecked() and not boxes["detect"].isChecked() and boxes["discord"].toolTip()
+    finally:
+        app.quit()
+
+
 def test_the_master_switch_hides_every_overlay_window_and_detection_goes_on(app_root):
     """1.8.18 (user: "eine Einstellung, dass man das Overlay deaktiviert, evtl. im Overview"): a button on the
     overview and a box on the overlay page – off hides the map and every card, the detection keeps watching the
