@@ -67,11 +67,13 @@ log = logging.getLogger("fogscout")
 class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, SpotifyUpNext, YouTubeUpload, LobbyInfo,
           Hotkeys, SettingsTab,
           SysInfo, OverlayPlacement, LayoutMemory, OverlayTab, QtShell):
-    def __init__(self, root_dir: str, simulate: str | None = None, start_in_tray: bool = False):
+    def __init__(self, root_dir: str, simulate: str | None = None, start_in_tray: bool = False, progress=None):
         self.root_dir = root_dir
         self.simulate = simulate
+        self._progress = progress or (lambda fraction, text: None)     # 1.14.2: the splash screen's steps
         self.settings = Settings(os.path.join(root_dir, "settings.json"))
         i18n.set_language(self.settings.get("ui_language", "auto"))
+        self._progress(0.3, _("Lade Maps …"))
         self.catalog = Catalog(root_dir, self.settings["languages"], self.settings.get("user_aliases"))
         self._unknown = None             # (name text, realm text) of the last banner that matched no map
         self.events: queue.Queue = queue.Queue()
@@ -126,6 +128,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._conn_last = None
         self._conn_idle = IdlePause()    # capture paused while DBD is not running
 
+        self._progress(0.42, _("Bereite Overlay vor …"))
         self.overlay = make_overlay(self.root, prefer_native=self.settings["overlay"].get("native_window", True))
         self.overlay.edit_label = _("KARTE · Strg+Mausrad = Grösse")       # names on the edit frames (1.64.7)
         self.overlay.game_hwnd = lambda: self.game.hwnd if self.game else None
@@ -135,10 +138,12 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._layout_init()              # undo + one layout per DBD window size (1.65)
         self._hud_init()                 # system values at the top of a black bar (CPU/GPU temperature …)
 
+        self._progress(0.5, _("Baue Oberfläche …"))
         self._build_ui()
         self._apply_overlay_settings()
         self._style_warm()
 
+        self._progress(0.58, _("Starte Erkennung …"))
         self.worker = DetectionWorker(root_dir, self.settings, self.catalog, self.events, simulate=simulate)
         self.toast.on_rect = lambda r: setattr(self.worker, "toast_rect", r)    # 1.8.13: never read as the game
         self.worker.start()
@@ -161,6 +166,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         if not IS_WIN and not simulate:
             self._log(_("Kein Windows: Fenstersuche, Hotkeys und Click-Through sind nur unter Windows aktiv."), "System")
 
+        self._progress(0.72, _("Öffne Fenster …"))
         # notification area icon; "minimise" hides the window there
         from .tray import Tray
         self.tray = Tray(lambda action: self.events.put(("tray", action)))
@@ -171,6 +177,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         # only saying "läuft bereits"
         self._show_event = restart.show_event_create() if IS_WIN else None
         threading.Thread(target=self._setup_then_read_autostart, daemon=True, name="autostart").start()
+        self._progress(1.0, _("Fog Scout ist bereit."))
 
     # ================================================================== UI
     def _build_ui(self):
