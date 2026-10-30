@@ -1957,6 +1957,42 @@ def test_the_overview_shows_the_quick_switches_and_posts_only_a_click(qapp, keep
     assert len(page.switches) == 7 and page.switches[6].isHidden()           # boxes by position: the last one rests
 
 
+def test_the_splash_screen_shows_the_start_and_fades_away(qapp, keep, tmp_path):
+    """1.14.2 (user: "während dem Starten der App soll ein Ladebildschirm kommen, der sehr modern aussieht"): the
+    card takes the theme from settings.json before the App exists, shows the steps (the bar never runs backwards),
+    paints, and finish() fades it away once events are pumped; without a readable file: dark, gold."""
+    import json
+    from fogscout import qt_theme, splash
+    (tmp_path / "settings.json").write_text(json.dumps({"dark_mode": False, "color_theme": "blue"}), encoding="utf-8")
+    try:
+        assert splash.theme_from_file(str(tmp_path / "settings.json")) is False
+        assert qt_theme.colours(False)["accent"] == qt_theme.THEMES["blue"][1][False]["accent"]
+        assert splash.theme_from_file(str(tmp_path / "nope.json")) is True
+        assert qt_theme.colours(True)["accent"] == qt_theme.PALETTE[True]["accent"]
+        s = splash.start(str(tmp_path), "9.9")
+        assert s is not None
+        keep(s)
+        assert s.isVisible() and s.dark is False and 0 < s.fraction < 0.1 and s.text == "Wird gestartet …"
+        s.progress(0.5, "Lade Maps …")
+        assert s.fraction == 0.5 and s.text == "Lade Maps …"
+        s.progress(0.2, "zurück")                                        # the bar never runs backwards
+        assert s.fraction == 0.5 and s.text == "zurück"
+        s.progress("kaputt", "")
+        assert s.fraction == 0.5
+        pm = s.grab()
+        assert not pm.isNull() and pm.width() == splash.CARD_W + 2 * splash.MARGIN
+        s.finish()
+        assert s.fraction == 1.0
+        deadline = time.time() + 10
+        while s.isVisible() and time.time() < deadline:                 # the fade needs the event loop
+            qapp.processEvents()
+            time.sleep(0.01)
+        assert not s.isVisible()
+        s.finish()                                                       # a second call does nothing
+    finally:
+        qt_theme.set_theme("gold")
+
+
 def test_the_overview_compares_this_week_with_the_last_one(qapp, keep):
     """1.8.83 (UI review idea 6): a tile row "Diese Woche" – rounds, Ø kills, escapes, Ø wait and bloodpoints of
     Monday until now, each with last week's value and the change; hidden while neither week has a round."""

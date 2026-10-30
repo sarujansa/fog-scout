@@ -9,17 +9,16 @@ from __future__ import annotations
 
 import base64
 import collections
-import sys
 
 from PySide6.QtCore import QByteArray, QEvent, QModelIndex, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QFontDatabase, QIcon, QPalette, QPixmap, QStandardItem
+from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap, QStandardItem
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCompleter,
                                QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
                                QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget)
 
 from . import i18n, qt_theme
 from .i18n import N_, _
-from .mapimage import FONT as FIRA
+from .qt_app import FIRA, application          # 1.14.2: made before the heavy imports (splash)
 from .qt_common import (SLIDER_MAX, WheelGuard, guard_wheel, pixmap_from_pil, _label, _tip, _card, _set,
                         _scroll_page)
 from .qt_views import (FactBox, CHECKS, _check, Table, LogView, HotkeyButton, Chart, HEAT_RAMP, BAR_NEUTRAL,
@@ -43,6 +42,8 @@ __all__ = (
     '_card',
     '_set',
     '_scroll_page',
+    'FIRA',
+    'application',
     'FactBox',
     'CHECKS',
     '_check',
@@ -316,17 +317,6 @@ def page_keys(page: str | None = None) -> set:
         return {k for _t, items in SETUP for k in _spec_keys(items)}
     pages = [page] if page else list(SPECS) + ["setup"]
     return {k for p in pages for k in (page_keys("setup") if p == "setup" else _spec_keys(SPECS.get(p, ())))}
-
-
-def application() -> QApplication:
-    """The one QApplication of the process (main thread, before any widget)."""
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv[:1])
-        app.setStyle("Fusion")
-        app.setQuitOnLastWindowClosed(False)          # closing goes through the App (quit / tray)
-        QFontDatabase.addApplicationFont(FIRA)         # map names like on the map pictures
-    return app
 
 
 def nav_icon(key: str, colour: str, ratio: float = 1.0, alert: bool = False) -> QPixmap:
