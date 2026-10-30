@@ -9,20 +9,24 @@ SAMPLE = """# History
 |---|---|
 | `app.py` | Controller 1.8.2 (the version here is not a row version) |
 | Overlay-Elemente | Fünf Elemente, keine Version |
-| Maps-Seite und Start 1.8.72 (Auftrag: UI/UX prüfen) | Details … |
-| Farming-Gegner 1.8.73 (Nutzer: „Slasher 38×, das kommt safe vom Farmen“) | Details … |
+| Maps-Seite und Start 1.8.72 (Auftrag: UI/UX prüfen) – Die Maps-Seite lädt die Kacheln im Hintergrund. | Details … |
+| Farming-Gegner 1.8.73 (Nutzer: „Slasher 38× (safe vom Farmen)“) | Details … |
 | Rechtsklick Gegner 1.8.74 | Details … |
-| Navigation 1.8.78 (UI-Durchsicht Punkt 3: {long}) | Details … |
+| Navigation 1.8.78 (UI-Durchsicht Punkt 3) – {long} | Details … |
 """.replace("{long}", "x" * 400)
 
 
 def test_only_version_rows_are_entries_and_their_parts_are_split():
+    """1.14.1 (user: "warum wird hier der Prompt reingeschrieben?"): the detail is the sentence after the
+    background's parentheses, never the background itself (the user's request)."""
     rows = whatsnew.entries(SAMPLE)
     assert [r[0] for r in rows] == ["1.8.72", "1.8.73", "1.8.74", "1.8.78"]       # file and theme rows skipped
-    assert rows[0] == ("1.8.72", "Maps-Seite und Start", "Auftrag: UI/UX prüfen")
-    assert rows[1][2] == "Nutzer: „Slasher 38×, das kommt safe vom Farmen“"
-    assert rows[2] == ("1.8.74", "Rechtsklick Gegner", "")                       # no background in parentheses
+    assert rows[0] == ("1.8.72", "Maps-Seite und Start", "Die Maps-Seite lädt die Kacheln im Hintergrund.")
+    assert rows[1] == ("1.8.73", "Farming-Gegner", "")          # nested parentheses, no sentence: nothing shown
+    assert rows[2] == ("1.8.74", "Rechtsklick Gegner", "")      # no parentheses at all
     assert len(rows[3][2]) == whatsnew.DETAIL_CHARS and rows[3][2].endswith("…")   # cut, with an ellipsis
+    broken = whatsnew.entries("| Kaputt 1.8.80 (Klammer ohne Ende – Satz | Details … |")
+    assert broken == [("1.8.80", "Kaputt", "")]                  # unclosed parentheses: nothing rather than garbage
 
 
 def test_news_is_everything_after_the_version_last_run_newest_first():
@@ -50,4 +54,7 @@ def test_the_real_history_ends_with_the_current_version():
         rows = whatsnew.entries(fh.read())
     assert rows and rows[-1][0] == __version__ and rows[-1][1] and rows[-1][2]
     assert all(not r[1].startswith("`") for r in rows)
+    # 1.14.1: every version from 1.12 on tells the user in one sentence what is new (after the parentheses)
+    late = [r for r in rows if whatsnew.parse_version(r[0]) >= (1, 12)]
+    assert late and all(r[2] and "Nutzer" not in r[2][:8] for r in late), [r[0] for r in late if not r[2]]
     assert whatsnew.news(open(path, encoding="utf-8").read(), rows[-2][0]) == [rows[-1]]
