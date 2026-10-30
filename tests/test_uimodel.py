@@ -1711,6 +1711,21 @@ def test_a_small_dbd_window_hides_the_overlay_and_the_round_still_counts(app_roo
         app.quit()
 
 
+def test_the_app_reports_its_start_steps_for_the_splash_screen(app_root):
+    """1.14.2: App(progress=) hears every step of the start in rising order, the last one at 1.0 – the splash
+    screen's bar and line come from nothing else; without a callback nothing changes (the other tests)."""
+    from fogscout.app import App
+    steps = []
+    app = App(str(app_root), simulate=str(app_root / "sim"), progress=lambda f, t: steps.append((f, t)))
+    try:
+        fractions = [f for f, _t in steps]
+        assert fractions == sorted(fractions) and len(set(fractions)) == len(fractions) and fractions[-1] == 1.0
+        assert all(t for _f, t in steps) and steps[0][1] == "Lade Maps …" and steps[-1][1] == "Fog Scout ist bereit."
+        assert len(steps) >= 5
+    finally:
+        app.quit()
+
+
 def test_the_quick_switches_flip_the_same_boxes_as_the_settings_pages(app_root):
     """1.14 (user: "in der Übersicht Knöpfe … wo man schnell Sachen ausschalten kann (OBS-Aufnahmen etc.)"): the
     card "Schnell ein/aus" posts ("switch", (key, on)); the App sets the variable of the matching box on the
