@@ -2454,7 +2454,7 @@ def test_an_update_shows_what_is_new_once(app_root):
         assert app.settings["seen_version"] == __version__ and app._news == []
     finally:
         app.quit()
-    (app_root / "HISTORY.md").write_text("| A 1.0.1 (alt) | x |\n| B 1.0.2 (neu) | x |\n", encoding="utf-8")
+    (app_root / "HISTORY.md").write_text("| A 1.0.1 (alt) | x |\n| B 1.0.2 (Anlass) – neu | x |\n", encoding="utf-8")
     (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True, "seen_version": "1.0.1"}),
                                             encoding="utf-8")
     app = App(str(app_root), simulate=str(app_root / "sim"))
