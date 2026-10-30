@@ -1,8 +1,10 @@
 """What changed since the version last run (1.8.79): the rows of HISTORY.md after that version.
 
-Pure. HISTORY.md is a Markdown table whose version rows read "Title 1.8.78 (background …) | …" and are appended in
-order of release, so everything after the row of the version the user last ran is news. Rows whose first cell
-names a file (`app.py`) or a theme carry no version and are skipped. The overview shows the result once, until
+Pure. HISTORY.md is a Markdown table whose version rows read "Title 1.8.78 (background …) – one sentence for the
+user | …" and are appended in order of release, so everything after the row of the version the user last ran is
+news. The card shows the title and that sentence; the background in parentheses (the user's request, a review
+item) is never shown – until 1.14 it was, and the user read their own request there. Rows whose first cell names a
+file (`app.py`) or a theme carry no version and are skipped. The overview shows the result once, until
 "Verstanden" (App._news_seen)."""
 from __future__ import annotations
 
@@ -31,19 +33,31 @@ def entries(text: str) -> list:
         head = cells[1].strip() if len(cells) > 2 else ""
         if not head or head.startswith("`") or set(head) <= set("-: "):
             continue
-        title, _sep, detail = head.partition(" (")
+        title, _sep, rest = head.partition(" (")
         found = _VERSION.findall(title)
         if not found:
             continue
         version = found[-1]
         title = title[:title.rfind(version)].strip(" –-")
-        detail = detail.rstrip()
-        if detail.endswith(")"):
-            detail = detail[:-1].rstrip()
+        detail = _after_parentheses(rest) if _sep else ""
         if len(detail) > DETAIL_CHARS:
             detail = detail[:DETAIL_CHARS - 1].rstrip() + "…"
         out.append((version, title or version, detail))
     return out
+
+
+def _after_parentheses(rest: str) -> str:
+    """``rest`` begins inside the background's parentheses: the text after their closing one (the user's sentence),
+    without the dash that joins it. Nested parentheses in the background count; without a closing one: ""."""
+    depth = 1
+    for i, ch in enumerate(rest):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return rest[i + 1:].strip().lstrip("–-:").strip()
+    return ""
 
 
 def news(text: str, seen: str, limit: int = MAX_ROWS) -> list:
