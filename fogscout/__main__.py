@@ -7,7 +7,7 @@ import os
 import sys
 import traceback
 
-from . import i18n
+from . import __version__, i18n
 from .i18n import _
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -167,12 +167,21 @@ def main():
     _setup_logging()
     from .capture import enable_dpi_awareness
     enable_dpi_awareness()
+    splash = None
+    if not args.tray:                             # 1.14.2: the splash screen – not for the silent start in the tray
+        from .splash import start as splash_start
+        splash = splash_start(ROOT, __version__)
     try:
         from .app import App
-        app = App(ROOT, simulate=args.simulate, start_in_tray=args.tray)
+        app = App(ROOT, simulate=args.simulate, start_in_tray=args.tray,
+                  progress=splash.progress if splash is not None else None)
+        if splash is not None:
+            splash.finish()                       # fades while the window comes up (App.run pumps the events)
         app.exit_watchdog = True                  # a quit that hangs ends the process anyway
         app.run()
     except Exception:
+        if splash is not None:
+            splash.close()                        # never over the error message
         text = traceback.format_exc()
         logging.getLogger("fogscout").error(text)
         _message(_("Start fehlgeschlagen:") + "\n\n" + text[-1500:], error=True)

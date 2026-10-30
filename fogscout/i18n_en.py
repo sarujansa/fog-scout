@@ -827,6 +827,15 @@ EN = {
     "Ordner öffnen": "Open folder",
     "Animiertes GIF: wird unverändert übernommen.": "Animated GIF: used unchanged.",
 
+    # ------------------------------------------------------------------ 1.14.2: splash screen
+    "Wird gestartet …": "Starting …",
+    "Version {version}": "Version {version}",
+    "Lade Maps …": "Loading maps …",
+    "Bereite Overlay vor …": "Preparing the overlay …",
+    "Baue Oberfläche …": "Building the interface …",
+    "Starte Erkennung …": "Starting the detection …",
+    "Öffne Fenster …": "Opening the window …",
+    "Fog Scout ist bereit.": "Fog Scout is ready.",
     # ------------------------------------------------------------------ 1.14: overview card "Schnell ein/aus"
     "Schnell ein/aus": "Quick on/off",
     "Automatische Erkennung": "Automatic detection",
