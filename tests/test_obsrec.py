@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import queue
 import socket
 import struct
@@ -1269,32 +1270,76 @@ def test_f8_cuts_the_last_seconds_of_the_buffer_into_the_clips_folder(tmp_path, 
 def test_the_f8_clip_mixes_its_sources_from_the_buffer_files_tracks(tmp_path, monkeypatch):
     """1.8.6: with the four tracks in the buffer file the instant clip keeps the chosen sources – game + microphone
     mixed (sound re-encoded, picture copied), one source as a plain stream copy, none = no sound. 1.11.4 (user:
-    "es soll auch Discord-Sound etc. beinhalten in Clips"): by default every source the file carries."""
+    "es soll auch Discord-Sound etc. beinhalten in Clips"): by default every source the file carries. 1.14.4
+    (user: "die normalen Videos haben mehrere Tonspuren, nur die Clips nicht"): behind the mix – the clip's first
+    and only default track – the buffer's own tracks 2… follow as stream copies (the layout of a round's
+    recording), so the clip editor mixes a clip like a round; the copies are never re-encoded."""
+    def rest(cut):
+        return cut[cut.index("-map"):cut.index("-avoid_negative_ts")]
     posted, calls = _instant(tmp_path, monkeypatch, "ffmpeg", streams=5)
     cut = calls[-1]
     i = cut.index("-filter_complex")
     assert obsrec.DEFAULT_CLIP_SOURCES == obsrec.SOURCES
     assert cut[i + 1] == ("[0:a:1]volume=1.000[a0];[0:a:2]volume=1.000[a1];[0:a:3]volume=1.000[a2];"
                           "[0:a:4]volume=1.000[a3];[a0][a1][a2][a3]amix=inputs=4:normalize=0[aout]")
+    assert rest(cut) == ["-map", "0:v", "-map", "[aout]", "-map", "0:a:1", "-map", "0:a:2", "-map", "0:a:3",
+                         "-map", "0:a:4", "-c", "copy", "-c:a:0", "aac", "-b:a:0", "160k",
+                         "-disposition:a:1", "0", "-disposition:a:2", "0", "-disposition:a:3", "0",
+                         "-disposition:a:4", "0", "-disposition:a:0", "default"]
     posted, calls = _instant(tmp_path, monkeypatch, "ffmpeg", streams=4, clip_sources=("dbd", "mic"))
     cut = calls[-1]
     assert _drain(posted)[-1][1]["ok"] and calls[0][-2:] == ["-i", cut[cut.index("-i") + 1]]   # looked at the file
     i = cut.index("-filter_complex")
     assert cut[i + 1] == "[0:a:1]volume=1.000[a0];[0:a:3]volume=1.000[a1];[a0][a1]amix=inputs=2:normalize=0[aout]"
-    assert cut[i + 2:i + 10] == ["-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac"]
+    assert rest(cut) == ["-map", "0:v", "-map", "[aout]", "-map", "0:a:1", "-map", "0:a:2", "-map", "0:a:3",
+                         "-c", "copy", "-c:a:0", "aac", "-b:a:0", "160k", "-disposition:a:1", "0",
+                         "-disposition:a:2", "0", "-disposition:a:3", "0", "-disposition:a:0", "default"]
     posted, calls = _instant(tmp_path, monkeypatch, "ffmpeg", streams=4, clip_sources=("dbd",))
-    cut = calls[-1]
-    i = cut.index("-map")
-    assert cut[i:i + 6] == ["-map", "0:v", "-map", "0:a:1", "-c", "copy"]
+    cut = calls[-1]                                              # one source: a plain copy, then the tracks
+    assert "-filter_complex" not in cut
+    assert rest(cut) == ["-map", "0:v", "-map", "0:a:1", "-map", "0:a:1", "-map", "0:a:2", "-map", "0:a:3",
+                         "-c", "copy", "-disposition:a:1", "0", "-disposition:a:2", "0", "-disposition:a:3", "0",
+                         "-disposition:a:0", "default"]
     posted, calls = _instant(tmp_path, monkeypatch, "ffmpeg", streams=4, clip_sources=())
     cut = calls[-1]
-    assert cut[cut.index("-map"):][:3] == ["-map", "0:v", "-an"]
+    assert rest(cut) == ["-map", "0:v", "-an", "-c", "copy"]           # no source wanted: no sound at all
     posted, calls = _instant(tmp_path, monkeypatch, "ffmpeg", streams=2)         # 1.8.5 file: track 1 = everything
     cut = calls[-1]                                                                 # (Discord wanted since 1.11.4)
-    assert cut[cut.index("-map"):][:4] == ["-map", "0:v", "-map", "0:a:0"]
+    assert rest(cut) == ["-map", "0:v", "-map", "0:a:0", "-map", "0:a:1", "-c", "copy", "-disposition:a:1", "0",
+                         "-disposition:a:0", "default"]
     posted, calls = _instant(tmp_path, monkeypatch, "ffmpeg", streams=2, clip_sources=("dbd", "mic"))
     cut = calls[-1]                                                                 # all but Discord
-    assert cut[cut.index("-map"):][:4] == ["-map", "0:v", "-map", "0:a:1"]
+    assert rest(cut)[:4] == ["-map", "0:v", "-map", "0:a:1"]
+    assert obsrec.clip_sound_args(1, obsrec.SOURCES) == (["-map", "0"], ["-c", "copy"])
+
+
+@pytest.mark.skipif(obsrec.ffmpeg_exe() is None, reason="imageio-ffmpeg not installed")
+def test_the_f8_clip_keeps_the_buffers_tracks_behind_the_mix_with_real_ffmpeg(tmp_path):
+    """1.14.4: the real ffmpeg on a generated buffer file with five audio tracks: the clip carries the mix as its
+    first – and only default – audio track and the buffer's tracks 2–5 behind it as copies (same bitrate), the
+    picture copied; the clip editor reads the round layout from it (track_sources)."""
+    ff = obsrec.ffmpeg_exe()
+    src = str(tmp_path / "Replay 2026-10-31 20-00-00.mp4")
+    args = [ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=3:size=64x64:rate=10"]
+    for hz in (200, 300, 400, 500, 600):
+        args += ["-f", "lavfi", "-i", f"sine=frequency={hz}:duration=3"]
+    args += ["-map", "0:v"] + [a for k in range(1, 6) for a in ("-map", f"{k}:a")] + ["-c:v", "mpeg4", "-c:a", "aac", src]
+    rc, err = obsrec._run(args, timeout=120)
+    assert rc == 0, err
+    assert obsrec.audio_tracks(src, ff) == 5
+    maps, codec = obsrec.clip_sound_args(5, obsrec.SOURCES)
+    out = str(tmp_path / "clip.mp4")
+    rc, err = obsrec._run([ff, "-hide_banner", "-loglevel", "error", "-y", "-sseof", "-1", "-i", src, *maps, *codec,
+                           "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", out], timeout=120)
+    assert rc == 0, err
+    _rc, info = obsrec._run([ff, "-hide_banner", "-i", out], timeout=30)
+    audio = [m.group(0) for m in re.finditer(rb"Stream #0:\d+[^\n]*?: Audio:[^\n]*", info)]
+    assert len(audio) == 5 and obsrec.audio_tracks(out, ff) == 5
+    assert b"(default)" in audio[0] and not any(b"(default)" in a for a in audio[1:])
+    assert all(b" 69 kb/s" in a for a in audio[1:]) and b" 69 kb/s" not in audio[0]   # copies keep their bitrate
+    assert obsrec.track_sources(5) == {"dbd": 1, "discord": 2, "mic": 3, "other": 4}
+    d = obsrec.media_duration(out, ff)
+    assert d is not None and 0.8 <= d <= 2.3
 
 
 def test_without_ffmpeg_the_whole_buffer_becomes_the_clip(tmp_path, monkeypatch):
