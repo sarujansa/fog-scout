@@ -214,6 +214,7 @@ def test_no_element_lies_on_another_on_the_map_or_on_discords_overlay():
     bands = layout.bar_bands(o, game, 17)
     zones = layout.keep_out_boxes(o, game)
     voice, top = zones[0], zones[1]
+    slack = int(layout.SOFT_SLACK * H)
     side = layout.resolve([("d", (3000, 900, 400, 1000))], [(2800, 800, 220, 400)], game, None, 8)   # no room above/below
     assert side == {"d": (3028 - 3000, 0)}                                                         # → sideways in its bar
     assert bands["left"][1] <= int(voice[1]) - 17 and bands["right"][0] >= int(top[1] + top[3]) + 17
@@ -240,10 +241,49 @@ def test_no_element_lies_on_another_on_the_map_or_on_discords_overlay():
                     for n2, b2 in boxes[:i]:
                         if layout.boxes_overlap(b, b2):
                             bad.append((tpos, mpos, spot, n, n2))
-                    if n != "map" and any(layout.boxes_overlap(b, z) for z in zones):
-                        free = [z for z in zones if layout.boxes_overlap(b, z)]
+                    # (1.14.3: an area's edge may reach SOFT_SLACK into a card – such a graze moves nothing)
+                    if n != "map" and any(layout.boxes_overlap(b, z, -slack) for z in zones):
+                        free = [z for z in zones if layout.boxes_overlap(b, z, -slack)]
                         bad.append((tpos, mpos, spot, n, "zone", free))
     assert not bad, bad[:6]
+
+
+def test_an_area_grazing_a_card_no_longer_moves_it():
+    """1.14.3 (user's screenshot of the right bar: system values, a gap of 380 px, the music card shoved to the
+    screen's edge, "today" far below – "ich will einfach nicht, dass das so schlimm verschoben kommt"): Discord's
+    pinned-chat area ends at 88.4 % of the width, 41 px inside the right bar on 3440×1440 – every bar-wide card
+    (centred, 390 of 440 px) touched it by 16 px, and the resolver sent it past the whole area (today) or
+    sideways to the area's edge, flush with the screen (music). An area counts only once it reaches more than
+    layout.SOFT_SLACK into a card from both sides; a card well onto an area still moves off it."""
+    from fogscout import media, sysinfo
+    game = (0, 0, W, H)
+    zones = layout.keep_out_boxes(_o(keep_out_on=True), game)
+    chat = zones[2]
+    slack = int(layout.SOFT_SLACK * H)
+    assert 3000 < chat[0] + chat[2] < 3000 + slack                   # its edge inside the bar, within the slack
+    bands = {"right": (495, 1415)}                                   # the user's upper limiter line, the margin
+    stack = [("hud", (3025, 495, 390, 276)), ("today", (3025, 779, 390, 178)), ("music", (3025, 965, 390, 93))]
+    assert layout.resolve(stack, [None], game, bands, 8, soft=zones) == {}
+    # (before: {"today": (0, 373), "music": (23, 0)} – today below the area, music beside it at x 3048)
+    deep = [("today", (2900, 900, 300, 100))]                        # 141 px onto the chat area: off it, right above
+    assert layout.resolve(deep, [], game, None, 8, soft=zones) == {"today": (0, int(chat[1] - 8 - 100 - 900))}
+    # the whole chain of the user's set-up (style line, margin 1.8 %, system values 105 %, a long video title):
+    # the preview – the App's placement – stacks the three cards as configured, one column, a gap apart
+    o = _o(style="line", margin=0.018, hud_scale=1.05, keep_out_on=True, today_pos="below", media_pos="below",
+           bar_limits_on=True, bar_limits=[0.08, 0.08, 0.344, 0.0])
+    rows = [[("CPU ", sysinfo.DIM), ("69°C", sysinfo.WHITE)], [("GPU ", sysinfo.DIM), ("75°C", sysinfo.WHITE)],
+            [("VRAM ", sysinfo.DIM), ("5.5 / 12 GB", sysinfo.WHITE)]]
+    today = [[("HEUTE ", sysinfo.DIM), ("28 RUNDEN · 4:01:13", sysinfo.WHITE)],
+             [("UHR ", sysinfo.DIM), ("17:16", sysinfo.WHITE)]]
+    now = media.NowPlaying("1?torrent_name=Breaking.Bad.2008.S01E01.MULTi.2160p.SDR.NF.WEB-DL", "", True, 50.0,
+                           position=100.0, duration=100.0, at=50.0, kind="video")
+    music = (media.rows(now, 50.0, "", sysinfo.DIM, sysinfo.WHITE), None, (100, 100))
+    layers, _r = preview.layers(W, H, o, "right", rows, None, None, "", {}, 0.36, music, today)
+    boxes = {n: (x, y, img.width, img.height) for n, img, x, y in layers}
+    gap = layout.stack_gap(o, H)
+    assert boxes["today"][1] == boxes["hud"][1] + boxes["hud"][3] + gap, boxes
+    assert boxes["music"][1] == boxes["today"][1] + boxes["today"][3] + gap, boxes
+    assert boxes["hud"][0] == boxes["today"][0] == boxes["music"][0] and boxes["music"][0] + boxes["music"][2] < W - 10
 
 
 def test_characters_a_font_lacks_come_from_a_fallback_font():
