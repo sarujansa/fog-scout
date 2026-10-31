@@ -128,7 +128,8 @@ AUDIO_STREAM_RE = re.compile(rb"Stream #\d+:\d+[^\n]*?: Audio:")   # 1.8.5: one 
 # wirklich nur DBD aufnehmen und Hintergrundprogramme separat"): 5 = background – every other audio source of the
 # user's OBS (OBS puts a new source on all six tracks, so the game track carried Spotify, the browser …). Windows'
 # desktop sound holds DBD and Discord too (OBS has no "everything but"), so it goes on track 1 only.
-# The clip editor mixes them (audio_graph), F8 takes Config.clip_sources. OBS writes several tracks only in the
+# The clip editor mixes them (audio_graph), F8 takes Config.clip_sources for the clip's first track and keeps the
+# buffer's own tracks behind it (clip_sound_args, 1.14.4). OBS writes several tracks only in the
 # advanced output mode with the recording tracks ticked ([Output] Mode=Advanced, [AdvOut] RecTracks bit mask) –
 # we only read those values, never set them.
 SOURCES = ("dbd", "discord", "mic", "other")              # the mixable sources, in the order of tracks 2, 3, 4, 5
@@ -939,6 +940,27 @@ def audio_graph(n_tracks: int, mix, inp: int = 0, tag: str = "") -> tuple[str, s
         return chain.replace(f"[a0{tag}]", out), out
     chain += ";" + "".join(f"[a{k}{tag}]" for k in range(len(parts))) + f"amix=inputs={len(parts)}:normalize=0{out}"
     return chain, out
+
+
+def clip_sound_args(n_tracks: int, clip_sources) -> tuple[list, list]:
+    """(map arguments, codec arguments) of ffmpeg for the instant clip cut from a buffer file with ``n_tracks``
+    audio tracks (1.8.6, pure): the wanted ``clip_sources`` mixed from the file's own tracks (audio_graph) as the
+    clip's first audio track – what every player and Discord play –, a file without tracks as it is, no source =
+    no sound. 1.14.4 (user: "die normalen Videos haben mehrere Tonspuren, nur die Clips nicht"): the file's own
+    tracks 2… follow as stream copies in their order (track_sources: the layout of a round's recording), so the
+    clip editor mixes a clip like a round; only the first track is the default one (``-disposition``). The
+    picture is never re-encoded, the copies neither – only the mix, when it is one."""
+    if n_tracks < 2:
+        return ["-map", "0"], ["-c", "copy"]
+    flt, amap = audio_graph(n_tracks, {s: 1.0 for s in clip_sources})
+    if amap is None:
+        return ["-map", "0:v", "-an"], ["-c", "copy"]
+    maps = (["-filter_complex", flt] if flt else []) + ["-map", "0:v", "-map", amap]
+    codec = ["-c", "copy"] + (["-c:a:0", "aac", "-b:a:0", "160k"] if flt else [])
+    for i in range(1, n_tracks):
+        maps += ["-map", f"0:a:{i}"]
+        codec += [f"-disposition:a:{i}", "0"]
+    return maps, codec + ["-disposition:a:0", "default"]
 
 
 def audio_tracks(path: str, ffmpeg: str | None = None, run=None) -> int:
@@ -2283,17 +2305,10 @@ class Recorder(threading.Thread):
         return "" if value is None else str(value)
 
     def _clip_sound(self, src: str, ffmpeg: str) -> tuple[list, list]:
-        """1.8.6: ffmpeg's map and codec arguments for the instant clip – the sources of Config.clip_sources mixed
-        from the buffer file's own tracks (audio_graph); a file without them (one track) is taken as it is."""
-        n = audio_tracks(src, ffmpeg)
-        if n < 2:
-            return ["-map", "0"], ["-c", "copy"]
-        flt, amap = audio_graph(n, {s: 1.0 for s in self.cfg.clip_sources})
-        if amap is None:
-            return ["-map", "0:v", "-an"], ["-c", "copy"]
-        if flt:
-            return ["-filter_complex", flt, "-map", "0:v", "-map", amap], ["-c:v", "copy", "-c:a", "aac", "-b:a", "160k"]
-        return ["-map", "0:v", "-map", amap], ["-c", "copy"]
+        """1.8.6: ffmpeg's map and codec arguments for the instant clip (clip_sound_args) – the sources of
+        Config.clip_sources mixed from the buffer file's own tracks as the first track, the tracks themselves
+        behind it (1.14.4); a file without them (one track) is taken as it is."""
+        return clip_sound_args(audio_tracks(src, ffmpeg), self.cfg.clip_sources)
 
     # ---- 1.6: F8 instant clip
     def _instant_clip(self, meta):
