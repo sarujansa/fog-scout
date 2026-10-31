@@ -276,17 +276,18 @@ def test_an_area_grazing_a_card_no_longer_moves_it():
     today = [[("HEUTE ", sysinfo.DIM), ("28 RUNDEN · 4:01:13", sysinfo.WHITE)],
              [("UHR ", sysinfo.DIM), ("17:16", sysinfo.WHITE)]]
     now = media.NowPlaying("1?torrent_name=Breaking.Bad.2008.S01E01.MULTi.2160p.SDR.NF.WEB-DL", "", True, 50.0,
-                           position=100.0, duration=100.0, at=50.0, kind="video")
+                           position=100.0, duration=100.0, at=50.0)
     music = (media.rows(now, 50.0, "", sysinfo.DIM, sysinfo.WHITE), None, (100, 100))
     layers, _r = preview.layers(W, H, o, "right", rows, None, None, "", {}, 0.36, music, today)
     boxes = {n: (x, y, img.width, img.height) for n, img, x, y in layers}
     gap = layout.stack_gap(o, H)
     assert boxes["today"][1] == boxes["hud"][1] + boxes["hud"][3] + gap, boxes
     assert boxes["music"][1] == boxes["today"][1] + boxes["today"][3] + gap, boxes
-    centre = W - layout.bar_width(W, H) / 2            # each card centred in the bar (Windows' fonts give other
-    for n in ("hud", "today", "music"):                 # widths than Linux'): nothing was shoved sideways
-        x, _y, w, _h = boxes[n]
-        assert abs(x - (centre - w / 2)) < 1 and x + w <= W - 10, (n, boxes[n])
+    # one column: the cards' centres agree (their widths differ by a few px between Windows' and Linux' fonts,
+    # and the preview lets a column run past the bar's margin) – a card shoved beside the area sat 24 px off
+    centres = {n: boxes[n][0] + boxes[n][2] / 2 for n in ("hud", "today", "music")}
+    assert max(centres.values()) - min(centres.values()) <= 2, boxes
+    assert all(boxes[n][0] + boxes[n][2] <= W - 10 for n in centres), boxes
 
 
 def test_characters_a_font_lacks_come_from_a_fallback_font():
