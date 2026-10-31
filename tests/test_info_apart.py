@@ -283,7 +283,10 @@ def test_an_area_grazing_a_card_no_longer_moves_it():
     gap = layout.stack_gap(o, H)
     assert boxes["today"][1] == boxes["hud"][1] + boxes["hud"][3] + gap, boxes
     assert boxes["music"][1] == boxes["today"][1] + boxes["today"][3] + gap, boxes
-    assert boxes["hud"][0] == boxes["today"][0] == boxes["music"][0] and boxes["music"][0] + boxes["music"][2] < W - 10
+    centre = W - layout.bar_width(W, H) / 2            # each card centred in the bar (Windows' fonts give other
+    for n in ("hud", "today", "music"):                 # widths than Linux'): nothing was shoved sideways
+        x, _y, w, _h = boxes[n]
+        assert abs(x - (centre - w / 2)) < 1 and x + w <= W - 10, (n, boxes[n])
 
 
 def test_characters_a_font_lacks_come_from_a_fallback_font():
