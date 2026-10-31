@@ -455,6 +455,11 @@ def boxes_overlap(a, b, pad: int = 0) -> bool:
             a[1] < b[1] + b[3] + pad and b[1] < a[1] + a[3] + pad)
 
 
+SOFT_SLACK = 0.04     # 1.14.3: a keep-out area counts against an element only where it reaches further than this
+#                       share of the game height (58 px at 1440p) into it from both sides – the chat area's edge reaches
+#                       41–52 px into the right bar on 21:9 screens and sent every bar-wide card past the whole area
+
+
 def resolve(boxes, fixed, game, bands, gap: int, soft=()) -> dict:
     """1.8.25 (user: "alle UI-Elemente beachten, damit es immer sauber aussieht"): {name: (dx, dy)} so that no box
     lies on an earlier one or on a ``fixed`` box (the map). ``boxes`` = [(name, (x, y, w, h))] in priority order;
@@ -462,8 +467,11 @@ def resolve(boxes, fixed, game, bands, gap: int, soft=()) -> dict:
     screen) – without one, sideways within its bar (a narrow area reaching in from the game picture); with no
     free place at all it stays where it is. ``soft`` (1.8.29) = the keep-out areas (Discord): kept free when
     that leaves every element off the others – else ignored, so two cards never end up on each other because
-    a zone reaches a few pixels into the bar (bar-wide cards of one column did)."""
-    out = _resolve(boxes, list(fixed) + list(soft), game, bands, gap)
+    a zone reaches a few pixels into the bar (bar-wide cards of one column did). 1.14.3 (user: "ich will einfach
+    nicht, dass das so schlimm verschoben kommt"): a soft area counts only where it reaches more than
+    ``SOFT_SLACK`` into an element from both sides – its edge grazing a card (the chat area reaching 41 px into
+    the right bar) no longer sends the card past the area or sideways to the screen's edge."""
+    out = _resolve(boxes, fixed, game, bands, gap, soft, int(SOFT_SLACK * game[3]))
     if soft:
         final = [(x + out.get(n, (0, 0))[0], y + out.get(n, (0, 0))[1], w, h) for n, (x, y, w, h) in
                  ((n, b) for n, b in boxes if b)]
@@ -474,33 +482,37 @@ def resolve(boxes, fixed, game, bands, gap: int, soft=()) -> dict:
     return out
 
 
-def _resolve(boxes, fixed, game, bands, gap: int) -> dict:
+def _resolve(boxes, fixed, game, bands, gap: int, soft=(), slack: int = 0) -> dict:
     gx, gy, gw, gh = game
     bar = bar_width(gw, gh)
     placed = [tuple(f) for f in fixed if f]
+    zones = [tuple(z) for z in soft if z]
+
+    def taken(b) -> bool:                  # on a placed box, or deeper than ``slack`` into a keep-out area
+        return any(boxes_overlap(b, p) for p in placed) or any(boxes_overlap(b, z, -slack) for z in zones)
+
     out = {}
     for name, box in boxes:
         if not box:
             continue
         x, y, w, h = box
-        if any(boxes_overlap(box, p) for p in placed):
+        if taken(box):
             side = box_side(box, game)
             top, bottom = bands[side] if bands and side else (gy, gy + gh)
             left, right = ((gx, gx + bar) if side == "left" else (gx + gw - bar, gx + gw)) if side else (gx, gx + gw)
-            free = lambda b: not any(boxes_overlap(b, p) for p in placed)          # noqa: E731
             cands = {y}
-            for p in placed:
+            for p in placed + zones:
                 cands |= {p[1] + p[3] + gap, p[1] - gap - h}
             spot = next((c for c in sorted(cands, key=lambda c: (abs(c - y), c))
-                         if top <= c and c + h <= bottom and free((x, c, w, h))), None)
+                         if top <= c and c + h <= bottom and not taken((x, c, w, h))), None)
             if spot is not None:
                 y = spot
             else:
                 xs = set()
-                for p in placed:
+                for p in placed + zones:
                     xs |= {p[0] + p[2] + gap, p[0] - gap - w}
                 spot = next((c for c in sorted(xs, key=lambda c: (abs(c - x), c))
-                             if left <= c and c + w <= right and free((c, y, w, h))), None)
+                             if left <= c and c + w <= right and not taken((c, y, w, h))), None)
                 if spot is not None:
                     x = spot
         if (x, y) != tuple(box[:2]):

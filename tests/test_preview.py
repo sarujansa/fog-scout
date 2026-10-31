@@ -309,7 +309,8 @@ def test_the_preview_draws_the_cards_of_one_bar_at_one_width():
         for i, a in enumerate(names):
             for b in names[i + 1:]:
                 assert not layout.boxes_overlap(boxes[a], boxes[b]), (merged, a, b, boxes[a], boxes[b])
-    # the keep-out areas still count when there is room: a card dropped on one moves off it
-    shift = layout.resolve([("today", (3000, 900, 200, 100))], [], (0, 0, 3440, 1440), None, 8,
+    # the keep-out areas still count when there is room: a card dropped well onto one moves off it (1.14.3: an
+    # edge reaching less than SOFT_SLACK into the card is a graze and moves nothing)
+    shift = layout.resolve([("today", (2900, 900, 300, 100))], [], (0, 0, 3440, 1440), None, 8,
                            soft=[(2800, 806, 241, 339)])
     assert shift == {"today": (0, 698 - 900)}                      # the nearest free place: right above it
