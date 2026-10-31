@@ -427,7 +427,7 @@ TIPS = {
     "Speichern": "Bild umwandeln und speichern; die Karte wird sofort angezeigt.",
     "Abbrechen": "Schliessen, ohne etwas zu ändern.",
     "Aufnahme schon am Ladebildschirm starten": 'Das Map-Banner kommt erst einige Sekunden nach dem Spawn. Mit diesem Häkchen startet OBS schon, wenn der Ladebildschirm nach der Lobby endet – ohne Lobby, mit Spawn. Das Banner benennt die Aufnahme danach. Kommt 3 Minuten lang kein Banner, endet die Aufnahme und heisst „Unbekannte Map“.',
-    'F8 speichert die letzten Sekunden als Sofort-Clip': 'F8 sichert den Wiederholungspuffer von OBS und legt die letzten Sekunden als MP4 in den Ordner „Clips“ – ohne Neukodierung, in Sekunden. Der Wiederholungspuffer muss in OBS eingerichtet sein. Die Marke in der Rundenaufnahme setzt F8 weiterhin.',
+    'F8 speichert die letzten Sekunden als Sofort-Clip': 'F8 sichert den Wiederholungspuffer von OBS und legt die letzten Sekunden als MP4 in den Ordner „Clips“ – Bild ohne Neukodierung, in Sekunden. Spur 1 ist die unten gewählte Tonmischung (spielt überall), dahinter liegen die Einzelspuren des Puffers für den Clip-Editor. Der Wiederholungspuffer muss in OBS eingerichtet sein. Die Marke in der Rundenaufnahme setzt F8 weiterhin.',
     'Ton in OBS einstellen, sobald DBD startet:': 'Das Programm legt in der aktuellen OBS-Szene je eine Anwendungs-Audioaufnahme für DBD und Discord an (einmalig) und schaltet die Tonquellen wie gewählt stumm oder laut – beim Start von DBD und bei jeder Änderung hier, auch mitten in der Runde. Aufnehmen tut OBS, das Programm fasst DBD nicht an. Braucht OBS 28 oder neuer.',
     'DBD': 'Ton des Spiels in der Aufnahme.',
     'Discord': 'Ton von Discord (Sprachchat) in der Aufnahme bzw. im Sofort-Clip.',
