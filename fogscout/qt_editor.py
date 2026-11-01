@@ -163,6 +163,7 @@ class EditorWindow(ClipBase):
         self.resize(1480, 900)
         self.setMinimumSize(MIN_W, MIN_H)
         self.setObjectName("editor")
+        self.setAttribute(Qt.WA_DeleteOnClose)          # 1.16.1: the Qt side goes with the window (App prunes its list)
 
     # ---- set-up
     def _ready(self, ok: bool):
@@ -1531,7 +1532,10 @@ class EditorWindow(ClipBase):
 
     def closeEvent(self, e):
         self._layout_save()
-        if getattr(self, "library", None) is not None:
-            self.library.loader.stop()
+        lib = getattr(self, "library", None)
+        if lib is not None:
+            lib.loader.stop()
+            lib.model.thumbs.clear()
+            lib.model.set_items([])
         super().closeEvent(e)
 

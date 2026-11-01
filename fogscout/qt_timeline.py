@@ -8,7 +8,7 @@ All arithmetic on the parts is sequence.py (pure, tested); here is the painting 
 from __future__ import annotations
 
 from PySide6.QtCore import QMimeData, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import QApplication, QMenu, QSizePolicy, QWidget
 
 from . import clipedit, qt_theme, sequence
@@ -67,6 +67,7 @@ class SequenceTimeline(QWidget):
         self._drag = None             # see mousePressEvent
         self._drop_hover = False
         self._menu = None
+        self._layer = None            # 1.16.1: (key, QPixmap) of everything but the playhead – playback moves only that
         self.setMinimumHeight(RULER_H + V_H + A_H + GAP + 6)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMouseTracking(True)
@@ -225,11 +226,40 @@ class SequenceTimeline(QWidget):
         return "lane", None
 
     # ---- painting
+    def _layer_key(self) -> tuple:
+        return (self.width(), self.height(), round(self.scale, 6), round(self.offset, 6),
+                tuple((p.start, p.end, p.speed) for p in self.parts), self.selection, self.hover, len(self.thumbs),
+                len(self.wave), self.view, tuple(self.marks), self.dark, self.devicePixelRatioF())
+
     def paintEvent(self, e):
+        """1.16.1 (audit, measured 9.9 ms per repaint at 30 fps = a third of a core): the tracks, ruler and head
+        are drawn into a pixmap once per state and only blitted while just the playhead moves; a drag (trim, move,
+        drop) paints live as before."""
         c = qt_theme.colours(self.dark)
         cc = CLIP_COLOURS[bool(self.dark)]
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        live = (self._drag is not None and self._drag[0] in ("trim_start", "trim_end", "move")) or self._drop_hover
+        if live:
+            self._paint_tracks(p, c, cc)
+        else:
+            key = self._layer_key()
+            if self._layer is None or self._layer[0] != key:
+                ratio = self.devicePixelRatioF()
+                pm = QPixmap(int(self.width() * ratio), int(self.height() * ratio))
+                pm.setDevicePixelRatio(ratio)
+                pm.fill(Qt.transparent)
+                lp = QPainter(pm)
+                lp.setRenderHint(QPainter.Antialiasing)
+                self._paint_tracks(lp, c, cc)
+                lp.end()
+                self._layer = (key, pm)
+            p.drawPixmap(0, 0, self._layer[1])
+        p.setClipRect(QRectF(HEAD_W, 0, self._track_width(), self.height()))
+        self._paint_playhead(p, c)
+        p.end()
+
+    def _paint_tracks(self, p, c, cc):
         p.fillRect(self.rect(), QColor(c["panel"]))
         vr, ar = self._v_rect(), self._a_rect()
         for r in (vr, ar):
@@ -252,10 +282,8 @@ class SequenceTimeline(QWidget):
             p.setPen(pen)
             p.setBrush(Qt.NoBrush)
             p.drawRoundedRect(vr.adjusted(1, 1, -1, -1), 4, 4)
-        self._paint_playhead(p, c)
         p.setClipping(False)
         self._paint_head(p, c)
-        p.end()
 
     def _paint_head(self, p, c):
         """The track names at the left."""
@@ -555,6 +583,7 @@ class SequenceTimeline(QWidget):
             return
         t = self._t(e.pos().x())
         menu = QMenu(self)
+        menu.setAttribute(Qt.WA_DeleteOnClose)                   # 1.16.1: else every right click stays a child
         if kind in ("body", "edge_start", "edge_end") and i is not None:
             self.select(i)
             menu.addAction(_("Hier teilen")).triggered.connect(lambda _c=False: self.picked.emit("split", t, i))

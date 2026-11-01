@@ -86,7 +86,9 @@ class LayoutMemory:
         SIZE_SETTLE) loads its own layout, a size seen for the first time starts with the one in use."""
         if not hasattr(self, "anchor_var"):
             return
-        self._size_cap_tick()
+        q = getattr(self, "qt", None)                 # 1.16.1 (audit, 10–13 ms 4×/s): the slider's mark is for the
+        if q is None or (q.current_key() == "overlay" and q.isVisible()):   # overlay page – computed only there
+            self._size_cap_tick()
         scope = self._size_scope_text()
         if scope != self.size_scope_var.get():
             self.size_scope_var.set(scope)

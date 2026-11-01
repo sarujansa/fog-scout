@@ -140,6 +140,19 @@ def run_test(paths, languages):
                   f"'{res.realm_text}', Passung {res.name_fit:.1f}, {res.ms:.0f} ms)")
 
 
+def _log_thread_deaths():
+    """1.16.1 (audit): an exception that ends a thread goes to sys.stderr by default – under pythonw.exe that is
+    None and the traceback is thrown away (faulthandler only covers crashes of the C level). Into the log instead,
+    with the thread's name, so a dead recorder, uploader or player thread is at least visible there."""
+    import threading
+    logger = logging.getLogger("fogscout")
+
+    def hook(args):
+        logger.error("Thread %s beendet durch Ausnahme", getattr(args.thread, "name", "?"),
+                     exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+    threading.excepthook = hook
+
+
 def main():
     ap = argparse.ArgumentParser(prog="fogscout")
     ap.add_argument("--simulate", help="Screenshots statt Bildschirm verwenden (Datei oder Ordner)")
@@ -165,6 +178,7 @@ def main():
     if not _single_instance():
         return
     _setup_logging()
+    _log_thread_deaths()
     from .capture import enable_dpi_awareness
     enable_dpi_awareness()
     splash = None
