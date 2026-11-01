@@ -162,10 +162,10 @@ def test_the_clip_window_mixes_the_sound_only_with_the_tracks_for_it(clip, four_
     one-track recording only the hint."""
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6.QtWidgets import QApplication
-    from fogscout import qt_clip
+    from fogscout import qt_editor
     app = QApplication.instance() or QApplication([])
     settings = {}
-    win = qt_clip.ClipWindow(four_track, [], str(tmp_path / "Clips"), sound=False,
+    win = qt_editor.EditorWindow(four_track, [], str(tmp_path / "Clips"), sound=False,
                              mix_on={"discord": False}, mix_vol={"dbd": 120},
                              on_setting=lambda k, v: settings.__setitem__(k, v))
     try:
@@ -212,7 +212,7 @@ def test_the_clip_window_mixes_the_sound_only_with_the_tracks_for_it(clip, four_
         win.close()
         app.processEvents()
     assert clipedit.track_levels(clip, 1, FF) == {}                                  # one track: nothing to tell
-    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), sound=False)
+    win = qt_editor.EditorWindow(clip, [], str(tmp_path / "Clips"), sound=False)
     try:
         win.show()
         assert not win.mix_hint.isHidden() and win.mix_boxes["dbd"].isHidden() and win.mix() is None
@@ -251,7 +251,7 @@ def test_the_clip_window_shows_frames_cuts_at_the_marks_and_saves(clip, tmp_path
     app = QApplication.instance() or QApplication([])
     saved, settings, logs = [], {}, []
     clips = str(tmp_path / "Clips")
-    win = qt_clip.ClipWindow(clip, [8.0], clips, mode="copy", sound=False, on_saved=saved.append,
+    win = qt_clip.ClipWindow(clip, [8.0], clips, mode="copy", sound=False, on_saved=saved.append, compact=True,
                              on_setting=lambda k, v: settings.__setitem__(k, v), log=lambda t, k="System": logs.append((t, k)))
     try:
         win.show()
@@ -327,7 +327,7 @@ def test_the_clip_window_offers_discord_and_plays_just_the_clip(clip, tmp_path):
     app = QApplication.instance() or QApplication([])
     saved, settings = [], {}
     win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), mode="discord", sound=False, on_saved=saved.append,
-                             on_setting=lambda k, v: settings.__setitem__(k, v), target_mb=25)
+                             on_setting=lambda k, v: settings.__setitem__(k, v), target_mb=25, compact=True)
     try:
         win.show()
         assert win.mode_box.currentData() == "discord" and not win.target_box.isHidden()
@@ -416,12 +416,12 @@ def test_the_clip_window_censors_with_remembered_boxes(clip, tmp_path):
     from PySide6.QtCore import QPointF, Qt
     from PySide6.QtGui import QMouseEvent
     from PySide6.QtWidgets import QApplication
-    from fogscout import qt_clip
+    from fogscout import qt_clip, qt_editor
     app = QApplication.instance() or QApplication([])
     settings, saved = {}, []
-    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), mode="copy", sound=False, on_saved=saved.append,
-                             on_setting=lambda k, v: settings.__setitem__(k, v), censor_on=False,
-                             censor_boxes=[[0.5, 0.5, 0.2, 0.2]])
+    win = qt_editor.EditorWindow(clip, [], str(tmp_path / "Clips"), mode="copy", sound=False, on_saved=saved.append,
+                                 on_setting=lambda k, v: settings.__setitem__(k, v), censor_on=False,
+                                 censor_boxes=[[0.5, 0.5, 0.2, 0.2]])
     try:
         win.show()
         assert win.preview.boxes == [[0.5, 0.5, 0.2, 0.2]] and not win.preview.active
@@ -459,9 +459,10 @@ def test_the_clip_window_censors_with_remembered_boxes(clip, tmp_path):
         qt_clip.clipedit.cut = lambda *a, **k: (calls.append(k), real_cut(*a, **k))[1]
         try:
             win.goto(1.0)
-            win.set_start()
-            win.goto(2.0)
+            win.set_start()                                          # the clip begins at 1 s …
+            win.goto(1.0)                                            # … 2 s of the recording is 1 s in now
             win.set_end()
+            assert [(p.start, p.end) for p in win.parts] == [(1.0, 2.0)]
             win.save()
             deadline = time.time() + 30
             while time.time() < deadline and not saved:
@@ -545,7 +546,7 @@ def test_marking_a_recording_shows_the_compact_editor_beside_the_table(four_trac
         # 1.12.3 (audit): ffmpeg ran in the window's thread for every marked row – now in a thread, and only once
         assert len(probed) == 1 and probed[0] is not threading.main_thread()
         assert ed.mix_boxes["dbd"].isVisibleTo(ed) and not ed.mix_sliders["dbd"].isVisibleTo(ed)   # on/off only
-        assert ed.expand_btn is not None and not ed.open_btn.isVisibleTo(ed)
+        assert ed.expand_btn is not None and not hasattr(ed, "open_btn")      # the folder button: the tab has one
         app._rec_buttons()                                          # the same row again: the same editor
         assert host.content is ed
         ed.timeline.set_range(1.0, 3.0)
@@ -553,7 +554,7 @@ def test_marking_a_recording_shows_the_compact_editor_beside_the_table(four_trac
         ed.expand_btn.click()
         full = app._clip_windows[-1]
         assert full is not ed and full.isWindow() and not full.compact
-        assert (full.timeline.start, full.timeline.end) == (1.0, 3.0)
+        assert [(p.start, p.end) for p in full.parts] == [(1.0, 3.0)] and full.pos == pytest.approx(1.0)   # 1.16: one clip
         assert len(probed) == 1 and full.info == ed.info and full.info is not ed.info    # the kept probe, a copy
         full.close()
         app.rec_table.selection_remove(repr(t1))
@@ -576,7 +577,7 @@ def test_the_timeline_menu_sets_start_and_end_and_saves_a_still(clip, tmp_path):
     from fogscout import qt_clip
     app = QApplication.instance() or QApplication([])
     clips = str(tmp_path / "Clips")
-    win = qt_clip.ClipWindow(clip, [], clips, sound=False)
+    win = qt_clip.ClipWindow(clip, [], clips, sound=False, compact=True)
     try:
         win.show()
         tl = win.timeline
@@ -611,7 +612,8 @@ def test_a_source_obs_did_not_have_says_so_instead_of_silent(four_track, tmp_pat
     from PySide6.QtWidgets import QApplication
     from fogscout import qt_clip
     app = QApplication.instance() or QApplication([])
-    win = qt_clip.ClipWindow(four_track, [], str(tmp_path / "Clips"), sound=False, sources=["dbd", "discord"])
+    win = qt_clip.ClipWindow(four_track, [], str(tmp_path / "Clips"), sound=False, sources=["dbd", "discord"],
+                             compact=True)
     try:
         win.show()
         deadline = time.monotonic() + 20
@@ -639,7 +641,7 @@ def test_threads_never_touch_qt_and_a_closed_editor_ignores_them(clip, four_trac
     from fogscout import qt_clip, qt_window
     from fogscout.qt_pages import HostView
     app = qt_window.application()
-    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), sound=False)
+    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), sound=False, compact=True)
     assert not isinstance(win.bridge, QObject)                       # nothing Qt for the threads to hit
     seen = []
     win.bridge.handlers["levels"] = [lambda levels: seen.append((levels, threading.current_thread()))]
@@ -750,7 +752,7 @@ def test_marking_a_clip_shows_the_compact_editor_beside_the_clips_table(four_tra
         ed.expand_btn.click()
         full = app._clip_windows[-1]
         assert full is not ed and full.isWindow() and not full.compact
-        assert (full.timeline.start, full.timeline.end) == (1.0, 3.0)
+        assert [(p.start, p.end) for p in full.parts] == [(1.0, 3.0)]
         full.close()
         app.clip_table.selection_set(rows["still.png"])                   # a still: nothing to play
         app.clip_table.event_generate("<<TreeviewSelect>>")
@@ -774,7 +776,7 @@ def test_the_tempo_chain_and_the_parts_are_cleaned():
     assert clipedit.atempo(1.0) == "anull" and clipedit.atempo(2.0) == "atempo=2"
     assert clipedit.atempo(0.25) == "atempo=0.5,atempo=0.5" and clipedit.atempo(4.0) == "atempo=2,atempo=2"
     parts = clipedit.clean_parts([clipedit.Part(8, 9), clipedit.Part(1, 1.05), clipedit.Part(2, 30, 9.0)], 12)
-    assert [(p.start, p.end, p.speed) for p in parts] == [(2, 12, 4.0), (8, 9, 1.0)]
+    assert [(p.start, p.end, p.speed) for p in parts] == [(8, 9, 1.0), (2, 12, 4.0)]   # 1.16: the play order stays
     e = clipedit.Edit([clipedit.Part(0, 4, 2.0), clipedit.Part(6, 8)])
     assert e.seconds() == pytest.approx(4.0) and not e.simple()
     assert clipedit.Edit([clipedit.Part(0, 4)]).simple()
@@ -884,31 +886,30 @@ def test_a_gif_and_a_simple_edit(clip, tmp_path):
 
 
 def test_the_clip_window_saves_parts_with_tempo_a_crop_a_drawing_and_a_gif(clip, tmp_path):
-    """1.12 (user: "Bearbeitungstool top machen mit allen Funktionen"): parts with a tempo each, a 9:16 crop, an
-    arrow from the playhead on, fades – the window's plan becomes one mp4 of the right length; a GIF too."""
+    """1.12 (user: "Bearbeitungstool top machen mit allen Funktionen"), 1.16 on the timeline: two clips (the second
+    twice as fast), a 9:16 crop, an arrow from the playhead on, fades – the window's plan becomes one mp4 of the
+    right length; a GIF too."""
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6.QtWidgets import QApplication
-    from fogscout import annotate, qt_clip
+    from fogscout import annotate, qt_editor
     app = QApplication.instance() or QApplication([])
     saved = []
-    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), mode="copy", sound=False, on_saved=saved.append)
+    win = qt_editor.EditorWindow(clip, [], str(tmp_path / "Clips"), mode="copy", sound=False, on_saved=saved.append)
     try:
         win.show()
-        win.timeline.set_range(1.0, 3.0)
-        win.add_part()
-        win.timeline.set_range(5.0, 9.0)
-        win.add_part()
-        assert [(p.start, p.end) for p in win._parts] == [(1.0, 3.0), (5.0, 9.0)]
-        assert win.timeline.parts == [(1.0, 3.0), (5.0, 9.0)] and "2 Abschnitte" in win.parts_hint.text()
-        win.part_list.setCurrentRow(1)
-        assert (win.timeline.start, win.timeline.end) == (5.0, 9.0)
+        win.parts = [clipedit.Part(1.0, 3.0), clipedit.Part(5.0, 9.0)]
+        win.timeline.set_parts(win.parts)
+        win._commit()
+        assert [(p.start, p.end) for p in win.parts] == [(1.0, 3.0), (5.0, 9.0)]
+        assert "2 Clip(s)" in win.seq_label.text() and win.timeline.total() == pytest.approx(6.0)
+        win.timeline.select(1)
         win.speed_box.setCurrentIndex(win.speed_box.findData(2.0))
-        assert win._parts[1].speed == 2.0 and win.edit_plan().seconds() == pytest.approx(4.0)
+        assert win.parts[1].speed == 2.0 and win.edit_plan().seconds() == pytest.approx(4.0)
         win.crop_box.setCurrentIndex(win.crop_box.findData("9:16"))
-        assert win.preview.crop is not None and win.preview.crop_edit
-        win.tools.setCurrentIndex(3)                                     # leaving the picture tab ends the crop tool
-        assert not win.preview.crop_edit
-        win.goto(1.5)
+        assert win.preview.crop is not None and win.preview.crop_edit and win.mode == "crop"
+        win.mode_btns["draw"].setChecked(True)                           # another tool ends the crop tool
+        assert not win.preview.crop_edit and win.mode == "draw"
+        win.goto(0.5)                                                    # 1.5 s of the recording
         win.draw_when_box.setCurrentIndex(win.draw_when_box.findData(1.0))
         win.preview._new_shape(annotate.Shape("arrow", [(0.4, 0.3), (0.5, 0.6)]))
         shape = win.preview.shapes[0]
@@ -1269,7 +1270,9 @@ def test_many_parts_share_a_few_inputs_and_still_show_the_right_moments(clip, tm
         depth = max(sum(q.start <= p.start < q.end for q in parts) for p in parts)
         assert len(got) <= max(clipedit.MAX_INPUTS, depth)
         for start, end, idx in got:
-            assert idx == sorted(idx) and start == parts[idx[0]].start and end == max(parts[i].end for i in idx)
+            # 1.16: the parts come in play order – inside an input they are ordered by their place in the recording
+            assert idx == sorted(idx, key=lambda i: (parts[i].start, parts[i].end))
+            assert start == parts[idx[0]].start and end == max(parts[i].end for i in idx)
             assert all(parts[a].end <= parts[b].start + 1e-6 for a, b in zip(idx, idx[1:]))   # never overlapping
     seen = []
     parts = [P(0.5 + 1.4 * i, 1.5 + 1.4 * i) for i in range(8)]              # 8 scenes of 1 s, 0.4 s apart
@@ -1395,3 +1398,58 @@ def test_a_finished_clip_is_renamed_again_when_the_drive_holds_it_for_a_moment(c
     ok, why = clipedit.cut(clip, 1, 2, out, "copy", FF)
     assert not ok and "another process" in why
     assert not os.path.exists(out) and not os.path.exists(out + clipedit.PART_EXT)
+
+
+# ------------------------------------------------------------------ 1.16: the timeline's needs
+def test_parts_keep_their_play_order_and_still_share_inputs(clip, tmp_path):
+    """1.16 (the editor's timeline: clips can be moved): a part from later in the recording may play first. The
+    inputs are grouped by where the parts lie in the recording; the concat follows the play order."""
+    later_first = [clipedit.Part(8, 10), clipedit.Part(1, 3)]
+    assert clipedit.part_inputs(later_first) == [(1, 10, [1, 0])]           # one input, both parts from it
+    info = clipedit.Info(12, 320, 180, 30, 1)
+    g, _v, _a, _e = clipedit.edit_graph(clipedit.Edit(later_first), info)
+    assert "[sv0]trim=start=7.000:end=9.000[vt0]" in g and "[sv1]trim=start=0.000:end=2.000[vt1]" in g
+    assert "[v0][a0][v1][a1]concat=n=2" in g                                # part 0 (8–10 s) plays first
+    out = str(tmp_path / "reordered.mp4")
+    ok, why = clipedit.export(clip, clipedit.Edit(later_first), out, "exact", FF)
+    assert ok, why
+    assert clipedit.probe(out, FF).duration == pytest.approx(4.0, abs=0.3)
+
+
+def test_the_waveform_follows_the_sound_and_the_preview_sound_takes_tempo_and_volume(clip, tmp_path):
+    wave = clipedit.waveform(clip, 12.0, FF)
+    assert 12 * clipedit.WAVE_PER_S - 2 <= len(wave) <= 12 * clipedit.WAVE_PER_S + 2
+    assert max(wave) == pytest.approx(1.0, abs=0.05) and min(wave) >= 0.0       # a steady sine: all loud
+    assert clipedit.waveform(str(tmp_path / "missing.mkv"), 12.0, FF) == []
+    wav = clipedit.sound_wav(clip, 1.0, 3.0, FF, speed=2.0)
+    assert wav is not None
+    try:
+        assert 1.0 * 44100 * 4 * 0.8 < os.path.getsize(wav) < 1.0 * 44100 * 4 * 1.2 + 100   # half as long at ×2
+    finally:
+        os.remove(wav)
+    assert clipedit.sound_wav(clip, 1.0, 3.0, FF, volume=0.0) is None
+    quiet = clipedit.sound_wav(clip, 1.0, 2.0, FF, volume=0.25)
+    loud = clipedit.sound_wav(clip, 1.0, 2.0, FF)
+    try:
+        import wave
+        import numpy as np
+
+        def peak(path):
+            with wave.open(path, "rb") as w:                          # ffmpeg's WAV has a LIST chunk: not 44 bytes
+                return np.abs(np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32)).max()
+        assert peak(quiet) == pytest.approx(peak(loud) * 0.25, rel=0.1)
+    finally:
+        os.remove(quiet)
+        os.remove(loud)
+
+
+def test_the_frame_player_runs_faster_at_a_higher_tempo(clip):
+    info = clipedit.probe(clip, FF)
+    seen, ended = [], threading.Event()
+    pl = clipedit.FramePlayer(clip, 0.0, info, lambda t, img: seen.append((t, time.monotonic())), ended.set, end=2.0,
+                              ffmpeg=FF, speed=4.0)
+    t0 = time.monotonic()
+    pl.start()
+    assert ended.wait(20)
+    assert seen and seen[-1][0] >= 1.5
+    assert time.monotonic() - t0 < 1.8                                      # 2 s of source in about half a second

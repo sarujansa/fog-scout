@@ -851,15 +851,8 @@ class RecordingsTab:
             return
         win = self._clip_window(clip_round(c, obsrec.load_index(self.recorder.folder())), path)
         if at is not None and win.info.ok:
-            start, end, pos = at
-            win.timeline.set_range(start, end)
-            win._show_range()
-            win.goto(pos)
-        self._clip_windows_prune()
-        self._clip_windows.append(win)
-        win.show()
-        win.raise_()
-        win.activateWindow()
+            win.take_over(*at)
+        self._editor_show(win)
 
     def _clip_editable(self, c, quiet=False):
         """1.11.4: the path of clip ``c`` if the editor can open it (a video that is there, ffmpeg installed), else
@@ -1136,15 +1129,72 @@ class RecordingsTab:
             return
         win = self._clip_window(r, path)
         if at is not None and win.info.ok:
-            start, end, pos = at
-            win.timeline.set_range(start, end)
-            win._show_range()
-            win.goto(pos)
+            win.take_over(*at)
+        self._editor_show(win)
+
+    def _editor_show(self, win, replacing=None):
+        """An editor window goes up (1.16: ``replacing`` = the editor it takes the place of – same geometry, that
+        one closes)."""
+        if replacing is not None:
+            try:
+                win.setGeometry(replacing.geometry())
+                maxed = replacing.isMaximized()
+            except RuntimeError:
+                maxed = False
+            replacing.close()
+            if maxed:
+                win.showMaximized()
         self._clip_windows_prune()
         self._clip_windows.append(win)
         win.show()
         win.raise_()
         win.activateWindow()
+
+    def _media_items(self) -> list:
+        """1.16: the editor's library – every recording and every video clip of the recordings folder."""
+        from .medialib import MediaItem
+        folder = self.recorder.folder()
+        if not folder:
+            return []
+        out = []
+        recs = obsrec.load_index(folder)
+        for r in recs:
+            path = self._rec_path(r)
+            if not path:
+                continue
+            seconds = max(0.0, (r.end - r.t) if r.end else 0.0) + max(0.0, r.pre_s or 0.0)
+            who = self._rec_role(r, None)
+            name = (r.label or os.path.splitext(r.file)[0]) + (f" · {who}" if who and who != "–" else "")
+            out.append(MediaItem(path, name, "round", r.t, seconds, r.size, list(r.marks or ()),
+                                 (r.extra or {}).get("sources"), r.label, r.role, r.killer, r.t))
+        cdir = obsrec.clips_dir(folder)
+        for c in obsrec.list_clips(cdir, recs):
+            if c.kind == "still" or os.path.splitext(c.file)[1].lower() == ".gif":
+                continue
+            out.append(MediaItem(os.path.join(cdir, c.file), os.path.splitext(c.file)[0], "clip", c.t, c.seconds,
+                                 c.size, [], None, c.label, c.role, c.killer, c.source))
+        return out
+
+    def _editor_open(self, item, replacing=None):
+        """1.16: a row of the editor's library (double click, drop on the timeline): that recording, clip or
+        imported file in an editor – in place of ``replacing`` when given."""
+        folder = self.recorder.folder()
+        recs = obsrec.load_index(folder) if folder else []
+        r = None
+        if item.kind == "round":
+            r = next((x for x in recs if x.t == item.round_t), None)
+        elif item.kind == "clip":
+            c = next((x for x in obsrec.list_clips(obsrec.clips_dir(folder), recs) if
+                      os.path.normcase(os.path.join(obsrec.clips_dir(folder), x.file)) == os.path.normcase(item.path)), None)
+            r = clip_round(c, recs) if c is not None else None
+        if r is None:                                              # an imported file: no round behind it
+            r = SimpleNamespace(t=0.0, marks=list(item.marks or ()), extra={}, map_id="", label=item.name, role="",
+                                killer="", farming=False)
+        if not os.path.exists(item.path) or obsrec.ffmpeg_exe() is None:
+            self._log(_("Aufnahme fehlt: {file}", file=os.path.basename(item.path)), "Fehler")
+            return
+        win = self._clip_window(r, item.path)
+        self._editor_show(win, replacing)
 
     def _rec_editable(self, r, quiet=False):
         """The path of recording ``r`` if a clip can be made of it, else None (logged unless ``quiet``)."""
@@ -1163,10 +1213,18 @@ class RecordingsTab:
         return path
 
     def _clip_window(self, r, path, **extra):
+        """The compact editor (``compact=True``, beside a table) or, 1.16, the full editor window
+        (qt_editor.EditorWindow) for recording ``r`` at ``path``."""
         from .clipedit import CLIPS_DIR
-        from .qt_clip import ClipWindow
-        win = ClipWindow(path, r.marks, os.path.join(self.recorder.folder(), CLIPS_DIR),   # one "Clips" for all
-                         mode=str(self.settings.get("clip_mode", "copy")), sound=bool(self.settings.get("clip_sound", True)),
+        if extra.pop("compact", False):
+            from .qt_clip import ClipWindow as Window
+        else:
+            from .qt_editor import EditorWindow as Window
+            extra.update(media=self._media_items, on_open=self._editor_open,
+                         cache_dir=os.path.join(self.root_dir, "cache", "clipthumbs"),
+                         layout=self.settings.get("editor_layout") or {})
+        win = Window(path, r.marks, os.path.join(self.recorder.folder(), CLIPS_DIR),   # one "Clips" for all
+                     mode=str(self.settings.get("clip_mode", "copy")), sound=bool(self.settings.get("clip_sound", True)),
                          on_setting=self.settings.set, log=self._log,
                          dark=bool(self.settings.get("dark_mode", True)),
                          qss=getattr(self.qt, "_qss", "") if self.qt is not None else "",

@@ -586,3 +586,53 @@ def test_the_recording_card_text_follows_obs_state():
     warn = rec_card_text(dict(rec, output_skipped=20, output_total=1000, render_skipped=1, render_total=1000))[2]
     assert "lässt Bilder aus (20 von 1000" in warn and "Rendern" not in warn   # 0.1 % rendering: no warning
     assert "Rendern (50 von 1000" in rec_card_text(dict(rec, render_skipped=50, render_total=1000))[2]
+
+
+def test_the_app_opens_the_new_editor_with_a_library_and_replaces_a_pristine_one(app_root, tmp_path, monkeypatch):
+    """1.16: „Clip bearbeiten …“ opens qt_editor.EditorWindow; its library lists the folder's recordings and video
+    clips (no stills, no GIFs) with marks, length and the round's name; a row opened from the library replaces the
+    window while nothing was cut in it, else comes beside it; the compact editor's hand-over lands as one clip."""
+    import subprocess
+    import time
+    from fogscout import obsrec
+    from fogscout.qt_editor import EditorWindow
+    FF = obsrec.ffmpeg_exe()
+    if FF is None:
+        pytest.skip("imageio-ffmpeg not installed")
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    folder = app.recorder.folder()
+    t = time.mktime((2026, 10, 17, 21, 40, 0, 0, 0, -1))
+    try:
+        rec = os.path.join(folder, "2026-10-17 21-40 Coal Tower – Nurse.mkv")
+        subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "testsrc=duration=4:size=320x180:rate=30", "-c:v", "libx264", "-preset", "veryfast",
+                        "-pix_fmt", "yuv420p", rec], check=True, timeout=120)
+        clip_mp4 = os.path.join(folder, obsrec.CLIPS_DIR, "clip.mp4")
+        subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "testsrc=duration=2:size=320x180:rate=30", "-c:v", "libx264", "-preset", "veryfast",
+                        "-pix_fmt", "yuv420p", clip_mp4], check=True, timeout=120)
+        obsrec.save_index(folder, [obsrec.Recording(t=t, file=os.path.basename(rec), label="Coal Tower", role="killer",
+                                                    killer="nurse", end=t + 4, size=1000, marks=[1.5])])
+        items = app._media_items()
+        kinds = sorted((it.kind, os.path.basename(it.path)) for it in items)
+        assert kinds == [("clip", "clip.mp4"), ("round", os.path.basename(rec))]
+        rnd = next(it for it in items if it.kind == "round")
+        assert rnd.marks == [1.5] and rnd.seconds == pytest.approx(4.0) and rnd.round_t == t and "Coal Tower" in rnd.name
+        app._rec_render(force=True)
+        app.rec_table.selection_set(app.rec_table.get_children()[0])
+        app._rec_clip(at=(1.0, 3.0, 2.0))
+        win = app._clip_windows[-1]
+        assert isinstance(win, EditorWindow) and win.path == rec
+        assert [(p.start, p.end) for p in win.parts] == [(1.0, 3.0)] and win.pos == pytest.approx(1.0)
+        assert win.library.model.rowCount() == 2 and win.library.model.current == os.path.normcase(os.path.abspath(rec))
+        clip_item = next(it for it in items if it.kind == "clip")
+        win._open_media(clip_item)                                      # cut here (the hand-over): a second window
+        assert len(app._clip_windows) == 2 and app._clip_windows[-1].path == clip_item.path
+        second = app._clip_windows[-1]
+        second._open_media(rnd)                                         # pristine: replaced
+        app._rec_tab_tick()
+        assert second not in app._clip_windows and app._clip_windows[-1].path == rec
+        for w in list(app._clip_windows):
+            w.close()
+    finally:
+        app.quit()
