@@ -12,7 +12,7 @@ import threading
 import time
 from types import SimpleNamespace
 
-from . import history, obsrec, steamshots, uimodel as ui
+from . import encoders, history, obsrec, steamshots, uimodel as ui
 from .app_stats import STATS_PERIODS
 from .capture import IS_WIN
 from .i18n import N_, _
@@ -48,6 +48,75 @@ def fmt_bytes(n: float) -> str:
     return f"{n / 1024:.0f} KB"
 
 
+def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: float | None = None,
+                  last_clip=None) -> tuple[str, str, str]:
+    """1.15 (pure): the recording card's three lines from the last ``obs_status`` event ``d`` (obsrec.Recorder._poll;
+    None = none yet) – (state, values, warning). ``extra_s`` = seconds since that event while recording (the clock
+    runs on between two polls), ``clip_s`` = the F8 clip length (warned about when OBS's buffer is shorter),
+    ``last_clip`` = (file name, time) of the last F8 clip."""
+    now = time.time() if now is None else now
+    if not d:
+        return _("Warte auf OBS …"), "", ""
+    if not d.get("connected"):
+        why = d.get("error") or ""
+        return _("OBS nicht erreichbar"), (_("OBS starten, WebSocket-Server einschalten, Port/Passwort prüfen (Einstellungen → "
+                                              "Aufnahmen → Verbindung testen). {why}", why=why).strip()), ""
+    rec, paused = bool(d.get("recording")), bool(d.get("paused"))
+    secs = float(d.get("seconds") or 0.0) + (extra_s if rec and not paused else 0.0)
+    if rec:
+        bits = [("⏸ " + _("Pausiert")) if paused else ("● " + _("Nimmt auf"))]
+        if d.get("ours"):
+            if d.get("label"):
+                bits.append(d["label"])
+            if d.get("manual"):
+                bits.append(_("von Hand gestartet"))
+        else:
+            bits.append(_("von OBS selbst gestartet"))
+        bits.append(fmt_duration(secs))
+        if d.get("bytes"):
+            bits.append(fmt_bytes(d["bytes"]))
+        if d.get("marks"):
+            bits.append(_("⚑ {n} Marken", n=d["marks"]))
+        state = " · ".join(bits)
+    else:
+        buf = d.get("buffer")
+        if buf is None:
+            b = _("Wiederholungspuffer in OBS nicht aktiviert")
+        elif buf:
+            b = _("Wiederholungspuffer läuft") + (f" ({d['buffer_s']} s)" if d.get("buffer_s") else "")
+        else:
+            b = _("Wiederholungspuffer aus")
+        state = _("Bereit") + " · " + b
+    vals = []
+    if d.get("width") and d.get("height"):
+        vals.append(f"{d['width']}×{d['height']}")
+    if d.get("fps"):
+        fps = f"{d['fps']:g} fps"
+        if rec and d.get("active_fps") and abs(float(d["active_fps"]) - float(d["fps"])) >= 1.0:
+            fps += " " + _("(gerade {n})", n=f"{float(d['active_fps']):.0f}")
+        vals.append(fps)
+    if d.get("encoder"):
+        vals.append(d["encoder"])
+    if d.get("disk_free"):
+        vals.append(_("{size} frei", size=fmt_bytes(d["disk_free"])))
+    if last_clip and last_clip[0]:
+        age = max(0.0, now - float(last_clip[1] or now))
+        vals.append(_("letzter Clip {file} (vor {age})", file=last_clip[0], age=fmt_duration(age)))
+    warn = []
+    skipped, total = int(d.get("output_skipped") or 0), int(d.get("output_total") or 0)
+    if rec and skipped and total and skipped / total >= 0.01:
+        warn.append(_("OBS lässt Bilder aus ({n} von {total}, Kodierer überlastet) – in OBS Voreinstellung oder "
+                      "Auflösung senken.", n=skipped, total=total))
+    rs, rt = int(d.get("render_skipped") or 0), int(d.get("render_total") or 0)
+    if rec and rs and rt and rs / rt >= 0.01:
+        warn.append(_("OBS verpasst Bilder beim Rendern ({n} von {total}, Grafikkarte ausgelastet).", n=rs, total=rt))
+    if clip_s and d.get("buffer_s") and int(clip_s) > int(d["buffer_s"]):
+        warn.append(_("Der Sofort-Clip (F8) ist auf {clip} s eingestellt, OBS' Wiederholungspuffer hält nur {buf} s "
+                      "– in OBS: Einstellungen → Ausgabe → Wiederholungspuffer → Maximale Wiederholungszeit.",
+                      clip=int(clip_s), buf=int(d["buffer_s"])))
+    return state, " · ".join(vals), " ".join(warn)
+
+
 def show_in_explorer(path: str):
     """Windows Explorer with the file marked (nothing else runs the file)."""
     subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])     # noqa: S603, S607
@@ -65,6 +134,29 @@ class RecordingsTab:
         ui.Label(f, textvariable=self.rec_summary_var, style="Big.TLabel", wraplength=560).pack(anchor="w")
         self.rec_hint_var = ui.StringVar(value="")
         ui.Label(f, textvariable=self.rec_hint_var, style="Dim.TLabel", wraplength=560).pack(anchor="w")
+        # 1.15 (audit of the video system): the recording card – OBS's live state (polled every STATUS_POLL_S only
+        # while this page is shown) and the quick actions: start/stop by hand, pause, F8 clip, mark
+        self._obs_state, self._obs_state_t, self._rec_poll_t = None, 0.0, 0.0
+        self._rec_paused, self._rec_last_clip = False, None
+        card = self.rec_card = ui.LabelFrame(f, text=_("Aufnahme"), padding=8)
+        card.pack(fill="x", pady=(8, 0))
+        self.rec_state_var = ui.StringVar(value=_("Warte auf OBS …"))
+        ui.Label(card, textvariable=self.rec_state_var, style="Big.TLabel", wraplength=560).pack(anchor="w")
+        self.rec_live_var = ui.StringVar(value="")
+        ui.Label(card, textvariable=self.rec_live_var, style="Dim.TLabel", wraplength=560).pack(anchor="w")
+        self.rec_warn_var = ui.StringVar(value="")
+        self.rec_warn_label = ui.Label(card, textvariable=self.rec_warn_var, wraplength=560)
+        self.rec_warn_label.pack(anchor="w")
+        crow = ui.Frame(card)
+        crow.pack(fill="x", pady=(6, 0))
+        self.rec_start_btn = ui.Button(crow, text=_("Aufnahme starten"), command=self.record_toggle)
+        self.rec_start_btn.pack(side="left")
+        self.rec_pause_btn = ui.Button(crow, text=_("Pause"), command=self.record_pause_toggle, state="disabled")
+        self.rec_pause_btn.pack(side="left", padx=(6, 0))
+        self.rec_f8_btn = ui.Button(crow, text=_("Clip speichern (F8)"), command=self.mark_clip)
+        self.rec_f8_btn.pack(side="left", padx=(6, 0))
+        self.rec_mark_btn = ui.Button(crow, text=_("Marke setzen"), command=self._rec_card_mark_only, state="disabled")
+        self.rec_mark_btn.pack(side="left", padx=(6, 0))
         # 1.11.14 (user picked "leere Zustände mit Handlung"): nothing recorded yet – the next step instead of an empty
         # table (the button while recording is off, the note while it is on)
         self.rec_setup_btn = ui.Button(f, text=_("Aufnahmen einrichten …"), command=self._reveal_rec)
@@ -467,6 +559,71 @@ class RecordingsTab:
             return
         if self._rec_dirty or time.time() - self._rec_rendered > REC_REFRESH_S:
             self._rec_render()
+        self._rec_card_tick()
+
+    # ---- 1.15: the recording card
+    def _rec_card_tick(self):
+        """Every tick while the page is shown: ask OBS every STATUS_POLL_S, draw the lines (the clock runs on)."""
+        now = time.time()
+        if now - self._rec_poll_t >= obsrec.STATUS_POLL_S:
+            self._rec_poll_t = now
+            if self.settings.get("rec_on", False) or self.settings.get("rec_folder"):
+                self.recorder.poll()
+            elif self._obs_state is not None or self.rec_state_var.get() != _("Aufnahmen sind aus."):
+                self._obs_state = None
+                self._rec_card_render()
+        if self._obs_state is not None:
+            self._rec_card_render()
+
+    def _rec_card_poll_now(self):
+        """Something changed (start, stop, pause): the next tick asks OBS at once."""
+        self._rec_poll_t = 0.0
+
+    def _rec_card_state(self, d):
+        self._obs_state, self._obs_state_t = dict(d), time.time()
+        if d.get("ours"):
+            self._rec_paused = bool(d.get("paused"))
+        self._rec_card_render()
+
+    def _rec_card_mark(self, n, pos):
+        if self._obs_state is not None:
+            self._obs_state["marks"] = int(n)
+            self._rec_card_render()
+
+    def _rec_card_clip_saved(self, name):
+        self._rec_last_clip = (name, time.time())
+        self._rec_card_render()
+
+    def _rec_card_mark_only(self):
+        """The card's "Marke setzen": only the mark, never the F8 clip."""
+        if self.recorder.recording:
+            self.recorder.mark()
+
+    def _rec_card_render(self):
+        d = self._obs_state
+        if d is None and not (self.settings.get("rec_on", False) or self.settings.get("rec_folder")):
+            state, live, warn = _("Aufnahmen sind aus."), _("Einschalten unter Einstellungen → Aufnahmen."), ""
+        else:
+            extra = max(0.0, time.time() - self._obs_state_t) if d is not None else 0.0
+            state, live, warn = rec_card_text(d, extra, int(self.settings.get("rec_clip_s", 0) or 0),
+                                              last_clip=self._rec_last_clip)
+        for var, text in ((self.rec_state_var, state), (self.rec_live_var, live), (self.rec_warn_var, warn)):
+            if var.get() != text:
+                var.set(text)
+        ours = bool(self.recorder.recording)
+        obs_rec = bool(d and d.get("connected") and d.get("recording"))
+        start_text = _("Aufnahme stoppen") if ours else _("Aufnahme starten")
+        if self.rec_start_btn.cget("text") != start_text:
+            self.rec_start_btn.configure(text=start_text)
+        start_state = "normal" if (ours or not obs_rec) and (d is None or d.get("connected") or ours) else "disabled"
+        pause_text = _("Fortsetzen") if self._rec_paused else _("Pause")
+        if self.rec_pause_btn.cget("text") != pause_text:
+            self.rec_pause_btn.configure(text=pause_text)
+        for b, st in ((self.rec_start_btn, start_state), (self.rec_pause_btn, "normal" if ours else "disabled"),
+                      (self.rec_mark_btn, "normal" if ours else "disabled"),
+                      (self.rec_f8_btn, "normal" if self.settings.get("rec_instant", True) else "disabled")):
+            if str(b.cget("state")) != st:
+                b.configure(state=st)
 
     def _rec_render(self, force=False):
         self._rec_dirty, self._rec_rendered = False, time.time()
@@ -1019,7 +1176,8 @@ class RecordingsTab:
                          censor_boxes=self.settings.get("clip_censor_boxes") or [],
                          mix_on=self.settings.get("clip_mix_on") or {},                           # 1.8.6
                          mix_vol=self.settings.get("clip_mix_vol") or {},
-                         sources=(r.extra or {}).get("sources"), **extra)                   # 1.8.23
+                         sources=(r.extra or {}).get("sources"),                            # 1.8.23
+                         encoding=encoders.from_settings(self.settings), **extra)           # 1.15
         win.on_saved = lambda out: self._clip_saved(r, out, win)              # 1.8.13: into the clips list
         return win
 

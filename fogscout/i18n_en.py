@@ -1908,7 +1908,6 @@ EN = {
     'Für Discord (passt unter die Zielgrösse)': 'For Discord (fits under the target size)',
     'Gespeichert: {file} ({mb} MB)': 'Saved: {file} ({mb} MB)',
     'Ignorieren': 'Ignore',
-    'Kodiere {file} … (dauert etwas)': 'Encoding {file} … (takes a while)',
     'Runden nicht geändert: {error}': 'Rounds not changed: {error}',
     'Spielt genau den Ausschnitt ab und springt danach an seinen Anfang zurück.': 'Plays exactly the clip and then jumps back to its start.',
     'Zeigt den zuletzt gespeicherten Clip im Explorer.': 'Shows the clip saved last in Explorer.',
@@ -2592,4 +2591,81 @@ EN = {
         'stopped when the program quit',
     'Update gesperrt: ein Clip wird noch gespeichert. Danach noch einmal auf „Aktualisieren und neu starten“ klicken.':
         'Update locked: a clip is still being saved. Click “Update and restart” again afterwards.',
+
+    # ------------------------------------------------------------------ 1.15: recording card, hotkeys, export encoders
+    '(gerade {n})': '(now {n})',
+    'Aufnahme gestartet': 'Recording started',
+    'Aufnahme läuft weiter': 'Recording resumed',
+    'Aufnahme läuft weiter.': 'Recording resumed.',
+    'Aufnahme pausieren/weiter': 'Pause/resume recording',
+    'Aufnahme pausiert': 'Recording paused',
+    'Aufnahme pausiert.': 'Recording paused.',
+    'Aufnahme starten': 'Start recording',
+    'Aufnahme starten/stoppen': 'Start/stop recording',
+    'Aufnahme stoppen': 'Stop recording',
+    'Aufnahme von Hand gestartet.': 'Recording started by hand.',
+    'Aufnahme wird beendet …': 'Stopping the recording …',
+    'Aufnahme-Laufwerk fast voll – Aufnahme beendet': 'Recording drive almost full – recording stopped',
+    'Aufnahme-Laufwerk fast voll – nichts gestartet': 'Recording drive almost full – nothing started',
+    'Aufnahme-Laufwerk nicht angeschlossen – nichts gestartet': 'Recording drive not connected – nothing started',
+    'Aufnahmen sind aus.': 'Recordings are off.',
+    'Ausgewogen': 'Balanced',
+    'Automatisch': 'Automatic',
+    'Bereit': 'Ready',
+    'Bildhöhe des Clips – kleiner als die Aufnahme verkleinert, nie vergrössert.':
+        'Picture height of the clip – smaller than the recording scales it down, never up.',
+    'CPU (x264/x265)': 'CPU (x264/x265)',
+    'Clip speichern (F8)': 'Save clip (F8)',
+    "Der Sofort-Clip (F8) ist auf {clip} s eingestellt, OBS' Wiederholungspuffer hält nur {buf} s – in OBS: Einstellungen → Ausgabe → Wiederholungspuffer → Maximale Wiederholungszeit.":
+        "The instant clip (F8) is set to {clip} s, but OBS's replay buffer only holds {buf} s – in OBS: Settings → Output → Replay Buffer → Maximum Replay Time.",
+    'Die Datei erscheint im Tab Aufnahmen': 'The file appears on the Recordings tab',
+    'Es läuft schon eine Aufnahme': 'A recording is already running',
+    'H.264 spielt überall; HEVC (H.265) ist bei gleicher Qualität etwa ein Drittel kleiner, braucht aber einen neueren Player.':
+        'H.264 plays everywhere; HEVC (H.265) is about a third smaller at the same quality but needs a newer player.',
+    'Hoch': 'High',
+    'Kein Aufnahmeordner gewählt – Einstellungen → Aufnahmen.': 'No recording folder chosen – Settings → Recordings.',
+    'Keine Aufnahme': 'No recording',
+    'Keine Aufnahme läuft': 'No recording is running',
+    'Keine Aufnahme läuft.': 'No recording is running.',
+    'Kodiere {file} … ({how}, dauert etwas)': 'Encoding {file} … ({how}, takes a moment)',
+    'Kodierung': 'Encoding',
+    'Marke setzen': 'Set mark',
+    'Nimmt auf': 'Recording',
+    'Nimmt auf (von Hand gestartet)': 'Recording (started by hand)',
+    'Nimmt die Runde in der laufenden Aufnahme auf': 'Recording the round within the running recording',
+    'OBS lässt Bilder aus ({n} von {total}, Kodierer überlastet) – in OBS Voreinstellung oder Auflösung senken.':
+        'OBS is skipping frames ({n} of {total}, encoder overloaded) – lower the preset or resolution in OBS.',
+    'OBS nicht erreichbar': 'OBS not reachable',
+    'OBS starten, WebSocket-Server einschalten, Port/Passwort prüfen (Einstellungen → Aufnahmen → Verbindung testen). {why}':
+        'Start OBS, enable its WebSocket server, check port/password (Settings → Recordings → Test connection). {why}',
+    'OBS verpasst Bilder beim Rendern ({n} von {total}, Grafikkarte ausgelastet).':
+        'OBS is missing frames while rendering ({n} of {total}, graphics card busy).',
+    'Pause': 'Pause',
+    'Pausiert': 'Paused',
+    'Schnell': 'Fast',
+    'Schnell: kleiner und schneller, sichtbar weicher. Ausgewogen: wie bisher. Hoch: grösser, nahe am Original.':
+        'Fast: smaller and quicker, visibly softer. Balanced: as before. High: larger, close to the original.',
+    'Stoppen mit demselben Hotkey oder im Tab Aufnahmen': 'Stop with the same hotkey or on the Recordings tab',
+    'Warte auf OBS …': 'Waiting for OBS …',
+    'Wie aufgenommen': 'As recorded',
+    'Wiederholungspuffer aus': 'Replay buffer off',
+    'Wiederholungspuffer in OBS nicht aktiviert': 'Replay buffer not enabled in OBS',
+    'Womit der Clip kodiert wird: die Grafikkarte (NVENC, AMF, Quick Sync – nur, wenn ffmpeg sie hier wirklich ansprechen kann) belastet den Prozessor kaum; „Automatisch“ nimmt die erste, die geht.':
+        'What encodes the clip: the graphics card (NVENC, AMF, Quick Sync – only when ffmpeg can really use it here) hardly loads the processor; “Automatic” takes the first one that works.',
+    'letzter Clip {file} (vor {age})': 'last clip {file} ({age} ago)',
+    'Fortsetzen': 'Resume',
+    '⚑ {n} Marken': '⚑ {n} marks',
+    'von Hand gestartet': 'started by hand',
+    'von OBS selbst gestartet': 'started in OBS itself',
+    'Beendet die laufende Aufnahme jetzt (bei einer Runde ohne Nachlauf) und legt sie in den Aufnahmeordner.':
+        'Stops the running recording now (a round without its tail) and files it in the recording folder.',
+    'Hält die laufende Aufnahme an (OBS pausiert); „Fortsetzen“ setzt sie in derselben Datei fort. Marken bleiben an ihrer Stelle.':
+        'Pauses the running recording (OBS pauses); “Resume” continues it in the same file. Marks keep their place.',
+    'Merkt diesen Moment in der laufenden Aufnahme (⚑) – der Clip-Editor springt später dorthin. Ohne Sofort-Clip.':
+        'Notes this moment in the running recording (⚑) – the clip editor jumps there later. Without an instant clip.',
+    'Setzt die pausierte Aufnahme fort.': 'Continues the paused recording.',
+    'Startet jetzt eine OBS-Aufnahme von Hand – auch ausserhalb einer Runde. Sie läuft, bis du sie stoppst oder DBD beendet wird; ein Map-Banner benennt sie. Hotkey einstellbar.':
+        'Starts an OBS recording by hand now – outside a round too. It runs until you stop it or DBD closes; a map banner names it. Hotkey configurable.',
+    'Wie F8: speichert die letzten Sekunden aus dem OBS-Wiederholungspuffer als Sofort-Clip (Länge unter Einstellungen → Aufnahmen) und setzt eine Marke, falls eine Aufnahme läuft.':
+        'Like F8: saves the last seconds of OBS\'s replay buffer as an instant clip (length under Settings → Recordings) and sets a mark if a recording is running.',
 }
