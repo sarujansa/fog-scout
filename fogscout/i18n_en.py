@@ -2678,8 +2678,8 @@ EN = {
     "Keine Videodatei: {file}": "Not a video file: {file}",
     "Kürzeste zuerst": "Shortest first",
     "Lautstärke der Vorschau (nicht des Clips).": "Volume of the preview (not of the clip).",
-    "Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg 1 Bild · I/O Clip beginnt/endet hier · S Teilen · Entf Löschen · Strg+Z/Y Rückgängig/Wiederholen · F Vollbild · Strg+S Projekt · Strg+E Export":
-        "Space play · ←/→ 1 s · Shift 5 s · Ctrl 1 frame · I/O clip starts/ends here · S split · Del delete · Ctrl+Z/Y undo/redo · F full screen · Ctrl+S project · Ctrl+E export",
+    "Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg oder ,/. 1 Bild · I/O Clip beginnt/endet hier · S Teilen · Entf Löschen · Strg+Z/Y Rückgängig/Wiederholen · F Vollbild · Strg+S Projekt · Strg+E Export":
+        "Space play · ←/→ 1 s · Shift 5 s · Ctrl or ,/. 1 frame · I/O clip starts/ends here · S split · Del delete · Ctrl+Z/Y undo/redo · F full screen · Ctrl+S project · Ctrl+E export",
     "Längste zuerst": "Longest first",
     "Löschen": "Delete",
     "Name A–Z": "Name A–Z",
