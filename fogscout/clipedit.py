@@ -136,7 +136,36 @@ SILENT_DB = -60.0                # 1.8.18: a track whose loudest moment stays be
 LEVEL_RE = re.compile(rb"\[volumedetect@t(\d+) @ [^\]]*\] max_volume: (-?[\d.]+|-inf) dB")
 
 
-def track_levels(path: str, n_tracks: int, ffmpeg: str | None = None, timeout: float = 180) -> dict:
+CANCEL_POLL_S = 0.2               # 1.16.2: how often a cancellable ffmpeg run looks whether it should stop
+
+
+def _run_cancellable(cmd, timeout: float, cancel=None, stdout: bool = False, stderr: bool = False):
+    """1.16.2 (A16): like subprocess.run, but also ends when ``cancel`` (threading.Event) is set – the editor was
+    closed: the ffmpeg is killed and reaped at once instead of running on for up to ``timeout``. (stdout, stderr)
+    as bytes (None where not wanted), or None: cancelled, too slow or not startable."""
+    try:
+        p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE if stdout else subprocess.DEVNULL,
+                             stderr=subprocess.PIPE if stderr else subprocess.DEVNULL, creationflags=_flags())
+    except OSError:
+        return None
+    end = time.monotonic() + timeout
+    try:
+        while True:
+            try:
+                return p.communicate(timeout=CANCEL_POLL_S)    # retried after a timeout without losing output
+            except subprocess.TimeoutExpired:
+                if (cancel is not None and cancel.is_set()) or time.monotonic() >= end:
+                    return None
+    finally:
+        if p.poll() is None:
+            p.kill()
+            try:
+                p.communicate(timeout=5)
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                pass
+
+
+def track_levels(path: str, n_tracks: int, ffmpeg: str | None = None, timeout: float = 180, cancel=None) -> dict:
     """1.8.18 (user: Discord never heard in the clips): the loudest moment of each audio track in dB {index:
     dB}, from one ffmpeg run over the sound only (seconds even for a long round) – which source OBS really
     recorded. {} without ffmpeg, with fewer than two tracks or on failure."""
@@ -144,13 +173,11 @@ def track_levels(path: str, n_tracks: int, ffmpeg: str | None = None, timeout: f
     if not ffmpeg or n_tracks < 2:
         return {}
     graph = ";".join(f"[0:a:{i}]volumedetect@t{i}" for i in range(n_tracks))
-    try:
-        p = subprocess.run([ffmpeg, "-hide_banner", "-nostats", "-i", path, "-vn", "-filter_complex", graph,
-                            "-f", "null", "-"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.PIPE, timeout=timeout, creationflags=_flags())
-    except (OSError, subprocess.TimeoutExpired):
+    got = _run_cancellable([ffmpeg, "-hide_banner", "-nostats", "-i", path, "-vn", "-filter_complex", graph,
+                            "-f", "null", "-"], timeout, cancel, stderr=True)
+    if got is None:
         return {}
-    return {int(i): float(db) for i, db in LEVEL_RE.findall(p.stderr or b"")}
+    return {int(i): float(db) for i, db in LEVEL_RE.findall(got[1] or b"")}
 
 
 def frame_at(path: str, t: float, height: int = PREVIEW_H, info: Info | None = None, ffmpeg: str | None = None,
@@ -301,7 +328,7 @@ WAVE_RATE = 4000                 # samples per second ffmpeg decodes for it (200
 
 
 def waveform(path: str, duration: float, ffmpeg: str | None = None, per_s: int = WAVE_PER_S,
-             timeout: float = 300) -> list:
+             timeout: float = 300, cancel=None) -> list:
     """1.16: the loudness along the recording for the timeline's audio track – the peak of each 1/``per_s`` s
     as 0…1 (the first audio track = OBS's full mix), [] when there is no sound or ffmpeg fails. One ffmpeg run that
     decodes the sound to mono at WAVE_RATE Hz (a 20-min round: 9.6 MB through the pipe, ~2 s)."""
@@ -309,13 +336,9 @@ def waveform(path: str, duration: float, ffmpeg: str | None = None, per_s: int =
     ffmpeg = ffmpeg or ffmpeg_exe()
     if not ffmpeg or duration <= 0:
         return []
-    try:
-        p = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", path, "-map", "0:a:0", "-vn", "-ac", "1",
-                            "-ar", str(WAVE_RATE), "-f", "s16le", "-"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                           stderr=subprocess.DEVNULL, timeout=timeout, creationflags=_flags())
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    data = p.stdout
+    got = _run_cancellable([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", path, "-map", "0:a:0", "-vn", "-ac", "1",
+                            "-ar", str(WAVE_RATE), "-f", "s16le", "-"], timeout, cancel, stdout=True)
+    data = got[0] if got is not None else b""
     if len(data) < 2:
         return []
     samples = np.frombuffer(data[:len(data) // 2 * 2], dtype=np.int16).astype(np.float32)

@@ -1095,6 +1095,7 @@ class ClipBase(QWidget):
         self._first_look = True             # 1.8.3: the first picture comes as a key frame at once, exact after
         self._scrub_lock = threading.Condition()
         self._closed = False
+        self._cancel = threading.Event()    # 1.16.2: set on close – long ffmpeg analyses (levels, waveform) stop
         self._target_mb = int(target_mb) if target_mb in clipedit.TARGETS_MB else clipedit.DEFAULT_TARGET_MB
         self._last_out = None               # 1.6.1: the clip saved last (Explorer button)
         self._play_to = None                # 1.6.1: "Clip ansehen" plays start..end, then back to the start
@@ -1538,7 +1539,7 @@ class ClipBase(QWidget):
                 self.bridge.frame.emit(t, img)
 
     def _level_loop(self):
-        levels = clipedit.track_levels(self.path, self.info.audio_tracks, self.ffmpeg)
+        levels = clipedit.track_levels(self.path, self.info.audio_tracks, self.ffmpeg, cancel=self._cancel)
         if levels and not self._closed:
             self.bridge.levels.emit(levels)
 
@@ -1937,6 +1938,7 @@ class ClipBase(QWidget):
 
     def closeEvent(self, e):
         self._closed = True
+        self._cancel.set()
         self.bridge.clear(keep=_Bridge.AFTER_CLOSE)
         self._stop_player()
         with self._scrub_lock:
