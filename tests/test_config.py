@@ -156,3 +156,4 @@ def test_the_obs_password_is_stored_protected_and_an_old_clear_one_still_works(t
     h = host("dpapi:AAAA")                                                    # another PC / user account
     assert SettingsTab._rec_password_load(h) == "" and [c for c, _t in h.logged] == ["Fehler"]
     assert "AAAA" not in h.logged[0][1]
+
