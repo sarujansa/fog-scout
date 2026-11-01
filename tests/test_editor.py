@@ -385,3 +385,20 @@ def test_the_timeline_layer_follows_a_theme_change(qapp, clip, tmp_path):
         assert win.timeline._layer_key() == before
     finally:
         win.close()
+
+
+def test_comma_and_period_step_one_frame(qapp, clip, tmp_path):
+    """1.17: , and . step one frame back / on (as in most players), besides Ctrl+←/→."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.goto(5.0)
+        frame = 1 / win.info.fps
+        win.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key_Period, Qt.NoModifier, "."))
+        assert abs(win.pos - (5.0 + frame)) < 1e-6
+        win.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key_Comma, Qt.NoModifier, ","))
+        win.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key_Comma, Qt.NoModifier, ","))
+        assert abs(win.pos - (5.0 - frame)) < 1e-6
+    finally:
+        win.close()
