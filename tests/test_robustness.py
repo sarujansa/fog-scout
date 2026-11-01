@@ -185,3 +185,66 @@ def test_stopping_the_worker_does_not_wait_for_its_nap(tmp_path, monkeypatch):
     w.stop()
     w.join(timeout=4)
     assert not w.is_alive() and time.perf_counter() - t0 < 0.3
+
+
+def _start(tmp_path, settings, rounds=None, matches=None):
+    """A real App on a root with the given settings.json and history files (None = file missing)."""
+    if sys.platform == "win32":
+        pytest.skip("Linux: the Windows job tests the native parts; the app would touch the system there")
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    for name in ("maps", "models", "maps.json"):
+        os.symlink(os.path.join(ROOT, name), tmp_path / name)
+    (tmp_path / "sim").mkdir()
+    (tmp_path / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+    for name, data in (("rounds.jsonl", rounds), ("official.jsonl", matches)):
+        if data is not None:
+            (tmp_path / name).write_bytes(data)
+    from fogscout.app import App
+    return App(str(tmp_path), simulate=str(tmp_path / "sim"))
+
+
+def _pump_app(a, seconds):
+    from PySide6.QtWidgets import QApplication
+    end = time.time() + seconds
+    while time.time() < end:
+        QApplication.processEvents()
+        time.sleep(0.01)
+
+
+def test_a_start_with_old_settings_and_broken_history_files_keeps_what_is_readable(tmp_path):
+    """Post-review 1.16.2: settings of an old version with the OBS password in clear text, rounds.jsonl with broken,
+    cut and binary lines, official.jsonl that is no JSON at all – the start works, the readable round counts, the
+    password is taken over (protected on disk, clear in the field), and every page opens in quick succession."""
+    good = json.dumps({"t": time.time() - 3600, "seconds": 600, "map_id": "coal-tower", "map": "Coal Tower",
+                       "region": "", "source": "auto"})
+    rounds = (good + "\n{broken\n" + '{"t": 1, "seconds": "x"}\n').encode() + b"\xff\xfe\x00junk\n" + b'{"t": 2, "map": "\xe2\x82'
+    a = _start(tmp_path, {"settings_version": 5, "welcome_seen": True, "rec_password": "hunter2"},
+               rounds=rounds, matches=b"\x00\x01 not json at all\n[1, 2]\n")
+    try:
+        from fogscout import app_settings
+        assert a.rec_pw_var.get() == "hunter2"
+        stored = a.settings.get("rec_password")
+        assert app_settings.is_protected(stored) and "hunter2" not in stored
+        _pump_app(a, 0.5)
+        assert [r.map_id for r in a._joined().rounds] == ["coal-tower"] and a._joined().matches == []
+        q = a.qt
+        for _ in range(3):                                   # quick page changes while the warm-up runs
+            for key in q.nav_keys():
+                q.show_page(key)
+                _pump_app(a, 0.02)
+        _pump_app(a, 0.5)
+        assert not a._errors_seen
+        assert all(cat != "Fehler" for _t, cat, *_r in a._log_entries), [e for e in a._log_entries if e[1] == "Fehler"]
+    finally:
+        a.quit()
+
+
+def test_a_start_without_any_history_file_is_quiet(tmp_path):
+    a = _start(tmp_path, {"welcome_seen": True})
+    try:
+        _pump_app(a, 0.3)
+        j = a._joined()
+        assert j.rounds == [] and j.matches == [] and not a._errors_seen
+        assert a.rec_pw_var.get() == "" and a.settings.get("rec_password") == ""
+    finally:
+        a.quit()
