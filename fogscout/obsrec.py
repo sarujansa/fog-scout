@@ -54,8 +54,13 @@ REPLAY_WAIT = 4.0               # 1.5.4: s to wait for OBS to finish writing the
 REPLAY_POLL = 0.2
 MAX_MESSAGE = 16 * 1024 * 1024  # 1.8.38: a WebSocket message larger than this ends the connection (OBS sends KBs)
 MAX_ROUND_S = 45 * 60           # a recording longer than this is stopped (an end that was never detected)
+MAX_MANUAL_S = 4 * 3600         # 1.15: a recording started by hand (record_start) ends after this at the latest
+STATUS_POLL_S = 2.0             # 1.15: the recordings page asks OBS for its state this often, only while it is shown
+PROFILE_EVERY_S = 30.0          # … the slow-changing values (encoder, buffer length, output size) only this often
+FREE_CHECK_S = 10.0             # 1.15: while recording, the drive's free space is looked at this often (MIN_FREE)
 EARLY_WAIT_S = 180              # 1.6: started at the end of the loading screen – no banner within this: filed as it is
-CLIP_SECONDS = (15, 30, 45, 60, 90, 120)   # 1.6: F8 instant clip – the last n seconds of the replay buffer
+CLIP_SECONDS = (15, 30, 45, 60, 90, 120, 180, 300)   # 1.6: F8 instant clip – the last n seconds of the replay buffer
+                                                     # (1.15: up to 5 min; the card warns when OBS's buffer is shorter)
 DEFAULT_CLIP_S = 30
 # 1.6 (user: "only DBD and Discord audio, each switchable"): OBS's own "Application Audio Capture" sources,
 # created once in the current scene. OBS picks the window by its executable (priority 2) – the title is only a
@@ -141,6 +146,54 @@ LEGACY = -1                                                # 1.8.5 recordings: t
 NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 CLIPS_DIR = "Clips"              # 1.5.3: clips (editor, F8 instant clips) beside the recordings
 FARMING_DIR = "Farming"         # 1.5.3 (user's wish): recordings of farming rounds go into this subfolder
+
+
+# 1.15 (recording card): what OBS's profile calls its recording encoder → a short name for the card. Only read
+# (GetProfileParameter) – the profile is never written. Simple output mode: SimpleOutput/RecEncoder ("x264",
+# "jim_nvenc", "obs_nvenc_h264_tex", "amd", "qsv", "nvenc_hevc" …; "Stream" quality = the stream encoder);
+# advanced: AdvOut/RecEncoder ("obs_x264", "ffmpeg_nvenc", "h264_texture_amf", "obs_qsv11_v2", "jim_hevc_nvenc" …;
+# "none" = the stream encoder). The replay buffer's length in seconds: SimpleOutput/RecRBTime or AdvOut/RecRBTime.
+def profile_keys(mode: str) -> dict:
+    """(category, name) of the profile values the recording card reads, for output mode ``mode``."""
+    if (mode or "").lower() == "advanced":
+        return {"encoder": ("AdvOut", "RecEncoder"), "stream": ("AdvOut", "Encoder"),
+                "buffer_s": ("AdvOut", "RecRBTime"), "quality": None}
+    return {"encoder": ("SimpleOutput", "RecEncoder"), "stream": ("SimpleOutput", "StreamEncoder"),
+            "buffer_s": ("SimpleOutput", "RecRBTime"), "quality": ("SimpleOutput", "RecQuality")}
+
+
+def encoder_label(raw: str) -> str:
+    """"jim_hevc_nvenc" → "NVENC HEVC", "obs_x264" → "x264 (CPU)", "" → "" (unknown)."""
+    r = (raw or "").lower()
+    if not r or r == "none":
+        return ""
+    codec = "HEVC" if ("hevc" in r or "h265" in r or "265" in r) else "AV1" if "av1" in r else "H.264"
+    if "nvenc" in r:
+        return f"NVENC {codec}"
+    if "amf" in r or r.startswith("amd") or "_amd" in r:
+        return f"AMD AMF {codec}"
+    if "qsv" in r:
+        return f"Quick Sync {codec}"
+    if "x264" in r:
+        return "x264 (CPU)" + (" – low CPU" if "lowcpu" in r else "")
+    if "x265" in r:
+        return "x265 (CPU)"
+    if "svt" in r or "aom" in r:
+        return "AV1 (CPU)"
+    if "apple" in r or "vt_" in r or "videotoolbox" in r:
+        return f"VideoToolbox {codec}"
+    return raw
+
+
+def rec_elapsed(a: dict | None, now: float | None = None) -> float:
+    """Seconds recorded of the active recording ``a`` (Recorder.active) – the pauses taken out (1.15)."""
+    if not a:
+        return 0.0
+    now = time.time() if now is None else now
+    paused = float(a.get("paused_s") or 0.0)
+    if a.get("paused_at") is not None:
+        paused += max(0.0, now - float(a["paused_at"]))
+    return max(0.0, now - float(a.get("since") or now) - paused)
 
 
 class ObsError(Exception):
@@ -1142,11 +1195,21 @@ class Recorder(threading.Thread):
         self._overlay_item = None    # 1.8.89: (scene, scene item id) of our image source while it is wanted
         self._overlay_box = None     # … where the overlay picture lies, relative to the DBD window (set_overlay)
         self._overlay_placed = None  # … the transform sent last (nothing is sent twice)
+        self._poll_waiting = False   # 1.15: a "poll" command sits in the queue
+        self._slow = {}              # 1.15: slow-changing OBS values for the card (encoder, buffer length, output size)
+        self._slow_t = 0.0
+        self._free_t = 0.0           # 1.15: last look at the drive's free space while recording
+        self.paused = False          # 1.15: the recording on air is paused (ours)
         self.start_obs = self._start_obs_process       # tests replace it
 
     @property
     def recording(self) -> bool:
         return self.active is not None
+
+    def active_round_named(self) -> bool:
+        """1.15: the recording on air already carries a map (a round's recording, or a manual one a banner named)."""
+        a = self.active
+        return bool(a and a.get("map_id"))
 
     # ---- called from the UI thread
     def configure(self, cfg: Config):
@@ -1218,6 +1281,27 @@ class Recorder(threading.Thread):
         if bool(on) != self._game:
             self.cmds.put(("game", bool(on)))
 
+    def record_start(self, **meta):
+        """1.15: start a recording by hand (button/hotkey) – outside a round too; it runs until record_stop,
+        DBD closes or MAX_MANUAL_S. ``meta`` as start_round (t, map_id, label, role, killer, farming, source)."""
+        self.cmds.put(("rec_start", meta))
+
+    def record_stop(self):
+        """1.15: stop the recording on air now – a manual one or the round's (its tail is skipped)."""
+        self.cmds.put(("rec_stop", None))
+
+    def record_pause(self, on: bool):
+        """1.15: pause / resume the recording on air (OBS PauseRecord/ResumeRecord); marks keep their place."""
+        self.cmds.put(("rec_pause", bool(on)))
+
+    def poll(self):
+        """1.15: ask OBS for its state once (recording, buffer, output size, fps, encoder, space) → event
+        ``obs_status``; the recordings page calls it every STATUS_POLL_S while shown. A poll still waiting in the
+        queue is not doubled."""
+        if not self._poll_waiting:
+            self._poll_waiting = True
+            self.cmds.put(("poll", None))
+
     def quit(self):
         self.cmds.put(("quit", None))
 
@@ -1277,6 +1361,15 @@ class Recorder(threading.Thread):
                     self._overlay_moved(arg)
                 elif cmd == "mark":
                     self._mark()
+                elif cmd == "rec_start":
+                    self._manual_start(arg)
+                elif cmd == "rec_stop":
+                    self._manual_stop()
+                elif cmd == "rec_pause":
+                    self._pause(arg)
+                elif cmd == "poll":
+                    self._poll_waiting = False
+                    self._poll()
                 elif cmd == "keep":
                     self._set_keep(*arg)
                 elif cmd == "delete":
@@ -1315,7 +1408,7 @@ class Recorder(threading.Thread):
         if self.active is None:
             self._post("marked", pos=None)
             return
-        pos = round(time.time() - self.active["since"], 1)
+        pos = round(rec_elapsed(self.active), 1)          # 1.15: pauses do not move the marks
         self.active.setdefault("marks", []).append(pos)
         self._post("marked", pos=pos, n=len(self.active["marks"]))
 
@@ -1524,8 +1617,9 @@ class Recorder(threading.Thread):
     # (named _begin/_finish: threading.Thread has its own _stop(), which join() calls on Python 3.12 – a method
     # of ours with that name broke join with "missing argument meta")
     def _stop_later(self, meta):
-        """The round ended: keep recording for the tail (result screen), then stop."""
-        if self.active is None:
+        """The round ended: keep recording for the tail (result screen), then stop. 1.15: a recording started by
+        hand runs on (it is the user's to stop); the round's marks and name stay in it."""
+        if self.active is None or self.active.get("manual"):
             return
         if self.cfg.tail_s <= 0:
             self._finish(meta)
@@ -1716,6 +1810,16 @@ class Recorder(threading.Thread):
 
     def _begin(self, meta, pre_roll=True):
         a = self.active
+        if a is not None and a.get("manual"):
+            # 1.15: a recording started by hand is on air – the round goes into it (nothing restarts); the first
+            # banner names it, later rounds only add their marks
+            if not meta.get("early") and not a.get("map_id"):
+                a.update({k: v for k, v in meta.items() if k in ("t", "map_id", "label", "role", "killer", "source")
+                          and v})
+                a["farming"] = bool(a.get("farming") or meta.get("farming"))
+                self._say(_("Nimmt die Runde in der laufenden Aufnahme auf"), True)
+            self._post("started", t=meta.get("t"), manual=True)
+            return
         if (a is not None and a.get("early") and not meta.get("early") and self._pending is None
                 and time.time() - a.get("since", 0) <= EARLY_WAIT_S):
             # 1.6: the banner of the round recorded since the loading screen: it names it, nothing restarts
@@ -1797,6 +1901,7 @@ class Recorder(threading.Thread):
 
     def _finish(self, meta):
         rec, self.active = self.active, None
+        self.paused = False
         if rec is None:
             return
         rec.update({k: v for k, v in meta.items() if v})
@@ -1844,6 +1949,8 @@ class Recorder(threading.Thread):
                 extra["merge_failed"] = True
         if bad:
             extra["bad"] = bad
+        if rec.get("manual"):                          # 1.15: started by hand (button/hotkey)
+            extra["manual"] = True
         if rec.get("sources") is not None:             # 1.8.23: the sources OBS had (the clip editor tells "none")
             extra["sources"] = list(rec["sources"])
         prefix = sub + "/" if sub else ""              # index names: "Farming/…" with "/" on every system
@@ -1925,12 +2032,167 @@ class Recorder(threading.Thread):
         a = self.active
         if a is None or self._pending is not None:
             return
-        age = time.time() - a.get("since", time.time())
+        now = time.time()
+        age = now - a.get("since", now)
+        if now - self._free_t >= FREE_CHECK_S:          # 1.15: the drive filling up ends the recording cleanly
+            self._free_t = now
+            folder = self.folder()
+            try:
+                low = folder is not None and shutil.disk_usage(folder).free < MIN_FREE
+            except OSError:
+                low = False
+            if low:
+                self._finish({})
+                self._warn(_("Aufnahme-Laufwerk fast voll – Aufnahme beendet"))
+                return
+        if a.get("manual"):
+            if age > MAX_MANUAL_S:
+                log.info("OBS: Aufnahme von Hand läuft seit %d s – beendet", MAX_MANUAL_S)
+                self._finish({})
+            return
         if a.get("early") and age > EARLY_WAIT_S:
             log.info("OBS: kein Map-Banner %d s nach dem Ladebildschirm – Aufnahme beendet", EARLY_WAIT_S)
             self._finish({"label": a.get("label") or _("Unbekannte Map")})
         elif age > MAX_ROUND_S:
             self._finish({})
+
+    # ---- 1.15: recording by hand, pause, the card's state
+    def _manual_start(self, meta):
+        """Start a recording now (button/hotkey): like _begin, but it runs until record_stop, DBD closes or
+        MAX_MANUAL_S – the automatic round recording must not be on for it, only a folder."""
+        if self.active is not None:
+            self._say(_("Es läuft schon eine Aufnahme"), True)
+            return
+        folder = self.folder()
+        if folder is None:
+            self._say(_("Aufnahme-Laufwerk nicht angeschlossen – nichts gestartet"), False)
+            return
+        if shutil.disk_usage(folder).free < MIN_FREE:
+            self._say(_("Aufnahme-Laufwerk fast voll – nichts gestartet"), False)
+            return
+        c = self._client()
+        try:
+            if c.request("GetRecordStatus").get("outputActive"):
+                self._say(_("OBS nimmt schon auf (von Hand?) – nichts gestartet"), False)
+                return
+            try:
+                c.request("SetRecordDirectory", {"recordDirectory": folder})
+            except ObsError:
+                log.info("OBS: Aufnahmeordner nicht setzbar – OBS nimmt in seinen eigenen Ordner auf")
+            c.request("StartRecord")
+        finally:
+            c.close()
+        meta = {k: v for k, v in (meta or {}).items() if v}
+        meta.setdefault("t", time.time())
+        meta.setdefault("label", _("Aufnahme"))
+        self.active = dict(meta, manual=True, pre="", since=time.time(), marks=[], paused_s=0.0, paused_at=None,
+                           sources=sorted(self._routed) if self._routed is not None else None)
+        self.paused = False
+        self._free_t = time.time()
+        self._say(_("Nimmt auf (von Hand gestartet)"), True)
+        self._post("started", t=meta.get("t"), manual=True)
+
+    def _manual_stop(self):
+        if self.active is None:
+            self._say(_("Keine Aufnahme läuft"), True)
+            return
+        self._flush()                                   # the tail, if one runs, ends now too
+
+    def _pause(self, on: bool):
+        """OBS PauseRecord / ResumeRecord on the recording on air; the paused time is taken out of the marks."""
+        a = self.active
+        if a is None:
+            self._say(_("Keine Aufnahme läuft"), True)
+            return
+        if bool(on) == bool(a.get("paused_at") is not None):
+            return
+        c = self._client()
+        try:
+            try:
+                c.request("PauseRecord" if on else "ResumeRecord")
+            except ObsError as e:
+                # OBS refuses a pause of a paused output (and the other way round): take its word for the state
+                if bool(c.request("GetRecordStatus").get("outputPaused")) != bool(on):
+                    raise e
+        finally:
+            c.close()
+        now = time.time()
+        if on:
+            a["paused_at"] = now
+        else:
+            a["paused_s"] = float(a.get("paused_s") or 0.0) + max(0.0, now - float(a.get("paused_at") or now))
+            a["paused_at"] = None
+        self.paused = bool(on)
+        self._say(_("Aufnahme pausiert") if on else _("Aufnahme läuft weiter"), True)
+        self._post("paused", on=bool(on))
+
+    def _poll(self):
+        """The recording card's state in one connection: GetRecordStatus, GetReplayBufferStatus, GetStats every
+        time; GetVideoSettings and the profile's encoder / buffer length every PROFILE_EVERY_S. Only reads."""
+        d = {"connected": False, "error": "", "recording": False, "paused": False, "seconds": 0.0, "bytes": 0,
+             "ours": self.active is not None, "manual": bool(self.active and self.active.get("manual")),
+             "marks": len((self.active or {}).get("marks") or []), "label": (self.active or {}).get("label", ""),
+             "buffer": False, "folder": self.folder() or ""}
+        try:
+            c = self._client()
+        except ObsError as e:
+            d["error"] = str(e)
+            self._post("obs_status", **d)
+            return
+        try:
+            rec = c.request("GetRecordStatus")
+            d.update(connected=True, recording=bool(rec.get("outputActive")), paused=bool(rec.get("outputPaused")),
+                     seconds=float(rec.get("outputDuration") or 0) / 1000.0, bytes=int(rec.get("outputBytes") or 0))
+            if d["ours"] and self.active.get("paused_at") is not None:
+                d["paused"] = True
+            try:
+                d["buffer"] = self._buffer_state(c)
+            except ObsError:
+                d["buffer"] = False
+            try:
+                st = c.request("GetStats")
+                d.update(active_fps=float(st.get("activeFps") or 0.0), cpu=float(st.get("cpuUsage") or 0.0),
+                         disk_free=float(st.get("availableDiskSpace") or 0.0) * 1024 ** 2,
+                         render_skipped=int(st.get("renderSkippedFrames") or 0),
+                         render_total=int(st.get("renderTotalFrames") or 0),
+                         output_skipped=int(st.get("outputSkippedFrames") or 0),
+                         output_total=int(st.get("outputTotalFrames") or 0))
+            except ObsError:
+                pass
+            now = time.time()
+            if now - self._slow_t >= PROFILE_EVERY_S or not self._slow:
+                self._slow_t = now
+                self._slow = self._read_profile(c)
+            d.update(self._slow)
+        except ObsError as e:
+            d["error"] = str(e)
+        finally:
+            c.close()
+        self._post("obs_status", **d)
+
+    def _read_profile(self, c: ObsClient) -> dict:
+        """Output size and rate (GetVideoSettings), encoder and replay buffer length (profile, read only)."""
+        out = {}
+        try:
+            v = c.request("GetVideoSettings")
+            num, den = float(v.get("fpsNumerator") or 0), float(v.get("fpsDenominator") or 1)
+            out.update(width=int(v.get("outputWidth") or 0), height=int(v.get("outputHeight") or 0),
+                       fps=round(num / den, 3) if num and den else 0.0)
+        except ObsError:
+            pass
+        try:
+            mode = self._profile(c, "Output", "Mode")
+            keys = profile_keys(mode)
+            raw = self._profile(c, *keys["encoder"])
+            if keys["quality"] and self._profile(c, *keys["quality"]).lower() == "stream" or raw.lower() == "none":
+                raw = self._profile(c, *keys["stream"])
+            out["encoder"] = encoder_label(raw)
+            out["mode"] = mode
+            rb = self._profile(c, *keys["buffer_s"])
+            out["buffer_s"] = int(float(rb)) if rb.strip() else None
+        except (ObsError, ValueError):
+            pass
+        return out
 
     # ---- 1.6: audio sources in OBS
     def _audio_now(self):

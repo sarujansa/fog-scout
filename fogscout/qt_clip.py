@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
                                QLineEdit, QListWidget, QProgressBar, QPushButton, QSizePolicy, QSlider, QTabWidget,
                                QVBoxLayout, QWidget)
 
-from . import annotate, clipedit, imageedit, obsrec, qt_theme
+from . import annotate, clipedit, encoders, imageedit, obsrec, qt_theme
 from .i18n import N_, _
 from .qt_common import guard_wheel
 from .qt_layouts import FlowRow
@@ -52,6 +52,7 @@ MODE_TIPS = {"copy": N_("Schnell (an Schlüsselbildern, Anfang bis zu ein paar S
              "exact": N_("Genau (Bild neu kodiert, dauert etwas)"),
              "discord": N_("Für Discord (passt unter die Zielgrösse)"),
              "gif": N_("GIF (ohne Ton, für Chats)")}                                    # 1.12
+HEIGHT_LABELS = {0: N_("Wie aufgenommen"), 1440: "1440p", 1080: "1080p", 720: "720p"}   # 1.15: export height
 SPEED_LABELS = {0.25: "×0.25", 0.5: "×0.5", 0.75: "×0.75", 1.0: N_("normal"), 1.5: "×1.5", 2.0: "×2", 4.0: "×4"}
 CONTENT_LABEL = N_("Ohne schwarze Ränder")      # 1.12.6: crop to the game part, offered when the recording has borders
 CROP_LABELS = {"none": N_("Kein Ausschnitt"), "free": N_("Frei"), "16:9": "16:9", "9:16": N_("9:16 (Hochformat)"),
@@ -108,7 +109,8 @@ class _Bridge:
              "strip_done",   # 1.8.3: the thumbnail thread is through (all it could get)
              "still",        # 1.8.10: a still picture saved (ok, path)
              "levels",       # 1.8.18: {track index: loudest moment in dB}
-             "content")      # 1.12.6: the game part of a recording with black borders (x, y, w, h)
+             "content",      # 1.12.6: the game part of a recording with black borders (x, y, w, h)
+             "encoders")     # 1.15: {ffmpeg encoder: works} once the self-tests are through
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
 
@@ -1059,7 +1061,8 @@ class ClipWindow(QWidget):
     def __init__(self, path: str, marks: list, clips_dir: str, mode: str = "copy", sound: bool = True,
                  on_saved=None, on_setting=None, log=None, dark=True, qss: str = "", title: str = "",
                  target_mb: int = clipedit.DEFAULT_TARGET_MB, censor_on: bool = False, censor_style: str = "pixel",
-                 censor_boxes=(), mix_on=None, mix_vol=None, compact=False, parent=None, on_expand=None, sources=None, info=None):
+                 censor_boxes=(), mix_on=None, mix_vol=None, compact=False, parent=None, on_expand=None, sources=None, info=None,
+                 encoding=None):
         # 1.8.8: compact = the preview beside the recordings table (no window of its own, no censor card, sound
         # sources only on/off, start/end in the clip card); "Grosser Editor" (on_expand) opens the full window
         super().__init__(parent, Qt.Widget if compact else Qt.Window)
@@ -1086,6 +1089,10 @@ class ClipWindow(QWidget):
         self._last_out = None               # 1.6.1: the clip saved last (Explorer button)
         self._play_to = None                # 1.6.1: "Clip ansehen" plays start..end, then back to the start
         self._censor_on, self._censor_style = bool(censor_on), censor_style        # 1.7.2: remembered boxes
+        # 1.15: encoder, quality and picture height of a re-encoded clip; the hardware encoders this PC has come
+        # from encoders.detect (once per program run, in a thread – the first editor shows the CPU until then)
+        self._encoding = encoding if isinstance(encoding, encoders.Encoding) else encoders.Encoding(hw="auto")
+        self._avail = encoders.known(self.ffmpeg)
         self._censor_boxes = [list(b) for b in (censor_boxes or ()) if len(b) == 4]
         self._mix_on = {k: bool((mix_on or {}).get(k, True)) for k in obsrec.SOURCES}     # 1.8.6: sound mix
         self._mix_vol = {k: int((mix_vol or {}).get(k, 100) or 0) for k in obsrec.SOURCES}
@@ -1383,6 +1390,7 @@ class ClipWindow(QWidget):
             fmt.addWidget(self.sound_box)
             fmt.addStretch()
         el.addLayout(fmt)
+        el.addLayout(self._encoding_row())                                          # 1.15: encoder, quality, size
         el.addLayout(self._mix_row(stacked=not self.compact))                       # 1.8.6: the sound mix
         row3 = QHBoxLayout() if self.compact else FlowRow(spacing=6)
         self.save_btn = self._btn(row3, _("Clip speichern"), self.save, _("Schreibt den Ausschnitt als MP4 in den Ordner „Clips“ neben den Aufnahmen."))
@@ -1406,6 +1414,83 @@ class ClipWindow(QWidget):
             el.addLayout(row3)
             el.addWidget(self.status)
         return export_card
+
+    def _encoding_row(self):
+        """1.15: codec, encoder (CPU or a graphics-card encoder that passed its self-test), quality and picture
+        height of a re-encoded clip – the arguments go to encoders.Encoding; a stream-copied clip ignores them."""
+        row = QHBoxLayout() if self.compact else FlowRow(spacing=8)
+        self.enc_label = QLabel(_("Kodierung"))
+        row.addWidget(self.enc_label)
+        self.codec_box = self._choice()
+        for key in encoders.CODECS:
+            self.codec_box.addItem(encoders.CODEC_LABELS[key], key)
+        self.codec_box.setToolTip(_("H.264 spielt überall; HEVC (H.265) ist bei gleicher Qualität etwa ein Drittel "
+                                    "kleiner, braucht aber einen neueren Player."))
+        self.hw_box = self._choice()
+        self.hw_box.setToolTip(_("Womit der Clip kodiert wird: die Grafikkarte (NVENC, AMF, Quick Sync – nur, wenn "
+                                 "ffmpeg sie hier wirklich ansprechen kann) belastet den Prozessor kaum; "
+                                 "„Automatisch“ nimmt die erste, die geht."))
+        self.quality_box = self._choice()
+        for key in encoders.QUALITIES:
+            self.quality_box.addItem(_(encoders.QUALITY_LABELS[key]), key)
+        self.quality_box.setToolTip(_("Schnell: kleiner und schneller, sichtbar weicher. Ausgewogen: wie bisher. "
+                                      "Hoch: grösser, nahe am Original."))
+        self.height_box = self._choice()
+        for key, label in HEIGHT_LABELS.items():
+            self.height_box.addItem(_(label) if key == 0 else label, key)
+        self.height_box.setToolTip(_("Bildhöhe des Clips – kleiner als die Aufnahme verkleinert, nie vergrössert."))
+        self._encoding_fill()
+        for box in (self.codec_box, self.hw_box, self.quality_box, self.height_box):
+            row.addWidget(box)
+            box.currentIndexChanged.connect(self._encoding_changed)
+        self.enc_widgets = (self.enc_label, self.codec_box, self.hw_box, self.quality_box, self.height_box)
+        if self.compact:
+            row.addStretch()
+        return row
+
+    def _encoding_fill(self):
+        """The boxes show self._encoding; the encoder box offers what this PC has (and "Automatisch")."""
+        e = self._encoding
+        boxes = (self.codec_box, self.hw_box, self.quality_box, self.height_box)
+        for box in boxes:
+            box.blockSignals(True)
+        try:
+            self.codec_box.setCurrentIndex(max(0, self.codec_box.findData(e.codec)))
+            self.hw_box.clear()
+            self.hw_box.addItem(_(encoders.HW_LABELS["auto"]), "auto")
+            for key, label in encoders.hw_choices(self._avail, e.codec):
+                self.hw_box.addItem(_(label) if key == "" else label, key)
+            i = self.hw_box.findData(e.hw)
+            self.hw_box.setCurrentIndex(i if i >= 0 else 0)
+            self.quality_box.setCurrentIndex(max(0, self.quality_box.findData(e.quality)))
+            self.height_box.setCurrentIndex(max(0, self.height_box.findData(int(e.height or 0))))
+        finally:
+            for box in boxes:
+                box.blockSignals(False)
+
+    def _encoding_changed(self, _i=None):
+        e = encoders.Encoding(self.codec_box.currentData() or "h264", self.quality_box.currentData() or "balanced",
+                              int(self.height_box.currentData() or 0),
+                              self.hw_box.currentData() if self.hw_box.currentData() is not None else "auto")
+        if e.codec != self._encoding.codec:                   # HEVC may have other hardware encoders than H.264
+            self._encoding = e
+            self._encoding_fill()
+        self._encoding = e
+        for key, value in (("clip_codec", e.codec), ("clip_quality", e.quality), ("clip_height", int(e.height)),
+                           ("clip_hw", e.hw)):
+            self._setting(key, value)
+        self._show_size()
+
+    def _encoders_known(self, avail):
+        """The self-tests are through: the encoder box offers the graphics-card encoders that work."""
+        self._avail = dict(avail or {})
+        if not self._closed and hasattr(self, "hw_box"):
+            self._encoding_fill()
+            self._show_size()
+
+    def encoding(self) -> encoders.Encoding:
+        """What the save will encode with: the wish resolved against this PC's encoders (CPU until known)."""
+        return self._encoding.resolve(self._avail)
 
     def _range_buttons(self, row):
         self._btn(row, _("Start setzen"), self.set_start, _("Der Clip beginnt am Abspielkopf (Taste I)."))
@@ -2019,6 +2104,9 @@ class ClipWindow(QWidget):
         b.sound.connect(self._sound_ready)
         b.levels.connect(self._show_levels)
         b.content.connect(self._content_found)
+        b.encoders.connect(self._encoders_known)
+        if self._avail is None and self.ffmpeg:
+            encoders.detect_async(self.ffmpeg, b.encoders.emit)
         threading.Thread(target=self._scrub_loop, name="clip-scrub", daemon=True).start()
         if any(i >= 0 for i in self._sources.values()):
             threading.Thread(target=self._level_loop, name="clip-levels", daemon=True).start()
@@ -2224,12 +2312,17 @@ class ClipWindow(QWidget):
             flt, amap = obsrec.audio_graph(self.info.audio_tracks, self.mix())
             if flt or amap is None:
                 parts.append(_("ohne Ton") if amap is None else _("Ton neu gemischt"))
+        reencoded = mode in ("exact", "discord") or (mode == "copy" and (self._censor_args() or not edit.simple()))
+        if reencoded and hasattr(self, "hw_box"):                  # 1.15: what will encode it
+            parts.append(self.encoding().summary(_))
         self.size_label.setText(" · ".join(parts))
 
     def _mode_changed(self, _i, save=True):
         mode = self.mode_box.currentData()
         self.target_box.setVisible(mode == "discord")
         self.gif_box.setVisible(mode == "gif")
+        for w in getattr(self, "enc_widgets", ()):               # 1.15: a GIF has no video encoder
+            w.setVisible(mode != "gif")
         if save:
             self._setting("clip_mode", mode)
         self._show_size()
@@ -2347,15 +2440,17 @@ class ClipWindow(QWidget):
         target, info, mix = self._target_mb, self.info, self.mix()
         censor = self._censor_args()
         gif_h = int(self.gif_box.currentData() or clipedit.DEFAULT_GIF_H)
+        encoding = self.encoding()                                # 1.15: resolved now, the thread keeps it
         if mode != "copy" or censor or not edit.simple():
-            self.status.setText(_("Kodiere {file} … (dauert etwas)", file=os.path.basename(out)))
+            self.status.setText(_("Kodiere {file} … ({how}, dauert etwas)", file=os.path.basename(out),
+                                  how=encoding.summary(_)))
         job = _SaveJob(self, out)                         # outlives the window, stoppable on quit (_SaveJob)
         path, ffmpeg, bridge = self.path, self.ffmpeg, self.bridge
 
         def work():
             try:
                 ok, why = clipedit.export(path, edit, out, mode, ffmpeg, run=job.run, target_mb=target, info=info,
-                                          mix=mix, gif_h=gif_h, **censor)
+                                          mix=mix, gif_h=gif_h, encoding=encoding, **censor)
             except Exception as e:                        # a result in any case: the save must not hang on
                 log.exception("Clip speichern")
                 ok, why = False, f"{type(e).__name__}: {e}"

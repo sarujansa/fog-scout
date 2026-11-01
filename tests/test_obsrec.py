@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import queue
 import socket
 import struct
@@ -53,11 +54,16 @@ class FakeObs(threading.Thread):
         self.files = 0
         self.stop_flag = False
         self.inputs = {"Desktop-Audio": {"muted": False}, "Mic/Aux": {"muted": False}}
-        self.profile = {("Output", "Mode"): "Advanced", ("AdvOut", "RecTracks"): "31"}  # 1.8.19: tracks 1–5 ticked
+        self.profile = {("Output", "Mode"): "Advanced", ("AdvOut", "RecTracks"): "31",  # 1.8.19: tracks 1–5 ticked
+                        ("AdvOut", "RecEncoder"): "jim_nvenc", ("AdvOut", "RecRBTime"): "20"}   # 1.15: the card
         self.scenes = {}                            # 1.8.18: {scene: [scene items]}
         self.windows = []                           # 1.8.20: what OBS lists for an application audio capture
         self.replay_fails = False                   # 1.8.42: the encoder cannot start the replay buffer
         self.source_size = (3440, 1440)             # 1.8.89: what every source reports as its picture size
+        self.paused = False                         # 1.15: PauseRecord / ResumeRecord
+        self.stats = {"activeFps": 60.0, "cpuUsage": 3.5, "availableDiskSpace": 2048.0,     # 1.15: GetStats
+                      "renderSkippedFrames": 2, "renderTotalFrames": 1000, "outputSkippedFrames": 0,
+                      "outputTotalFrames": 900}
 
     def run(self):
         self.srv.settimeout(0.2)
@@ -141,7 +147,16 @@ class FakeObs(threading.Thread):
             if kind == "GetVersion":
                 out = {"obsVersion": "31.0.0"}
             elif kind == "GetRecordStatus":
-                out = {"outputActive": self.recording is not None}
+                out = {"outputActive": self.recording is not None, "outputPaused": self.paused,
+                       "outputDuration": 12500 if self.recording else 0, "outputBytes": 4 * 1024 ** 2,
+                       "outputTimecode": "00:00:12.500"}
+            elif kind in ("PauseRecord", "ResumeRecord"):          # 1.15: OBS refuses the state it is in
+                want = kind == "PauseRecord"
+                ok = self.recording is not None and self.paused != want
+                if ok:
+                    self.paused = want
+            elif kind == "GetStats":                               # 1.15: the recording card
+                out = dict(self.stats)
             elif kind == "SetRecordDirectory":
                 self.record_dir = data["recordDirectory"]
             elif kind == "StartRecord":
@@ -150,7 +165,7 @@ class FakeObs(threading.Thread):
                 with open(self.recording, "wb") as f:
                     f.write(ROUND_BYTES)
             elif kind == "StopRecord":
-                out, self.recording = {"outputPath": self.recording}, None
+                out, self.recording, self.paused = {"outputPath": self.recording}, None, False
             elif kind == "GetReplayBufferStatus":
                 out = {"outputActive": self.replay}
             elif kind == "StartReplayBuffer":
@@ -212,7 +227,8 @@ class FakeObs(threading.Thread):
                     out = {"sceneItemId": self._item(data["sceneName"], data["sourceName"],
                                                      data.get("sceneItemEnabled", True))}
             elif kind == "GetVideoSettings":           # 1.8.41
-                out = {"baseWidth": 2560, "baseHeight": 1440, "outputWidth": 2560, "outputHeight": 1440}
+                out = {"baseWidth": 2560, "baseHeight": 1440, "outputWidth": 2560, "outputHeight": 1440,
+                       "fpsNumerator": 60, "fpsDenominator": 1}
             elif kind == "SetSceneItemTransform":
                 hits = [i for i in self.scenes.get(data["sceneName"], []) if i["sceneItemId"] == data["sceneItemId"]]
                 ok = bool(hits)
@@ -307,7 +323,7 @@ def test_a_wrong_or_missing_password_is_a_clear_error(tmp_path):
         with pytest.raises(obsrec.ObsError, match="Passwort"):
             obsrec.ObsClient(srv.port, "falsch").connect()
         c = obsrec.ObsClient(srv.port, "geheim").connect()
-        assert c.request("GetRecordStatus") == {"outputActive": False}
+        assert c.request("GetRecordStatus")["outputActive"] is False
         c.close()
     finally:
         srv.stop()
@@ -1908,3 +1924,133 @@ def test_a_damaged_index_line_skips_only_itself(tmp_path):
     with open(os.path.join(cdir, obsrec.CLIPS_INDEX), "wb") as fh:
         fh.write(b"[1, 2]\n" + '{"file": "Café'.encode("utf-8")[:-1] + b"\n")
     assert obsrec.load_clips(cdir) == []
+
+
+# ------------------------------------------------------------------ 1.15: recording by hand, pause, the card
+def test_a_recording_by_hand_runs_past_the_round_and_takes_its_name(obs, tmp_path):
+    """1.15 (recording card): Start by button/hotkey – outside a round, with the automatic round recording off;
+    a banner meanwhile names it instead of restarting it, the round's end leaves it running, Stopp files it."""
+    folder = str(tmp_path)
+    r, posted = _recorder(obs, folder, pre=False)
+    r.cfg.on = False                                         # the automatic round recording is off
+    r._manual_start({})
+    assert obs.recording and r.recording and r.active["manual"] and r.active["label"] == "Aufnahme"
+    kinds = [k for k, _d in _drain(posted)]
+    assert "started" in kinds
+    r._manual_start({})                                      # a second start is only a note
+    assert "schon eine Aufnahme" in posted.get(timeout=1)[1]["text"] and obs.files == 1
+    r._begin({"t": 5.0, "map_id": "coal", "label": "Coal Tower", "role": "killer", "killer": "Nurse"})
+    assert obs.files == 1 and r.active["manual"] and r.active["label"] == "Coal Tower"     # nothing restarted
+    assert ("StopRecord", {}) not in obs.requests
+    r._stop_later({})                                        # the round ended: a manual recording runs on
+    assert r.active is not None and r._pending is None
+    r._begin({"t": 9.0, "map_id": "mill", "label": "Mill"})  # a later round keeps the first name
+    assert r.active["label"] == "Coal Tower"
+    r._manual_stop()
+    assert r.active is None and obs.recording is None
+    rec = obsrec.load_index(folder)[0]
+    assert rec.label == "Coal Tower" and rec.killer == "Nurse" and rec.extra.get("manual") is True
+    assert rec.t == 5.0
+    r._manual_stop()                                         # nothing on air: a note, no request
+    _drain(posted)
+    assert obs.requests.count(("StopRecord", {})) == 1
+
+
+def test_a_pause_keeps_the_marks_in_place_and_follows_obs(obs, tmp_path):
+    r, posted = _recorder(obs, str(tmp_path), pre=False)
+    r._pause(True)                                           # nothing on air
+    assert "Keine Aufnahme" in posted.get(timeout=1)[1]["text"] and not obs.requests
+    r._begin({"t": 1.0, "label": "A"})
+    _drain(posted)
+    r._pause(True)
+    assert obs.paused and r.paused and r.active["paused_at"] is not None
+    assert [k for k, _d in _drain(posted) if k == "paused"]
+    r._pause(True)                                           # already paused: nothing sent twice
+    assert obs.requests.count(("PauseRecord", {})) == 1
+    r.active["paused_at"] -= 5.0                             # five seconds of pause …
+    r.active["since"] -= 20.0                                # … in a recording that began 20 s ago
+    r._pause(False)
+    assert not obs.paused and not r.paused and 4.9 <= r.active["paused_s"] <= 5.5
+    r._mark()
+    assert 14.5 <= r.active["marks"][0] <= 15.5              # 20 s on the clock, 5 of them paused
+    assert obsrec.rec_elapsed({"since": 100.0, "paused_s": 3.0, "paused_at": 110.0}, 112.0) == 7.0
+    assert obsrec.rec_elapsed(None) == 0.0
+    obs.paused = True                                        # OBS says paused although we think not (paused in OBS)
+    r._pause(True)                                           # PauseRecord is refused, GetRecordStatus agrees: fine
+    assert r.paused and r.active["paused_at"] is not None
+    r._finish({})
+    assert not r.paused and not obs.paused
+
+
+def test_the_poll_reads_obs_state_for_the_card_without_writing_anything(obs, tmp_path):
+    r, posted = _recorder(obs, str(tmp_path))
+    r._poll()
+    kind, d = posted.get(timeout=1)
+    assert kind == "obs_status" and d["connected"] and not d["recording"] and not d["paused"] and not d["ours"]
+    assert d["width"] == 2560 and d["height"] == 1440 and d["fps"] == 60.0
+    assert d["encoder"] == "NVENC H.264" and d["buffer_s"] == 20 and d["mode"] == "Advanced"
+    assert d["active_fps"] == 60.0 and d["render_skipped"] == 2 and d["disk_free"] == 2048 * 1024 ** 2
+    assert d["buffer"] is False and d["folder"] == str(tmp_path)
+    assert all(k.startswith("Get") for k, _a in obs.requests)        # the poll only reads
+    n = len(obs.requests)
+    r._poll()                                                         # the slow values are not asked again at once
+    posted.get(timeout=1)
+    assert ("GetVideoSettings", {}) not in obs.requests[n:] and not any(k == "GetProfileParameter"
+                                                                        for k, _a in obs.requests[n:])
+    r._begin({"t": 1.0, "label": "Coal Tower"})
+    _drain(posted)
+    r._poll()
+    d = posted.get(timeout=1)[1]
+    assert d["recording"] and d["ours"] and d["label"] == "Coal Tower" and d["seconds"] == 12.5
+    r._finish({})
+    _drain(posted)
+    r.cfg.port = 1                                                    # OBS gone
+    r._poll()
+    d = posted.get(timeout=1)[1]
+    assert not d["connected"] and d["error"]
+    r.poll()
+    r.poll()                                                          # one poll in the queue at a time
+    assert r.cmds.qsize() == 1 and r._poll_waiting
+
+
+def test_encoder_names_and_profile_keys_are_read_for_both_output_modes():
+    assert obsrec.encoder_label("jim_hevc_nvenc") == "NVENC HEVC"
+    assert obsrec.encoder_label("obs_nvenc_h264_tex") == "NVENC H.264"
+    assert obsrec.encoder_label("h264_texture_amf") == "AMD AMF H.264"
+    assert obsrec.encoder_label("obs_qsv11_v2") == "Quick Sync H.264"
+    assert obsrec.encoder_label("obs_x264") == "x264 (CPU)" and obsrec.encoder_label("x264_lowcpu").startswith("x264")
+    assert obsrec.encoder_label("ffmpeg_svt_av1") == "AV1 (CPU)" and obsrec.encoder_label("jim_av1_nvenc") == "NVENC AV1"
+    assert obsrec.encoder_label("") == "" and obsrec.encoder_label("none") == "" and obsrec.encoder_label("odd") == "odd"
+    assert obsrec.profile_keys("Advanced")["encoder"] == ("AdvOut", "RecEncoder")
+    assert obsrec.profile_keys("Simple")["buffer_s"] == ("SimpleOutput", "RecRBTime")
+    assert obsrec.profile_keys("")["quality"] == ("SimpleOutput", "RecQuality")
+
+
+def test_the_simple_output_mode_reports_the_stream_encoder_when_the_recording_uses_it(obs, tmp_path):
+    obs.profile.update({("Output", "Mode"): "Simple", ("SimpleOutput", "RecQuality"): "Stream",
+                        ("SimpleOutput", "StreamEncoder"): "amd", ("SimpleOutput", "RecRBTime"): "45"})
+    r, posted = _recorder(obs, str(tmp_path))
+    r._poll()
+    d = posted.get(timeout=1)[1]
+    assert d["encoder"] == "AMD AMF H.264" and d["buffer_s"] == 45 and d["mode"] == "Simple"
+
+
+def test_a_filling_drive_ends_the_recording_and_a_forgotten_manual_one_is_capped(obs, tmp_path, monkeypatch):
+    r, posted = _recorder(obs, str(tmp_path), pre=False)
+    r._begin({"t": 1.0, "label": "A"})
+    _drain(posted)
+    r._free_t = 0.0
+    monkeypatch.setattr(obsrec.shutil, "disk_usage", lambda _p: shutil._ntuple_diskusage(10 ** 12, 10 ** 12, 10 ** 6))
+    r._watchdog()
+    assert r.active is None and obs.recording is None
+    events = _drain(posted)
+    assert any(k == "saved" for k, _d in events)                      # filed (prune may take it: no room)
+    assert any(k == "warn" and "fast voll" in d["text"] for k, d in events)
+    monkeypatch.setattr(obsrec.shutil, "disk_usage", lambda _p: ROOMY)
+    r._manual_start({})
+    r.active["since"] -= obsrec.MAX_ROUND_S + 10                     # the round cap does not apply to it
+    r._watchdog()
+    assert r.active is not None
+    r.active["since"] -= obsrec.MAX_MANUAL_S
+    r._watchdog()
+    assert r.active is None and obsrec.load_index(str(tmp_path))[-1].extra.get("manual") is True
