@@ -617,8 +617,6 @@ class MainWindow(QMainWindow):
             from .qt_views import Table
             for t in page.findChildren(Table):
                 t.set_hidden_map(self._hidden_cols)
-        if self._qss:
-            page.setStyleSheet(self._qss)
         old = self._pages.get(key)
         if old is not None and old is not page:
             i = self.stack.indexOf(old)
@@ -627,6 +625,8 @@ class MainWindow(QMainWindow):
             if old in self._stale:
                 self._stale.remove(old)
             old.deleteLater()
+        if self._qss:
+            page.setStyleSheet(self._qss)
         self._pages[key] = page
         return page
 
