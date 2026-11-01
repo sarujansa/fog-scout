@@ -276,6 +276,9 @@ QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar::handle:vertical {{ background: {c['hover']}; border-radius: 4px; min-height: 30px; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar[idle="true"]::handle:vertical {{ background: transparent; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}  /* 1.17: like the vertical one */
+QScrollBar::handle:horizontal {{ background: {c['hover']}; border-radius: 4px; min-width: 30px; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QTreeWidget {{ border: 1px solid {c['border']}; border-radius: 8px; padding: 4px; }}
 QTreeWidget::item {{ padding: 3px 6px; }}
 QHeaderView::section {{ padding: 3px 6px; }}
