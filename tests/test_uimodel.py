@@ -2886,3 +2886,46 @@ def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
         assert toasts[-1] == "Keine Aufnahme" and calls[-1][0] != "record_start"
     finally:
         app.quit()
+
+
+def test_a_fired_or_cancelled_timer_is_freed():
+    """1.16.1 (audit, measured): every ``after`` left its QTimer alive for good – the lambda of the connection held
+    the timer, the timer's connection the lambda, a cycle through Qt – 24 per second in the running program
+    (≈ 2.9 KB each, ≈ 250 MB per hour). Fired and cancelled timers are released now."""
+    import gc
+    import weakref
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from fogscout import qt_window
+    from fogscout.mainloop import MainLoop
+    app = qt_window.application()
+    loop = MainLoop(app)
+    fired = []
+    made = weakref.WeakSet()                                  # every timer this loop handed out
+    real_after = loop.after
+
+    def after(ms, fn):
+        t = real_after(ms, fn)
+        made.add(t)
+        return t
+    loop.after = after
+
+    def tick():
+        fired.append(1)
+        if len(fired) < 300:
+            loop.after(0, tick)
+    loop.after(0, tick)
+    cancelled = [loop.after(10_000, tick) for _ in range(50)]
+    for job in cancelled:
+        loop.after_cancel(job)
+    loop.after_cancel(cancelled[0])                           # twice: harmless
+    deadline = time.time() + 20
+    while len(fired) < 300 and time.time() < deadline:
+        app.processEvents()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)   # what the real loop does by itself
+    del cancelled
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    gc.collect()
+    gc.collect()
+    assert len(fired) == 300 and loop._jobs == set()
+    assert len(made) <= 2, len(made)                          # not 350: fired and cancelled timers are gone

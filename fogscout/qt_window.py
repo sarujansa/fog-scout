@@ -935,16 +935,29 @@ class MainWindow(QMainWindow):
     def warm_pages(self):
         """1.3.4 (user: the window should feel smoother): lay out every page once while the window is idle – the
         first visit of a page polished and laid out all its widgets (settings ~110 ms), later visits ~10 ms."""
-        from PySide6.QtWidgets import QWidget
+        for i in range(self.stack.count()):
+            self._warm_widget(self.stack.widget(i))
+
+    def warm_page(self, key: str):
+        """1.16.1: one page of the warm-up (the App spreads them over its steps)."""
+        form = dict.get(self.forms, key)
+        if form is None:
+            return
         for i in range(self.stack.count()):
             page = self.stack.widget(i)
-            if page is self.stack.currentWidget():
-                continue
-            page.resize(self.stack.size())
-            for w in [page] + page.findChildren(QWidget):
-                w.ensurePolished()
-            if page.layout() is not None:
-                page.layout().activate()
+            if page is form or page.isAncestorOf(form):
+                self._warm_widget(page)
+                return
+
+    def _warm_widget(self, page):
+        from PySide6.QtWidgets import QWidget
+        if page is None or page is self.stack.currentWidget():
+            return
+        page.resize(self.stack.size())
+        for w in [page] + page.findChildren(QWidget):
+            w.ensurePolished()
+        if page.layout() is not None:
+            page.layout().activate()
 
     def show_page(self, key, search=None):
         """Go to a page (e.g. the maps with a search: a scan found only the realm)."""
@@ -963,6 +976,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QPoint
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
+        menu.setAttribute(Qt.WA_DeleteOnClose)
         if self._qss:
             menu.setStyleSheet(self._qss)
         for it in items:

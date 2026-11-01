@@ -49,6 +49,7 @@ class ThumbLoader:
         self._todo = []
         self._thread = None
         self._stop = False
+        self._pruned = False              # 1.16.1: old cache files go once per session (thumbs.prune)
 
     def request(self, items):
         with self._lock:
@@ -90,6 +91,13 @@ class ThumbLoader:
 
     def _run(self):
         from PIL import Image
+        from .thumbs import prune
+        if not self._pruned and self.cache_dir:
+            self._pruned = True
+            try:
+                prune(self.cache_dir)
+            except Exception:
+                pass
         while True:
             job = self._next()
             if job is None:
@@ -408,6 +416,7 @@ class MediaLibrary(QFrame):
         if it is None:
             return
         menu = QMenu(self)
+        menu.setAttribute(Qt.WA_DeleteOnClose)
         menu.addAction(_("Auf der Zeitleiste öffnen")).triggered.connect(lambda _c=False: self.opened.emit(it))
         menu.addAction(_("Im Explorer zeigen")).triggered.connect(lambda _c=False: self.shown.emit(it))
         self._menu = menu

@@ -549,3 +549,22 @@ def test_every_visible_pixel_of_a_flat_oval_or_a_frame_picks_it_and_its_middle_d
         assert not missed, (kind, pts, len(missed), len(xs))
         (x0, y0), (x1, y1) = pts
         assert not annotate.hit(s, (x0 + x1) / 2 * pw, (y0 + y1) / 2 * ph, pw, ph), (kind, pts)
+
+
+def test_a_project_shape_that_the_painter_cannot_draw_is_mended_or_dropped():
+    """1.16.1 (audit, reproduced): a colour that is no "#rrggbb", a point or size that is not finite or absurd
+    reached annotate.draw from a project file and raised in the paint path."""
+    from PIL import Image
+    import math
+    good = {"kind": "rect", "pts": [[0.1, 0.1], [0.5, 0.5]], "colour": "#zzzzzz", "size": 1e308, "text": ""}
+    s = annotate.from_dict(good)
+    assert s is not None and s.colour == annotate.COLOURS[0] and s.size == annotate.SIZE_MAX
+    for bad in ({"kind": "line", "pts": [[float("nan"), 0.2], [0.5, 0.5]]},
+                {"kind": "line", "pts": [[1e9, 0.2], [0.5, 0.5]]}):
+        assert annotate.from_dict(bad) is None
+    t = annotate.from_dict({"kind": "text", "pts": [[0.2, 0.2]], "text": "x", "size": 1e9, "t0": float("inf")})
+    assert t is not None and t.size == annotate.SIZE_MAX and t.t0 is None
+    neg = annotate.from_dict({"kind": "arrow", "pts": [[0.2, 0.2], [0.6, 0.6]], "size": -3})
+    assert neg is not None and neg.size == annotate.DEFAULT_SIZE and math.isfinite(neg.size)
+    img = annotate.draw(Image.new("RGBA", (160, 90), (0, 0, 0, 0)), [s, t, neg])   # draws without raising
+    assert img.getbbox() is not None

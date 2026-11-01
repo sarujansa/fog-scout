@@ -350,7 +350,7 @@ class DetectionWorker(threading.Thread):
                         last_status = warn
                         self._nap(1.0)
                         continue
-                    if img is not None and img.size and float(img.mean()) < 1.0 and window is not None:
+                    if img is not None and img.size and sum(cv2.mean(img)[:3]) < 3.0 and window is not None:
                         black_since = black_since or tick
                         if tick - black_since > 8:
                             warn = _("Aufnahme ist schwarz – DBD im Modus „Fenster-Vollbild“ betreiben")

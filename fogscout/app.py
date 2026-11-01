@@ -410,16 +410,26 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.worker.watch_gen = None
         self.worker.map_on_screen = False
         self._detail = ""
-        self._thumb_src = None
+        self._thumb_src = self._thumb_full = None
         self._thumb_rev = getattr(self, "_thumb_rev", 0) + 1
         self.tray.set_title("Fog Scout")
         self._show_map_size()
 
     def _set_thumb(self, img):
-        src = img.copy()                          # for the overview page
-        src.thumbnail((480, 480))
-        self._thumb_src = src
+        """1.16.1 (audit, measured 25 ms per map change on the GUI thread): the small copy for the overview page is
+        made when that page asks for it (``_overview_thumb``), not for every map that comes and goes."""
+        self._thumb_full = img
+        self._thumb_src = None
         self._thumb_rev = getattr(self, "_thumb_rev", 0) + 1
+
+    def _overview_thumb(self):
+        """The current map's picture for the overview page (≤ 480 px), made once per map."""
+        full = getattr(self, "_thumb_full", None)
+        if getattr(self, "_thumb_src", None) is None and full is not None:
+            src = full.copy()
+            src.thumbnail((480, 480))
+            self._thumb_src = src
+        return getattr(self, "_thumb_src", None)
 
     def _current_label(self) -> str:
         m = self.catalog.maps.get(self.current[0]) if self.current else None
@@ -1067,7 +1077,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         _gx, _gy, gw, gh = self._game_rect()
         pic = None
         if o.get("show_map", True):
-            pic = getattr(self, "_thumb_src", None) if self.current else None
+            pic = self._overview_thumb() if self.current else None
             pic = pic or self._preview_sample()
         m = self.catalog.maps.get(self.current[0]) if self.current else None
         if m is None and pic is not None:                  # the sample picture: the catalog's first map

@@ -311,11 +311,22 @@ class QtShell:
             if self.qt.build_next():
                 self.root.after(WARM_STEP_MS, self._qt_warm)
                 return
-            reg, auto = self.__dict__.get("_qt_reg", {}), self._qt_auto
-            for page, form in self.qt.forms.items():
+            # 1.16.1 (audit, measured 128–243 ms in one callback): the first fill and layout of every page, one page
+            # per step too – the window never stops for all of them at once
+            queue = self.__dict__.get("_warm_queue")
+            if queue is None:
+                queue = self._warm_queue = list(self.qt.forms)
+            if not queue:
+                return
+            page = queue.pop(0)
+            form = self.qt.forms.get(page)
+            if form is not None:
+                reg, auto = self.__dict__.get("_qt_reg", {}), self._qt_auto
                 src = auto if page in self._qt_mod.AUTO_PAGES else reg
                 self.qt.show_states(page, {k: ui_state(src[k]) for k in form.controls if k in src})
-            self.qt.warm_pages()
+                self.qt.warm_page(page)
+            if queue:
+                self.root.after(WARM_STEP_MS, self._qt_warm)
         except Exception:
             log.debug("warm pages", exc_info=True)
 
@@ -573,7 +584,7 @@ class QtShell:
             return
         page = q.current_key()
         if page == "overview":
-            q.show_model(overview.overview_model(self, now, IS_WIN), getattr(self, "_thumb_src", None), self._qt_tip)
+            q.show_model(overview.overview_model(self, now, IS_WIN), self._overview_thumb(), self._qt_tip)
         else:
             q.show_log_alert(bool(getattr(self, "_log_alert", False)))
         if page == "maps":

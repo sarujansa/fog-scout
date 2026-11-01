@@ -260,16 +260,33 @@ def to_dict(shape: Shape) -> dict:
             "text": shape.text, "t0": shape.t0, "t1": shape.t1}
 
 
+_COLOUR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+SIZE_MAX = 0.5                  # 1.16.1: a stroke or text taller than half the picture is no drawing of ours
+
+
 def from_dict(d: dict) -> Shape | None:
+    """A shape from its dict (project files, 1.16.1 audit: nothing that draw() cannot take – a colour that is no
+    "#rrggbb", a point or size that is not finite or absurd made the paint path raise)."""
     try:
         kind = str(d.get("kind"))
         if kind not in KINDS:
             return None
         pts = [(float(p[0]), float(p[1])) for p in d.get("pts") or []][:2000]
+        if not all(math.isfinite(x) and math.isfinite(y) and -1.0 <= x <= 2.0 and -1.0 <= y <= 2.0 for x, y in pts):
+            return None
+        colour = str(d.get("colour") or COLOURS[0])
+        if not _COLOUR_RE.match(colour):
+            colour = COLOURS[0]
+        size = float(d.get("size") or DEFAULT_SIZE)
+        if not math.isfinite(size) or size <= 0:
+            size = TEXT_SIZE if kind == "text" else DEFAULT_SIZE
+        size = min(size, SIZE_MAX)
         t0 = d.get("t0")
         t1 = d.get("t1")
-        return Shape(kind, pts, str(d.get("colour") or COLOURS[0]), float(d.get("size") or DEFAULT_SIZE),
-                     str(d.get("text") or "")[:500], None if t0 is None else float(t0),
-                     None if t1 is None else float(t1))
+        t0 = None if t0 is None else float(t0)
+        t1 = None if t1 is None else float(t1)
+        if (t0 is not None and not math.isfinite(t0)) or (t1 is not None and not math.isfinite(t1)):
+            t0 = t1 = None
+        return Shape(kind, pts, colour, size, str(d.get("text") or "")[:500], t0, t1)
     except (TypeError, ValueError, IndexError, AttributeError):
         return None
