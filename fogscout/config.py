@@ -150,7 +150,7 @@ DEFAULTS = {
     "farming_opponents": [],            # 1.8.73: characters (as the stats page names them) you only meet while farming
     "rec_on": False,                    # 1.4: round recordings with OBS (obs-websocket on this PC)
     "rec_port": 4455,
-    "rec_password": "",
+    "rec_password": "",                 # 1.16.2: DPAPI-protected (spotify.protect), clear text before – read both
     "rec_volume": "",                   # the recording folder's drive (volume GUID) + path on it + last path
     "rec_rel": "",
     "rec_folder": "",

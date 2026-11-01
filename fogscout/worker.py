@@ -49,6 +49,7 @@ LOBBY_RATE = 1.0                  # banner scans per second while the lobby butt
 TICK_FAIL_LIMIT = 30               # 1.8.38: ticks in a row that raise before the detection counts as crashed
 TICK_FAIL_WAIT_S = 1.0            # … pause after one (no busy loop on a lasting fault)
 TICK_FAIL_LOG_S = 60.0            # … the same traceback goes to the log at most this often
+BP_STEADY_S = 5.0                 # 1.16.2 (A7): bloodpoint counter read this seldom once CONFIRM_LOOKS looks agree
 LOBBY_HOLD = 3.0                  # only comes after the loading screen; full rate again 3 s after the button went
 
 
@@ -116,6 +117,7 @@ class DetectionWorker(threading.Thread):
         self.match_start = MatchStart()                      # 1.6: end of the loading screen (recording start)
         self.lobby_info = "–"                                # last look at the lobby button (diagnosis)
         self.bp_info = "–"                                   # 1.13: last look at the bloodpoint counter (diagnosis)
+        self._bp_seen = (None, 0, -1e9, None)                # 1.16.2: (value, same in a row, last look, map gen)
         self.banner_history = collections.deque(maxlen=20)  # every banner-like sighting and its outcome (diagnosis)
         self.role_misses = collections.deque(maxlen=5)      # 1.11.1: result screens without a role read (diagnosis)
         self._scanner = None
@@ -254,6 +256,11 @@ class DetectionWorker(threading.Thread):
                 if not self.running:
                     break                        # 1.8.38: not return – the capture below is closed
 
+                # 1.16.2 (A7): the whole picture of this tick, when the look for the loading screen takes one anyway
+                # (menus and lobby, once a second) – banner strip, lobby corner, globe and currency bar are cut from
+                # it instead of being grabbed one by one (up to 5 grabs; with the window capture each waits for a
+                # new picture). Same pixels, one moment; covered or failed → the parts are grabbed as before.
+                shot = []
                 # --------------------------------------------- where is DBD?
                 if source is None and tick - window_checked > 1.5:
                     window = find_game_window()
@@ -314,10 +321,16 @@ class DetectionWorker(threading.Thread):
                         self.capture_info += f" · {self.hidden_looks}× verdeckt, ausgelassen"
                     covers = []                       # windows over DBD (looked up once per tick, when needed)
 
-                    def grab(box, _o=origin, _cap=wcap, _win=window, _fg=fg_now, _covers=covers):
+                    def grab(box, _o=origin, _cap=wcap, _win=window, _fg=fg_now, _covers=covers, _shot=shot):
                         """Part of the game picture, or None: DBD is in the background, the window capture had
                         no picture and another window lies over that part of the screen (e.g. our own
-                        statistics) – then nothing is read rather than someone else's pixels."""
+                        statistics) – then nothing is read rather than someone else's pixels. 1.16.2 (A7): a
+                        copy out of this tick's whole picture when one was taken (see ``shot``)."""
+                        if _shot:
+                            whole = _shot[0]
+                            x, y, w, h = box
+                            if x >= 0 and y >= 0 and x + w <= whole.shape[1] and y + h <= whole.shape[0]:
+                                return whole[y:y + h, x:x + w].copy()
                         if _cap is not None and _win is not None:
                             img = _wgc_grab(_cap, _win, box)
                             if img is not None:
@@ -339,6 +352,17 @@ class DetectionWorker(threading.Thread):
                     self._status(status, last_status)
                     last_status = status
                 sep = None
+                start_due = (not self.map_on_screen and not session and tick - last_start_look >= START_LOOK_INTERVAL
+                             and (source is not None or window is not None))
+                whole_tried = False
+                if start_due and source is None:
+                    try:
+                        whole = grab((0, 0, fw, fh))
+                        whole_tried = True
+                    except Exception:            # e.g. window moved off-screen: the grabs below say it
+                        whole = None
+                    if whole is not None:
+                        shot.append(whole)
                 if self.settings.get("auto_detect", True) and (source is not None or window is not None):
                     # ------------------------------------------------ banner search
                     box = (int(ROI[0] * fw), int(ROI[1] * fh), int((ROI[2] - ROI[0]) * fw), int((ROI[3] - ROI[1]) * fh))
@@ -434,7 +458,8 @@ class DetectionWorker(threading.Thread):
                                         self._globe_saved = tick    # 1.5.4 (user: farming not recognised): keep the
                                         self._save_globe(globe, view.button)   # unreadable crop for a look
                                 # 1.13: the bloodpoint counter top right – before and after a round (cap reached?)
-                                self._bp_look(grab, fw, fh, tick, origin, from_screen(), out_of_match)
+                                if self._bp_due(tick):
+                                    self._bp_look(grab, fw, fh, tick, origin, from_screen(), out_of_match)
                             fit = "–" if view.fit is None else f"{view.fit:.1f}"
                             cross = {True: " · Crossplay aus", False: " · Crossplay an"}.get(view.crossplay_off, "")
                             self.lobby_info = (f"{view.button or '–'} ({fit}) "
@@ -449,12 +474,13 @@ class DetectionWorker(threading.Thread):
                 ms = self.match_start
                 if self.map_on_screen and ms.armed:
                     ms.disarm()                          # a banner came first: the recording starts there
-                elif (not self.map_on_screen and sep is None and not session
-                        and tick - last_start_look >= START_LOOK_INTERVAL
-                        and (source is not None or window is not None)):
+                elif start_due and sep is None:
                     last_start_look = tick
                     try:
-                        look = grab((0, 0, fw, fh))
+                        if whole_tried:                  # taken above (None: covered – not grabbed twice)
+                            look = shot.pop() if shot else None
+                        else:
+                            look = grab((0, 0, fw, fh))
                         if look is not None:             # None: covered -> no look, nothing changes
                             self._mask_screen(look, from_screen(), origin[0], origin[1])
                             bar, dark = has_loading_bar(look), is_dark(look)
@@ -604,6 +630,17 @@ class DetectionWorker(threading.Thread):
         if text != last:
             self.post("status", text=text)
 
+    def _bp_due(self, tick) -> bool:
+        """1.16.2 (A7): read the counter every lobby look until CONFIRM_LOOKS readings agree (what the app needs
+        to confirm a balance), then every BP_STEADY_S – a fifth of the OCR while sitting in the lobby. A new map
+        (the round in between) or another value starts the run again: the reading after a round is as fast as
+        before, the one before a round at most BP_STEADY_S old (the app accepts BEFORE_MAX_S)."""
+        value, run, last, gen = self._bp_seen
+        if gen != self.watch_gen:
+            self._bp_seen = (None, 0, last, self.watch_gen)
+            return True
+        return value is None or run < bloodpoints.CONFIRM_LOOKS or tick - last >= BP_STEADY_S
+
     def _bp_look(self, grab, fw, fh, tick, origin, from_screen, watcher):
         """1.13: one reading of the currency bar top right while the lobby button is on screen – the bloodpoints
         before and after a round (bloodpoints.py: unchanged after a counted round = the cap is reached). A small
@@ -616,6 +653,8 @@ class DetectionWorker(threading.Thread):
         self._mask_screen(img, from_screen, origin[0] + box[0], origin[1] + box[1])
         text = watcher.currency_text(img, fh)
         value = bloodpoints.parse(text)
+        before, run, _last, gen = getattr(self, "_bp_seen", (None, 0, 0.0, None))
+        self._bp_seen = (value, run + 1 if value is not None and value == before else 1, tick, gen)
         self.bp_info = (f"{time.strftime('%H:%M:%S', time.localtime(tick))} „{text}“ → "
                         f"{bloodpoints.fmt(value) if value is not None else '–'}")
         if text:

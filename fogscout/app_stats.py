@@ -7,6 +7,7 @@ import collections
 import datetime
 import logging
 import os
+import threading
 import time
 import webbrowser
 from types import SimpleNamespace
@@ -1559,6 +1560,24 @@ class StatsTab:
         if not getattr(self, "_off_downloads", None):
             self._off_downloads = official.downloads_dir()
         return self.settings.get("official_dir") or self._off_downloads
+
+    def _joined_preload(self):
+        """1.16.2 (A8): parse rounds.jsonl / official.jsonl in a thread while the window is being built – the
+        first _joined() in the window's thread then finds both in the line caches (history/official._LINES,
+        thread-safe: a join that comes earlier waits for the parse under way instead of parsing a second time)
+        and only links them (~30 ms instead of 130–260 ms with 3000 + 3000 lines)."""
+        paths = (self._hist_path(), self._official_path())
+
+        def run():
+            try:
+                history.load(paths[0])
+                official.load(paths[1])
+            except Exception:                        # never fatal: the window's thread parses them itself then
+                log.exception("Statistik: Vorladen fehlgeschlagen")
+
+        t = threading.Thread(target=run, daemon=True, name="stats-preload")
+        t.start()
+        return t
 
     def _joined(self):
         """_official_join() cached until rounds.jsonl / official.jsonl, the killer assignments or the catalog

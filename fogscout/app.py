@@ -73,6 +73,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._progress = progress or (lambda fraction, text: None)     # 1.14.2: the splash screen's steps
         self.settings = Settings(os.path.join(root_dir, "settings.json"))
         i18n.set_language(self.settings.get("ui_language", "auto"))
+        self._joined_preload()           # 1.16.2: the statistics files are parsed while the window is built
         self._progress(0.3, _("Lade Maps …"))
         self.catalog = Catalog(root_dir, self.settings["languages"], self.settings.get("user_aliases"))
         self._unknown = None             # (name text, realm text) of the last banner that matched no map

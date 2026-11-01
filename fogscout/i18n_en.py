@@ -2726,4 +2726,6 @@ EN = {
     "Öffnen aus der Bibliothek ist hier nicht verfügbar.": "Opening from the library is not available here.",
     # 1.16.1: audit
     "Aufnahme: Fehler in {step} – siehe Log.": "Recording: error in {step} – see the log.",
+    "OBS-Passwort ist auf diesem PC/Benutzerkonto nicht lesbar – bitte neu eingeben.":
+        "The OBS password cannot be read on this PC/user account – please enter it again.",
 }

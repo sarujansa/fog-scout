@@ -70,3 +70,28 @@ def test_a_number_too_big_for_an_int_skips_only_its_line(tmp_path):
         fh.write('{"t": 2000.0, "map": "Coal Tower", "bp": Infinity}\n')
         fh.write('{"t": 3000.0, "map": "Coal Tower", "bp": 12000}\n')
     assert [m.t for m in official.load(path)] == [1000.0, 3000.0]
+
+
+def test_the_statistics_files_are_parsed_once_in_a_thread_at_start(tmp_path):
+    """1.16.2 (A8): App._joined_preload parses rounds.jsonl / official.jsonl off the window's thread; the first
+    join then reads only the cache (no second full parse), and missing or broken files never raise."""
+    from types import SimpleNamespace
+    from fogscout import official
+    from fogscout.app_stats import StatsTab
+    host = SimpleNamespace(root_dir=str(tmp_path))
+    host._hist_path = lambda: StatsTab._hist_path(host)
+    host._official_path = lambda: StatsTab._official_path(host)
+    path = host._hist_path()
+    history.append(path, history.Round(100, 600, "a", "A", role="killer"))
+    with open(host._official_path(), "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"t": 62.0, "map": "A", "role": "killer"}) + "\n" + "{broken\n")
+    rounds_full, matches_full = history._LINES.full, official._LINES.full
+    StatsTab._joined_preload(host).join(10)
+    assert (history._LINES.full, official._LINES.full) == (rounds_full + 1, matches_full + 1)
+    assert [r.map_id for r in history.load(path)] == ["a"] and len(official.load(host._official_path())) == 1
+    assert (history._LINES.full, official._LINES.full) == (rounds_full + 1, matches_full + 1)    # cache only
+    empty = SimpleNamespace(_hist_path=lambda: str(tmp_path / "none" / "r.jsonl"),
+                            _official_path=lambda: str(tmp_path / "none" / "o.jsonl"))
+    t = StatsTab._joined_preload(empty)
+    t.join(10)
+    assert not t.is_alive()
