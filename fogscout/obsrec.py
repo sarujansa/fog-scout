@@ -451,8 +451,8 @@ class Recording:
 def rel_path(folder: str, name: str) -> str | None:
     """Absolute path of an index entry's file: a plain name or one inside a subfolder (``Farming/…``), never
     outside ``folder`` (no absolute path, no ``..``) – None for anything else. Entries use "/" on every system."""
-    if not name or os.path.isabs(name) or name.startswith(("/", "\\")) or ":" in name:   # ":" = a drive letter
-        return None
+    if not name or os.path.isabs(name) or name.startswith(("/", "\\")) or ":" in name or "\x00" in name:
+        return None                                   # ":" = a drive letter; NUL: os.remove raises ValueError on it
     parts = [p for p in re.split(r"[\\/]", name) if p]
     if not parts or any(p in ("..", ".") for p in parts) or len(parts) > 2:
         return None
@@ -1306,21 +1306,27 @@ class Recorder(threading.Thread):
         self.cmds.put(("quit", None))
 
     # ---- thread
+    IDLE_WAIT_S = 5.0                 # how long the thread waits for a command before its idle work
+
     def run(self):
         while True:
-            wait = 5.0 if self._pending is None else max(0.05, min(5.0, self._pending[1] - time.time()))
+            wait = self.IDLE_WAIT_S if self._pending is None else max(0.05, min(self.IDLE_WAIT_S, self._pending[1] - time.time()))
             try:
                 cmd, arg = self.cmds.get(timeout=wait)
             except queue.Empty:
-                try:
-                    self._due()
-                    self._watchdog()
-                    self._recheck()
-                    self._look_at_space()
-                    self._expire_farming()
-                    self._settle_parts()
-                except ObsError as e:
-                    self._say(str(e), False)
+                # 1.16.1 (audit, reproduced): only ObsError was caught here – an OSError while the index was written
+                # (drive unplugged between folder() and the write, disk full, a virus scanner holding the .tmp) ended
+                # the thread for good: no recording ever again, a running OBS recording never filed, nothing in the
+                # log. Every idle step is tried on its own; the thread never dies of one of them.
+                for step in (self._due, self._watchdog, self._recheck, self._look_at_space, self._expire_farming,
+                             self._settle_parts):
+                    try:
+                        step()
+                    except ObsError as e:
+                        self._say(str(e), False)
+                    except Exception:
+                        log.exception("OBS-Aufnahme: %s", step.__name__)
+                        self._say(_("Aufnahme: Fehler in {step} – siehe Log.", step=step.__name__.strip("_")), False)
                 continue
             try:
                 if cmd == "quit":

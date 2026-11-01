@@ -76,7 +76,7 @@ def prune(cache_dir: str, now: float | None = None, max_age_s: float = PRUNE_AFT
     now = time.time() if now is None else now
     gone = 0
     for name in os.listdir(cache_dir):
-        if not name.endswith(".png"):
+        if not name.endswith((".png", ".jpg")):          # 1.16.1: qt_library keeps JPEGs of the recordings here
             continue
         full = os.path.join(cache_dir, name)
         try:

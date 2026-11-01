@@ -386,6 +386,7 @@ class Timeline(QWidget):
             return
         t = self._t(e.pos().x())
         menu = QMenu(self)
+        menu.setAttribute(Qt.WA_DeleteOnClose)
         for ident, label in (("seek", _("Abspielkopf hierher")), ("start", _("Clip beginnt hier")),
                              ("end", _("Clip endet hier")), (None, None), ("still", _("Standbild hier speichern"))):
             if ident is None:
@@ -1137,9 +1138,16 @@ class ClipBase(QWidget):
         self.loading = LoadingScreen(self, os.path.basename(path), self.timeline.n_thumbs + 1)
         self.loading.setGeometry(self.rect())
         self.loading.raise_()
-        QTimer.singleShot(LOAD_TIMEOUT_MS, lambda: self.loading is not None and self.loading.finish(late=True))
+        self._load_timer = QTimer(self)
+        self._load_timer.setSingleShot(True)
+        self._load_timer.timeout.connect(self._load_late)
+        self._load_timer.start(LOAD_TIMEOUT_MS)
         self._ready(True)
         self._start_threads()
+
+    def _load_late(self):
+        if self.loading is not None:
+            self.loading.finish(late=True)
 
     # ---- hooks of the subclasses
     def _build(self, mode, sound):
@@ -1935,7 +1943,28 @@ class ClipBase(QWidget):
             self._scrub_lock.notify_all()
         if any(job.win is self for job in _SAVES):  # its result must come even when the window is deleted now
             _watch_closed()
+        self._release()
         super().closeEvent(e)
+
+    def _release(self):
+        """1.16.1 (audit, measured: a closed editor kept ~28 MB – lambdas in its signal connections hold the window,
+        a cycle through Qt the collector never clears): the pump slows to CLOSED_PUMP_MS (a closed editor drained
+        67×/s on; a late save still arrives through it or through _drain_closed), the pictures and the strip go, the
+        bridge keeps only the handlers a late save still needs."""
+        self._pump.setInterval(CLOSED_PUMP_MS)
+        for name in list(self.bridge.handlers):
+            if name not in _Bridge.AFTER_CLOSE:
+                self.bridge.handlers.pop(name, None)
+        pv = getattr(self, "preview", None)
+        if pv is not None:
+            pv._img = pv._scaled = pv._layer = None
+        tl = getattr(self, "timeline", None)
+        if tl is not None:
+            tl.thumbs.clear()
+            if hasattr(tl, "wave"):
+                tl.wave = []
+            if hasattr(tl, "_layer"):
+                tl._layer = None
 
 
 class ClipWindow(ClipBase):
