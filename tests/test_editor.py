@@ -337,16 +337,19 @@ def test_closing_the_editor_while_it_analyses_ends_its_threads_and_ffmpeg(qapp, 
         return p
 
     monkeypatch.setattr(clipedit.subprocess, "Popen", popen)
+    before = set(threading.enumerate())                # windows of earlier tests may keep theirs
     win = qt_editor.EditorWindow(clip, [], str(tmp_path / "Clips"), sound=False)
     win.show()
     qapp.processEvents()
     win.close()
     assert win._cancel.is_set()
     deadline = time.time() + 30                        # the strip lets its running key-frame seeks finish (~0.2 s)
-    while time.time() < deadline and any(t.name.startswith("clip-") and t.is_alive() for t in threading.enumerate()):
+    mine = lambda: [t.name for t in threading.enumerate() if t not in before and t.is_alive()   # noqa: E731
+                    and t.name.startswith("clip-")]
+    while time.time() < deadline and mine():
         qapp.processEvents()
         time.sleep(0.05)
-    assert not [t.name for t in threading.enumerate() if t.name.startswith("clip-") and t.is_alive()]
+    assert not mine()
     assert not [p.args for p in started if p.poll() is None]
 
 
@@ -364,3 +367,21 @@ def test_a_file_that_is_no_video_opens_without_a_crash(qapp, tmp_path):
     _pump(qapp, seconds=1.0)
     win.close()
     _pump(qapp, seconds=0.3)
+
+
+def test_the_timeline_layer_follows_a_theme_change(qapp, clip, tmp_path):
+    """Post-review 1.16.2 (F4): the cached layer of the tracks kept the old colours after a theme/OLED change
+    while the editor was open – the theme's colours are part of its key now."""
+    from fogscout import qt_theme
+    win = _window(qapp, clip, tmp_path)
+    try:
+        before = win.timeline._layer_key()
+        old = (qt_theme._theme, qt_theme._oled, qt_theme._custom)
+        qt_theme.set_theme(old[0], oled=not old[1], custom=old[2])
+        try:
+            assert win.timeline._layer_key() != before
+        finally:
+            qt_theme.set_theme(old[0], oled=old[1], custom=old[2])
+        assert win.timeline._layer_key() == before
+    finally:
+        win.close()
