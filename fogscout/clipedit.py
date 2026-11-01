@@ -296,6 +296,40 @@ def refine_box(box, img, dark: int = CONTENT_DARK, share: float = CONTENT_SHARE,
     return edges[0][0], edges[1][0], edges[0][1], edges[1][1]
 
 
+WAVE_PER_S = 20                  # 1.16: bins per second of the timeline's waveform
+WAVE_RATE = 4000                 # samples per second ffmpeg decodes for it (200 per bin)
+
+
+def waveform(path: str, duration: float, ffmpeg: str | None = None, per_s: int = WAVE_PER_S,
+             timeout: float = 300) -> list:
+    """1.16: the loudness along the recording for the timeline's audio track – the peak of each 1/``per_s`` s
+    as 0…1 (the first audio track = OBS's full mix), [] when there is no sound or ffmpeg fails. One ffmpeg run that
+    decodes the sound to mono at WAVE_RATE Hz (a 20-min round: 9.6 MB through the pipe, ~2 s)."""
+    import numpy as np
+    ffmpeg = ffmpeg or ffmpeg_exe()
+    if not ffmpeg or duration <= 0:
+        return []
+    try:
+        p = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", path, "-map", "0:a:0", "-vn", "-ac", "1",
+                            "-ar", str(WAVE_RATE), "-f", "s16le", "-"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=timeout, creationflags=_flags())
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    data = p.stdout
+    if len(data) < 2:
+        return []
+    samples = np.frombuffer(data[:len(data) // 2 * 2], dtype=np.int16).astype(np.float32)
+    per_bin = max(1, WAVE_RATE // per_s)
+    n = len(samples) // per_bin
+    if n == 0:
+        return []
+    peaks = np.abs(samples[:n * per_bin].reshape(n, per_bin)).max(axis=1) / 32768.0
+    top = float(peaks.max())
+    if top > 0:
+        peaks = np.minimum(1.0, peaks / max(top, 0.25))            # a quiet round still shows a shape
+    return [round(float(v), 3) for v in peaks]
+
+
 def fmt_pos(seconds: float) -> str:
     """m:ss.t for the editor (tenths matter when cutting)."""
     s = max(0.0, float(seconds))
@@ -520,16 +554,27 @@ def discord_plan(seconds: float, target_mb: float, info: Info | None = None) -> 
 
 
 def sound_wav(path: str, start: float, end: float, ffmpeg: str | None = None, mix=None,
-              n_tracks: int = 0) -> str | None:
+              n_tracks: int = 0, speed: float = 1.0, volume: float = 1.0) -> str | None:
     """The sound of ``start``..``end`` as a temporary WAV (for winsound while the preview plays); None on failure
-    or when the ``mix`` (1.8.6, as in cut(); ``n_tracks`` = the file's audio tracks) leaves no sound."""
+    or when the ``mix`` (1.8.6, as in cut(); ``n_tracks`` = the file's audio tracks) leaves no sound. 1.16:
+    ``speed`` = the part's tempo (atempo, as the saved clip has it), ``volume`` = the preview's own level (0–1)."""
     ffmpeg = ffmpeg or ffmpeg_exe()
     if not ffmpeg or end <= start:
         return None
     flt, amap = audio_graph(n_tracks, mix)
-    if amap is None:
+    if amap is None or volume <= 0:
         return None
-    pick = ["-filter_complex", flt, "-map", amap] if flt else ([] if amap == "0:a?" else ["-map", amap])
+    post = [f for f in (atempo(speed) if abs(speed - 1.0) > 1e-6 else "",
+                        f"volume={volume:.3f}" if abs(volume - 1.0) > 1e-3 else "") if f]
+    if flt:
+        if post:
+            flt += f";{amap}{','.join(post)}[apre]"
+            amap = "[apre]"
+        pick = ["-filter_complex", flt, "-map", amap]
+    else:
+        pick = [] if amap == "0:a?" else ["-map", amap]
+        if post:
+            pick += ["-af", ",".join(post)]
     fd, tmp = tempfile.mkstemp(prefix="dbdms-clip-", suffix=".wav")
     os.close(fd)
     try:
@@ -554,10 +599,11 @@ class FramePlayer(threading.Thread):
     ``on_end()`` when the file or the stretch is over. ``stop()`` ends it at once."""
 
     def __init__(self, path: str, start: float, info: Info, on_frame, on_end, end: float | None = None,
-                 height: int = PREVIEW_H, ffmpeg: str | None = None):
+                 height: int = PREVIEW_H, ffmpeg: str | None = None, speed: float = 1.0):
         super().__init__(name="clip-player", daemon=True)
         self.path, self.start_t, self.info = path, max(0.0, start), info
         self.end_t = end
+        self.speed = max(0.05, float(speed or 1.0))   # 1.16: a part's tempo – the clock runs that much faster
         self.on_frame, self.on_end = on_frame, on_end
         self.height = height
         self.ffmpeg = ffmpeg or ffmpeg_exe()
@@ -613,7 +659,7 @@ class FramePlayer(threading.Thread):
                 i += 1
                 if t0 is None:
                     t0 = time.monotonic()
-                due = t0 + (t - self.start_t)
+                due = t0 + (t - self.start_t) / self.speed
                 late = time.monotonic() - due
                 if late > 2.0 / fps:                      # behind: drop this frame, catch up
                     continue
@@ -675,7 +721,8 @@ class Edit:
 
 
 def clean_parts(parts, duration: float = 0.0) -> list:
-    """Parts in time order, inside the recording, at least 0.1 s long, tempo within SPEEDS' range."""
+    """Parts inside the recording, at least 0.1 s long, tempo within SPEEDS' range – in the order given (1.16:
+    the order on the editor's timeline is the play order; until 1.15 they were sorted by their start)."""
     lo, hi = SPEEDS[0], SPEEDS[-1]
     out = []
     for p in parts:
@@ -684,7 +731,7 @@ def clean_parts(parts, duration: float = 0.0) -> list:
             end = min(end, duration)
         if end - start >= 0.1:
             out.append(Part(start, end, max(lo, min(hi, float(p.speed or 1.0)))))
-    return sorted(out, key=lambda p: p.start)
+    return out
 
 
 def atempo(speed: float) -> str:
@@ -707,7 +754,7 @@ def crop_px(box, width: int, height: int) -> tuple:
 
 
 def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -> list:
-    """How export reads ``parts`` (time order, see clean_parts): [(start, end, part indices)] per ffmpeg input,
+    """How export reads ``parts`` (any order – 1.16: the play order of the timeline): [(start, end, part indices)] per ffmpeg input,
     seeked to ``start`` and read to ``end``. Parts that overlap never share an input – one input split for both kept
     every frame they share as a raw picture until concat reached the later part (GBs for a part added twice). Parts
     one after the other share one when the gap between them is at most ``join_gap`` (JOIN_GAP_S; the gap is
@@ -717,7 +764,9 @@ def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -
     join_gap = JOIN_GAP_S if join_gap is None else join_gap
     most = MAX_INPUTS if most is None else most
     lanes = []                                       # parts that never overlap, as few lanes as the overlaps allow
-    for i, p in enumerate(parts):
+    # 1.16: the parts come in play order (the timeline) – the inputs are grouped by where they lie in the recording
+    for i in sorted(range(len(parts)), key=lambda k: (parts[k].start, parts[k].end)):
+        p = parts[i]
         free = [ln for ln in lanes if parts[ln[-1]].end <= p.start + 1e-6]
         if free:
             max(free, key=lambda ln: parts[ln[-1]].end).append(i)     # the lane with the shortest gap
