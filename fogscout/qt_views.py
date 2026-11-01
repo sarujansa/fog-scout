@@ -33,6 +33,7 @@ class FactBox(QWidget):
         self.bar = None
         if bar:
             self.bar = QProgressBar()
+            self.bar.setObjectName("factbar")    # 1.17: a quiet ratio bar – the accent stays for state
             self.bar.setTextVisible(False)
             self.bar.setRange(0, 1000)
             lay.addWidget(self.bar)
@@ -499,12 +500,25 @@ class Chart(QWidget):
             if not d:
                 continue
             top = n * (self.PANEL_H + 10)
-            p.setPen(QColor(col["text"]))
+            p.setPen(QColor(col["dim"]))               # 1.17: titled like the cards' headings
             f = p.font()
             f.setBold(True)
+            size, pixels = f.pointSizeF(), f.pixelSize()
+            if pixels > 0:                              # the style sheet sets sizes in px
+                f.setPixelSize(max(9, round(pixels * 0.85)))
+            elif size > 0:
+                f.setPointSizeF(size * 0.85)
+            f.setCapitalization(f.Capitalization.AllUppercase)
+            f.setLetterSpacing(f.SpacingType.AbsoluteSpacing, 0.8)
             p.setFont(f)
             p.drawText(8, top + 14, d["title"])
             f.setBold(False)
+            if pixels > 0:
+                f.setPixelSize(pixels)
+            elif size > 0:
+                f.setPointSizeF(size)
+            f.setCapitalization(f.Capitalization.MixedCase)
+            f.setLetterSpacing(f.SpacingType.AbsoluteSpacing, 0)
             p.setFont(f)
             y0, y1 = top + TOP, top + self.PANEL_H - BOTTOM
             bars = d["bars"]

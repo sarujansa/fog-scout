@@ -366,7 +366,8 @@ def days(app, now: float) -> dict:
     top = max(c[0] for c in counts)
     step = next((s for s in (1, 2, 5, 10, 20, 25, 50, 100) if -(-top // s) <= 4), 100 * -(-top // 400))  # round
     peak = step * -(-top // step)                                                                    # grid lines
-    return {"killer": {"title": _("Runden pro Tag – letzte {n} Tage", n=DAYS), "bars": bars, "max": peak,
+    # 1.17: both roles together – a neutral colour, not the killer blue
+    return {"rounds": {"title": _("Runden pro Tag – letzte {n} Tage", n=DAYS), "bars": bars, "max": peak,
                        "ticks": [(v, str(v)) for v in range(0, peak + 1, step)],
                        "last": str(counts[-1][0]) if counts[-1][0] else "", "empty": ""}}
 
