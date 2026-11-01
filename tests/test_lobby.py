@@ -537,3 +537,54 @@ def test_after_the_last_look_without_a_role_the_crop_and_the_screen_are_kept(rea
     retry = {"gen": 1, "t": 9.0, "due": [10.5], "crop": np.zeros((4, 4, 3), np.uint8), "text": "X"}
     assert w2._role_again(retry, 10.5, None, W, H, (0, 0), {"screen": False}, None, reader) is None   # DBD gone
     assert len(w2.role_misses) == 1
+
+
+def test_the_lobby_is_read_from_one_grab_per_tick_and_as_before(tmp_path, monkeypatch):
+    """1.16.2 (A7): in menus and the lobby the worker takes the whole picture once a second (loading screen look);
+    banner strip, lobby corner, globe and currency bar are now cut from it instead of up to five grabs of their
+    own. The real worker loop with a fake DBD window and a counting grabber on the user's READY screenshot: one
+    grab per tick that looks at the lobby, and the lobby reads as it did from the separate grabs."""
+    pytest.importorskip("onnxruntime")
+    import queue
+    import time
+    from types import SimpleNamespace
+    from fogscout import config, worker
+    from fogscout.catalog import Catalog
+    frame = np.full((H, W, 3), 30, np.uint8)
+    x, y, w, h = lobby.corner_box(W, H)
+    frame[y:y + h, x:x + w] = cv2.imread(os.path.join(DATA, "k_ready.jpg"))
+    grabs = []
+
+    class Grabber:
+        def grab(self, left, top, width, height):
+            grabs.append((time.time(), width * height))
+            return frame[top:top + height, left:left + width].copy()
+
+        def primary_monitor(self):
+            return 0, 0, W, H
+
+    game = SimpleNamespace(hwnd=1, left=0, top=0, width=W, height=H, minimized=False)
+    monkeypatch.setattr(worker, "ScreenGrabber", Grabber)
+    monkeypatch.setattr(worker, "find_game_window", lambda: game)
+    monkeypatch.setattr(worker, "foreground_root", lambda: grabs.append((time.time(), "tick")) or 1)   # once a tick
+    wk = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
+                                queue.Queue())
+    wk.start()
+    try:
+        deadline = time.time() + 60                                # generous: shared CI runners
+        while "ready" not in wk.lobby_info and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(2.5)                                            # a few more lobby looks
+    finally:
+        wk.stop()
+        wk.join(timeout=10)
+    assert wk.lobby_info.startswith("ready") and "„THE HILLBILLY“ „00:59“ → lobby" in wk.lobby_info
+    ticks, tick = [], None
+    for _t, size in grabs:
+        if size == "tick":
+            tick = []
+            ticks.append(tick)
+        elif tick is not None:
+            tick.append(size)
+    with_picture = [t for t in ticks if W * H in t]
+    assert len(with_picture) >= 2 and all(t == [W * H] for t in with_picture), with_picture[:3]

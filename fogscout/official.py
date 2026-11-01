@@ -279,6 +279,8 @@ def load_gaps(path: str) -> list:
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:     # 1.12.3: see history._lost_lines
             for line in fh:
+                if '"gap"' not in line:          # 1.16.2: quick skip – parsing 3000 matches took ~25 ms (settings page)
+                    continue
                 try:
                     d = json.loads(line)
                     if isinstance(d, dict) and d.get("gap"):
