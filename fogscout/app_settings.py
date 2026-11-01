@@ -8,7 +8,7 @@ import os
 import sys
 import threading
 import time
-from . import __version__, backups, i18n, obsoverlay, obsrec, qt_theme, regions, status, whatsnew
+from . import __version__, backups, i18n, obsoverlay, obsrec, qt_theme, regions, spotify, status, whatsnew
 from . import uimodel as ui
 from .capture import IS_WIN, foreground_root, is_game_window
 from . import autostart
@@ -18,6 +18,25 @@ from .app_hotkeys import HOTKEY_LABELS
 from .textnorm import fmt_duration
 
 log = logging.getLogger("fogscout")
+
+PROTECTED = ("dpapi:", "plain:")         # spotify.protect's forms
+
+
+def is_protected(stored) -> bool:
+    return isinstance(stored, str) and stored.startswith(PROTECTED)
+
+
+def read_password(stored) -> tuple[str, bool]:
+    """1.16.2 (A14): ``rec_password`` as stored → (clear text, readable). Protected values are decrypted
+    (spotify.unprotect); a value from before 1.16.2 is the clear text itself. Not readable (DPAPI of another
+    PC or user account, broken value): ("", False) – the user types it again."""
+    s = str(stored or "")
+    if not s:
+        return "", True
+    if is_protected(s):
+        pw = spotify.unprotect(s)
+        return pw, bool(pw)
+    return s, True
 
 
 class SettingsTab:
@@ -247,7 +266,7 @@ class SettingsTab:
         self.rec_port_var.trace_add("write", lambda *a: self._rec_setting())
         self._reg("st.more.rec_port", ui.Entry(rr, textvariable=self.rec_port_var, width=7)).pack(side="left", padx=6)
         self._reg("st.more.rec_pw.label", ui.Label(rr, text=_("Passwort"))).pack(side="left")
-        self.rec_pw_var = ui.StringVar(value=str(self.settings.get("rec_password", "")))
+        self.rec_pw_var = ui.StringVar(value=self._rec_password_load())
         self.rec_pw_var.trace_add("write", lambda *a: self._rec_setting())
         pw = self._reg("st.more.rec_pw", ui.Entry(rr, textvariable=self.rec_pw_var, width=18))
         pw._dbdms_secret = True
@@ -630,12 +649,25 @@ class SettingsTab:
         from .overview import switches
         return switches(self)
 
+    def _rec_password_load(self) -> str:
+        """1.16.2 (A14): the OBS password for the settings field. Stored DPAPI-protected like the Spotify and
+        YouTube secrets; a clear-text one from before is protected right away (once, on this start)."""
+        stored = self.settings.get("rec_password")
+        pw, ok = read_password(stored)
+        if not ok:
+            self._log(_("OBS-Passwort ist auf diesem PC/Benutzerkonto nicht lesbar – bitte neu eingeben."), "Fehler")
+        elif pw and not is_protected(stored):
+            self.settings.set("rec_password", spotify.protect(pw))
+            self._save_soon()
+        return pw
+
     def _rec_setting(self, save=True):
         cfg = self._rec_cfg()
         if save:
             self.settings.set("rec_on", cfg.on)
             self.settings.set("rec_port", cfg.port)
-            self.settings.set("rec_password", cfg.password)
+            if cfg.password != read_password(self.settings.get("rec_password"))[0]:
+                self.settings.set("rec_password", spotify.protect(cfg.password))   # 1.16.2: only when it changed
             self.settings.set("rec_limit_gb", cfg.limit_gb)
             self.settings.set("rec_pre", cfg.pre)
             self.settings.set("rec_tail_s", int(cfg.tail_s))
