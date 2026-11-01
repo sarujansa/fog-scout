@@ -190,6 +190,7 @@ DEFAULTS = {
     "clip_censor_boxes": [],            # [[x, y, w, h] …] as fractions of the picture (the names stay put)
     "clip_mix_on": {"dbd": True, "discord": True, "mic": True},     # 1.8.6: clip editor sound mix – source on/off
     "clip_mix_vol": {"dbd": 100, "discord": 100, "mic": 100},       # and its level in percent (MIX_MAX 150)
+    "editor_layout": {},                # 1.16: the editor window's panels (splitter sizes, library/inspector shown)
     "discord_on": False,                # 1.7: Rich Presence over the local Discord client (user's pick)
     "discord_client_id": "",            # the Application-ID the user registered in Discord's developer portal
     "discord_killer": True,             # name the killer in the status
@@ -252,7 +253,8 @@ def export_settings(data: dict, path: str) -> None:
 # per-PC values that must not come along from a backup (other folder / other machine)
 LOCAL_KEYS = ("setup_version", "setup_root", "qt_geometry", "official_dir", "layouts", "layout_key",
               "rec_volume", "rec_rel", "rec_folder", "rec_password", "spotify_token", "seen_version",
-              "youtube_client_secret", "youtube_token", "youtube_queue", "youtube_quota", "shots_folder")
+              "youtube_client_secret", "youtube_token", "youtube_queue", "youtube_quota", "shots_folder",
+              "editor_layout")
 
 
 def reset_data(current: dict) -> dict:
