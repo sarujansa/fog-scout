@@ -536,6 +536,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                               "ohne DBD. Nochmal drücken beendet den Test."))
         if w is self.adv_btn:
             return _("Technische Optionen für die Fehlersuche ein- oder ausklappen.")
+        if w in (getattr(self, "rec_start_btn", None), getattr(self, "rec_pause_btn", None)):   # 1.15: labels change
+            return lambda: tooltip.tip_for_label(str(w.cget("text")))
         if w is getattr(self, "stats_filter_btn", None):                  # 1.11.14: "Filter (2) ▾"
             return _("Region, Killer, Map, Modus und „Farming ausblenden“ ein- oder ausklappen. Die Zahl sagt, wie "
                      "viele davon gerade filtern.")
@@ -852,7 +854,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
          "next_map": lambda: self.step_map(1), "prev_map": lambda: self.step_map(-1),
          "bigger": lambda: self._resize(0.03), "smaller": lambda: self._resize(-0.03),
          "edit_position": self.toggle_edit, "rotate_map": self.rotate_map, "next_floor": self.next_floor,
-         "reject_map": self.reject_detection, "mark_clip": self.mark_clip}.get(name, lambda: None)()
+         "reject_map": self.reject_detection, "mark_clip": self.mark_clip, "record_toggle": self.record_toggle,
+         "record_pause": self.record_pause_toggle}.get(name, lambda: None)()                     # 1.15
 
     def _event(self, ev):
         k, d = ev.kind, ev.data
