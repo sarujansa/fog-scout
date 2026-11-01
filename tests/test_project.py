@@ -36,7 +36,8 @@ def test_a_project_round_trips_and_garbage_is_refused(tmp_path):
     assert project.load(str(tmp_path / "missing.json")) is None
     (tmp_path / "bad.json").write_text("{not json", encoding="utf-8")
     assert project.load(str(tmp_path / "bad.json")) is None
-    assert not project.save(str(tmp_path / "Clips" / "x" / "y" / "p.json") if os.name == "nt" and False else "/proc/nope/p.json", data)
+    (tmp_path / "blocker").write_bytes(b"x")                                  # a file where a folder would have to be
+    assert not project.save(str(tmp_path / "blocker" / "sub" / "p.json"), data)   # unwritable on every system
 
 
 def test_the_library_filters_sorts_and_describes_items(tmp_path):
