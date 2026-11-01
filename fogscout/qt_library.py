@@ -351,7 +351,7 @@ class MediaLibrary(QFrame):
         self.empty.setProperty("class", "dim")
         self.empty.setWordWrap(True)
         self.empty.setAlignment(Qt.AlignCenter)
-        lay.addWidget(self.empty)
+        lay.addWidget(self.empty, 1)              # 1.17: in the middle of the panel, not above a floating count
         self.count = QLabel("")
         self.count.setProperty("class", "dim")
         lay.addWidget(self.count)
@@ -387,6 +387,7 @@ class MediaLibrary(QFrame):
         self.empty.setVisible(not shown and not self.search.text())
         self.view.setVisible(bool(shown) or bool(self.search.text()))
         self.count.setText(_("{n} Einträge", n=len(shown)) if len(shown) != 1 else _("1 Eintrag"))
+        self.count.setVisible(bool(shown) or bool(self.search.text()))
         self.loader.request([it for it in shown if it.path not in self.model.thumbs])
 
     def pump(self):

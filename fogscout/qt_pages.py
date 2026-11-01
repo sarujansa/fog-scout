@@ -319,7 +319,7 @@ class OverviewPage(QWidget):
         self._show_news(o)
         days = getattr(o, "days", None) or {}
         if days:
-            self.days_chart.show_state({"data": days, "dark": getattr(o, "dark", True), "panels": ("killer",)})
+            self.days_chart.show_state({"data": days, "dark": getattr(o, "dark", True), "panels": ("rounds",)})
         self.days_card.setVisible(bool(days))
 
     def _show_switches(self, switches):
@@ -625,13 +625,22 @@ class Grip(QWidget):
         self.setFixedSize(16, 18)
         self.setCursor(Qt.OpenHandCursor)
         self.setToolTip(_("Ziehen, um den Kasten zu verschieben"))
+        self._hover = False                       # 1.17: quiet until the pointer is on it
+
+    def enterEvent(self, e):
+        self._hover = True
+        self.update()
+
+    def leaveEvent(self, e):
+        self._hover = False
+        self.update()
 
     def paintEvent(self, _e):
         from PySide6.QtGui import QPainter
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(Qt.NoPen)
-        p.setBrush(self.palette().color(QPalette.PlaceholderText))
+        p.setBrush(self.palette().color(QPalette.PlaceholderText if self._hover else QPalette.Mid))
         for x in (5, 11):
             for y in (4, 9, 14):
                 p.drawEllipse(x - 1.5, y - 1.5, 3, 3)

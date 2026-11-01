@@ -829,8 +829,13 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 self.srv_status.set(_("Achtung: Firewall-Regeln von Make Your Choice aktiv (siehe Log).")
                                     + "  " + self.srv_status.get())
         elif isinstance(ev, tuple) and ev[0] == "tray":
-            {"open": self._show_main, "toggle": self.toggle_overlay,
-             "quit": self.quit}.get(ev[1], lambda: None)()
+            if str(ev[1]).startswith("page:"):                      # 1.17: tray → window on that page
+                self._show_main()
+                if self.qt is not None:
+                    self.qt.show_page(ev[1][5:])
+            else:
+                {"open": self._show_main, "toggle": self.toggle_overlay,
+                 "quit": self.quit}.get(ev[1], lambda: None)()
         elif isinstance(ev, tuple) and ev[0] == "autostart":
             self._autostart_state(*ev[1:])
         elif isinstance(ev, tuple) and ev[0] == "setup_done":

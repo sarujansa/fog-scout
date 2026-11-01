@@ -262,3 +262,13 @@ def test_an_unreadable_obs_password_is_replaced_on_the_next_save(tmp_path):
         assert a.settings.get("rec_password") == "" and not a._rec_pw_unreadable
     finally:
         a.quit()
+
+
+def test_the_tray_opens_the_window_on_a_page(app):
+    """1.17: the tray's Statistik / Aufnahmen open the window on that page; an unknown action does nothing."""
+    app._dispatch(("tray", "page:stats"))
+    assert app.qt.current_key() == "stats"
+    app._dispatch(("tray", "page:recordings"))
+    assert app.qt.current_key() == "recordings"
+    app._dispatch(("tray", "nonsense"))
+    assert app.qt.current_key() == "recordings"
