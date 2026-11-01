@@ -95,3 +95,21 @@ def test_the_statistics_files_are_parsed_once_in_a_thread_at_start(tmp_path):
     t = StatsTab._joined_preload(empty)
     t.join(10)
     assert not t.is_alive()
+
+
+def test_a_parse_in_a_thread_and_one_in_the_window_at_once_parse_the_file_once(tmp_path):
+    """Post-review 1.16.2: the start's preload and the first join can meet – the lock makes the second one wait and
+    read the cache (one full parse, the same rounds for both), whichever comes first."""
+    import threading
+    path = tmp_path / "rounds.jsonl"
+    path.write_text("".join(json.dumps({"t": 1000 + i, "seconds": 600, "map_id": "m", "map": "M"}) + "\n"
+                            for i in range(3000)), encoding="utf-8")
+    c = jsonlcache.LineCache(history._round_line)
+    got = {}
+    t = threading.Thread(target=lambda: got.setdefault("thread", c.items(str(path))))
+    t.start()
+    got["window"] = c.items(str(path))
+    t.join(30)
+    assert c.full == 1 and c.tail == 1
+    assert len(got["thread"]) == len(got["window"]) == 3000
+    assert [r.t for r in got["thread"]] == [r.t for r in got["window"]]
