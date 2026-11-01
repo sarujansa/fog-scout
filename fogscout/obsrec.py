@@ -1326,7 +1326,7 @@ class Recorder(threading.Thread):
                         self._say(str(e), False)
                     except Exception:
                         log.exception("OBS-Aufnahme: %s", step.__name__)
-                        self._say(_("Aufnahme: Fehler in {step} – siehe Log.", step=step.__name__.strip("_")), False)
+                        self._say(_("Fehler in {step} – siehe Log.", step=step.__name__.strip("_")), False)
                 continue
             try:
                 if cmd == "quit":

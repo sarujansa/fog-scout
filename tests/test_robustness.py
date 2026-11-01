@@ -248,3 +248,17 @@ def test_a_start_without_any_history_file_is_quiet(tmp_path):
         assert a.rec_pw_var.get() == "" and a.settings.get("rec_password") == ""
     finally:
         a.quit()
+
+
+def test_an_unreadable_obs_password_is_replaced_on_the_next_save(tmp_path):
+    """Post-review 1.16.2 (F1): a password DPAPI cannot read here showed an empty field – leaving it empty (OBS
+    without a password) counted as "unchanged", so the useless value and its error line came back on every start."""
+    a = _start(tmp_path, {"welcome_seen": True, "rec_password": "dpapi:AAAA"})
+    try:
+        assert a.rec_pw_var.get() == ""
+        assert [t for _c, cat, t in a._log_entries if cat == "Fehler" and "OBS-Passwort" in t]
+        assert "AAAA" not in " ".join(t for *_x, t in a._log_entries)
+        a._rec_setting()
+        assert a.settings.get("rec_password") == "" and not a._rec_pw_unreadable
+    finally:
+        a.quit()

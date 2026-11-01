@@ -229,7 +229,8 @@ class SequenceTimeline(QWidget):
     def _layer_key(self) -> tuple:
         return (self.width(), self.height(), round(self.scale, 6), round(self.offset, 6),
                 tuple((p.start, p.end, p.speed) for p in self.parts), self.selection, self.hover, len(self.thumbs),
-                len(self.wave), self.view, tuple(self.marks), self.dark, self.devicePixelRatioF())
+                len(self.wave), self.view, tuple(self.marks), self.dark, self.devicePixelRatioF(),
+                tuple(sorted(qt_theme.colours(self.dark).items())))   # post-review: a theme change redraws
 
     def paintEvent(self, e):
         """1.16.1 (audit, measured 9.9 ms per repaint at 30 fps = a third of a core): the tracks, ruler and head
