@@ -38,7 +38,7 @@ MODE_TIPS = {"select": N_("Clips auf der Zeitleiste wählen, verschieben und tri
              "crop": N_("Bildausschnitt – den Rahmen in der Vorschau ziehen (C)."),
              "draw": N_("Pfeile, Rahmen, Freihand und Text ins Bild zeichnen (D)."),
              "censor": N_("Bereiche unkenntlich machen – Namen, Chat, Freundesliste (X).")}
-KEY_HINT = N_("Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg 1 Bild · I/O Clip beginnt/endet hier · S Teilen · "
+KEY_HINT = N_("Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg oder ,/. 1 Bild · I/O Clip beginnt/endet hier · S Teilen · "
               "Entf Löschen · Strg+Z/Y Rückgängig/Wiederholen · F Vollbild · Strg+S Projekt · Strg+E Export")
 LAYOUT_SAVE_MS = 600
 
@@ -1491,6 +1491,8 @@ class EditorWindow(ClipBase):
             self.step_frame(-1) if frame else self.step(-(STEP_BIG if big else STEP_SMALL))
         elif k == Qt.Key_Right:
             self.step_frame(1) if frame else self.step(STEP_BIG if big else STEP_SMALL)
+        elif k in (Qt.Key_Comma, Qt.Key_Period):          # 1.17: one frame back / on, as in most players
+            self.step_frame(-1 if k == Qt.Key_Comma else 1)
         elif k == Qt.Key_I:
             self.set_start()
         elif k == Qt.Key_O:
