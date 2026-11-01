@@ -321,3 +321,67 @@ def test_the_timeline_keeps_a_layer_while_only_the_playhead_moves_and_a_closed_e
     finally:
         if not win._closed:
             win.close()
+
+
+def test_closing_the_editor_while_it_analyses_ends_its_threads_and_ffmpeg(qapp, clip, tmp_path, monkeypatch):
+    """Post-review 1.16.2: closed at once after opening – the waveform/level analysis gets the cancel, its threads
+    end, no ffmpeg it started is left running, and nothing arrives at the closed window afterwards."""
+    import threading
+    from fogscout import clipedit, qt_editor
+    started = []
+    real = clipedit.subprocess.Popen
+
+    def popen(*a, **k):
+        p = real(*a, **k)
+        started.append(p)
+        return p
+
+    monkeypatch.setattr(clipedit.subprocess, "Popen", popen)
+    before = set(threading.enumerate())                # windows of earlier tests may keep theirs
+    win = qt_editor.EditorWindow(clip, [], str(tmp_path / "Clips"), sound=False)
+    win.show()
+    qapp.processEvents()
+    win.close()
+    assert win._cancel.is_set()
+    deadline = time.time() + 30                        # the strip lets its running key-frame seeks finish (~0.2 s)
+    mine = lambda: [t.name for t in threading.enumerate() if t not in before and t.is_alive()   # noqa: E731
+                    and t.name.startswith("clip-")]
+    while time.time() < deadline and mine():
+        qapp.processEvents()
+        time.sleep(0.05)
+    assert not mine()
+    assert not [p.args for p in started if p.poll() is None]
+
+
+def test_a_file_that_is_no_video_opens_without_a_crash(qapp, tmp_path):
+    """Post-review 1.16.2: a broken recording (not a video) – probe, waveform and levels give nothing, the editor
+    window opens and closes without raising."""
+    from fogscout import clipedit, qt_editor
+    bad = tmp_path / "2026-10-17 21-40 Coal Tower – Nurse.mkv"
+    bad.write_bytes(b"\x1aE\xdf\xa3 this is not a matroska file" * 100)
+    assert not clipedit.probe(str(bad), FF).ok
+    assert clipedit.waveform(str(bad), 12.0, FF) == [] and clipedit.track_levels(str(bad), 3, FF) == {}
+    assert clipedit.frame_at(str(bad), 1.0, ffmpeg=FF) is None
+    win = qt_editor.EditorWindow(str(bad), [], str(tmp_path / "Clips"), sound=False)
+    win.show()
+    _pump(qapp, seconds=1.0)
+    win.close()
+    _pump(qapp, seconds=0.3)
+
+
+def test_the_timeline_layer_follows_a_theme_change(qapp, clip, tmp_path):
+    """Post-review 1.16.2 (F4): the cached layer of the tracks kept the old colours after a theme/OLED change
+    while the editor was open – the theme's colours are part of its key now."""
+    from fogscout import qt_theme
+    win = _window(qapp, clip, tmp_path)
+    try:
+        before = win.timeline._layer_key()
+        old = (qt_theme._theme, qt_theme._oled, qt_theme._custom)
+        qt_theme.set_theme(old[0], oled=not old[1], custom=old[2])
+        try:
+            assert win.timeline._layer_key() != before
+        finally:
+            qt_theme.set_theme(old[0], oled=old[1], custom=old[2])
+        assert win.timeline._layer_key() == before
+    finally:
+        win.close()

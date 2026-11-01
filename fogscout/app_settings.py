@@ -654,6 +654,7 @@ class SettingsTab:
         YouTube secrets; a clear-text one from before is protected right away (once, on this start)."""
         stored = self.settings.get("rec_password")
         pw, ok = read_password(stored)
+        self._rec_pw_unreadable = not ok      # post-review: the next save replaces the useless value
         if not ok:
             self._log(_("OBS-Passwort ist auf diesem PC/Benutzerkonto nicht lesbar – bitte neu eingeben."), "Fehler")
         elif pw and not is_protected(stored):
@@ -666,8 +667,10 @@ class SettingsTab:
         if save:
             self.settings.set("rec_on", cfg.on)
             self.settings.set("rec_port", cfg.port)
-            if cfg.password != read_password(self.settings.get("rec_password"))[0]:
+            if cfg.password != read_password(self.settings.get("rec_password"))[0] \
+                    or getattr(self, "_rec_pw_unreadable", False):
                 self.settings.set("rec_password", spotify.protect(cfg.password))   # 1.16.2: only when it changed
+                self._rec_pw_unreadable = False
             self.settings.set("rec_limit_gb", cfg.limit_gb)
             self.settings.set("rec_pre", cfg.pre)
             self.settings.set("rec_tail_s", int(cfg.tail_s))
