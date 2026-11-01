@@ -463,6 +463,9 @@ class MapsPage(QWidget):
         after them (a realm click later finds them ready)."""
         shown = self.visible_tiles()
         order = shown + [t for t in self._all_tiles() if t not in shown]
+        wanted = set(self._thumbs.values())                  # 1.16.1: a style change leaves the old pictures behind
+        if len(self._pix) > len(wanted):
+            self._pix = {k: v for k, v in self._pix.items() if k in wanted}
         paths, seen = [], set()
         for t in order:
             path = self._thumbs.get(t.key)
@@ -554,6 +557,7 @@ class MapsPage(QWidget):
     def open_menu(self, key, pos):
         """A popup (no exec: no second event loop); every entry posts ("map_action", (action, key))."""
         menu = QMenu(self)
+        menu.setAttribute(Qt.WA_DeleteOnClose)
         for action, label, enabled in self.menu_entries(key):
             act = menu.addAction(label)
             act.setEnabled(enabled)

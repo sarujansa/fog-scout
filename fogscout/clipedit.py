@@ -619,6 +619,15 @@ class FramePlayer(threading.Thread):
                 p.kill()
             except OSError:
                 pass
+            try:
+                p.wait(1.0)                           # 1.16.1: reaped now, not at the next Popen's clean-up
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            try:
+                if p.stdout is not None:
+                    p.stdout.close()
+            except OSError:
+                pass
 
     def _read(self, n: int) -> bytes:
         out = bytearray()
