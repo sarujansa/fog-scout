@@ -34,6 +34,9 @@ class Tray:
         menu = pystray.Menu(
             pystray.MenuItem(_("Fenster öffnen"), lambda icon, item: self._post("open"), default=True),
             pystray.MenuItem(_("Overlay ein/aus"), lambda icon, item: self._post("toggle")),
+            pystray.Menu.SEPARATOR,                     # 1.17: the pages one opens after a session, straight away
+            pystray.MenuItem(_("Statistik"), lambda icon, item: self._post("page:stats")),
+            pystray.MenuItem(_("Aufnahmen"), lambda icon, item: self._post("page:recordings")),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(_("Beenden"), lambda icon, item: self._post("quit")),
         )

@@ -2104,7 +2104,7 @@ def test_the_overview_charts_the_rounds_of_the_last_two_weeks(qapp, keep):
                   history.Round(day + 7200, 600, "coal", "Coal Tower", role="survivor"),
                   history.Round(day - 3 * 86400 + 3600, 600, "coal", "Coal Tower", role="killer"),
                   history.Round(day - 20 * 86400, 600, "coal", "Coal Tower", role="killer")])      # too old
-    d = overview.days(app, now)["killer"]
+    d = overview.days(app, now)["rounds"]
     assert len(d["bars"]) == overview.DAYS and d["bars"][-1][0] == 2 and d["bars"][-4][0] == 1
     assert sum(1 for b in d["bars"] if b[0]) == 2 and d["last"] == "2" and d["max"] == 2
     assert "2 Runden (1 Killer, 1 Survivor)" in d["bars"][-1][2]
@@ -2146,3 +2146,53 @@ def test_danger_buttons_get_their_style_from_the_model():
         w, extra = make_control("button", str(model), lambda *a: None)
         show_control("button", w, extra, ui_state(model))
         assert w.objectName() == name
+
+
+def test_ctrl_and_a_number_opens_the_page_in_that_row_of_the_navigation(qapp):
+    """1.17: Ctrl+1 … Ctrl+9 = the n-th row of the navigation – its own order, also out of the setup assistant;
+    the rows say their key on hover."""
+    from fogscout import qt_window
+    win = qt_window.MainWindow(lambda a, arg=None: None)
+    try:
+        keys = win.nav_keys()
+        win.nav_jump(3)
+        assert win.current_key() == keys[3]
+        win.set_nav_order(["log"] + [k for k in keys if k != "log"])
+        win.nav_jump(0)
+        assert win.current_key() == "log"
+        assert "Strg+1" in win.nav.item(0).toolTip()
+        win.show_setup(True)
+        win.nav_jump(1)
+        assert not win._setup_on and win.current_key() == win.nav_keys()[1]
+        win.nav_jump(99)                                        # no such row: nothing happens
+        assert win.current_key() == win.nav_keys()[1]
+    finally:
+        win.allow_close = True
+        win.close()
+
+
+def test_the_name_column_is_never_squeezed_below_its_contents(qapp, keep):
+    """1.17: statistics › System has 15 columns – in a table narrower than them Qt squeezed the stretching name
+    column to "Ba…"; now it keeps its natural width (the table scrolls sideways), and in a wide table it still
+    takes the room that is left."""
+    from fogscout import qt_window
+    t = keep(qt_window.Table(".nb.sys", lambda a, arg=None: None))
+    cols = [("grp", "Wann/Wo", "w")] + [(f"c{i}", f"Spalte {i}", "e") for i in range(14)]
+    rows = [(f"r{i}", 0, "", [name] + ["–"] * 14, [], False)
+            for i, name in enumerate(("Badham Preschool I", "Mount Ormond Resort", "Coal Tower"))]
+    t.resize(700, 300)
+    t.show()
+    t.show_state({"columns": cols, "rows": rows, "colours": {}, "selection": [], "selectable": False, "stretch": 0})
+    qapp.processEvents()
+    need = t.header().fontMetrics().horizontalAdvance("Mount Ormond Resort")
+    assert t.columnWidth(0) >= need
+    assert t.header().sectionResizeMode(0) == t.header().ResizeMode.Interactive
+    # a table whose columns fit (not a wider window: Windows clamps a window to the screen of the CI runner)
+    few = keep(qt_window.Table(".nb.few", lambda a, arg=None: None))
+    few.resize(700, 300)
+    few.show()
+    few.show_state({"columns": cols[:3], "rows": [(r[0], 0, "", r[3][:3], [], False) for r in rows], "colours": {},
+                    "selection": [], "selectable": False, "stretch": 0})
+    qapp.processEvents()
+    assert few.header().sectionResizeMode(0) == few.header().ResizeMode.Stretch
+    assert few.columnWidth(0) >= need

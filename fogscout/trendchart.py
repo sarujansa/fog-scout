@@ -12,9 +12,11 @@ from __future__ import annotations
 
 COLORS = {True: {"killer": "#3987e5", "survivor": "#d95926", "hover_killer": "#6da7ec", "hover_survivor": "#ec835a",
                  "temp": "#199e70", "hover_temp": "#4fc49a", "bp": "#9b7bea", "hover_bp": "#b48cff",
+                 "rounds": "#7d838c", "hover_rounds": "#a1a7af",
                  "grid": "#3a3c42", "text": "#e3e5e8", "dim": "#9ba1a9"},
           False: {"killer": "#2a78d6", "survivor": "#d95926", "hover_killer": "#5598e7", "hover_survivor": "#e0703f",
                   "temp": "#168f63", "hover_temp": "#1baf7a", "bp": "#6a46c8", "hover_bp": "#7a4fd1",
+                  "rounds": "#737980", "hover_rounds": "#5c6168",
                   "grid": "#d4d4d4", "text": "#1b1b1b", "dim": "#5f6368"}}
 BAR_MAX = 24                 # px, columns never fill their slot
 RADIUS = 4                   # rounded data end

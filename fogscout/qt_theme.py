@@ -216,9 +216,9 @@ QLineEdit#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; }}
 QPushButton#navsearchbtn {{ background: transparent; border: none; margin-top: 10px; padding: 8px; }}
 QPushButton#navsearchbtn:hover {{ background: {c['hover']}; }}
 QLabel[class="dim"] {{ color: {c['dim']}; font-size: {px(12)}; }}
-QLabel[class="h1"] {{ font-size: {px(24)}; font-weight: 700; color: {c['head']}; }}
-QLabel[class="map"] {{ font-family: 'Fira Sans ExtraBold', 'Segoe UI'; font-size: {px(26)}; color: {c['head']}; }}
-QLabel[class="h2"] {{ font-size: {px(12)}; font-weight: 700; color: {c['accent']}; letter-spacing: 1px; }}
+QLabel[class="h1"] {{ font-size: {px(21)}; font-weight: 700; color: {c['head']}; }}
+QLabel[class="map"] {{ font-family: 'Fira Sans ExtraBold', 'Segoe UI'; font-size: {px(22)}; color: {c['head']}; }}
+QLabel[class="h2"] {{ font-size: {px(12)}; font-weight: 700; color: {c['fg']}; letter-spacing: 0.8px; }}  /* 1.17: the accent marks state, not every title */
 QLabel[class="big"] {{ font-size: {px(16)}; font-weight: 700; color: {c['head']}; }}
 QDialog#message {{ background: {c['bg']}; }}  /* 1.8.44: App._ask/_inform */
 QTabWidget::pane {{ border: 1px solid {c['border']}; border-radius: 8px; top: -1px; }}
@@ -232,12 +232,12 @@ QTabBar[dense="true"]::tab {{ padding: 7px 9px; }}  /* 1.8.46/1.8.48: rows with 
 QTabBar::tab:selected {{ color: {c['accent']}; border-bottom: 2px solid {c['accent']}; }}
 QTabBar::tab:hover:!selected {{ color: {c['fg']}; }}
 QTabWidget#segments::pane {{ border: none; top: 0; }}  /* 1.11.14: the statistics' groups as a segment switch */
-QTabBar#segbar::tab {{ background: {c['btn']}; color: {c['fg']}; border: 1px solid {c['border']}; border-radius: 6px;
-    padding: 5px 14px; margin: 0 6px 6px 0; }}
-QTabBar#segbar::tab:selected {{ background: {c['accent']}; color: {c['on_accent']}; border: 1px solid {c['accent']};
-    font-weight: 700; }}
-QTabBar#segbar::tab:hover:!selected {{ background: {c['btn_hover']}; }}
-QLabel[class="kpi"] {{ font-size: {px(24)}; font-weight: 700; color: {c['head']}; }}
+QTabBar#segbar::tab {{ background: transparent; color: {c['dim']}; border: 1px solid transparent; border-radius: 6px;
+    padding: 5px 14px; margin: 0 4px 6px 0; }}
+QTabBar#segbar::tab:selected {{ background: {c['btn_hover']}; color: {c['head']}; border: 1px solid {c['border']};
+    font-weight: 600; }}  /* 1.17: a raised segment instead of a gold slab */
+QTabBar#segbar::tab:hover:!selected {{ background: {c['hover']}; color: {c['fg']}; }}
+QLabel[class="kpi"] {{ font-size: {px(22)}; font-weight: 700; color: {c['head']}; }}
 QLabel[class="sub"] {{ color: {c['dim']}; font-size: {px(11)}; font-weight: 700; letter-spacing: 1px; padding-top: 6px; }}
 QLabel[class="note"] {{ color: {DOT['warn']}; }}
 QLabel#thumb {{ background: {DARK['field']}; border-radius: 8px; }}  /* map pictures need a dark backdrop */
@@ -265,13 +265,20 @@ QPushButton#primary:focus {{ border-color: {c['head']}; }}
 QPushButton#danger {{ color: {c['danger']}; }}  /* 1.12.3: deletes or resets data (uimodel.danger) */
 QPushButton#danger:hover {{ border-color: {c['danger']}; }}
 QPushButton#danger:disabled {{ color: {c['fg_dis']}; border-color: {c['border']}; }}
-QPushButton[class="seg"]:checked {{ background: {c['accent']}; color: {c['on_accent']}; border-color: {c['accent']}; font-weight: 700; }}  /* 1.3.3 */
+QPushButton[class="seg"] {{ background: transparent; color: {c['dim']}; border-color: transparent; }}  /* 1.17 */
+QPushButton[class="seg"]:hover {{ background: {c['hover']}; color: {c['fg']}; }}
+QPushButton[class="seg"]:checked {{ background: {c['btn_hover']}; color: {c['head']}; border-color: {c['border']}; font-weight: 600; }}
 QProgressBar {{ background: {c['bar']}; border: none; border-radius: 3px; max-height: 6px; min-height: 6px; }}
 QProgressBar::chunk {{ background: {c['accent']}; border-radius: 3px; }}
+QProgressBar#factbar {{ max-height: 4px; min-height: 4px; border-radius: 2px; }}
+QProgressBar#factbar::chunk {{ background: {c['dim']}; border-radius: 2px; }}  /* 1.17: ratio, not state */
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar::handle:vertical {{ background: {c['hover']}; border-radius: 4px; min-height: 30px; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar[idle="true"]::handle:vertical {{ background: transparent; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}  /* 1.17: like the vertical one */
+QScrollBar::handle:horizontal {{ background: {c['hover']}; border-radius: 4px; min-width: 30px; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QTreeWidget {{ border: 1px solid {c['border']}; border-radius: 8px; padding: 4px; }}
 QTreeWidget::item {{ padding: 3px 6px; }}
 QHeaderView::section {{ padding: 3px 6px; }}

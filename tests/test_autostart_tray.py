@@ -120,11 +120,11 @@ def test_tray_menu_posts_actions_to_the_ui_thread(monkeypatch):
     icon = fake.icons[0]
     assert icon.running and icon.image.size == (64, 64)
     items = [i for i in icon.menu.items if i is not fake.module.Menu.SEPARATOR]
-    assert [i.text for i in items] == ["Fenster öffnen", "Overlay ein/aus", "Beenden"]
+    assert [i.text for i in items] == ["Fenster öffnen", "Overlay ein/aus", "Statistik", "Aufnahmen", "Beenden"]
     assert items[0].default                                          # double click opens the window
     for i in items:
         i.action(icon, i)
-    assert posted == ["open", "toggle", "quit"]                       # only posted, never Tk from this thread
+    assert posted == ["open", "toggle", "page:stats", "page:recordings", "quit"]   # only posted, never Qt from here
     t.set_title("Fog Scout – " + "x" * 200)
     assert len(icon.title) == 127
     t.stop()
