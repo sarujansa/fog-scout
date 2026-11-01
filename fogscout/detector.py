@@ -73,8 +73,9 @@ def find_separator(img: np.ndarray, frame_w: int, frame_h: int, letterboxed: boo
     if img is None or img.size == 0:
         return None
     s = min(1.0, 1080.0 / max(1, frame_h))
-    small = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1.0 else img
-    g = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.int16)
+    # 1.16.1 (audit, measured 3.7 → 1.7 ms on a 3440×1440 ROI): grey first, then one channel is scaled, not three
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    g = (cv2.resize(gray, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1.0 else gray).astype(np.int16)
     k = 3
     up = np.zeros_like(g)
     up[k:] = g[:-k]

@@ -2054,3 +2054,33 @@ def test_a_filling_drive_ends_the_recording_and_a_forgotten_manual_one_is_capped
     r.active["since"] -= obsrec.MAX_MANUAL_S
     r._watchdog()
     assert r.active is None and obsrec.load_index(str(tmp_path))[-1].extra.get("manual") is True
+
+
+def test_the_recorder_thread_survives_an_error_in_its_idle_work(obs, tmp_path, monkeypatch):
+    """1.16.1 (audit, reproduced): the idle branch of the thread caught ObsError only – an OSError while the index
+    was written (drive gone, disk full, a scanner holding the .tmp) ended the thread for good; no recording ever
+    again, nothing in the log. Every idle step runs on its own now and a failing one is logged and reported."""
+    r, posted = _recorder(obs, str(tmp_path))
+    boom = {"n": 0}
+
+    def failing(force=False):
+        boom["n"] += 1
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(r, "_look_at_space", failing)
+    monkeypatch.setattr(r, "IDLE_WAIT_S", 0.05)
+    r.start()
+    deadline = time.time() + 5
+    while time.time() < deadline and boom["n"] < 2:
+        time.sleep(0.02)
+    assert boom["n"] >= 2 and r.is_alive()                   # failed, failed again, still running
+    seen = []
+    while not posted.empty():
+        seen.append(posted.get_nowait())
+    assert any(k == "status" and "Fehler in" in str(d) and "Log" in str(d) for k, d in seen), seen[:3]
+    r.quit()                                                 # commands still arrive: the thread ends on quit
+    r.join(5)
+    assert not r.is_alive()
+
+
+def test_an_index_name_with_a_nul_is_no_path():
+    assert obsrec.rel_path("/d/DBD", "a\x00b.mkv") is None

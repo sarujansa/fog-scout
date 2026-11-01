@@ -35,3 +35,26 @@ def test_a_hard_crash_is_kept_for_the_diagnosis_and_a_normal_end_leaves_nothing(
     assert "Fatal Python error" in text and len(lines) <= diagnose.CRASH_LINES + 2
     diagnose.keep_crash(str(tmp_path))                                    # nothing new: the kept one stays
     assert last.stat().st_size > 0
+
+
+def test_a_thread_that_dies_of_an_exception_is_logged(caplog):
+    """1.16.1 (audit): Python's default sends a thread's traceback to sys.stderr – None under pythonw.exe, so a
+    dead recorder or player thread left no trace. The hook logs it with the thread's name."""
+    import logging
+    import threading
+    from fogscout import __main__ as m
+    old = threading.excepthook
+    try:
+        m._log_thread_deaths()
+        assert threading.excepthook is not old
+
+        def boom():
+            raise RuntimeError("Platte voll")
+        with caplog.at_level(logging.ERROR, logger="fogscout"):
+            t = threading.Thread(target=boom, name="obs-recorder")
+            t.start()
+            t.join(5)
+        assert any("obs-recorder" in r.getMessage() and r.exc_info and "Platte voll" in str(r.exc_info[1])
+                   for r in caplog.records)
+    finally:
+        threading.excepthook = old

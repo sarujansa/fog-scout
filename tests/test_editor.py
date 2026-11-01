@@ -285,3 +285,39 @@ def test_every_icon_draws_something_in_every_state(qapp):
         ic = qt_icons.icon(name, "#e3e5e8", "#ffffff", "#666666", "#1a1406")
         assert not ic.pixmap(20, QIcon.Disabled, QIcon.Off).isNull() and not ic.pixmap(20, QIcon.Normal, QIcon.On).isNull()
     assert qt_icons.pixmap("no-such-glyph", "#ffffff", 20).toImage().pixelColor(10, 10).alpha() == 0
+
+
+def test_the_timeline_keeps_a_layer_while_only_the_playhead_moves_and_a_closed_editor_lets_go(qapp, clip, tmp_path):
+    """1.16.1 (audit, measured 9.9 → 0.8 ms per repaint): moving the playhead reuses the pixmap of the tracks; any
+    change of the clips, zoom or selection draws a new one. A closed editor drops its pictures, strip and
+    library and stops its pump – it kept ~28 MB each time before."""
+    from PySide6.QtGui import QImage
+    from fogscout import qt_clip
+    win = _window(qapp, clip, tmp_path)
+    tl = win.timeline
+    try:
+        _pump(qapp, lambda: tl._layer is not None, 10)
+        img = QImage(tl.size(), QImage.Format_ARGB32)
+        tl.render(img)
+        layer = tl._layer
+        win.goto(3.0)
+        tl.render(img)
+        assert tl._layer is layer                                 # the playhead moved: the same layer
+        tl.zoom_in()
+        tl.render(img)
+        assert tl._layer is not layer                             # the zoom changed: a new one
+        layer = tl._layer
+        win.goto(4.0)
+        win.split_at_playhead()
+        tl.render(img)
+        assert tl._layer is not layer                             # the clips changed: a new one
+        assert win.preview._img is not None and tl.thumbs
+        pump = win._pump
+        win.close()
+        assert win._closed and pump.interval() == qt_clip.CLOSED_PUMP_MS   # 15 ms → 200 ms until the object goes
+        assert win.preview._img is None and tl.thumbs == {} and tl.wave == [] and tl._layer is None
+        assert set(win.bridge.handlers) <= set(win.bridge.AFTER_CLOSE)
+        assert win.library.model.rowCount() == 0
+    finally:
+        if not win._closed:
+            win.close()

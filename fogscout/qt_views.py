@@ -146,6 +146,7 @@ class Table(QTreeWidget):
             return
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
+        menu.setAttribute(Qt.WA_DeleteOnClose)
         shown = [c for c in self._cols if c not in self.hidden]
         for cid, title in zip(self._cols, self._titles):
             act = menu.addAction(title or cid)
@@ -155,7 +156,6 @@ class Table(QTreeWidget):
             act.toggled.connect(lambda on, c=cid: self._toggle_column(c, on))
         menu.addSeparator()
         menu.addAction(_("Alle Spalten zeigen")).triggered.connect(lambda: self._show_all_columns())
-        menu.setAttribute(Qt.WA_DeleteOnClose)
         menu.popup(self.header().mapToGlobal(pos))
 
     def _toggle_column(self, cid, on):
@@ -442,6 +442,7 @@ class HotkeyButton(QPushButton):
         """1.2.19: right click – this one hotkey back to its default, or off."""
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
+        menu.setAttribute(Qt.WA_DeleteOnClose)
         for action, label in (("default", _("Standard wiederherstellen")), ("off", _("Ausschalten"))):
             menu.addAction(label).triggered.connect(lambda _c=False, a=action: self._post("hk_menu", (self._key, a)))
         self._menu = menu
