@@ -2169,3 +2169,25 @@ def test_ctrl_and_a_number_opens_the_page_in_that_row_of_the_navigation(qapp):
     finally:
         win.allow_close = True
         win.close()
+
+
+def test_the_name_column_is_never_squeezed_below_its_contents(qapp, keep):
+    """1.17: statistics › System has 15 columns – in a table narrower than them Qt squeezed the stretching name
+    column to "Ba…"; now it keeps its natural width (the table scrolls sideways), and in a wide table it still
+    takes the room that is left."""
+    from fogscout import qt_window
+    t = keep(qt_window.Table(".nb.sys", lambda a, arg=None: None))
+    cols = [("grp", "Wann/Wo", "w")] + [(f"c{i}", f"Spalte {i}", "e") for i in range(14)]
+    rows = [(f"r{i}", 0, "", [name] + ["–"] * 14, [], False)
+            for i, name in enumerate(("Badham Preschool I", "Mount Ormond Resort", "Coal Tower"))]
+    t.resize(700, 300)
+    t.show()
+    t.show_state({"columns": cols, "rows": rows, "colours": {}, "selection": [], "selectable": False, "stretch": 0})
+    qapp.processEvents()
+    need = t.header().fontMetrics().horizontalAdvance("Mount Ormond Resort")
+    assert t.columnWidth(0) >= need
+    assert t.header().sectionResizeMode(0) == t.header().ResizeMode.Interactive
+    t.resize(4000, 300)
+    qapp.processEvents()
+    assert t.header().sectionResizeMode(0) == t.header().ResizeMode.Stretch
+    assert t.columnWidth(0) >= need
