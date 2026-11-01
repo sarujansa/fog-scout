@@ -124,3 +124,35 @@ def test_a_saved_order_of_the_statistics_tabs_is_dropped_once_for_the_new_groups
     assert s["tab_order"] == {"overlay": {"t": ["a"]}} and s["settings_version"] == SETTINGS_VERSION == 13
     p.write_text(json.dumps({"settings_version": 13, "tab_order": {"stats": {"x": ["1", "0"]}}, "hotkeys": {}}))
     assert Settings(str(p))["tab_order"] == {"stats": {"x": ["1", "0"]}}           # ordered after 1.12.7: kept
+
+
+def test_the_obs_password_is_stored_protected_and_an_old_clear_one_still_works(tmp_path, monkeypatch):
+    """1.16.2 (A14): rec_password like the Spotify/YouTube secrets (spotify.protect: DPAPI on Windows, encoded
+    elsewhere). A clear-text password from before is read as it is and protected on the start; one that cannot
+    be decrypted here gives an empty field and a log line – never the stored value, never the password itself."""
+    from types import SimpleNamespace
+    from fogscout import app_settings, spotify
+    from fogscout.app_settings import SettingsTab, read_password
+    assert read_password("") == ("", True) and read_password(None) == ("", True)
+    assert read_password("hunter2") == ("hunter2", True)                       # before 1.16.2: clear text
+    assert read_password(spotify.protect("hunter2")) == ("hunter2", True)
+    assert read_password("dpapi:@@not-base64") == ("", False)
+    assert read_password("plain:@@not-base64") == ("", False)
+
+    def host(stored):
+        s = config.Settings(str(tmp_path / "settings.json"))
+        s.set("rec_password", stored)
+        h = SimpleNamespace(settings=s, logged=[], saved=[])
+        h._log = lambda text, cat="System": h.logged.append((cat, text))
+        h._save_soon = lambda: h.saved.append(1)
+        return h
+
+    h = host("hunter2")
+    assert SettingsTab._rec_password_load(h) == "hunter2" and h.saved and not h.logged
+    stored = h.settings.get("rec_password")
+    assert app_settings.is_protected(stored) and "hunter2" not in stored and read_password(stored)[0] == "hunter2"
+    h = host(stored)                                                          # protected already: left as it is
+    assert SettingsTab._rec_password_load(h) == "hunter2" and not h.saved and h.settings.get("rec_password") == stored
+    h = host("dpapi:AAAA")                                                    # another PC / user account
+    assert SettingsTab._rec_password_load(h) == "" and [c for c, _t in h.logged] == ["Fehler"]
+    assert "AAAA" not in h.logged[0][1]

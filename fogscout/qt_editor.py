@@ -836,9 +836,13 @@ class EditorWindow(ClipBase):
     def _extra_threads(self):
         self.bridge.wave.connect(lambda bins: self.timeline.set_wave(bins, clipedit.WAVE_PER_S))
         if self.info.audio_tracks > 0:
-            path, duration, ffmpeg, b = self.path, self.info.duration, self.ffmpeg, self.bridge
-            threading.Thread(target=lambda: (not self._closed) and b.wave.emit(clipedit.waveform(path, duration, ffmpeg)),
-                             name="clip-wave", daemon=True).start()
+            path, duration, ffmpeg, b, cancel = self.path, self.info.duration, self.ffmpeg, self.bridge, self._cancel
+
+            def wave():                         # 1.16.2: ends with the window (cancel), emits nothing after it
+                bins = clipedit.waveform(path, duration, ffmpeg, cancel=cancel)
+                if not cancel.is_set():
+                    b.wave.emit(bins)
+            threading.Thread(target=wave, name="clip-wave", daemon=True).start()
 
     def _drain(self):
         super()._drain()

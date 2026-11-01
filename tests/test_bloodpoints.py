@@ -272,3 +272,32 @@ def test_the_notification_can_be_switched_off_and_a_gain_is_only_logged(tmp_path
     app2.reading({"value": 5031500, "text": "5 031 500", "t": 831.0})
     assert app2.notified == [] and app2.logged == [("Erkennung", "Blutpunkte: +31 500 in dieser Runde, Stand 5 031 500.")]
     assert history.load(path2)[0].balance == 5031500
+
+
+def test_the_counter_is_read_seldom_once_the_looks_agree_and_at_once_after_a_round():
+    """1.16.2 (A7): every lobby look until CONFIRM_LOOKS readings agree, then every BP_STEADY_S; another value or
+    a new map (a round in between) reads every look again – the app still gets its confirming pair at once."""
+    from fogscout import worker
+    w = _worker()
+    w.watch_gen, w._bp_seen = None, (None, 0, -1e9, None)
+    frame = np.full((H, W, 3), 60, np.uint8)
+    grab = lambda box: frame[box[1]:box[1] + box[3], box[0]:box[0] + box[2]]   # noqa: E731
+    watcher = _Watcher("5 000 000")
+    looked = []
+    for t in range(100, 120):                                 # one lobby look a second for 20 s
+        if w._bp_due(float(t)):
+            looked.append(t)
+            w._bp_look(grab, W, H, float(t), (0, 0), False, watcher)
+    assert looked[:2] == [100, 101] and all(b - a == worker.BP_STEADY_S for a, b in zip(looked[1:], looked[2:]))
+    watcher.text = "5 100 000"                                # spent / earned: read every look until it agrees
+    assert looked[-1] == 116 and w._bp_due(120.0) is False and w._bp_due(121.0)
+    w._bp_look(grab, W, H, 121.0, (0, 0), False, watcher)
+    assert w._bp_due(122.0)
+    w._bp_look(grab, W, H, 122.0, (0, 0), False, watcher)
+    assert not w._bp_due(123.0)
+    w.watch_gen = (1, "auto")                                 # a map came: the reading after the round is at once
+    assert w._bp_due(128.0) and w._bp_due(128.5)
+    watcher.text = ""                                         # nothing readable: every look
+    w._bp_look(grab, W, H, 129.0, (0, 0), False, watcher)
+    assert w._bp_due(129.5)
+    assert [v["value"] for k, v in w.posted][-2:] == [5100000, 5100000]
