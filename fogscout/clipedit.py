@@ -19,6 +19,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 
+from .encoders import Encoding
 from .i18n import _
 from .obsrec import (AUDIO_STREAM_RE, CLIPS_DIR as _CLIPS_DIR, NAME_CHARS, PART_EXT, PARTS_WRITING, audio_graph,
                      ffmpeg_exe, part_key)
@@ -357,7 +358,8 @@ def _publish(tmp: str, out: str) -> tuple[bool, str]:
 
 def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpeg: str | None = None,
         run=None, target_mb: float = DEFAULT_TARGET_MB, info: Info | None = None,
-        retry: bool = True, censor=None, censor_style: str = "pixel", mix=None) -> tuple[bool, str]:
+        retry: bool = True, censor=None, censor_style: str = "pixel", mix=None,
+        encoding: Encoding | None = None) -> tuple[bool, str]:
     """Write the stretch ``start``..``end`` of ``path`` to ``out``. "copy" = stream copy (seconds of work; the
     cut lands on the key frame before ``start``, so the clip may begin up to a few seconds early), "exact" =
     frame exact, picture re-encoded (x264 veryfast, CRF 18; a 30-s clip takes some seconds), sound as AAC;
@@ -365,18 +367,23 @@ def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpe
     ``censor`` (1.7.2): boxes to hide (fractions of the picture, see censor_graph) – needs the picture re-encoded,
     so "copy" becomes "exact" (as for a source that cannot be copied, see copyable). ``mix`` (1.8.6): {source:
     volume} over the recording's own audio tracks (obsrec.audio_graph) – one track as it is stays a stream copy,
-    anything else re-encodes the sound (AAC), the picture stays as the mode says. ffmpeg writes ``out`` + PART_EXT,
-    renamed to ``out`` once it succeeded. Returns (ok, ffmpeg's last words on failure)."""
+    anything else re-encodes the sound (AAC), the picture stays as the mode says. ``encoding`` (1.15): the encoder,
+    quality and picture height of a re-encoded clip (encoders.Encoding; None = x264 veryfast CRF 18 as before).
+    ffmpeg writes ``out`` + PART_EXT, renamed to ``out`` once it succeeded. Returns (ok, ffmpeg's last words on
+    failure)."""
     ffmpeg = ffmpeg or ffmpeg_exe()
     if not ffmpeg:
         return False, "ffmpeg fehlt"
     censor = list(censor or ())
+    enc = encoding or Encoding()
+    if mode == "discord" and enc.codec == "hevc":
+        enc = replace(enc, codec="h264")                  # Discord's players do not show HEVC – H.264 for it
     if mode == "copy" and (censor or not copyable(path)):
         mode = "exact"
     start, end = max(0.0, float(start)), float(end)
     if end <= start:
         return False, "Ende vor Anfang"
-    if (censor or mix) and (info is None or not info.ok):
+    if (censor or mix or (enc.height and mode == "exact")) and (info is None or not info.ok):
         info = probe(path, ffmpeg)
     flt, amap = audio_graph(info.audio_tracks if info else 0, mix)
     try:
@@ -388,12 +395,12 @@ def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpe
     if mode == "discord":
         kbps, h, fps = discord_plan(end - start, target_mb, info)
         vf = f"scale=-2:{h},fps={fps:g}"
-        args += ["-c:v", "libx264", "-preset", "veryfast", "-b:v", f"{kbps}k",
-                 "-maxrate", f"{int(kbps * 1.1)}k", "-bufsize", f"{kbps * 2}k", "-pix_fmt", "yuv420p",
-                 "-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"]
+        args += enc.video_args(kbps) + ["-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"]
     elif mode == "exact":
-        args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac",
-                 "-b:a", "160k"]
+        th = enc.target_height(info.height if info is not None else 0)
+        if th:
+            vf = f"scale=-2:{th}"
+        args += enc.video_args() + ["-c:a", "aac", "-b:a", "160k"]
     elif flt:                                                   # mixed sound: picture copied, sound re-encoded
         args += ["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-avoid_negative_ts", "make_zero"]
     else:
@@ -433,7 +440,7 @@ def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpe
         # the rate control overshot (very busy pictures): once more with less, never a file over the limit
         _remove(tmp)
         return cut(path, start, end, out, mode, ffmpeg, run, target_mb * 0.8, info, retry=False, censor=censor,
-                   censor_style=censor_style, mix=mix)
+                   censor_style=censor_style, mix=mix, encoding=encoding)
     return _publish(tmp, out)
 
 
@@ -738,7 +745,7 @@ def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -
 
 def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB, censor=None,
                censor_style: str = "pixel", mix=None, shape_inputs=(), gif_h: int = DEFAULT_GIF_H,
-               palette: int | None = None):
+               palette: int | None = None, encoding: Encoding | None = None):
     """The filter graph of ``edit`` (graph, video label, audio label or None, encoder arguments). The first inputs
     are the recording as part_inputs reads it (each seeked to its first part); an input that holds several parts is
     split and cut (trim) per part – the gaps are dropped right there, censor, drawings and crop work on the part
@@ -746,8 +753,11 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
     drawing and laid at x, y – see export; without x, y at the top left), laid over each part they show in. A GIF
     takes two runs: ``palette`` None = the first, ending in the palette (palettegen), else the input index of that
     palette for the second (paletteuse) – in one run ffmpeg kept every frame until the palette came at the end
-    (~32 MB per second of GIF). Pure – tested without ffmpeg."""
+    (~32 MB per second of GIF). ``encoding`` (1.15) as in cut(). Pure – tested without ffmpeg."""
     w, h = info.width, info.height
+    enc = encoding or Encoding()
+    if mode == "discord" and enc.codec == "hevc":
+        enc = replace(enc, codec="h264")                  # as in cut(): Discord shows H.264 only
     parts = edit.parts
     n = len(parts)
     sound = mode != "gif" and audio_graph(info.audio_tracks, mix)[1] is not None and info.audio_tracks > 0
@@ -810,9 +820,7 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
     if mode == "discord":
         kbps, dh, fps = discord_plan(total, target_mb, Info(total, out_w, out_h, info.fps, info.audio_tracks))
         post += [f"scale=-2:{dh}", f"fps={fps:g}"]
-        args += ["-c:v", "libx264", "-preset", "veryfast", "-b:v", f"{kbps}k", "-maxrate", f"{int(kbps * 1.1)}k",
-                 "-bufsize", f"{kbps * 2}k", "-pix_fmt", "yuv420p"] + (["-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"]
-                                                                      if sound else [])
+        args += enc.video_args(kbps) + (["-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"] if sound else [])
     elif mode == "gif":
         # rgb24 before the fades: palettegen wants RGBA, and a fade on RGBA fades the alpha too – the fade-in came
         # out transparent, the fade-out froze on grey (paletteuse: alpha < 128 = "keep the previous picture")
@@ -820,9 +828,11 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
     else:
         # the file's own frame rate: setpts leaves the rate unknown, and ffmpeg then made 25 fps of a 60-fps round
         post.append(f"fps={info.fps:g}")
-        args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"] + (
-            ["-c:a", "aac", "-b:a", "160k"] if sound else [])
-        if out_w % 2 or out_h % 2:
+        args += enc.video_args() + (["-c:a", "aac", "-b:a", "160k"] if sound else [])
+        th = enc.target_height(out_h)
+        if th:
+            post.append(f"scale=-2:{th}")                          # even width and height for 4:2:0
+        elif out_w % 2 or out_h % 2:
             post.append("scale=trunc(iw/2)*2:trunc(ih/2)*2")
     fi, fo = max(0.0, edit.fade_in), max(0.0, edit.fade_out)
     if fi > 0:
@@ -859,7 +869,8 @@ def _drop_dir(path: str):
 
 def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | None = None, run=None,
            target_mb: float = DEFAULT_TARGET_MB, info: Info | None = None, censor=None, censor_style: str = "pixel",
-           mix=None, gif_h: int = DEFAULT_GIF_H, retry: bool = True) -> tuple[bool, str]:
+           mix=None, gif_h: int = DEFAULT_GIF_H, retry: bool = True,
+           encoding: Encoding | None = None) -> tuple[bool, str]:
     """1.12: write ``edit`` of ``path`` to ``out`` (mp4, or gif in mode "gif"). A simple edit (one part, nothing
     else) goes through cut() – stream copy stays possible; anything else re-encodes (mode "copy" becomes "exact").
     The recording is read as part_inputs says (input seeking: overlapping parts from inputs of their own, the gaps
@@ -882,7 +893,7 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
     if edit.simple() and mode != "gif":
         extra = {"censor": censor, "censor_style": censor_style} if censor else {}
         return cut(path, parts[0].start, parts[0].end, out, mode, ffmpeg, run=run, target_mb=target_mb, info=info,
-                   retry=retry, mix=mix, **extra)
+                   retry=retry, mix=mix, encoding=encoding, **extra)
     if not info.ok:
         return False, "Video nicht lesbar"
     if mode == "gif" and edit.seconds() > GIF_MAX_S + 0.05:
@@ -931,7 +942,8 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
             return False, str(e)
 
         def graph(palette=None):
-            return edit_graph(edit, info, mode, target_mb, censor, censor_style, mix, shape_inputs, gif_h, palette)
+            return edit_graph(edit, info, mode, target_mb, censor, censor_style, mix, shape_inputs, gif_h, palette,
+                              encoding=encoding)
         if mode == "gif":
             pal = os.path.join(tmpdir, "palette.png")              # "-update 1": a file name, not a pattern
             rc, err = call(args + ["-filter_complex", graph()[0], "-map", "[vout]", "-frames:v", "1", "-update", "1",
@@ -953,5 +965,5 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
     if mode == "discord" and retry and os.path.getsize(tmp) > target_mb * 1024 * 1024:
         _remove(tmp)
         return export(path, edit, out, mode, ffmpeg, run, target_mb * 0.8, info, censor, censor_style, mix, gif_h,
-                      retry=False)
+                      retry=False, encoding=encoding)
     return _publish(tmp, out)

@@ -102,6 +102,8 @@ DEFAULTS = {
         "next_floor": "ctrl+alt+f",     # not E: Ctrl+Alt+E is AltGr+E = € on German keyboards
         "reject_map": "ctrl+alt+x",
         "mark_clip": "f8",              # 1.4.2: a mark in the running OBS recording (single key: only while DBD is in front)
+        "record_toggle": "f9",          # 1.15: start / stop an OBS recording by hand (only while DBD is in front)
+        "record_pause": "f10",          # 1.15: pause / resume the recording on air
     },
     "overlay_on": True,               # 1.8.18: master switch – off hides every overlay window, detection goes on
     "overlay_small_off": True,        # 1.8.62: a small DBD window (app_place.small_window) hides it the same way
@@ -179,6 +181,10 @@ DEFAULTS = {
     "clip_mode": "copy",                # 1.5.1: clip editor – "copy" (key frames, fast) / "exact" (re-encoded)
     "clip_sound": True,                 # 1.5.1: clip editor plays the sound while previewing (Windows)
     "clip_target_mb": 10,               # 1.6.1: clip editor "Für Discord" – stays under this many MB
+    "clip_codec": "h264",               # 1.15: clip editor, re-encoded clips – h264 | hevc
+    "clip_quality": "balanced",         # … fast | balanced (= x264 CRF 18 as before) | high
+    "clip_height": 0,                   # … picture height of the clip (0 = as recorded, else 1440/1080/720)
+    "clip_hw": "auto",                  # … encoder: "" CPU | auto (first working graphics-card encoder) | nvenc/amf/qsv
     "clip_censor_on": False,            # 1.7.2: clip editor hides the censor boxes when saving
     "clip_censor_style": "pixel",       # pixel | blur | black
     "clip_censor_boxes": [],            # [[x, y, w, h] …] as fractions of the picture (the names stay put)

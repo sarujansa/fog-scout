@@ -260,6 +260,18 @@ TIPS = {
                            "Nochmal drücken hebt es auf.",
     "Aufnahme löschen": "Löscht die markierte Aufnahme (und ihren Vorlauf) von der Platte – nach Rückfrage.",
     "Aufnahmeordner öffnen": "Öffnet den Aufnahmeordner im Explorer.",
+    # 1.15: the recording card
+    "Aufnahme starten": "Startet jetzt eine OBS-Aufnahme von Hand – auch ausserhalb einer Runde. Sie läuft, bis du "
+                        "sie stoppst oder DBD beendet wird; ein Map-Banner benennt sie. Hotkey einstellbar.",
+    "Aufnahme stoppen": "Beendet die laufende Aufnahme jetzt (bei einer Runde ohne Nachlauf) und legt sie in den "
+                        "Aufnahmeordner.",
+    "Pause": "Hält die laufende Aufnahme an (OBS pausiert); „Fortsetzen“ setzt sie in derselben Datei fort. Marken "
+             "bleiben an ihrer Stelle.",
+    "Fortsetzen": "Setzt die pausierte Aufnahme fort.",
+    "Clip speichern (F8)": "Wie F8: speichert die letzten Sekunden aus dem OBS-Wiederholungspuffer als Sofort-Clip "
+                           "(Länge unter Einstellungen → Aufnahmen) und setzt eine Marke, falls eine Aufnahme läuft.",
+    "Marke setzen": "Merkt diesen Moment in der laufenden Aufnahme (⚑) – der Clip-Editor springt später dorthin. "
+                    "Ohne Sofort-Clip.",
     "mit kurzer Meldung": "Zeigt beim Sofort-Clip (F8) unten rechts ein kleines Hinweisfenster – „Clip wird "
                           "gespeichert …“ und danach „Clip gespeichert“ bzw. warum nicht. Auch im Spiel, ohne Ton; "
                           "nimmt nie den Fokus.",
