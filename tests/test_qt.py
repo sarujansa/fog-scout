@@ -2187,7 +2187,12 @@ def test_the_name_column_is_never_squeezed_below_its_contents(qapp, keep):
     need = t.header().fontMetrics().horizontalAdvance("Mount Ormond Resort")
     assert t.columnWidth(0) >= need
     assert t.header().sectionResizeMode(0) == t.header().ResizeMode.Interactive
-    t.resize(4000, 300)
+    # a table whose columns fit (not a wider window: Windows clamps a window to the screen of the CI runner)
+    few = keep(qt_window.Table(".nb.few", lambda a, arg=None: None))
+    few.resize(700, 300)
+    few.show()
+    few.show_state({"columns": cols[:3], "rows": [(r[0], 0, "", r[3][:3], [], False) for r in rows], "colours": {},
+                    "selection": [], "selectable": False, "stretch": 0})
     qapp.processEvents()
-    assert t.header().sectionResizeMode(0) == t.header().ResizeMode.Stretch
-    assert t.columnWidth(0) >= need
+    assert few.header().sectionResizeMode(0) == few.header().ResizeMode.Stretch
+    assert few.columnWidth(0) >= need
