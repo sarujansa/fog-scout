@@ -727,6 +727,7 @@ class SettingsTab:
                           "System")
                 self._rec_dirty = True
                 self._clip_toast(_("Clip gespeichert ✓"), _("{n} s · im Tab Aufnahmen → Clips", n=d.get("seconds", 0)))
+                self._rec_card_clip_saved(d.get("file", ""))                                    # 1.15
                 self._yt_auto_clip(d.get("file", ""), d.get("label", ""), d.get("role", ""), d.get("killer", ""),
                                    float(d.get("source") or 0.0) or time.time(), float(d.get("seconds") or 0))   # 1.10
             else:
@@ -740,6 +741,44 @@ class SettingsTab:
             else:
                 self._log(_("Clip-Marke {n} bei {pos} gesetzt.", n=d.get("n", 1), pos=fmt_duration(d["pos"])), "System")
                 self.root.bell()
+                self._rec_card_mark(d.get("n", 1), d["pos"])
+        elif kind == "started":                 # 1.15: the card follows at once (manual: by button/hotkey)
+            if d.get("manual") and not self.recorder.active_round_named():
+                self._log(_("Aufnahme von Hand gestartet."), "System")
+            self._rec_card_poll_now()
+            self._rec_card_render()
+        elif kind == "paused":                  # 1.15
+            self._rec_paused = bool(d.get("on"))
+            self._log(_("Aufnahme pausiert.") if self._rec_paused else _("Aufnahme läuft weiter."), "System")
+            self._rec_card_poll_now()
+            self._rec_card_render()
+        elif kind == "obs_status":              # 1.15: the recording card's live state
+            self._rec_card_state(d)
+
+    def record_toggle(self):
+        """1.15: hotkey / card button – start an OBS recording by hand, or stop the one on air (a round's too)."""
+        if self.recorder.recording:
+            self.recorder.record_stop()
+            self._clip_toast(_("Aufnahme wird beendet …"), _("Die Datei erscheint im Tab Aufnahmen"), 4)
+            return
+        if not (self.settings.get("rec_folder") or self.settings.get("rec_on")):
+            self._log(_("Kein Aufnahmeordner gewählt – Einstellungen → Aufnahmen."), "Fehler")
+            self._clip_toast(_("Keine Aufnahme"), _("Kein Aufnahmeordner gewählt – Einstellungen → Aufnahmen."), 5)
+            return
+        hist = self._hist or {}
+        self.recorder.record_start(t=hist.get("t"), label=hist.get("map", ""), map_id=hist.get("map_id", ""),
+                                   role=hist.get("role", ""), killer=hist.get("killer", ""),
+                                   farming=bool(hist.get("farming")), source=float(hist.get("t") or 0.0))
+        self._clip_toast(_("Aufnahme gestartet"), _("Stoppen mit demselben Hotkey oder im Tab Aufnahmen"), 4)
+
+    def record_pause_toggle(self):
+        """1.15: hotkey / card button – pause the recording on air, or let it go on."""
+        if not self.recorder.recording:
+            self._log(_("Keine Aufnahme läuft."), "System")
+            return
+        on = not bool(getattr(self, "_rec_paused", False))
+        self.recorder.record_pause(on)
+        self._clip_toast(_("Aufnahme pausiert") if on else _("Aufnahme läuft weiter"), "", 3)
 
     def mark_clip(self):
         """1.4.2: hotkey (F8) – note this moment in the running OBS recording; the clip editor jumps to it.

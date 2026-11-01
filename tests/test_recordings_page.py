@@ -557,3 +557,32 @@ def test_a_closed_editor_window_is_let_go(app_root, tmp_path):
         app._clip_windows[0].close()
     finally:
         app.quit()
+
+
+def test_the_recording_card_text_follows_obs_state():
+    """1.15 (audit of the video system): the card's three lines – state, values, warnings – from the poll."""
+    from fogscout.app_recordings import rec_card_text
+    assert rec_card_text(None) == ("Warte auf OBS …", "", "")
+    state, vals, warn = rec_card_text({"connected": False, "error": "Verbindung abgelehnt"})
+    assert state == "OBS nicht erreichbar" and vals.endswith("Verbindung abgelehnt") and warn == ""
+    base = {"connected": True, "recording": False, "paused": False, "seconds": 0.0, "bytes": 0, "ours": False,
+            "buffer": True, "buffer_s": 20, "width": 2560, "height": 1440, "fps": 60.0, "encoder": "NVENC H.264",
+            "disk_free": 500 * 1024 ** 3, "active_fps": 60.0}
+    state, vals, warn = rec_card_text(base, clip_s=30)
+    assert state == "Bereit · Wiederholungspuffer läuft (20 s)"
+    assert vals == "2560×1440 · 60 fps · NVENC H.264 · 500 GB frei"
+    assert "30 s eingestellt" in warn and "20 s" in warn                       # F8 longer than OBS's buffer
+    assert rec_card_text(dict(base, buffer=None), clip_s=15)[0].endswith("nicht aktiviert")
+    assert rec_card_text(dict(base, buffer=False), clip_s=15) [0].endswith("Wiederholungspuffer aus")
+    rec = dict(base, recording=True, ours=True, label="Coal Tower", manual=True, seconds=61.0, bytes=3 * 1024 ** 2,
+               marks=2, active_fps=58.0)
+    state, vals, warn = rec_card_text(rec, extra_s=4.0, clip_s=15, now=1000.0, last_clip=("c.mp4", 940.0))
+    assert state == "● Nimmt auf · Coal Tower · von Hand gestartet · 01:05 · 3 MB · ⚑ 2 Marken"
+    assert vals == "2560×1440 · 60 fps (gerade 58) · NVENC H.264 · 500 GB frei · letzter Clip c.mp4 (vor 01:00)"
+    assert warn == ""
+    state = rec_card_text(dict(rec, paused=True), extra_s=4.0)[0]
+    assert state.startswith("⏸ Pausiert") and "01:01" in state                 # the clock stands still
+    assert "von OBS selbst gestartet" in rec_card_text(dict(rec, ours=False))[0]
+    warn = rec_card_text(dict(rec, output_skipped=20, output_total=1000, render_skipped=1, render_total=1000))[2]
+    assert "lässt Bilder aus (20 von 1000" in warn and "Rendern" not in warn   # 0.1 % rendering: no warning
+    assert "Rendern (50 von 1000" in rec_card_text(dict(rec, render_skipped=50, render_total=1000))[2]

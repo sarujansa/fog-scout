@@ -2811,3 +2811,78 @@ def test_the_screenshots_tab_lists_pictures_and_opens_the_picture_editor(app_roo
         assert app.settings.get("shots_folder") == "" and not app.shot_steam_btn.winfo_manager()
     finally:
         app.quit()
+
+
+def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
+    """1.15 (audit of the video system): start/stop and pause by button or hotkey go to the recorder with the open
+    round's names, the card follows the recorder's events and polls OBS only while the page is shown."""
+    import json
+    from fogscout import config, hotkeys
+    from fogscout.app import App
+    assert config.DEFAULTS["hotkeys"]["record_toggle"] == "f9" and hotkeys.game_only("f9")
+    assert config.DEFAULTS["hotkeys"]["record_pause"] == "f10"
+    (app_root / "settings.json").write_text(json.dumps({"rec_on": True, "welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    calls = []
+    for name in ("record_start", "record_stop", "record_pause", "poll", "mark"):
+        setattr(app.recorder, name, lambda *a, _n=name, **m: calls.append((_n, a, m)))
+    toasts = []
+    app.toast.show = lambda title, text, seconds=8.0: toasts.append(title)
+    try:
+        app._hist = {"t": 99.0, "map": "Coal Tower", "map_id": "coal", "role": "killer", "killer": "Nurse"}
+        app._hotkey("record_toggle")
+        assert calls == [("record_start", (), {"t": 99.0, "label": "Coal Tower", "map_id": "coal", "role": "killer",
+                                                "killer": "Nurse", "farming": False, "source": 99.0})]
+        assert toasts == ["Aufnahme gestartet"]
+        app.record_pause_toggle()                                  # nothing on air (the fake never started): a note
+        assert len(calls) == 1
+        app.recorder.active = {"t": 99.0, "label": "Coal Tower", "map_id": "coal", "since": time.time(), "marks": []}
+        app._rec_event("started", {"t": 99.0, "manual": True})
+        app._hotkey("record_pause")
+        assert calls[-1] == ("record_pause", (True,), {})
+        app._rec_event("paused", {"on": True})
+        assert app._rec_paused
+        app.rec_pause_btn.invoke()
+        assert calls[-1] == ("record_pause", (False,), {})
+        app.rec_mark_btn.invoke()
+        assert calls[-1] == ("mark", (), {})
+        app._rec_event("obs_status", {"connected": True, "recording": True, "paused": True, "ours": True,
+                                      "label": "Coal Tower", "seconds": 30.0, "bytes": 0, "buffer": True,
+                                      "width": 2560, "height": 1440, "fps": 60.0, "encoder": "x264 (CPU)"})
+        assert app.rec_state_var.get().startswith("⏸ Pausiert · Coal Tower")
+        assert "2560×1440" in app.rec_live_var.get() and app.rec_start_btn.cget("text") == "Aufnahme stoppen"
+        assert app.rec_pause_btn.cget("text") == "Fortsetzen" and str(app.rec_mark_btn.cget("state")) == "normal"
+        app.rec_start_btn.invoke()
+        assert calls[-1] == ("record_stop", (), {}) and toasts[-1] == "Aufnahme wird beendet …"
+        app.recorder.active = None
+        app._rec_event("obs_status", {"connected": True, "recording": False, "ours": False, "buffer": False})
+        assert app.rec_state_var.get() == "Bereit · Wiederholungspuffer aus"
+        assert app.rec_start_btn.cget("text") == "Aufnahme starten" and str(app.rec_pause_btn.cget("state")) == "disabled"
+        # polling: only on the recordings page, every STATUS_POLL_S
+        n = len([c for c in calls if c[0] == "poll"])
+        app.nb.select(str(app.tab_stats) if hasattr(app, "tab_stats") else app.nb.tabs()[0])
+        app._rec_tab_tick()
+        assert len([c for c in calls if c[0] == "poll"]) == n
+        app.nb.select(str(app.tab_recordings))
+        app._rec_poll_t = 0.0
+        app._rec_tab_tick()
+        app._rec_tab_tick()
+        assert len([c for c in calls if c[0] == "poll"]) == n + 1
+        # OBS unreachable: the card says so and the start button waits
+        app._rec_event("obs_status", {"connected": False, "error": "x", "ours": False})
+        assert app.rec_state_var.get() == "OBS nicht erreichbar" and str(app.rec_start_btn.cget("state")) == "disabled"
+        # F8 clip saved: the card names it
+        app._rec_event("obs_status", {"connected": True, "recording": False, "ours": False, "buffer": True})
+        app._rec_event("clip", {"ok": True, "file": "c.mp4", "seconds": 30})
+        assert "letzter Clip c.mp4" in app.rec_live_var.get()
+        # no folder and recordings off: the card says so instead of polling
+        app.rec_on_var.set(False)
+        app._rec_setting()
+        n = len([c for c in calls if c[0] == "poll"])
+        app._rec_poll_t = 0.0
+        app._rec_tab_tick()
+        assert len([c for c in calls if c[0] == "poll"]) == n and app.rec_state_var.get() == "Aufnahmen sind aus."
+        app.record_toggle()
+        assert toasts[-1] == "Keine Aufnahme" and calls[-1][0] != "record_start"
+    finally:
+        app.quit()
