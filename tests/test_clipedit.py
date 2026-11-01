@@ -1453,3 +1453,27 @@ def test_the_frame_player_runs_faster_at_a_higher_tempo(clip):
     assert ended.wait(20)
     assert seen and seen[-1][0] >= 1.5
     assert time.monotonic() - t0 < 1.8                                      # 2 s of source in about half a second
+
+
+def test_a_closed_editor_stops_its_ffmpeg_analysis_and_leaves_no_process(clip, monkeypatch):
+    """1.16.2 (A16): levels and waveform ran ffmpeg with subprocess.run – a closed editor waited for it up to 180 /
+    300 s. _run_cancellable ends it when ``cancel`` is set and reaps it; the results are the same as before."""
+    started = []
+    real = subprocess.Popen
+
+    def popen(*a, **k):
+        p = real(*a, **k)
+        started.append(p)
+        return p
+
+    monkeypatch.setattr(clipedit.subprocess, "Popen", popen)
+    cancel = threading.Event()
+    forever = [FF, "-hide_banner", "-loglevel", "error", "-re", "-f", "lavfi", "-i", "anullsrc", "-f", "null", "-"]
+    threading.Timer(0.3, cancel.set).start()
+    assert clipedit._run_cancellable(forever, 600, cancel) is None              # a run that would never end
+    assert started[-1].poll() is not None                                      # killed and reaped, not left running
+    assert clipedit._run_cancellable(forever, 0.5) is None and started[-1].poll() is not None   # too slow: same
+    cancel.clear()
+    assert len(clipedit.waveform(clip, 12.0, FF, cancel=cancel)) >= 12 * clipedit.WAVE_PER_S - 2   # not set: as before
+    assert all(p.poll() is not None for p in started)
+    assert clipedit._run_cancellable([os.path.join("no", "such", "ffmpeg")], 5) is None
