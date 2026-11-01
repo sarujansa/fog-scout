@@ -93,6 +93,7 @@ __all__ = (
 )
 
 # key, label (the navigation's icons are drawn by nav_icon: same size and place for all)
+NAV_KEYS = 9                      # 1.17: Ctrl+1 … Ctrl+9 jump to the pages of the navigation
 PAGES = (("overview", N_("Übersicht")), ("maps", "Maps"), ("overlay", N_("Overlay")), ("stats", N_("Statistik")),
          ("recordings", N_("Aufnahmen")), ("server", N_("Server")), ("settings", N_("Einstellungen")),
          ("log", "Log"))          # 1.8.78: "Erkennung" went into the settings (cards) and the log ("Erweitert")
@@ -568,6 +569,8 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence.Find, self, activated=self.focus_search)
         # 1.65: undo of place/size on the overlay page (a text field keeps its own Ctrl+Z)
         QShortcut(QKeySequence.Undo, self, activated=lambda: self.current_key() == "overlay" and self._post("undo"))
+        for n in range(1, NAV_KEYS + 1):        # 1.17: Ctrl+1 … Ctrl+9 = the n-th page of the navigation (its order)
+            QShortcut(QKeySequence(f"Ctrl+{n}"), self, activated=lambda n=n: self.nav_jump(n - 1))
         lay.addWidget(side)
         right = QVBoxLayout()
         right.setContentsMargins(0, 0, 0, 0)
@@ -669,6 +672,13 @@ class MainWindow(QMainWindow):
     def nav_keys(self) -> list:
         """The page keys in the order the navigation shows them (1.7.6: the user's order)."""
         return [self.nav.item(i).data(Qt.UserRole) for i in range(self.nav.count())]
+
+    def nav_jump(self, row: int):
+        """1.17: Ctrl+<n> – the page in row ``row`` of the navigation (leaves the setup assistant like a click)."""
+        if 0 <= row < self.nav.count():
+            if self._setup_on:
+                self.show_setup(False)
+            self.nav.setCurrentRow(row)
 
     def _nav_row(self, key) -> int:
         keys = self.nav_keys()
@@ -1160,4 +1170,5 @@ class MainWindow(QMainWindow):
             item = self.nav.item(row)
             label = labels.get(item.data(Qt.UserRole), "")
             item.setText("" if on else _(label))
-            item.setToolTip(_(label) if on else "")
+            key = _("Strg+{n}", n=row + 1) if row < NAV_KEYS else ""          # 1.17: Ctrl+1 … Ctrl+9
+            item.setToolTip((_(label) + " · " + key if key else _(label)) if on else key)
