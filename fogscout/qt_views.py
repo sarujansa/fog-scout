@@ -102,6 +102,8 @@ class Table(QTreeWidget):
         self._cols = []
         self._titles = []
         self._stretch = 0
+        self._natural = []                # 1.17: each column's width for its contents (show_state)
+        self._stretch_now = None          # the stretching column after hiding
         self.hidden = set()               # 1.3.6: column ids the user hid (right-click on the heading)
         self._hidden_map = {}             # setting hidden_columns: {column ids joined by "|": [hidden ids]}
         self._hide_default = ()           # 1.12.2: columns hidden until the user shows them (the model's _dbdms_hide)
@@ -140,6 +142,27 @@ class Table(QTreeWidget):
                 self.header().setSectionResizeMode(i, mode.Stretch)
             elif self.header().sectionResizeMode(i) == mode.Stretch:
                 self.header().setSectionResizeMode(i, mode.Interactive)
+        self._stretch_now = stretch
+        self._fit_stretch()
+
+    def _fit_stretch(self):
+        """1.17: the stretching column (the name) takes the room that is left – but never less than its contents:
+        when the columns are wider than the table (statistics › System: 15 columns) Qt squeezed it to "Ba…";
+        then it keeps its natural width and the table scrolls sideways."""
+        s = self._stretch_now
+        if s is None or s >= len(self._natural) or s >= self.columnCount():
+            return
+        need = sum(w for i, w in enumerate(self._natural) if i < self.columnCount() and not self.isColumnHidden(i))
+        mode = self.header().ResizeMode
+        want = mode.Stretch if need <= self.viewport().width() else mode.Interactive
+        if self.header().sectionResizeMode(s) != want:
+            self.header().setSectionResizeMode(s, want)
+            if want == mode.Interactive:
+                self.setColumnWidth(s, self._natural[s])
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._fit_stretch()
 
     def _column_menu(self, pos):
         """Right-click on the heading: tick the columns to show (one stays), or show all again. popup, not exec."""
@@ -226,6 +249,7 @@ class Table(QTreeWidget):
                 self.resizeColumnToContents(i)
                 least = widths[i] if i < len(widths) and i != stretch else 0    # the model's width: room for "…"
                 self.setColumnWidth(i, max(self.columnWidth(i), fm.horizontalAdvance(c[1]) + 24, least))
+            self._natural = [self.columnWidth(i) for i in range(len(cols))]
             if cols:                  # the name column takes the rest (not always the first: "Wann" stays readable)
                 self.header().setSectionResizeMode(stretch, self.header().ResizeMode.Stretch)
             self._stretch = stretch
