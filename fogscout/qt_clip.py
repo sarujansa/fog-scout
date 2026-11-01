@@ -1,10 +1,12 @@
-"""The clip editor window (1.5.1, user's wish: cut rounds "wie in Medal"): a preview picture, a timeline with
-thumbnails, the F8 marks, a start/end range and a playhead; play/pause (frames streamed by ffmpeg, the sound
-by Windows from a WAV of the same stretch), 1-s / 5-s / frame steps, "Clip speichern" (stream copy or frame
-exact, see clipedit.cut) into the folder "Clips" next to the recordings.
+"""The compact clip editor beside the recordings and clips tables and what every editor shares (1.5.1, user's
+wish: cut rounds "wie in Medal"): a preview picture (PreviewView, the canvas of the picture editor too), the strip
+with thumbnails (Timeline), playback (frames streamed by ffmpeg, the sound by Windows from a WAV of the same
+stretch), the F8 marks, "Clip speichern" (stream copy or frame exact, see clipedit.cut) into the folder "Clips"
+next to the recordings. 1.16: the big editor is qt_editor.EditorWindow (timeline with tracks, library, inspector);
+ClipBase here holds the machinery both use.
 
-All ffmpeg work runs in threads (clipedit); results come back over Qt signals. The window is a plain top-level
-QWidget the App opens from the tab "Aufnahmen" (app_recordings._rec_clip)."""
+All ffmpeg work runs in threads (clipedit); results come back over the bridge (_Bridge). The compact window is a
+plain QWidget the App puts beside the tables (app_recordings._rec_preview_build)."""
 from __future__ import annotations
 
 import logging
@@ -13,13 +15,11 @@ import os
 import subprocess
 import threading
 import time
-from dataclasses import replace
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QProgressBar, QPushButton, QSizePolicy, QSlider, QTabWidget,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
+                               QProgressBar, QPushButton, QSizePolicy, QSlider, QVBoxLayout, QWidget)
 
 from . import annotate, clipedit, encoders, imageedit, obsrec, qt_theme
 from .i18n import N_, _
@@ -67,6 +67,7 @@ KEY_HINT = N_("Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg 1 Bild ·
 STEP_SMALL, STEP_BIG = 1.0, 5.0
 LOAD_TIMEOUT_MS = 30000           # 1.8.3: the loading screen gives up after this and frees the window
 PREVIEW_MIN = (640, 360)
+VIEWER_BG = "#0e0f11"             # 1.16: the editor's viewer around the picture (dark whatever the theme, like players)
 PUMP_MS = 15                      # 1.8.66: how often the window takes what its threads produced
 CLOSED_PUMP_MS = 200              # how often the saves of closed editors are looked after (_drain_closed)
 SAVE_TIMEOUT_S = 3600             # one ffmpeg run of a save at most (clipedit.export's own limit)
@@ -110,7 +111,8 @@ class _Bridge:
              "still",        # 1.8.10: a still picture saved (ok, path)
              "levels",       # 1.8.18: {track index: loudest moment in dB}
              "content",      # 1.12.6: the game part of a recording with black borders (x, y, w, h)
-             "encoders")     # 1.15: {ffmpeg encoder: works} once the self-tests are through
+             "encoders",     # 1.15: {ffmpeg encoder: works} once the self-tests are through
+             "wave")         # 1.16: the loudness along the recording (clipedit.waveform) for the audio track
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
 
@@ -464,6 +466,7 @@ class PreviewView(QWidget):
         self.new_times = lambda: (None, None)   # (t0, t1) a new drawing gets (the clip editor: from the playhead)
         self._layer = None                # (key, QImage) of the drawings at the drawn size
         self.source_size = None           # (w, h) of the real picture when the frame is a smaller copy of it
+        self.plain = False                # 1.16: the editor's viewer – a flat dark area instead of the card frame
         self.setMinimumSize(*PREVIEW_MIN)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setFocusPolicy(Qt.NoFocus)
@@ -689,9 +692,12 @@ class PreviewView(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
         # 1.12.5: black only behind the picture – around it the card colour, so a dark frame no longer reads as one
         # big black box (user's screenshot of the big editor at 0:00 of a round)
-        p.setPen(QPen(QColor(c["border"]), 1))
-        p.setBrush(QColor(c["card"]))
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
+        if self.plain:
+            p.fillRect(self.rect(), QColor(VIEWER_BG))
+        else:
+            p.setPen(QPen(QColor(c["border"]), 1))
+            p.setBrush(QColor(c["card"]))
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
         p.setPen(Qt.NoPen)
         f = self.frame_rect()
         vr = self.view_rect()
@@ -1054,19 +1060,22 @@ class LoadingScreen(QWidget):
             self.detail.setText(_("Lädt länger als erwartet – das Fenster ist trotzdem bedienbar."))
 
 
-class ClipWindow(QWidget):
-    """One editor per recording. ``on_saved(path)`` / ``on_setting(key, value)`` / ``log(text, kind)`` come from
-    the App; ``mode``/``sound`` are the remembered settings."""
+class ClipBase(QWidget):
+    """What every editor of one recording shares (1.16: split out of ClipWindow when the big editor became
+    qt_editor.EditorWindow): the file and its facts, the bridge from the ffmpeg threads, the scrub/strip/level
+    threads, playback (frames from a FramePlayer, the sound as a WAV through Windows), saving a clip or a still in
+    a thread that outlives the window, the export choices (format, encoding, sound mix) and the censor state.
+    ``on_saved(path)`` / ``on_setting(key, value)`` / ``log(text, kind)`` come from the App. A subclass builds the
+    widgets (``_build``), says what is saved (``edit_plan``), where the playhead is (``goto``, ``_played_at``) and
+    what plays from it (``_segments``)."""
+    compact = False
 
     def __init__(self, path: str, marks: list, clips_dir: str, mode: str = "copy", sound: bool = True,
                  on_saved=None, on_setting=None, log=None, dark=True, qss: str = "", title: str = "",
                  target_mb: int = clipedit.DEFAULT_TARGET_MB, censor_on: bool = False, censor_style: str = "pixel",
-                 censor_boxes=(), mix_on=None, mix_vol=None, compact=False, parent=None, on_expand=None, sources=None, info=None,
-                 encoding=None):
-        # 1.8.8: compact = the preview beside the recordings table (no window of its own, no censor card, sound
-        # sources only on/off, start/end in the clip card); "Grosser Editor" (on_expand) opens the full window
-        super().__init__(parent, Qt.Widget if compact else Qt.Window)
-        self.compact, self.on_expand = bool(compact), on_expand
+                 censor_boxes=(), mix_on=None, mix_vol=None, parent=None, sources=None, info=None, encoding=None,
+                 flags=Qt.Window):
+        super().__init__(parent, flags)
         self.path, self.marks, self.clips_dir = path, sorted(float(m) for m in marks or ()), clips_dir
         self.on_saved, self.on_setting, self.log = on_saved, on_setting, (log or (lambda text, kind="System": None))
         self.saved_seconds = {}           # 1.8.13: out path -> length of the clip (the clips list shows it)
@@ -1088,6 +1097,9 @@ class ClipWindow(QWidget):
         self._target_mb = int(target_mb) if target_mb in clipedit.TARGETS_MB else clipedit.DEFAULT_TARGET_MB
         self._last_out = None               # 1.6.1: the clip saved last (Explorer button)
         self._play_to = None                # 1.6.1: "Clip ansehen" plays start..end, then back to the start
+        self._queue = []                    # 1.16: the stretches still to play after the current one
+        self._seg = None                    # (src start, src end, speed, output start) of the stretch playing
+        self._volume = 1.0                  # 1.16: the preview's own volume (the editor's slider)
         self._censor_on, self._censor_style = bool(censor_on), censor_style        # 1.7.2: remembered boxes
         # 1.15: encoder, quality and picture height of a re-encoded clip; the hardware encoders this PC has come
         # from encoders.detect (once per program run, in a thread – the first editor shows the CPU until then)
@@ -1102,268 +1114,110 @@ class ClipWindow(QWidget):
         # recordings) – a silent track of a source that was not there says "keine Quelle", not "still"
         self._recorded = None if sources is None else set(sources)
         self._absent = set()
-        self._parts = []                    # 1.12: [clipedit.Part] kept so far (empty: the start/end range alone)
-        self._range_speed = 1.0             # tempo of the start/end range while it is no part of its own
         self._content = None                # 1.12.6: the game part when the recording has black borders
-        self._crop_chosen = False           # the crop was picked by hand: the found borders change nothing
-        self._crop_auto = False             # the crop box is being set by the program, not by a click
         self.setObjectName("page")
         self.setWindowTitle(title or _("Clip bearbeiten – {name}", name=os.path.basename(path)))
         if qss:
             self.setStyleSheet(qss)
+        self.sound_box = QCheckBox(_("Ton"))
+        self.sound_box.setChecked(bool(sound))
+        self.sound_box.setToolTip(_("Beim Abspielen den Ton der Aufnahme mitlaufen lassen (Windows)."))
+        self.sound_box.toggled.connect(lambda v: self._setting("clip_sound", bool(v)))
         self._build(mode, sound)
-        if not self.compact:
-            self.resize(1360, 860)
-            self.setMinimumSize(1020, 640)
         self.setFocusPolicy(Qt.StrongFocus)
         self.loading = None                 # 1.8.3: LoadingScreen until picture + strip are there
         self._load_state = {"frame": False, "strip": False, "thumbs": 0}
+        self.preview.set_boxes(self._censor_boxes)
+        self.preview.set_look(self._censor_on, self._censor_style)
         if not self.info.ok or not self.ffmpeg:
             self.status.setText(_("Datei nicht lesbar oder ffmpeg fehlt – keine Vorschau."))
             self.save_btn.setEnabled(False)
+            self._ready(False)
             return
         self.loading = LoadingScreen(self, os.path.basename(path), self.timeline.n_thumbs + 1)
         self.loading.setGeometry(self.rect())
         self.loading.raise_()
         QTimer.singleShot(LOAD_TIMEOUT_MS, lambda: self.loading is not None and self.loading.finish(late=True))
-        self.timeline.set_duration(self.info.duration)
-        self.timeline.marks = self.marks
-        self.timeline.set_range(0.0, self.info.duration)
-        first = self.marks[0] if self.marks else 0.0
-        if self.marks:                                        # a mark: the clip starts 20 s before it, ends 10 s after
-            self.timeline.set_range(max(0.0, first - MARK_BEFORE_S), min(self.info.duration, first + MARK_AFTER_S))
-        self._show_range()
+        self._ready(True)
         self._start_threads()
-        self.goto(self.timeline.start)
 
-    # ---- building
+    # ---- hooks of the subclasses
     def _build(self, mode, sound):
-        """Compact (beside the recordings table): everything below the preview. Full window (1.12.5, user on two
-        screenshots of the big editor: "gefallen mir nicht" – a big black box with the picture small in it, an almost
-        empty clip card, the save card squeezed into two lines): the picture with its timeline and playback on the
-        left, as large as the window allows; the tools and the saving in a side column of SIDE_W on the right, like
-        the picture editor."""
-        self.preview = PreviewView(self.dark)
-        self.preview.boxes_changed.connect(self._boxes_changed)
-        self.preview.view_changed.connect(self._fit_preview)
-        if self.compact:                                  # beside the table: the whole editor fits a screen
-            self.preview.setMinimumSize(320, 180)
-            self.preview.setMaximumHeight(COMPACT_PREVIEW_H)
-        else:
-            self.preview.setMinimumSize(480, 270)
-        self.timeline = Timeline(self.dark)
-        self.timeline.seek.connect(self.goto)
-        self.timeline.picked.connect(self._timeline_pick)
-        self.timeline.changed.connect(self._show_range)
-        self.sound_box = QCheckBox(_("Ton"))
-        self.sound_box.setChecked(bool(sound))
-        self.sound_box.setToolTip(_("Beim Abspielen den Ton der Aufnahme mitlaufen lassen (Windows)."))
-        self.sound_box.toggled.connect(lambda v: self._setting("clip_sound", bool(v)))
-        row = self._transport_row()
-        clip_card = self._clip_card()
-        censor_card = self._censor_card()
-        export_card = self._save_card(mode)
-        hint = QLabel(_(KEY_HINT))
-        hint.setProperty("class", "dim")
-        hint.setWordWrap(True)
-        if self.compact:
-            lay = QVBoxLayout(self)
-            lay.setContentsMargins(12, 12, 12, 12)
-            lay.setSpacing(10)
-            lay.addWidget(self.preview, 1)
-            lay.addWidget(self.timeline)
-            lay.addLayout(row)
-            cards = QHBoxLayout()
-            cards.setSpacing(10)
-            cards.addWidget(clip_card, 1)
-            censor_card.setVisible(False)                 # censor boxes and the 1.12 tools: in the full editor
-            cards.addWidget(censor_card, 1)
-            lay.addLayout(cards)
-            lay.addWidget(export_card)
-            lay.addWidget(hint)
-            hint.setVisible(False)
-        else:
-            lay = QHBoxLayout(self)
-            lay.setContentsMargins(12, 12, 12, 12)
-            lay.setSpacing(12)
-            left = QVBoxLayout()
-            left.setSpacing(10)
-            left.addWidget(self.preview, 1)
-            left.addWidget(self.timeline)
-            left.addLayout(row)
-            left.addWidget(hint)
-            left.addStretch()                             # a wide picture: the room left over goes below, not around it
-            lay.addLayout(left, 1)
-            # 1.12 (user: "Bearbeitungstool top machen mit allen Funktionen"): one tab per tool – the clip, its
-            # parts (each with a tempo), the picture (crop, fades), drawings, censoring
-            side = QVBoxLayout()
-            side.setContentsMargins(0, 0, 0, 0)
-            side.setSpacing(10)
-            self.tools = QTabWidget()
-            self.tools.setObjectName("cliptools")
-            self.tools.addTab(clip_card, _("Clip"))
-            self.tools.addTab(self._parts_card(), _("Abschnitte"))
-            self.tools.addTab(self._picture_card(), _("Bild"))
-            self.tools.addTab(self._draw_card(), _("Zeichnen"))
-            self.tools.addTab(censor_card, _("Zensieren"))
-            self.tools.currentChanged.connect(self._tool_tab_changed)
-            side.addWidget(self.tools)                    # as tall as its tallest page: switching tabs moves nothing
-            side.addWidget(export_card)
-            side.addStretch()
-            self.side = QWidget()
-            self.side.setLayout(side)
-            self.side.setFixedWidth(SIDE_W)
-            lay.addWidget(self.side)
-        self.preview.set_boxes(self._censor_boxes)
-        self.preview.set_look(self._censor_on, self.style_box.currentData() or "pixel")
-        self._censor_hint()
-        self._mode_changed(self.mode_box.currentIndex(), save=False)
+        raise NotImplementedError
 
-    def _transport_row(self):
-        """Position left, playback in the middle (full window: the playback-sound box beside the position)."""
-        row = QHBoxLayout()
-        self.pos_label = QLabel("")
-        self.pos_label.setProperty("class", "dim")
-        self.pos_label.setMinimumWidth(0 if self.compact else 130)
-        row.addWidget(self.pos_label)
-        if not self.compact:
-            row.addWidget(self.sound_box)
-        row.addStretch()
-        self.b_back5 = self._btn(row, "−5 s", lambda: self.step(-STEP_BIG), _("5 Sekunden zurück (Shift+←)"))
-        self.b_back1 = self._btn(row, "−1 s", lambda: self.step(-STEP_SMALL), _("1 Sekunde zurück (←)"))
-        self.play_btn = self._btn(row, _("▶ Abspielen"), self.toggle_play, _("Abspielen / Pause (Leertaste)"))
-        self.play_btn.setObjectName("primary")
-        self.play_btn.setMinimumWidth(120)
-        self.b_fwd1 = self._btn(row, "+1 s", lambda: self.step(STEP_SMALL), _("1 Sekunde vor (→)"))
-        self.b_fwd5 = self._btn(row, "+5 s", lambda: self.step(STEP_BIG), _("5 Sekunden vor (Shift+→)"))
-        row.addStretch()
-        if self.compact:                                  # narrow: ±1 s by keys only
-            self.b_back1.hide()
-            self.b_fwd1.hide()
-        else:                                             # the other side of the position: the row stays centred
-            row.addSpacing(self.pos_label.minimumWidth() + self.sound_box.sizeHint().width() + row.spacing())
-        return row
+    def _ready(self, ok: bool):
+        """The file is (not) readable: set up the timeline and the first position."""
 
-    def _clip_card(self):
-        """The clip: its range, size and what saving does to it; "Clip ansehen", start/end/mark."""
-        clip_card, cl = self._card(_("Clip"), head=self.compact)
-        self.range_label = QLabel("")
-        self.range_label.setProperty("class", "big")
-        cl.addWidget(self.range_label)
-        self.size_label = QLabel("")
-        self.size_label.setProperty("class", "dim")
-        self.size_label.setWordWrap(True)
-        cl.addWidget(self.size_label)
-        wr = QHBoxLayout() if self.compact else FlowRow(spacing=6)
-        self.watch_btn = self._btn(wr, _("▶ Clip ansehen"), self.watch_clip,
-                                   _("Spielt genau den Ausschnitt ab und springt danach an seinen Anfang zurück."))
-        self._range_buttons(wr)
-        if self.compact:
-            wr.addStretch()
-        cl.addLayout(wr)
-        if not self.compact:
-            self._marks_section(cl)
-        cl.addStretch()
-        return clip_card
+    def edit_plan(self) -> clipedit.Edit:
+        raise NotImplementedError
 
-    def _marks_section(self, cl):
-        """1.12.7, big editor (the clip tab was half empty below its buttons): the F8 marks of the round – a click
-        jumps there, „Clip um Marke“ (or a double click) makes the clip MARK_BEFORE_S before to MARK_AFTER_S after
-        it, like the editor does on opening for the first mark."""
-        head = QLabel(_("Marken (F8)"))
-        head.setProperty("class", "dim")
-        cl.addSpacing(8)
-        cl.addWidget(head)
-        self.mark_list = QListWidget()
-        self.mark_list.setObjectName("marks")
-        self.mark_list.setMaximumHeight(150)
-        self.mark_list.setFocusPolicy(Qt.NoFocus)           # the window keeps the keys (arrows seek, M = next mark)
-        for m in self.marks:
-            self.mark_list.addItem(f"⚑  {clipedit.fmt_pos(m)}")
-        self.mark_list.itemClicked.connect(lambda _it: self.goto(self._picked_mark()))
-        self.mark_list.itemDoubleClicked.connect(lambda _it: self.clip_around_mark())
-        self.mark_list.setVisible(bool(self.marks))
-        cl.addWidget(self.mark_list)
-        mr = FlowRow(spacing=6)
-        self.around_btn = self._btn(mr, _("Clip um Marke"), self.clip_around_mark,
-                                    _("Der Clip beginnt {before} s vor der markierten Marke (ohne Auswahl: der "
-                                      "nächsten am Abspielkopf) und endet {after} s danach.",
-                                      before=f"{MARK_BEFORE_S:g}", after=f"{MARK_AFTER_S:g}"))
-        self.around_btn.setEnabled(bool(self.marks))
-        cl.addLayout(mr)
-        if not self.marks:
-            none = QLabel(_("Keine Marken in dieser Aufnahme – F8 im Spiel setzt eine."))
-            none.setProperty("class", "dim")
-            none.setWordWrap(True)
-            cl.addWidget(none)
+    def goto(self, t: float):
+        raise NotImplementedError
 
-    def _picked_mark(self):
-        """The mark picked in the list, else the one nearest the playhead (None without marks)."""
-        if not self.marks:
-            return None
-        row = self.mark_list.currentRow() if hasattr(self, "mark_list") else -1
-        if 0 <= row < len(self.marks):
-            return self.marks[row]
-        return min(self.marks, key=lambda m: abs(m - self.timeline.pos))
+    def _segments(self) -> list:
+        """What plays from the playhead on: [(source start, source end, tempo, output time at its start)]."""
+        raise NotImplementedError
 
-    def clip_around_mark(self):
-        m = self._picked_mark()
-        if m is None:
-            return
-        self.timeline.set_range(max(0.0, m - MARK_BEFORE_S), min(self.info.duration, m + MARK_AFTER_S))
-        self._show_range()
-        self.goto(self.timeline.start)
+    def _played_at(self, t: float):
+        """The playback is at source second ``t`` of the stretch playing: move the playhead."""
 
-    def _censor_card(self):
-        """The censor boxes (1.7.2): apply when saving, style, draw / names / remove."""
-        censor_card, zl = self._card(_("Zensieren"), head=self.compact)
-        zr = QHBoxLayout()
-        self.censor_box = QCheckBox(_("Beim Speichern anwenden"))
-        self.censor_box.setChecked(self._censor_on)
-        self.censor_box.setToolTip(_("Die Kästen werden im gespeicherten Clip unkenntlich gemacht (dafür wird das "
-                                     "Bild neu kodiert, auch im Format „Schnell“)."))
-        self.censor_box.toggled.connect(self._censor_toggled)
-        zr.addWidget(self.censor_box)
-        self.style_box = self._choice()
-        for key in clipedit.CENSOR_STYLES:
-            self.style_box.addItem(_(CENSOR_LABELS[key]), key)
-        self.style_box.setCurrentIndex(max(0, list(clipedit.CENSOR_STYLES).index(self._censor_style)
-                                           if self._censor_style in clipedit.CENSOR_STYLES else 0))
-        self.style_box.currentIndexChanged.connect(self._censor_style_changed)
-        zr.addWidget(self.style_box)
-        zr.addStretch()
-        zl.addLayout(zr)
-        zb = FlowRow(spacing=6)
-        self.tool_btn = self._btn(zb, _("Kasten zeichnen"), self._tool_toggled,
-                                  _("Im Bild einen Bereich aufziehen; Kästen lassen sich verschieben und an der "
-                                    "Ecke rechts unten vergrössern. Nochmal drücken beendet das Werkzeug."))
-        self.tool_btn.setCheckable(True)
-        self.tool_btn.setProperty("class", "seg")       # checked = accent, like Original/Dunkel on the Maps page
-        self.names_btn = self._btn(zb, _("Namen links unten"), self._add_names_box,
-                                   _("Setzt einen Kasten dorthin, wo DBD die Namen der Survivor zeigt (links unten "
-                                     "im Spielbild) – bei Bedarf verschieben."))
-        self.remove_btn = self._btn(zb, _("Kasten entfernen"), self._remove_box,
-                                    _("Entfernt den markierten Kasten (Taste Entf)."))
-        self.clear_btn = self._btn(zb, _("Alle entfernen"), self._clear_boxes, "")
-        zl.addLayout(zb)
-        self.censor_hint = QLabel("")
-        self.censor_hint.setProperty("class", "dim")
-        self.censor_hint.setWordWrap(True)
-        zl.addWidget(self.censor_hint)
-        zl.addStretch()
-        return censor_card
+    def _show_pos(self):
+        pass
 
-    def _save_card(self, mode):
-        """Name, format (target size / GIF height), the sound sources, save / show / folder. Compact: the format
-        and the playback-sound box in one row, the sources in a row; full: one source per line."""
-        export_card, el = self._card(_("Speichern"))
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel(_("Name")))
-        self.name_edit = QLineEdit()
-        row2.addWidget(self.name_edit, 1)
-        el.addLayout(row2)
-        fmt = QHBoxLayout() if self.compact else FlowRow(spacing=8)
-        fmt.addWidget(QLabel(_("Format")))
+    def _content_found(self, box):
+        """1.12.6: the recording has black borders around the game – the strip shows the game part."""
+        self._content = tuple(box)
+        self.timeline.set_view(self._content)
+
+    # ---- small builders
+    def _btn(self, row, text, slot, tip=""):
+        b = QPushButton(text)
+        b.setFocusPolicy(Qt.NoFocus)                      # the keys stay with the window
+        b.clicked.connect(slot)
+        if tip:
+            b.setToolTip(tip)
+        row.addWidget(b)
+        return b
+
+    @staticmethod
+    def _card(title, head=True):
+        """A card like the main window's, with a small heading (not on a tab page: the tab names it); returns
+        (frame, its layout)."""
+        card = QFrame()
+        card.setProperty("class", "card")
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(14, 10 if head else 12, 14, 12)
+        lay.setSpacing(8 if not head else 6)
+        if head:
+            label = QLabel(title.upper())
+            label.setProperty("class", "sub")
+            lay.addWidget(label)
+        return card, lay
+
+    @staticmethod
+    def _choice() -> QComboBox:
+        """A choice box: no mouse wheel (guard_wheel), no keyboard focus – like the buttons the keys stay with the
+        window. A box picked with the mouse kept the focus and took the window's keys: Home/End set the tempo to
+        ×0.25/×4 or the crop to none/4:5, letters picked an item ("A" on a fade: "aus"), Space opened it."""
+        box = guard_wheel(QComboBox())
+        box.setFocusPolicy(Qt.NoFocus)
+        return box
+
+    def _combo(self, row, items, current, tip, slot):
+        """A choice box of (data, label) with ``current`` picked (see _choice)."""
+        box = self._choice()
+        for data, label in items:
+            box.addItem(label, data)
+        idx = next((i for i, (d, _l) in enumerate(items) if d == current), 0)
+        box.setCurrentIndex(idx)
+        box.setToolTip(tip)
+        box.currentIndexChanged.connect(slot)
+        if row is not None:
+            row.addWidget(box)
+        return box
+
+    def _mode_boxes(self, mode):
+        """The format box with its two companions (target size for Discord, height for a GIF)."""
         self.mode_box = self._choice()
         self.mode_box.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         for key in clipedit.MODES:
@@ -1371,49 +1225,18 @@ class ClipWindow(QWidget):
             self.mode_box.setItemData(self.mode_box.count() - 1, _(MODE_TIPS[key]), Qt.ToolTipRole)
         self.mode_box.setCurrentIndex(max(0, list(clipedit.MODES).index(mode) if mode in clipedit.MODES else 0))
         self.mode_box.currentIndexChanged.connect(self._mode_changed)
-        fmt.addWidget(self.mode_box)
         self.target_box = self._choice()
         for mb in clipedit.TARGETS_MB:
             self.target_box.addItem(_("≤ {n} MB", n=mb), mb)
         self.target_box.setCurrentIndex(list(clipedit.TARGETS_MB).index(self._target_mb))
         self.target_box.setToolTip(_("Discord: ohne Nitro 10 MB, Nitro Basic 50 MB, Nitro 500 MB."))
         self.target_box.currentIndexChanged.connect(self._target_changed)
-        fmt.addWidget(self.target_box)
         self.gif_box = self._choice()                                               # 1.12: GIF height
         for gh in clipedit.GIF_HEIGHTS:
             self.gif_box.addItem(f"{gh}p", gh)
         self.gif_box.setCurrentIndex(list(clipedit.GIF_HEIGHTS).index(clipedit.DEFAULT_GIF_H))
         self.gif_box.setToolTip(_("Höhe des GIFs – kleiner = kleinere Datei (Discord, Chats)."))
         self.gif_box.currentIndexChanged.connect(lambda _i: self._show_size())
-        fmt.addWidget(self.gif_box)
-        if self.compact:
-            fmt.addWidget(self.sound_box)
-            fmt.addStretch()
-        el.addLayout(fmt)
-        el.addLayout(self._encoding_row())                                          # 1.15: encoder, quality, size
-        el.addLayout(self._mix_row(stacked=not self.compact))                       # 1.8.6: the sound mix
-        row3 = QHBoxLayout() if self.compact else FlowRow(spacing=6)
-        self.save_btn = self._btn(row3, _("Clip speichern"), self.save, _("Schreibt den Ausschnitt als MP4 in den Ordner „Clips“ neben den Aufnahmen."))
-        self.save_btn.setObjectName("primary")
-        self.show_btn = self._btn(row3, _("Im Explorer zeigen"), self._show_saved, _("Zeigt den zuletzt gespeicherten Clip im Explorer."))
-        self.show_btn.setEnabled(False)
-        self.open_btn = self._btn(row3, _("Clips-Ordner öffnen"), self._open_clips, _("Öffnet den Ordner „Clips“ im Explorer."))
-        self.expand_btn = None
-        if self.compact:
-            self.open_btn.hide()
-            self.expand_btn = self._btn(row3, _("Grosser Editor …"), self._expand,
-                                        _("Öffnet den Clip im eigenen Fenster – mit Zensieren, Lautstärke je Tonquelle "
-                                          "und allen Tasten."))
-        self.status = QLabel("")
-        self.status.setProperty("class", "dim")
-        self.status.setWordWrap(True)
-        if self.compact:
-            row3.addWidget(self.status, 1)
-            el.addLayout(row3)
-        else:                                             # the side column is narrow: the status below the buttons
-            el.addLayout(row3)
-            el.addWidget(self.status)
-        return export_card
 
     def _encoding_row(self):
         """1.15: codec, encoder (CPU or a graphics-card encoder that passed its self-test), quality and picture
@@ -1492,453 +1315,6 @@ class ClipWindow(QWidget):
         """What the save will encode with: the wish resolved against this PC's encoders (CPU until known)."""
         return self._encoding.resolve(self._avail)
 
-    def _range_buttons(self, row):
-        self._btn(row, _("Start setzen"), self.set_start, _("Der Clip beginnt am Abspielkopf (Taste I)."))
-        self._btn(row, _("Ende setzen"), self.set_end, _("Der Clip endet am Abspielkopf (Taste O)."))
-        self.mark_btn = self._btn(row, _("Zur Marke ▸"), self.next_mark, _("Springt zur nächsten F8-Marke (Taste M)."))
-        self.mark_btn.setEnabled(bool(self.marks))
-
-    def _expand(self):
-        """1.8.8: compact preview → the full editor (same range and position); this one stops playing."""
-        if self.playing:
-            self._play_to = None
-            self._stop_player()
-        if self.on_expand is not None:
-            self.on_expand(self.timeline.start, self.timeline.end, self.timeline.pos)
-
-    def stop(self):
-        """1.8.8: stop playback (the recordings tab was left)."""
-        if self.playing:
-            self._play_to = None
-            self._stop_player()
-
-    @staticmethod
-    def _card(title, head=True):
-        """A card like the main window's, with a small heading (not on a tab page: the tab names it); returns
-        (frame, its layout)."""
-        card = QFrame()
-        card.setProperty("class", "card")
-        lay = QVBoxLayout(card)
-        lay.setContentsMargins(14, 10 if head else 12, 14, 12)
-        lay.setSpacing(8 if not head else 6)
-        if head:
-            label = QLabel(title.upper())
-            label.setProperty("class", "sub")
-            lay.addWidget(label)
-        return card, lay
-
-    @staticmethod
-    def _choice() -> QComboBox:
-        """A choice box: no mouse wheel (guard_wheel), no keyboard focus – like the buttons the keys stay with the
-        window. A box picked with the mouse kept the focus and took the window's keys: Home/End set the tempo to
-        ×0.25/×4 or the crop to none/4:5, letters picked an item ("A" on a fade: "aus"), Space opened it."""
-        box = guard_wheel(QComboBox())
-        box.setFocusPolicy(Qt.NoFocus)
-        return box
-
-    # ---- 1.12: parts, picture, drawings
-    def _combo(self, row, items, current, tip, slot):
-        """A choice box of (data, label) with ``current`` picked (see _choice)."""
-        box = self._choice()
-        for data, label in items:
-            box.addItem(label, data)
-        idx = next((i for i, (d, _l) in enumerate(items) if d == current), 0)
-        box.setCurrentIndex(idx)
-        box.setToolTip(tip)
-        box.currentIndexChanged.connect(slot)
-        row.addWidget(box)
-        return box
-
-    def _parts_card(self):
-        card, cl = self._card(_("Abschnitte"), head=False)
-        self.part_list = QListWidget()
-        self.part_list.setObjectName("parts")
-        self.part_list.setMaximumHeight(130)
-        self.part_list.setFocusPolicy(Qt.NoFocus)
-        self.part_list.currentRowChanged.connect(self._part_picked)
-        cl.addWidget(self.part_list)
-        side = FlowRow(spacing=6)
-        self.part_add_btn = self._btn(side, _("+ Abschnitt"), self.add_part,
-                                      _("Nimmt den Bereich zwischen Start und Ende als Abschnitt auf (Taste A). Alle "
-                                        "Abschnitte werden nacheinander zu einem Clip zusammengefügt."))
-        self.part_del_btn = self._btn(side, _("Abschnitt entfernen"), self.remove_part,
-                                      _("Entfernt den markierten Abschnitt."))
-        self.part_clear_btn = self._btn(side, _("Alle Abschnitte entfernen"), self.clear_parts,
-                                        _("Entfernt alle Abschnitte – gespeichert wird dann wieder der Bereich "
-                                          "zwischen Start und Ende."))
-        cl.addLayout(side)
-        tr = QHBoxLayout()
-        tr.addWidget(QLabel(_("Tempo")))
-        self.speed_box = self._combo(tr, [(v, _(SPEED_LABELS[v]) if v == 1.0 else SPEED_LABELS[v])
-                                          for v in clipedit.SPEEDS], 1.0,
-                                     _("Zeitlupe oder Zeitraffer für den markierten Abschnitt (ohne Abschnitte: für "
-                                       "den Bereich zwischen Start und Ende). Der Ton läuft mit."), self._speed_picked)
-        tr.addStretch()
-        cl.addLayout(tr)
-        self.parts_hint = QLabel("")
-        self.parts_hint.setProperty("class", "dim")
-        self.parts_hint.setWordWrap(True)
-        cl.addWidget(self.parts_hint)
-        cl.addStretch()
-        self._parts_show()
-        return card
-
-    def _picture_card(self):
-        card, cl = self._card(_("Bild"), head=False)
-        cr = FlowRow(spacing=8)
-        cr.addWidget(QLabel(_("Ausschnitt")))
-        self.crop_box = self._combo(cr, [(k, _(v) if k in ("none", "free", "9:16") else v)
-                                         for k, v in CROP_LABELS.items()], "none",
-                                    _("Schneidet einen Bereich aus dem Bild – 9:16 für YouTube Shorts und TikTok, 1:1 "
-                                      "für Instagram. Den Rahmen in der Vorschau verschieben und an den Ecken ziehen."),
-                                    self._crop_picked)
-        self.crop_btn = self._btn(cr, _("Rahmen bearbeiten"), self._crop_tool,
-                                  _("Rahmen in der Vorschau verschieben oder an den Ecken grösser/kleiner ziehen. "
-                                    "Nochmal drücken beendet das Werkzeug."))
-        self.crop_btn.setCheckable(True)
-        self.crop_btn.setProperty("class", "seg")
-        cl.addLayout(cr)
-        self.content_hint = QLabel(_("Die Aufnahme hat schwarze Ränder: „Ohne schwarze Ränder“ speichert nur das "
-                                     "Spielbild, „Kein Ausschnitt“ das ganze Bild."))
-        self.content_hint.setProperty("class", "dim")
-        self.content_hint.setWordWrap(True)
-        self.content_hint.setVisible(False)              # 1.12.6: once black borders were found
-        cl.addWidget(self.content_hint)
-        fr = FlowRow(spacing=8)
-        fades = [(v, _("aus") if v == 0 else f"{v:g} s") for v in clipedit.FADES]
-        fr.addWidget(QLabel(_("Einblenden")))
-        self.fade_in_box = self._combo(fr, fades, 0.0, _("Der Clip beginnt aus Schwarz und mit leisem Ton."),
-                                       lambda _i: self._show_size())
-        fr.addWidget(QLabel(_("Ausblenden")))
-        self.fade_out_box = self._combo(fr, fades, 0.0, _("Der Clip endet in Schwarz, der Ton wird leiser."),
-                                        lambda _i: self._show_size())
-        cl.addLayout(fr)
-        hint = QLabel(_("Ausschnitt, Tempo, Blenden und Zeichnungen brauchen ein neu kodiertes Bild – „Schnell“ "
-                        "speichert dann wie „Genau“."))
-        hint.setProperty("class", "dim")
-        hint.setWordWrap(True)
-        cl.addWidget(hint)
-        cl.addStretch()
-        self.preview.crop_changed.connect(self._crop_moved)
-        return card
-
-    def _crop_moved(self):
-        """The crop frame was drawn or moved by hand: „Ohne schwarze Ränder“ becomes „Frei“ (1.12.6) – the label
-        no longer says what is cut, and the whole picture with the frame stays on display."""
-        if self.crop_box.currentData() == "content":
-            self.crop_box.blockSignals(True)
-            self.crop_box.setCurrentIndex(self.crop_box.findData("free"))
-            self.crop_box.blockSignals(False)
-            self._crop_chosen = True
-            self.preview.set_zoom_crop(False)
-        self._show_size()
-
-    def _draw_card(self):
-        card, cl = self._card(_("Zeichnen"), head=False)
-        tr = FlowRow(spacing=6)                           # six tools: they wrap in the side column
-        self.draw_group = QButtonGroup(self)
-        self.draw_group.setExclusive(False)
-        self.draw_btns = {}
-        for kind, label in DRAW_TOOLS:
-            b = self._btn(tr, _(label), lambda _c=False, k=kind: self._draw_tool(k),
-                          _("Im Bild ziehen (Text: klicken). Eine Zeichnung anklicken markiert sie, ziehen verschiebt "
-                            "sie, Entf löscht sie."))
-            b.setCheckable(True)
-            b.setProperty("class", "seg")
-            self.draw_btns[kind] = b
-        cl.addLayout(tr)
-        pr = FlowRow(spacing=6)
-        self.colour_btns = {}
-        for colour in annotate.COLOURS:
-            b = QPushButton("")
-            b.setFixedSize(22, 22)
-            b.setFocusPolicy(Qt.NoFocus)
-            b.setCheckable(True)
-            b.setToolTip(_("Farbe"))
-            b.setStyleSheet(f"QPushButton {{ background: {colour}; border: 2px solid #555; border-radius: 4px; }}"
-                            f"QPushButton:checked {{ border: 2px solid #ffffff; }}")
-            b.clicked.connect(lambda _c=False, c=colour: self._draw_colour(c))
-            pr.addWidget(b)
-            self.colour_btns[colour] = b
-        self.colour_btns[annotate.COLOURS[0]].setChecked(True)
-        self.draw_size_box = self._combo(pr, list(enumerate(_(x) for x in SIZE_LABELS)), 1,
-                                         _("Strichstärke bzw. Textgrösse."), self._draw_size)
-        self.draw_when_box = self._combo(pr, [(v, _(lbl)) for v, lbl in SHOW_FOR], 3.0,
-                                         _("Wie lange die Zeichnung im Clip zu sehen ist – ab der Stelle des "
-                                           "Abspielkopfs. Gilt für neue und für die markierte Zeichnung."),
-                                         self._draw_when)
-        cl.addLayout(pr)
-        self.draw_text = QLineEdit()
-        self.draw_text.setPlaceholderText(_("Text für das Text-Werkzeug"))
-        self.draw_text.textEdited.connect(self._draw_text_edited)
-        cl.addWidget(self.draw_text)
-        xr = FlowRow(spacing=6)
-        self.draw_del_btn = self._btn(xr, _("Zeichnung entfernen"), self._draw_remove,
-                                      _("Entfernt die markierte Zeichnung (Entf)."))
-        self.draw_clear_btn = self._btn(xr, _("Alle Zeichnungen entfernen"), self._draw_clear, "")
-        cl.addLayout(xr)
-        cl.addStretch()
-        self.preview.shapes_changed.connect(self._show_size)
-        self.preview.shape_picked.connect(self._draw_picked)
-        self.preview.new_times = self._times_from_here
-        return card
-
-    def _tool_tab_changed(self, _i):
-        """Leaving a tab ends its tool: the preview takes clicks only for the tab on display."""
-        page = self.tools.currentWidget()
-        if self.crop_btn.isChecked() and page is not self.tools.widget(2):
-            self.crop_btn.setChecked(False)
-            self.preview.set_crop_edit(False)
-        if page is not self.tools.widget(3):
-            for b in self.draw_btns.values():
-                b.setChecked(False)
-            self.preview.set_shape_tool(None)
-        if self.tool_btn.isChecked() and page is not self.tools.widget(4):
-            self.tool_btn.setChecked(False)
-            self.preview.set_editing(False)
-
-    # parts
-    def add_part(self):
-        tl = self.timeline
-        if tl.end - tl.start < 0.1:
-            return
-        self._parts = clipedit.clean_parts(self._parts + [clipedit.Part(tl.start, tl.end, self._range_speed)],
-                                           self.info.duration)
-        self._parts_show()
-        self._show_size()
-
-    def remove_part(self):
-        row = self.part_list.currentRow()
-        if 0 <= row < len(self._parts):
-            del self._parts[row]
-            self._parts_show()
-            self._show_size()
-
-    def clear_parts(self):
-        self._parts = []
-        self._parts_show()
-        self._show_size()
-
-    def _part_picked(self, row):
-        if 0 <= row < len(self._parts):
-            p = self._parts[row]
-            self.timeline.set_range(p.start, p.end)
-            self._show_range()
-            self.goto(p.start)
-            self._select_speed(p.speed)
-        self.part_del_btn.setEnabled(0 <= row < len(self._parts))
-
-    def _select_speed(self, speed):
-        i = self.speed_box.findData(speed)
-        if i >= 0 and i != self.speed_box.currentIndex():
-            self.speed_box.blockSignals(True)
-            self.speed_box.setCurrentIndex(i)
-            self.speed_box.blockSignals(False)
-
-    def _speed_picked(self, _i):
-        speed = float(self.speed_box.currentData() or 1.0)
-        row = self.part_list.currentRow() if hasattr(self, "part_list") else -1
-        if 0 <= row < len(self._parts):
-            self._parts[row].speed = speed
-            self._parts_show(keep=row)
-        else:
-            self._range_speed = speed
-        self._show_size()
-
-    def _parts_show(self, keep=None):
-        if not hasattr(self, "part_list"):
-            return
-        self.part_list.blockSignals(True)
-        self.part_list.clear()
-        for i, p in enumerate(self._parts):
-            tempo = "" if abs(p.speed - 1.0) < 1e-6 else f"  {SPEED_LABELS.get(p.speed, f'×{p.speed:g}')}"
-            self.part_list.addItem(f"{i + 1}.  {clipedit.fmt_pos(p.start)} – {clipedit.fmt_pos(p.end)}"
-                                   f"  ({p.end - p.start:.1f} s){tempo}")
-        if keep is not None and keep < len(self._parts):
-            self.part_list.setCurrentRow(keep)
-        else:                                       # no part marked: the box shows the tempo new parts get
-            self._select_speed(self._range_speed)
-        self.part_list.blockSignals(False)
-        self.part_del_btn.setEnabled(keep is not None and keep < len(self._parts))
-        self.part_clear_btn.setEnabled(bool(self._parts))
-        self.timeline.parts = [(p.start, p.end) for p in self._parts]
-        self.timeline.update()
-        if self._parts:
-            self.parts_hint.setText(_("Gespeichert werden die {n} Abschnitte nacheinander ({length} s). Einen "
-                                      "Abschnitt anklicken zeigt ihn auf der Zeitleiste.", n=len(self._parts),
-                                      length=f"{self.edit_plan().seconds():.1f}"))
-        else:
-            self.parts_hint.setText(_("Noch keine Abschnitte: gespeichert wird der Bereich zwischen Start und Ende. "
-                                      "Für mehrere Szenen aus einer Runde: Bereich wählen, „+ Abschnitt“, nächsten "
-                                      "Bereich wählen …"))
-
-    # picture
-    def _crop_picked(self, _i):
-        key = self.crop_box.currentData()
-        ratio = dict(clipedit.ASPECTS).get(key)
-        if not self._crop_auto:
-            self._crop_chosen = True
-        self.preview.set_zoom_crop(key == "content")
-        if key == "none":
-            self.preview.set_crop(None)
-            self.crop_btn.setChecked(False)
-            self.preview.set_crop_edit(False)
-        elif key == "content":                            # 1.12.6: the game part, shown large (view = crop)
-            self.crop_btn.setChecked(False)
-            self.preview.set_crop_edit(False)
-            self.preview.set_crop(self._content or (0.0, 0.0, 1.0, 1.0), None)
-        else:
-            base = self.preview.crop or (0.0, 0.0, 1.0, 1.0)
-            box = imageedit.aspect_box(base if key == "free" else (0.0, 0.0, 1.0, 1.0), ratio,
-                                       (self.info.width or 16, self.info.height or 9))
-            self.preview.set_crop(box, ratio)
-            self.crop_btn.setChecked(True)                # also when the button asked for the box (_crop_tool):
-            self.preview.set_crop_edit(True)              # it is checked already, the tool was never switched on
-        self._show_size()
-
-    def _crop_tool(self):
-        on = self.crop_btn.isChecked()
-        if on and self.crop_box.currentData() == "none":
-            self.crop_box.setCurrentIndex(self.crop_box.findData("free"))      # draws a full box, tool on
-            return
-        self.preview.set_crop_edit(on)
-
-    # drawings
-    def _draw_tool(self, kind):
-        on = self.draw_btns[kind].isChecked()
-        for k, b in self.draw_btns.items():
-            if k != kind:
-                b.setChecked(False)
-        self.preview.set_shape_tool(kind if on else None)
-        self.preview.pen["text"] = self.draw_text.text()
-
-    def _draw_colour(self, colour):
-        for c, b in self.colour_btns.items():
-            b.setChecked(c == colour)
-        self.preview.pen["colour"] = colour
-        sel = self.preview.selected_shape()
-        if sel is not None:
-            sel.colour = colour
-            self.preview.replace_selected_shape(sel)
-
-    def _draw_size(self, _i):
-        i = int(self.draw_size_box.currentData() or 0)
-        self.preview.pen["size"] = annotate.SIZES[i]
-        self.preview.pen["text_size"] = annotate.TEXT_SIZES[i]
-        sel = self.preview.selected_shape()
-        if sel is not None:
-            sel.size = annotate.TEXT_SIZES[i] if sel.kind == "text" else annotate.SIZES[i]
-            self.preview.replace_selected_shape(sel)
-
-    def _times_from_here(self):
-        dur = self.draw_when_box.currentData()
-        t = self.timeline.pos
-        return (None, None) if dur is None else (t, min(self.info.duration or t + dur, t + float(dur)))
-
-    def _draw_when(self, _i):
-        sel = self.preview.selected_shape()
-        if sel is not None:
-            sel.t0, sel.t1 = self._times_from_here()
-            self.preview.replace_selected_shape(sel)
-
-    def _draw_text_edited(self, text):
-        self.preview.pen["text"] = text
-        sel = self.preview.selected_shape()
-        if sel is not None and sel.kind == "text":
-            sel.text = text or " "
-            self.preview.replace_selected_shape(sel)
-
-    def _draw_picked(self, i):
-        sel = self.preview.selected_shape()
-        if sel is None:
-            return
-        if sel.kind == "text":
-            self.draw_text.setText(sel.text)
-
-    def _draw_remove(self):
-        self.preview.remove_selected_shape()
-
-    def _draw_clear(self):
-        if self.preview.shapes:
-            self.preview.set_shapes([])
-            self.preview.shapes_changed.emit()
-
-    def edit_plan(self) -> clipedit.Edit:
-        """What will be saved: the parts (or the start/end range), crop, drawings, fades. The drawings are copies:
-        the save thread draws them while the window may change the marked one (colour, size, text, times)."""
-        tl = self.timeline
-        parts = list(self._parts) or [clipedit.Part(tl.start, tl.end, self._range_speed)]
-        full = not self.compact and hasattr(self, "crop_box")
-        crop = self.preview.crop if full and self.crop_box.currentData() != "none" else None
-        shapes = [replace(s, pts=list(s.pts)) for s in self.preview.shapes
-                  if s.kind != "text" or s.text.strip()] if full else []
-        fi = float(self.fade_in_box.currentData() or 0) if full else 0.0
-        fo = float(self.fade_out_box.currentData() or 0) if full else 0.0
-        return clipedit.Edit([clipedit.Part(p.start, p.end, p.speed) for p in parts], crop, shapes, fi, fo)
-
-    # ---- censor boxes (1.7.2)
-    def _censor_toggled(self, on):
-        self._censor_on = bool(on)
-        self.preview.set_look(self._censor_on, self.style_box.currentData() or "pixel")
-        self._setting("clip_censor_on", self._censor_on)
-        self._censor_hint()
-        self._show_size()
-
-    def _censor_style_changed(self, _i):
-        style = self.style_box.currentData() or "pixel"
-        self.preview.set_look(self._censor_on, style)
-        self._setting("clip_censor_style", style)
-
-    def _tool_toggled(self):
-        self.preview.set_editing(self.tool_btn.isChecked())
-        self._censor_hint()
-
-    def _add_names_box(self):
-        self.preview.add_box(clipedit.names_box(self.info.width, self.info.height))
-        if not self.censor_box.isChecked():
-            self.censor_box.setChecked(True)
-
-    def _remove_box(self):
-        if not self.preview.remove_selected() and self.preview.boxes:
-            self.preview.selected = len(self.preview.boxes) - 1
-            self.preview.remove_selected()
-
-    def _clear_boxes(self):
-        self.preview.clear_boxes()
-
-    def _boxes_changed(self):
-        self._setting("clip_censor_boxes", [[round(v, 4) for v in b] for b in self.preview.boxes])
-        self._censor_hint()
-        self._show_size()
-
-    def _censor_hint(self):
-        n = len(self.preview.boxes)
-        if not n:
-            text = _("Noch kein Kasten. „Namen links unten“ setzt einen auf die Survivor-Namen, „Kasten zeichnen“ "
-                     "lässt dich einen aufziehen.")
-        elif self.preview.editing:
-            text = _("{n} Kasten/Kästen – ziehen = verschieben, Ecke rechts unten = Grösse, Klick = markieren.", n=n)
-        else:
-            text = _("{n} Kasten/Kästen gemerkt – sie gelten auch für den nächsten Clip.", n=n)
-        self.censor_hint.setText(text)
-        self.remove_btn.setEnabled(n > 0)
-        self.clear_btn.setEnabled(n > 0)
-
-    def _censor_args(self) -> dict:
-        if self._censor_on and self.preview.boxes:
-            return {"censor": [tuple(b) for b in self.preview.boxes],
-                    "censor_style": self.style_box.currentData() or "pixel"}
-        return {}
-
-    def _btn(self, row, text, slot, tip=""):
-        b = QPushButton(text)
-        b.setFocusPolicy(Qt.NoFocus)                      # the keys stay with the window
-        b.clicked.connect(slot)
-        if tip:
-            b.setToolTip(tip)
-        row.addWidget(b)
-        return b
-
     # ---- 1.8.6: the sound mix (like Medal – each source on its own OBS track, on/off and a level each)
     def _mix_row(self, stacked=False):
         """The label and the sources in a row, the hint in a line of its own below them (1.12.2: beside them it
@@ -1956,7 +1332,7 @@ class ClipWindow(QWidget):
                 line = QHBoxLayout()
                 box = QCheckBox(_(SOURCE_LABELS[key]))
                 box.setToolTip(_(SOURCE_TIPS[key]))
-                box.setMinimumWidth(150)
+                box.setMinimumWidth(130)
                 sl = guard_wheel(QSlider(Qt.Horizontal))
                 sl.setRange(0, MIX_MAX)
                 sl.setToolTip(_("Lautstärke dieser Quelle im Clip (100 % = wie aufgenommen)."))
@@ -2080,7 +1456,7 @@ class ClipWindow(QWidget):
         self._setting("clip_mix_on", dict(self._mix_on))
         self._setting("clip_mix_vol", dict(self._mix_vol))
         self._show_size()
-        if self.playing and self.sound_box.isChecked() and os.name == "nt":   # hear the change at once
+        if self.playing and self._sound_wanted():                 # hear the change at once
             back = self._play_to
             self._stop_player()
             self._play_to = back
@@ -2089,6 +1465,16 @@ class ClipWindow(QWidget):
     def _setting(self, key, value):
         if self.on_setting:
             self.on_setting(key, value)
+
+    # ---- censoring (1.7.2)
+    def _censor_args(self) -> dict:
+        if self._censor_on and self.preview.boxes:
+            return {"censor": [tuple(b) for b in self.preview.boxes], "censor_style": self._censor_style}
+        return {}
+
+    def _boxes_changed(self):
+        self._setting("clip_censor_boxes", [[round(v, 4) for v in b] for b in self.preview.boxes])
+        self._show_size()
 
     # ---- threads
     def _start_threads(self):
@@ -2111,6 +1497,17 @@ class ClipWindow(QWidget):
         if any(i >= 0 for i in self._sources.values()):
             threading.Thread(target=self._level_loop, name="clip-levels", daemon=True).start()
         threading.Thread(target=self._thumb_loop, name="clip-thumbs", daemon=True).start()
+        self._extra_threads()
+
+    def _extra_threads(self):
+        """A subclass starts what else it needs (the editor: the waveform)."""
+
+    def _scrub(self, t: float, quick: bool | None = None):
+        """Ask the scrub thread for the picture at source second ``t``."""
+        with self._scrub_lock:
+            self._want = (t, self._first_look if quick is None else quick)
+            self._first_look = False
+            self._scrub_lock.notify()
 
     def _scrub_loop(self):
         while not self._closed:
@@ -2180,26 +1577,6 @@ class ClipWindow(QWidget):
         if not self._closed:
             self.bridge.content.emit(box)
 
-    def _content_found(self, box):
-        """1.12.6 (user's screenshot of the big editor: the round small in a big black box, the strip in slivers):
-        the recording has black borders around the game. The strip shows the game part; the big editor offers
-        the crop „Ohne schwarze Ränder“ and picks it while no crop was chosen by hand – the preview then shows the
-        game large and the clip is saved without the borders (re-encoded, the size line says so). „Kein
-        Ausschnitt“ brings back the whole picture. The compact editor has no crop: its preview stays as saved."""
-        self._content = tuple(box)
-        self.timeline.set_view(self._content)
-        if self.compact or not hasattr(self, "crop_box"):
-            return
-        if self.crop_box.findData("content") < 0:
-            self.crop_box.insertItem(1, _(CONTENT_LABEL), "content")
-        self.content_hint.setVisible(True)
-        if self.crop_box.currentData() == "none" and not self._crop_chosen:
-            self._crop_auto = True
-            try:
-                self.crop_box.setCurrentIndex(self.crop_box.findData("content"))
-            finally:
-                self._crop_auto = False
-
     # ---- loading screen (1.8.3)
     def _thumb_loaded(self, _i, _img):
         self._load_state["thumbs"] += 1
@@ -2220,69 +1597,136 @@ class ClipWindow(QWidget):
     def resizeEvent(self, e):
         if self.loading is not None:
             self.loading.setGeometry(self.rect())
-        self._fit_preview()
         super().resizeEvent(e)
 
-    def _fit_preview(self):
-        """1.12.5, full window: the preview no taller than the picture at the left column's width (a 21:9 round in
-        a tall box left large empty bands above and below it). 1.12.6: the part on display (no black borders)."""
-        if self.compact or not self.info.ok or self.info.width <= 0 or self.info.height <= 0:
-            return
-        _x, _y, vw, vh = self.preview.view or (0.0, 0.0, 1.0, 1.0)
-        left_w = self.width() - SIDE_W - 36                # margins 2 × 12 + the gap to the side column
-        self.preview.setMaximumHeight(max(self.preview.minimumHeight(),
-                                          int(left_w * self.info.height * vh / (self.info.width * vw)) + 6))
+    # ---- pictures
+    def _show_frame(self, t, img):
+        if not self.playing:
+            self._paint(img)
+        self._loaded("frame")
 
-    # ---- position
-    def goto(self, t: float):
-        """The playhead to ``t``: stops a playback, asks the scrub thread for the picture."""
+    def _show_played(self, t, img):
         if self.playing:
+            self._played_at(t)
+            self.preview.set_now(t)
+            self._show_pos()
+            self._paint(img)
+
+    def _paint(self, img):
+        self.preview.set_frame(_qimage(img))
+
+    # ---- playback
+    def _sound_wanted(self) -> bool:
+        return self.sound_box.isChecked() and os.name == "nt" and self._volume > 0
+
+    def toggle_play(self):
+        if self.playing:
+            self._play_to = None
             self._stop_player()
-        t = min(max(0.0, float(t)), self.info.duration or 0.0)
-        self.timeline.set_position(t)
-        self.preview.set_now(t)                         # 1.12: drawings show at their times
-        self._show_pos()
-        with self._scrub_lock:
-            self._want = (t, self._first_look)
-            self._first_look = False
-            self._scrub_lock.notify()
+            return
+        segs = self._segments()
+        if not segs:
+            return
+        self.playing = True
+        self._show_playing(True)
+        self._queue = list(segs)
+        self._next_segment()
 
-    def step(self, seconds: float):
-        self.goto(self.timeline.pos + seconds)
+    def _next_segment(self):
+        """Start the next stretch of the queue (sound first when wanted, then the frames)."""
+        if not self._queue:
+            self._finish_playing()
+            return
+        self._seg = seg = self._queue.pop(0)
+        start, end, speed, _out = seg
+        if self._sound_wanted():
+            mix, n, vol = self.mix(), self.info.audio_tracks, self._volume
+            threading.Thread(target=lambda: self.bridge.sound.emit(
+                clipedit.sound_wav(self.path, start, end, self.ffmpeg, mix=mix, n_tracks=n, speed=speed, volume=vol),
+                start), name="clip-sound", daemon=True).start()
+        else:
+            self._run_player(seg)
 
-    def step_frame(self, n: int):
-        self.goto(self.timeline.pos + n / max(1.0, self.info.fps))
+    def _sound_ready(self, wav, start):
+        if not self.playing or self.player is not None or self._seg is None or abs(self._seg[0] - start) > 1e-6:
+            if wav:
+                self._drop_wav(wav)
+            return
+        self._wav = wav
+        if wav:
+            try:
+                import winsound
+                winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+            except Exception:                                   # no sound device: the picture still plays
+                pass
+        self._run_player(self._seg)
 
-    def set_start(self):
-        self.timeline.set_range(self.timeline.pos, max(self.timeline.end, self.timeline.pos + 0.1))
-        self._show_range()
+    def _run_player(self, seg):
+        b = self.bridge
+        start, end, speed, _out = seg
+        self.player = clipedit.FramePlayer(self.path, start, self.info, lambda t, img: b.played.emit(t, img),
+                                           lambda: b.ended.emit(self.player), end=end, ffmpeg=self.ffmpeg,
+                                           speed=speed)
+        self.player.start()
 
-    def set_end(self):
-        self.timeline.set_range(min(self.timeline.start, self.timeline.pos - 0.1), self.timeline.pos)
-        self._show_range()
+    def _show_playing(self, on: bool):
+        """The play button shows pause while playing."""
+        if hasattr(self, "play_btn"):
+            self.play_btn.setText(_("⏸ Pause") if on else _("▶ Abspielen"))
 
-    def next_mark(self):
-        later = [m for m in self.marks if m > self.timeline.pos + 0.05]
-        if later or self.marks:
-            self.goto(later[0] if later else self.marks[0])
+    def _stop_player(self):
+        self.playing = False
+        self._queue = []
+        self._seg = None
+        self._show_playing(False)
+        pl, self.player = self.player, None
+        if pl is not None:
+            pl.stop()
+        if os.name == "nt":
+            try:
+                import winsound
+                winsound.PlaySound(None, winsound.SND_PURGE)
+            except Exception:
+                pass
+        if self._wav:
+            self._drop_wav(self._wav)
+            self._wav = None
 
-    def _show_pos(self):
-        self.pos_label.setText(f"{clipedit.fmt_pos(self.timeline.pos)} / {clipedit.fmt_pos(self.info.duration)}")
+    @staticmethod
+    def _drop_wav(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
-    def _show_range(self):
-        tl = self.timeline
-        self.range_label.setText(_("Clip: {start} – {end} ({length} s)", start=clipedit.fmt_pos(tl.start),
-                                   end=clipedit.fmt_pos(tl.end), length=f"{tl.end - tl.start:.1f}"))
-        self._show_size()
-        if not self.name_edit.isModified() or not self.name_edit.text():
-            self.name_edit.setText(clipedit.clip_name(self.path, tl.start, tl.end))
-            self.name_edit.setCursorPosition(0)                  # 1.12.2: the start of the name, not its cut end
-            self.name_edit.setModified(False)
+    def _player_ended(self, player):
+        if player is self.player and self.playing:            # ran to the end (not stopped by us)
+            self.player = None
+            if self._wav:
+                self._drop_wav(self._wav)
+                self._wav = None
+            if self._queue:
+                self._next_segment()
+            else:
+                self._finish_playing()
 
+    def _finish_playing(self):
+        """The last stretch is over: back to where "Clip ansehen" started, else stay."""
+        self._stop_player()
+        back, self._play_to = self._play_to, None
+        self._after_playing(back)
+
+    def _after_playing(self, back):
+        """The subclass puts the playhead where it belongs once playback ended (``back`` = return to here)."""
+
+    # ---- saving
     def _show_size(self):
         """1.6.1: what the chosen format makes of the clip – for Discord the picture size and frame rate."""
         mode = self.mode_box.currentData() if hasattr(self, "mode_box") else "copy"
         edit = self.edit_plan()
+        if not edit.parts:
+            self.size_label.setText(_("Keine Clips auf der Zeitleiste."))
+            return
         secs = edit.seconds()
         parts = []                                                 # 1.8.8: joined by " · ", no dot in front
         if len(edit.parts) > 1 or abs(edit.parts[0].speed - 1.0) > 1e-6:
@@ -2332,101 +1776,19 @@ class ClipWindow(QWidget):
         self._setting("clip_target_mb", self._target_mb)
         self._show_size()
 
-    def watch_clip(self):
-        """1.6.1: play the clip as it will be saved – from its start to its end, then back to its start."""
-        tl = self.timeline
-        self.goto(tl.start)
-        self._play_to = tl.start
-        self.toggle_play()
+    def _default_name(self) -> str:
+        edit = self.edit_plan()
+        if not edit.parts:
+            return clipedit.clip_name(self.path, 0.0, 0.0)
+        return clipedit.clip_name(self.path, edit.parts[0].start, edit.parts[-1].end)
 
-    def _show_frame(self, t, img):
-        if not self.playing:
-            self._paint(img)
-        self._loaded("frame")
-
-    def _show_played(self, t, img):
-        if self.playing:
-            self.timeline.set_position(t)
-            self.preview.set_now(t)
-            self._show_pos()
-            self._paint(img)
-
-    def _paint(self, img):
-        self.preview.set_frame(_qimage(img))
-
-    # ---- playback
-    def toggle_play(self):
-        if self.playing:
-            self._play_to = None
-            self._stop_player()
-            return
-        start = self.timeline.pos
-        end = self.timeline.end if start < self.timeline.end - 0.05 else self.info.duration
-        self.playing = True
-        self.play_btn.setText(_("⏸ Pause"))
-        if self.sound_box.isChecked() and os.name == "nt":
-            mix, n = self.mix(), self.info.audio_tracks
-            threading.Thread(target=lambda: self.bridge.sound.emit(
-                clipedit.sound_wav(self.path, start, end, self.ffmpeg, mix=mix, n_tracks=n), start),
-                name="clip-sound", daemon=True).start()
-        else:
-            self._run_player(start, end)
-
-    def _sound_ready(self, wav, start):
-        if not self.playing or self.player is not None:
-            if wav:
-                self._drop_wav(wav)
-            return
-        self._wav = wav
-        if wav:
-            try:
-                import winsound
-                winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
-            except Exception:                                   # no sound device: the picture still plays
-                pass
-        self._run_player(start, self.timeline.end if start < self.timeline.end - 0.05 else self.info.duration)
-
-    def _run_player(self, start, end):
-        b = self.bridge
-        self.player = clipedit.FramePlayer(self.path, start, self.info, lambda t, img: b.played.emit(t, img),
-                                           lambda: b.ended.emit(self.player), end=end, ffmpeg=self.ffmpeg)
-        self.player.start()
-
-    def _stop_player(self):
-        self.playing = False
-        self.play_btn.setText(_("▶ Abspielen"))
-        pl, self.player = self.player, None
-        if pl is not None:
-            pl.stop()
-        if os.name == "nt":
-            try:
-                import winsound
-                winsound.PlaySound(None, winsound.SND_PURGE)
-            except Exception:
-                pass
-        if self._wav:
-            self._drop_wav(self._wav)
-            self._wav = None
-
-    @staticmethod
-    def _drop_wav(path):
-        try:
-            os.remove(path)
-        except OSError:
-            pass
-
-    def _player_ended(self, player):
-        if player is self.player and self.playing:            # ran to the end (not stopped by us)
-            self._stop_player()
-            back, self._play_to = self._play_to, None
-            self.goto(back if back is not None else self.timeline.pos)
-
-    # ---- saving
     def save(self):
-        tl = self.timeline
-        name = clipedit.NAME_CHARS.sub("", self.name_edit.text()).strip() or clipedit.clip_name(self.path, tl.start, tl.end)
+        name = clipedit.NAME_CHARS.sub("", self.name_edit.text()).strip() or self._default_name()
         mode = self.mode_box.currentData() or "copy"
         edit = self.edit_plan()                                   # 1.12: parts, tempo, crop, drawings, fades
+        if not edit.parts:
+            self.status.setText(_("Keine Clips auf der Zeitleiste."))
+            return
         try:
             os.makedirs(self.clips_dir, exist_ok=True)
         except OSError as e:
@@ -2458,25 +1820,14 @@ class ClipWindow(QWidget):
         job.thread = threading.Thread(target=work, name="clip-save", daemon=True)
         _SAVES.append(job)
         job.thread.start()
+        self._saving(True)
 
-    def _timeline_pick(self, ident, t):
-        """1.8.10: the right-click menu of the strip."""
-        tl = self.timeline
-        if ident == "seek":
-            self.goto(t)
-        elif ident == "start" and t < tl.end - 0.1:
-            tl.set_range(t, tl.end)
-            self._show_range()
-            self.goto(t)
-        elif ident == "end" and t > tl.start + 0.1:
-            tl.set_range(tl.start, t)
-            self._show_range()
-        elif ident == "still":
-            self.save_still(t)
+    def _saving(self, on: bool):
+        """A save started / ended: the subclass may show it (the editor's top bar)."""
 
     def save_still(self, t):
-        """1.8.10: the picture at ``t`` in full size as PNG next to the clips (Clips/<round> – Bild m:ss.png).
-        1.12.7: cut like the clip when a crop is chosen (big editor) – "Ohne schwarze Ränder" kept the borders."""
+        """1.8.10: the picture at source second ``t`` in full size as PNG next to the clips (Clips/<round> – Bild
+        m:ss.png). 1.12.7: cut like the clip when a crop is chosen – "Ohne schwarze Ränder" kept the borders."""
         if not self.info.ok or not self.ffmpeg:
             return
         crop = self.edit_plan().crop
@@ -2529,6 +1880,7 @@ class ClipWindow(QWidget):
             self._last_out = out
         if not self._closed:                        # closed: a compact editor may be deleted, widgets and all
             self.save_btn.setEnabled(True)
+            self._saving(False)
             if ok:
                 self.show_btn.setEnabled(True)
                 try:
@@ -2563,7 +1915,238 @@ class ClipWindow(QWidget):
         except OSError as e:
             self.status.setText(str(e))
 
-    # ---- keys / closing
+    # ---- closing
+    def stop(self):
+        """1.8.8: stop playback (the recordings tab was left)."""
+        if self.playing:
+            self._play_to = None
+            self._stop_player()
+
+    def _drain(self):
+        if self._closed:                    # closed: pictures, levels, playback go; a finished save still counts
+            self.bridge.clear(keep=_Bridge.AFTER_CLOSE)
+        self.bridge.drain()
+
+    def closeEvent(self, e):
+        self._closed = True
+        self.bridge.clear(keep=_Bridge.AFTER_CLOSE)
+        self._stop_player()
+        with self._scrub_lock:
+            self._scrub_lock.notify_all()
+        if any(job.win is self for job in _SAVES):  # its result must come even when the window is deleted now
+            _watch_closed()
+        super().closeEvent(e)
+
+
+class ClipWindow(ClipBase):
+    """The compact editor beside the recordings and clips tables (1.8.8): the picture, the strip with start and
+    end, playback, the clip's facts and saving – no window of its own (``parent`` = the table's host), no tools.
+    "Grosser Editor" (``on_expand``) opens qt_editor.EditorWindow with the same range and position. Until 1.15
+    this class was the big editor too (``compact`` False); that one is EditorWindow now."""
+    compact = True
+
+    def __init__(self, path: str, marks: list, clips_dir: str, mode: str = "copy", sound: bool = True,
+                 compact: bool = True, parent=None, on_expand=None, **kw):
+        self.on_expand = on_expand
+        super().__init__(path, marks, clips_dir, mode, sound, parent=parent, flags=Qt.Widget, **kw)
+
+    def _ready(self, ok: bool):
+        if not ok:
+            return
+        self.timeline.set_duration(self.info.duration)
+        self.timeline.marks = self.marks
+        self.timeline.set_range(0.0, self.info.duration)
+        first = self.marks[0] if self.marks else 0.0
+        if self.marks:                                        # a mark: the clip starts 20 s before it, ends 10 s after
+            self.timeline.set_range(max(0.0, first - MARK_BEFORE_S), min(self.info.duration, first + MARK_AFTER_S))
+        self._show_range()
+        self.goto(self.timeline.start)
+
+    # ---- building
+    def _build(self, mode, sound):
+        """Everything below the preview: the strip, playback, the clip card and the save card side by side."""
+        self.preview = PreviewView(self.dark)
+        self.preview.boxes_changed.connect(self._boxes_changed)
+        self.preview.setMinimumSize(320, 180)
+        self.preview.setMaximumHeight(COMPACT_PREVIEW_H)
+        self.timeline = Timeline(self.dark)
+        self.timeline.seek.connect(self.goto)
+        self.timeline.picked.connect(self._timeline_pick)
+        self.timeline.changed.connect(self._show_range)
+        row = self._transport_row()
+        clip_card = self._clip_card()
+        export_card = self._save_card(mode)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setSpacing(10)
+        lay.addWidget(self.preview, 1)
+        lay.addWidget(self.timeline)
+        lay.addLayout(row)
+        lay.addWidget(clip_card)
+        lay.addWidget(export_card)
+        self._mode_changed(self.mode_box.currentIndex(), save=False)
+
+    def _transport_row(self):
+        """Position left, playback in the middle."""
+        row = QHBoxLayout()
+        self.pos_label = QLabel("")
+        self.pos_label.setProperty("class", "dim")
+        row.addWidget(self.pos_label)
+        row.addStretch()
+        self.b_back5 = self._btn(row, "−5 s", lambda: self.step(-STEP_BIG), _("5 Sekunden zurück (Shift+←)"))
+        self.play_btn = self._btn(row, _("▶ Abspielen"), self.toggle_play, _("Abspielen / Pause (Leertaste)"))
+        self.play_btn.setObjectName("primary")
+        self.play_btn.setMinimumWidth(120)
+        self.b_fwd5 = self._btn(row, "+5 s", lambda: self.step(STEP_BIG), _("5 Sekunden vor (Shift+→)"))
+        row.addStretch()
+        return row
+
+    def _clip_card(self):
+        """The clip: its range, size and what saving does to it; "Clip ansehen", start/end/mark."""
+        clip_card, cl = self._card(_("Clip"))
+        self.range_label = QLabel("")
+        self.range_label.setProperty("class", "big")
+        cl.addWidget(self.range_label)
+        self.size_label = QLabel("")
+        self.size_label.setProperty("class", "dim")
+        self.size_label.setWordWrap(True)
+        cl.addWidget(self.size_label)
+        wr = QHBoxLayout()
+        self.watch_btn = self._btn(wr, _("▶ Clip ansehen"), self.watch_clip,
+                                   _("Spielt genau den Ausschnitt ab und springt danach an seinen Anfang zurück."))
+        self._btn(wr, _("Start setzen"), self.set_start, _("Der Clip beginnt am Abspielkopf (Taste I)."))
+        self._btn(wr, _("Ende setzen"), self.set_end, _("Der Clip endet am Abspielkopf (Taste O)."))
+        self.mark_btn = self._btn(wr, _("Zur Marke ▸"), self.next_mark, _("Springt zur nächsten F8-Marke (Taste M)."))
+        self.mark_btn.setEnabled(bool(self.marks))
+        wr.addStretch()
+        cl.addLayout(wr)
+        return clip_card
+
+    def _save_card(self, mode):
+        """Name, format (target size / GIF height) and the playback-sound box in one row, the encoding, the sources
+        on/off, save / show / big editor with the status beside them."""
+        export_card, el = self._card(_("Speichern"))
+        row2 = QHBoxLayout()
+        row2.addWidget(QLabel(_("Name")))
+        self.name_edit = QLineEdit()
+        row2.addWidget(self.name_edit, 1)
+        el.addLayout(row2)
+        fmt = QHBoxLayout()
+        fmt.addWidget(QLabel(_("Format")))
+        self._mode_boxes(mode)
+        fmt.addWidget(self.mode_box)
+        fmt.addWidget(self.target_box)
+        fmt.addWidget(self.gif_box)
+        fmt.addWidget(self.sound_box)
+        fmt.addStretch()
+        el.addLayout(fmt)
+        el.addLayout(self._encoding_row())                                          # 1.15: encoder, quality, size
+        el.addLayout(self._mix_row(stacked=False))                                  # 1.8.6: the sound mix
+        row3 = QHBoxLayout()
+        self.save_btn = self._btn(row3, _("Clip speichern"), self.save, _("Schreibt den Ausschnitt als MP4 in den Ordner „Clips“ neben den Aufnahmen."))
+        self.save_btn.setObjectName("primary")
+        self.show_btn = self._btn(row3, _("Im Explorer zeigen"), self._show_saved, _("Zeigt den zuletzt gespeicherten Clip im Explorer."))
+        self.show_btn.setEnabled(False)
+        self.expand_btn = self._btn(row3, _("Grosser Editor …"), self._expand,
+                                    _("Öffnet den Clip im eigenen Fenster – mit Zensieren, Lautstärke je Tonquelle "
+                                      "und allen Tasten."))
+        self.status = QLabel("")
+        self.status.setProperty("class", "dim")
+        self.status.setWordWrap(True)
+        row3.addWidget(self.status, 1)
+        el.addLayout(row3)
+        return export_card
+
+    def _expand(self):
+        """1.8.8: compact preview → the full editor (same range and position); this one stops playing."""
+        if self.playing:
+            self._play_to = None
+            self._stop_player()
+        if self.on_expand is not None:
+            self.on_expand(self.timeline.start, self.timeline.end, self.timeline.pos)
+
+    # ---- the plan and the position
+    def edit_plan(self) -> clipedit.Edit:
+        """What will be saved: the start/end range (no crop, drawings or fades beside the tables)."""
+        tl = self.timeline
+        return clipedit.Edit([clipedit.Part(tl.start, tl.end, 1.0)], None, [], 0.0, 0.0)
+
+    def goto(self, t: float):
+        """The playhead to source second ``t``: stops a playback, asks the scrub thread for the picture."""
+        if self.playing:
+            self._stop_player()
+        t = min(max(0.0, float(t)), self.info.duration or 0.0)
+        self.timeline.set_position(t)
+        self.preview.set_now(t)
+        self._show_pos()
+        self._scrub(t)
+
+    def _segments(self) -> list:
+        start = self.timeline.pos
+        end = self.timeline.end if start < self.timeline.end - 0.05 else self.info.duration
+        return [(start, end, 1.0, start)]
+
+    def _played_at(self, t):
+        self.timeline.set_position(t)
+
+    def _after_playing(self, back):
+        self.goto(back if back is not None else self.timeline.pos)
+
+    def step(self, seconds: float):
+        self.goto(self.timeline.pos + seconds)
+
+    def step_frame(self, n: int):
+        self.goto(self.timeline.pos + n / max(1.0, self.info.fps))
+
+    def set_start(self):
+        self.timeline.set_range(self.timeline.pos, max(self.timeline.end, self.timeline.pos + 0.1))
+        self._show_range()
+
+    def set_end(self):
+        self.timeline.set_range(min(self.timeline.start, self.timeline.pos - 0.1), self.timeline.pos)
+        self._show_range()
+
+    def next_mark(self):
+        later = [m for m in self.marks if m > self.timeline.pos + 0.05]
+        if later or self.marks:
+            self.goto(later[0] if later else self.marks[0])
+
+    def _show_pos(self):
+        self.pos_label.setText(f"{clipedit.fmt_pos(self.timeline.pos)} / {clipedit.fmt_pos(self.info.duration)}")
+
+    def _show_range(self):
+        tl = self.timeline
+        self.range_label.setText(_("Clip: {start} – {end} ({length} s)", start=clipedit.fmt_pos(tl.start),
+                                   end=clipedit.fmt_pos(tl.end), length=f"{tl.end - tl.start:.1f}"))
+        self._show_size()
+        if not self.name_edit.isModified() or not self.name_edit.text():
+            self.name_edit.setText(clipedit.clip_name(self.path, tl.start, tl.end))
+            self.name_edit.setCursorPosition(0)                  # 1.12.2: the start of the name, not its cut end
+            self.name_edit.setModified(False)
+
+    def watch_clip(self):
+        """1.6.1: play the clip as it will be saved – from its start to its end, then back to its start."""
+        tl = self.timeline
+        self.goto(tl.start)
+        self._play_to = tl.start
+        self.toggle_play()
+
+    def _timeline_pick(self, ident, t):
+        """1.8.10: the right-click menu of the strip."""
+        tl = self.timeline
+        if ident == "seek":
+            self.goto(t)
+        elif ident == "start" and t < tl.end - 0.1:
+            tl.set_range(t, tl.end)
+            self._show_range()
+            self.goto(t)
+        elif ident == "end" and t > tl.start + 0.1:
+            tl.set_range(tl.start, t)
+            self._show_range()
+        elif ident == "still":
+            self.save_still(t)
+
+    # ---- keys
     def keyPressEvent(self, e):
         k, mods = e.key(), e.modifiers()
         big, frame = bool(mods & Qt.ShiftModifier), bool(mods & Qt.ControlModifier)
@@ -2583,28 +2166,7 @@ class ClipWindow(QWidget):
             self.goto(0.0)
         elif k == Qt.Key_End:
             self.goto(self.info.duration)
-        elif k in (Qt.Key_Delete, Qt.Key_Backspace) and self.preview.shape_tool and self.preview.selected_shape():
-            self.preview.remove_selected_shape()                # 1.12: a drawing
-        elif k in (Qt.Key_Delete, Qt.Key_Backspace) and self.preview.editing:
-            self.preview.remove_selected()
-        elif k == Qt.Key_A and not self.compact:
-            self.add_part()                                     # 1.12
         elif k == Qt.Key_Escape:
             self.close()
         else:
             super().keyPressEvent(e)
-
-    def _drain(self):
-        if self._closed:                    # closed: pictures, levels, playback go; a finished save still counts
-            self.bridge.clear(keep=_Bridge.AFTER_CLOSE)
-        self.bridge.drain()
-
-    def closeEvent(self, e):
-        self._closed = True
-        self.bridge.clear(keep=_Bridge.AFTER_CLOSE)
-        self._stop_player()
-        with self._scrub_lock:
-            self._scrub_lock.notify_all()
-        if any(job.win is self for job in _SAVES):  # its result must come even when the window is deleted now
-            _watch_closed()
-        super().closeEvent(e)

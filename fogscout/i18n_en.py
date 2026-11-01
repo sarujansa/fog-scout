@@ -1793,8 +1793,6 @@ EN = {
     'Clip bearbeiten – {name}': 'Edit clip – {name}',
     'Schnell (an Schlüsselbildern, Anfang bis zu ein paar Sekunden früher)': 'Fast (at key frames, the start may be a few seconds early)',
     'Genau (Bild neu kodiert, dauert etwas)': 'Exact (picture re-encoded, takes a moment)',
-    '1 Sekunde vor (→)': '1 second forward (→)',
-    '1 Sekunde zurück (←)': '1 second back (←)',
     '5 Sekunden vor (Shift+→)': '5 seconds forward (Shift+→)',
     '5 Sekunden zurück (Shift+←)': '5 seconds back (Shift+←)',
     '▶ Abspielen': '▶ Play',
@@ -1809,8 +1807,6 @@ EN = {
     'Clip um Marke': 'Clip around mark',
     'Der Clip beginnt {before} s vor der markierten Marke (ohne Auswahl: der nächsten am Abspielkopf) und endet {after} s danach.':
         'The clip starts {before} s before the picked mark (none picked: the one nearest the playhead) and ends {after} s after it.',
-    'Keine Marken in dieser Aufnahme – F8 im Spiel setzt eine.':
-        'No marks in this recording – F8 in the game sets one.',
     'Springt zur nächsten F8-Marke (Taste M).': 'Jumps to the next F8 mark (key M).',
     'Clip: {start} – {end} ({length} s)': 'Clip: {start} – {end} ({length} s)',
     'Ton': 'Sound',
@@ -2331,8 +2327,6 @@ EN = {
     'Runden pro Tag – letzte {n} Tage': 'Rounds per day – last {n} days',
     '{when}: {n} Runden ({k} Killer, {s} Survivor)': '{when}: {n} rounds ({k} killer, {s} survivor)',
     # 1.12: the editing tools (clip editor, picture editor, screenshots)
-    '+ Abschnitt':
-        '+ Part',
     '1 s ab Abspielkopf':
         '1 s from the playhead',
     '10 s ab Abspielkopf':
@@ -2345,12 +2339,6 @@ EN = {
         '5 s from the playhead',
     '9:16 (Hochformat)':
         '9:16 (portrait)',
-    'Abschnitt entfernen':
-        'Remove part',
-    'Abschnitte':
-        'Parts',
-    'Alle Abschnitte entfernen':
-        'Remove all parts',
     'Alle Bilder':
         'All pictures',
     'Alle Zeichnungen entfernen':
@@ -2365,8 +2353,6 @@ EN = {
         'Crop',
     'Ausschnitt {w}×{h}':
         'crop {w}×{h}',
-    'Ausschnitt, Tempo, Blenden und Zeichnungen brauchen ein neu kodiertes Bild – „Schnell“ speichert dann wie „Genau“.':
-        'Crop, tempo, fades and drawings need the picture re-encoded – "Fast" then saves like "Exact".',
     'Bearbeitet':
         'Edited',
     'Bearbeitete Bilder öffnen':
@@ -2401,10 +2387,6 @@ EN = {
         'Own folder not found: {path}',
     'Einblenden':
         'Fade in',
-    'Entfernt alle Abschnitte – gespeichert wird dann wieder der Bereich zwischen Start und Ende.':
-        'Removes all parts – the stretch between start and end is saved again.',
-    'Entfernt den markierten Abschnitt.':
-        'Removes the marked part.',
     'Entfernt den markierten Kasten (Entf).':
         'Removes the marked box (Del).',
     'Entfernt die markierte Zeichnung (Entf).':
@@ -2421,8 +2403,6 @@ EN = {
         'GIF (no sound, for chats)',
     'GIF {h}p, {fps} Bilder/s, ohne Ton':
         'GIF {h}p, {fps} frames/s, no sound',
-    'Gespeichert werden die {n} Abschnitte nacheinander ({length} s). Einen Abschnitt anklicken zeigt ihn auf der Zeitleiste.':
-        'The {n} parts are saved one after the other ({length} s). Click a part to show it on the timeline.',
     'Helligkeit':
         'Brightness',
     'Helligkeit, Kontrast und Sättigung auf 100 %.':
@@ -2463,10 +2443,6 @@ EN = {
         'Swap left and right.',
     'Mittel':
         'Medium',
-    'Nimmt den Bereich zwischen Start und Ende als Abschnitt auf (Taste A). Alle Abschnitte werden nacheinander zu einem Clip zusammengefügt.':
-        'Takes the stretch between start and end as a part (key A). All parts are joined into one clip, one after the other.',
-    'Noch keine Abschnitte: gespeichert wird der Bereich zwischen Start und Ende. Für mehrere Szenen aus einer Runde: Bereich wählen, „+ Abschnitt“, nächsten Bereich wählen …':
-        'No parts yet: the stretch between start and end is saved. For several scenes from one round: pick a stretch, "+ Part", pick the next stretch …',
     'Oben und unten tauschen.':
         'Swap top and bottom.',
     'Ordner mit deinen Screenshots':
@@ -2527,8 +2503,6 @@ EN = {
         'Remove drawing',
     'Zeigt das zuletzt gespeicherte Bild im Explorer.':
         'Shows the picture saved last in Explorer.',
-    'Zeitlupe oder Zeitraffer für den markierten Abschnitt (ohne Abschnitte: für den Bereich zwischen Start und Ende). Der Ton läuft mit.':
-        'Slow motion or fast forward for the marked part (without parts: for the stretch between start and end). The sound follows.',
     'Zurückgenommenen Schritt wiederholen (Strg+Y).':
         'Redo the undone step (Ctrl+Y).',
     'Zuschneiden':
@@ -2668,4 +2642,86 @@ EN = {
         'Starts an OBS recording by hand now – outside a round too. It runs until you stop it or DBD closes; a map banner names it. Hotkey configurable.',
     'Wie F8: speichert die letzten Sekunden aus dem OBS-Wiederholungspuffer als Sofort-Clip (Länge unter Einstellungen → Aufnahmen) und setzt eine Marke, falls eine Aufnahme läuft.':
         'Like F8: saves the last seconds of OBS\'s replay buffer as an instant clip (length under Settings → Recordings) and sets a mark if a recording is running.',
+
+    # 1.16: the editor window (qt_editor, qt_timeline, qt_library, medialib)
+    "1 Eintrag": "1 entry",
+    "{n} Einträge": "{n} entries",
+    "5 Sekunden vor (Shift+→).": "5 seconds forward (Shift+→).",
+    "5 Sekunden zurück (Shift+←).": "5 seconds back (Shift+←).",
+    "Auf der Zeitleiste öffnen": "Open on the timeline",
+    "Aufnahme {start} – {end} · auf der Zeitleiste ab {at} · {length} s": "Recording {start} – {end} · on the timeline from {at} · {length} s",
+    "Auswahl": "Select",
+    "Bereiche unkenntlich machen – Namen, Chat, Freundesliste (X).": "Blur out areas – names, chat, friends list (X).",
+    "Bibliothek": "Library",
+    "Bibliothek ein-/ausblenden.": "Show/hide the library.",
+    "Bildausschnitt – den Rahmen in der Vorschau ziehen (C).": "Crop – drag the frame in the viewer (C).",
+    "Clip entfernt – die Aufnahme bleibt, wie sie ist.": "Clip removed – the recording stays as it is.",
+    "Clip geteilt – jetzt {n} Clips.": "Clip split – {n} clips now.",
+    "Clip {n} von {total}": "Clip {n} of {total}",
+    "Clips auf der Zeitleiste wählen, verschieben und trimmen (V).": "Select, move and trim clips on the timeline (V).",
+    "Den ganzen Schnitt einpassen (Strg+0).": "Fit the whole cut (Ctrl+0).",
+    "Der Clip unter dem Abspielkopf beginnt hier (Taste I).": "The clip under the playhead starts here (key I).",
+    "Der Clip unter dem Abspielkopf endet hier (Taste O).": "The clip under the playhead ends here (key O).",
+    "Diese Aufnahme ist schon auf der Zeitleiste.": "This recording is on the timeline already.",
+    "Ein Bild vor (Strg+→); → eine Sekunde.": "One frame forward (Ctrl+→); → one second.",
+    "Ein Bild zurück (Strg+←); ← eine Sekunde.": "One frame back (Ctrl+←); ← one second.",
+    "Entfernt den markierten Clip von der Zeitleiste (Entf) – die Aufnahme bleibt.": "Removes the marked clip from the timeline (Del) – the recording stays.",
+    "Export": "Export",
+    "Exportieren": "Export",
+    "Fog Scout · Editor": "Fog Scout · Editor",
+    "Hier lässt sich nichts teilen – der Abspielkopf steht auf einer Clip-Grenze.": "Nothing to split here – the playhead sits on a clip edge.",
+    "Hier teilen": "Split here",
+    "Inspector": "Inspector",
+    "Inspector ein-/ausblenden.": "Show/hide the inspector.",
+    "Keine Aufnahmen – OBS-Aufnahmen und Clips erscheinen hier, „Importieren“ holt eine andere Videodatei.": "No recordings – OBS recordings and clips appear here, “Import” brings in another video file.",
+    "Keine Clips auf der Zeitleiste.": "No clips on the timeline.",
+    "Keine Videodatei: {file}": "Not a video file: {file}",
+    "Kürzeste zuerst": "Shortest first",
+    "Lautstärke der Vorschau (nicht des Clips).": "Volume of the preview (not of the clip).",
+    "Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg 1 Bild · I/O Clip beginnt/endet hier · S Teilen · Entf Löschen · Strg+Z/Y Rückgängig/Wiederholen · F Vollbild · Strg+S Projekt · Strg+E Export":
+        "Space play · ←/→ 1 s · Shift 5 s · Ctrl 1 frame · I/O clip starts/ends here · S split · Del delete · Ctrl+Z/Y undo/redo · F full screen · Ctrl+S project · Ctrl+E export",
+    "Längste zuerst": "Longest first",
+    "Löschen": "Delete",
+    "Name A–Z": "Name A–Z",
+    "Name des Projekts – auch der Name des exportierten Clips.": "Name of the project – also the name of the exported clip.",
+    "Neueste zuerst": "Newest first",
+    "Pause (Leertaste)": "Pause (Space)",
+    "Pfeile, Rahmen, Freihand und Text ins Bild zeichnen (D).": "Draw arrows, boxes, freehand and text onto the picture (D).",
+    "Projekt": "Project",
+    "Projekt geladen: {name}": "Project loaded: {name}",
+    "Projekt gespeichert: {file}": "Project saved: {file}",
+    "Projekt nicht gespeichert – Ordner nicht beschreibbar: {folder}": "Project not saved – folder not writable: {folder}",
+    "Projekt speichern (Strg+S) – Schnitt, Ausschnitt, Zeichnungen, Zensur und Export-Einstellungen dieser Aufnahme, zum späteren Weiterarbeiten.":
+        "Save the project (Ctrl+S) – cut, crop, drawings, censoring and export settings of this recording, to carry on later.",
+    "Runde": "Round",
+    "Rückgängig (Strg+Z).": "Undo (Ctrl+Z).",
+    "Rückgängig.": "Undone.",
+    "Schreibt den Schnitt als Clip in den Ordner „Clips“ neben den Aufnahmen (Strg+E) – Format und Kodierung im Inspector unter Export.":
+        "Writes the cut as a clip into the folder “Clips” next to the recordings (Ctrl+E) – format and encoding in the inspector under Export.",
+    "Sichtbar": "Visible",
+    "Sortierung der Bibliothek.": "Order of the library.",
+    "Spielt den ganzen Schnitt von vorn ab und springt danach zurück.": "Plays the whole cut from the start and jumps back afterwards.",
+    "Standbild am Abspielkopf als PNG neben den Clips speichern.": "Save a still at the playhead as PNG next to the clips.",
+    "Stärke": "Weight",
+    "Teilen": "Split",
+    "Teilt den Clip unter dem Abspielkopf in zwei (Taste S).": "Splits the clip under the playhead in two (key S).",
+    "Ton der Vorschau an/aus (Windows).": "Preview sound on/off (Windows).",
+    "Videodatei importieren": "Import video file",
+    "Videodatei importieren – sie erscheint in der Bibliothek und lässt sich wie eine Aufnahme öffnen.": "Import a video file – it appears in the library and opens like a recording.",
+    "Videos": "Videos",
+    "Vollbild – nur die Vorschau (F, Esc beendet).": "Full screen – the viewer only (F, Esc ends it).",
+    "Wiederholen (Strg+Y).": "Redo (Ctrl+Y).",
+    "Wiederholt.": "Redone.",
+    "Zeitleiste": "Timeline",
+    "Zeitleiste ein-/ausblenden.": "Show/hide the timeline.",
+    "Zeitleiste einpassen": "Fit timeline",
+    "Zeitleiste herauszoomen (−, Strg+Mausrad).": "Zoom the timeline out (−, Ctrl+wheel).",
+    "Zeitleiste hineinzoomen (+, Strg+Mausrad).": "Zoom the timeline in (+, Ctrl+wheel).",
+    "Zeitlupe oder Zeitraffer für den markierten Clip. Der Ton läuft mit.": "Slow motion or fast forward for the marked clip. The sound follows.",
+    "Zum Anfang (Pos1).": "To the start (Home).",
+    "Zum Ende (Ende).": "To the end (End).",
+    "{at} liegt in keinem Clip der Zeitleiste.": "{at} lies in no clip of the timeline.",
+    "{n} Clip(s) · {length} s": "{n} clip(s) · {length} s",
+    "Älteste zuerst": "Oldest first",
+    "Öffnen aus der Bibliothek ist hier nicht verfügbar.": "Opening from the library is not available here.",
 }

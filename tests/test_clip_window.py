@@ -1,6 +1,7 @@
-"""The clip editor window (qt_clip): the crop and drawing tools of the shared canvas, the choice boxes and the
-keys, the tempo box, and saves that outlive their window – another row picked beside the tables, the program
-quitting or restarting for an update while a clip is written. Offscreen; skipped without imageio-ffmpeg."""
+"""The clip editors (qt_clip, since 1.16 the full one in qt_editor): the crop and drawing tools of the shared
+canvas, the choice boxes and the keys, the tempo box, and saves that outlive their window – another row picked
+beside the tables, the program quitting or restarting for an update while a clip is written. Offscreen; skipped
+without imageio-ffmpeg."""
 import os
 import subprocess
 import sys
@@ -55,8 +56,9 @@ def _pump(app, until, seconds=30):
 
 
 def _window(app, clip, tmp_path, **kw):
-    from fogscout import qt_clip
-    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), sound=False, **kw)
+    """The full editor (1.16: qt_editor.EditorWindow) on ``clip``, loaded."""
+    from fogscout import qt_editor
+    win = qt_editor.EditorWindow(clip, kw.pop("marks", []), str(tmp_path / "Clips"), sound=False, **kw)
     win.show()
     assert _pump(app, lambda: win.preview._img is not None and (win.loading is None or win.loading.finished))
     return win
@@ -179,7 +181,6 @@ def test_rahmen_bearbeiten_without_a_crop_switches_the_tool_on(qapp, clip, tmp_p
     from PySide6.QtTest import QTest
     win = _window(qapp, clip, tmp_path)
     try:
-        win.tools.setCurrentIndex(2)
         assert win.crop_box.currentData() == "none" and not win.preview.crop_edit
         QTest.mouseClick(win.crop_btn, Qt.LeftButton)
         assert win.crop_box.currentData() == "free" and win.crop_btn.isChecked() and win.preview.crop_edit
@@ -205,12 +206,9 @@ def test_the_choice_boxes_leave_the_keys_with_the_window(qapp, clip, tmp_path):
         assert [b for b in boxes if b.focusPolicy() != Qt.NoFocus] == []
         if not OFFSCREEN:                    # the popup and the focus below: offscreen only (no real desktop)
             return
-        win.timeline.set_range(1.0, 3.0)
-        win.add_part()
-        win.timeline.set_range(5.0, 7.0)
-        win.add_part()
-        win.tools.setCurrentIndex(1)
-        win.part_list.setCurrentRow(0)
+        win.goto(3.0)
+        win.split_at_playhead()                                              # two clips: 0–3 and 3–12
+        win.timeline.select(0)
         win.activateWindow()
         win.setFocus()
         qapp.processEvents()
@@ -219,41 +217,37 @@ def test_the_choice_boxes_leave_the_keys_with_the_window(qapp, clip, tmp_path):
         view.setCurrentIndex(win.speed_box.model().index(win.speed_box.findData(0.5), 0))
         QTest.keyClick(view, Qt.Key_Return)                                  # picks ×0.5
         _pump(qapp, lambda: not view.isVisible(), 5)
-        assert [p.speed for p in win._parts] == [0.5, 1.0]
+        assert [p.speed for p in win.parts] == [0.5, 1.0]
         assert QApplication.focusWidget() is not win.speed_box
         QTest.keyClick(QApplication.focusWidget() or win, Qt.Key_End)
-        assert [p.speed for p in win._parts] == [0.5, 1.0]                   # the tempo stays …
-        assert win.timeline.pos == pytest.approx(win.info.duration)          # … the playhead goes to the end
+        assert [p.speed for p in win.parts] == [0.5, 1.0]                    # the tempo stays …
+        assert win.pos == pytest.approx(win.timeline.total())                # … the playhead goes to the end
     finally:
         win.close()
 
 
-def test_the_tempo_box_shows_the_tempo_new_parts_get(qapp, clip, tmp_path):
-    """Review #38: after a part was added or removed no row is marked, but the box still showed the tempo of the
-    part marked before (×0.5) – the next part came at normal speed, and picking the shown value did nothing."""
+def test_the_tempo_box_shows_the_tempo_of_the_marked_clip(qapp, clip, tmp_path):
+    """1.16 (review #38 of 1.12: the box showed a tempo that did not belong to anything): the tempo box belongs to
+    the marked clip – it shows that clip's tempo, a pick changes that clip only, and without a clip marked the
+    clip section is not shown at all."""
     win = _window(qapp, clip, tmp_path)
     try:
-        win.tools.setCurrentIndex(1)
-        win.timeline.set_range(1.0, 3.0)
-        win.add_part()
-        win.part_list.setCurrentRow(0)
+        win.goto(4.0)
+        win.split_at_playhead()
+        assert win.timeline.selection == 1 and win.sections["clip"].isVisibleTo(win)
         win.speed_box.setCurrentIndex(win.speed_box.findData(0.5))
-        assert win._parts[0].speed == 0.5 and win._range_speed == 1.0
-        win.timeline.set_range(5.0, 7.0)
-        win.add_part()
-        assert win.part_list.currentRow() == -1 and win.speed_box.currentData() == 1.0
-        assert [p.speed for p in win._parts] == [0.5, 1.0]
-        win.speed_box.setCurrentIndex(win.speed_box.findData(2.0))           # no row marked: the next parts
-        win.timeline.set_range(8.0, 9.0)
-        win.add_part()
-        assert [p.speed for p in win._parts] == [0.5, 1.0, 2.0] and win.speed_box.currentData() == 2.0
-        win.part_list.setCurrentRow(0)
+        assert [p.speed for p in win.parts] == [1.0, 0.5] and win.timeline.total() == pytest.approx(4 + 16, abs=0.2)
+        win.timeline.select(0)
+        assert win.speed_box.currentData() == 1.0
+        win.timeline.select(1)
         assert win.speed_box.currentData() == 0.5
-        win.remove_part()
-        assert win.speed_box.currentData() == 2.0
-        win.part_list.setCurrentRow(0)
-        win.clear_parts()
-        assert win.speed_box.currentData() == 2.0 == win.edit_plan().parts[0].speed
+        win.timeline.select(None)
+        _pump(qapp, lambda: False, 0.05)
+        assert not win.sections["clip"].isVisibleTo(win)
+        win.undo()
+        assert [p.speed for p in win.parts] == [1.0, 1.0]
+        win.redo()
+        assert [p.speed for p in win.parts] == [1.0, 0.5] and win.edit_plan().parts[1].speed == 0.5
     finally:
         win.close()
 
@@ -353,7 +347,7 @@ def test_quitting_stops_a_running_clip_save_and_leaves_no_half_file(qapp, clip, 
                   log=lambda text, kind="System": logs.append((text, kind)))
     try:
         win.preview.set_shapes([annotate.Shape("arrow", [(0.2, 0.2), (0.6, 0.6)])])   # export with a drawing
-        win.timeline.set_range(0.0, 12.0)
+        win.parts = [qt_clip.clipedit.Part(0.0, 12.0)]
         win.save()
         job = qt_clip._SAVES[0]
         half = job.out + qt_clip.clipedit.PART_EXT                           # written under a temporary name
@@ -427,13 +421,13 @@ def test_an_update_waits_for_a_clip_save_and_quitting_hands_a_finished_one_over(
         app.quit()
 
 
-def test_the_big_editor_has_the_picture_left_and_tools_and_saving_in_a_side_column(qapp, clip, tmp_path):
-    """1.12.5 (user on two screenshots of the big editor: "gefallen mir nicht" – a big black box with the picture
-    small in it, an almost empty clip card, the save card squeezed into two lines): picture, timeline and playback on
-    the left, the tool tabs with saving below them in a side column of SIDE_W; the preview no taller than the picture
-    at that width; start/end/mark in the clip tab, the playback sound beside the position; one line per sound source.
-    Nothing sticks out of the window or hangs without a parent."""
-    from PySide6.QtWidgets import QCheckBox, QPushButton, QWidget
+def test_the_editor_has_library_viewer_inspector_and_timeline(qapp, clip, tmp_path):
+    """1.16 (user: "ein durchdachtes, hochwertiges und zeitgemässes Redesign"): the top bar, the library on the
+    left, the viewer with its transport in the middle, the inspector on the right and the timeline below, in two
+    splitters; one line per sound source in the inspector; every visible button has a tooltip and fits the window
+    – also at the smallest window size and with the side panels folded away. The compact editor beside the tables
+    is as before."""
+    from PySide6.QtWidgets import QCheckBox, QPushButton, QToolButton, QWidget
     from fogscout import qt_clip
     four = str(tmp_path / "2026-10-26 07-10 Coal Tower – Nurse.mkv")                 # OBS's tracks 1–4
     sines = sum((["-f", "lavfi", "-i", f"sine=frequency={f}:duration=3"] for f in (440, 550, 660, 770)), [])
@@ -443,38 +437,46 @@ def test_the_big_editor_has_the_picture_left_and_tools_and_saving_in_a_side_colu
                    + ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", four],
                    check=True, timeout=120)
     win = _window(qapp, four, tmp_path)
+
+    def inside(root):
+        for w in root.findChildren(QWidget):
+            if isinstance(w, (QPushButton, QCheckBox, QToolButton)) and w.isVisible() and not w.visibleRegion().isEmpty():
+                assert w.window() is win
+                assert w.toolTip() or isinstance(w, QCheckBox) or not w.text(), (w.text(), w.objectName())
+                r = w.rect().translated(w.mapTo(root, w.rect().topLeft()))
+                assert root.rect().contains(r), (w.text(), w.toolTip(), r, root.rect())
     try:
-        win.resize(1200, 935)
-        _pump(qapp, lambda: False, 0.3)
-        assert win.side.width() == qt_clip.SIDE_W and win.side.isAncestorOf(win.tools)
-        assert win.side.isAncestorOf(win.save_btn) and win.side.isAncestorOf(win.mix_label)
-        assert not win.side.isAncestorOf(win.preview) and not win.side.isAncestorOf(win.sound_box)
-        side_x = win.side.mapTo(win, win.side.rect().topLeft()).x()
-        assert win.preview.mapTo(win, win.preview.rect().topRight()).x() < side_x          # the picture left of it
-        assert win.preview.height() <= win.preview.width() * 180 / 320 + 8                # no empty bands (16:9)
-        assert win.tools.widget(0).isAncestorOf(win.mark_btn) and win.tools.widget(0).isAncestorOf(win.watch_btn)
+        for size in ((1480, 900), (1024, 640), (1920, 1080)):
+            win.resize(*size)
+            _pump(qapp, lambda: False, 0.3)
+            lib_r = win.library.mapTo(win, win.library.rect().topRight()).x()
+            insp_x = win.inspector.mapTo(win, win.inspector.rect().topLeft()).x()
+            pv = win.preview.mapTo(win, win.preview.rect().topLeft()).x()
+            assert lib_r <= pv < win.preview.mapTo(win, win.preview.rect().topRight()).x() <= insp_x
+            assert win.topbar.mapTo(win, win.topbar.rect().bottomLeft()).y() <= win.preview.mapTo(win, win.preview.rect().topLeft()).y()
+            assert win.timeline.mapTo(win, win.timeline.rect().topLeft()).y() > win.preview.mapTo(win, win.preview.rect().bottomLeft()).y()
+            assert win.preview.width() >= 400 and win.timeline._track_width() >= 500
+            inside(win)
         shown = [k for k in win.mix_boxes if win.mix_boxes[k].isVisibleTo(win)]
         box_y = [win.mix_boxes[k].mapTo(win, win.mix_boxes[k].rect().topLeft()).y() for k in shown]
         assert len(shown) >= 3 and len(set(box_y)) == len(box_y)                          # one source per line
-        for w in win.findChildren(QWidget):
-            if isinstance(w, (QPushButton, QCheckBox)) and w.isVisibleTo(win):
-                assert w.window() is win
-                r = w.rect().translated(w.mapTo(win, w.rect().topLeft()))
-                assert win.rect().contains(r), (w.text(), r)                                # nothing cut off
-        for i in range(win.tools.count()):                                                  # every tab fits
-            win.tools.setCurrentIndex(i)
-            _pump(qapp, lambda: False, 0.05)
-            page = win.tools.currentWidget()
-            for w in page.findChildren(QPushButton):
-                if w.isVisibleTo(page):
-                    r = w.rect().translated(w.mapTo(page, w.rect().topLeft()))
-                    assert page.rect().contains(r), (i, w.text())
+        assert win.inspector.isAncestorOf(win.mix_label) and win.inspector.isAncestorOf(win.save_btn) is False
+        assert win.topbar.isAncestorOf(win.save_btn) and win.topbar.isAncestorOf(win.name_edit)
+        win.lib_btn.setChecked(False)
+        win.insp_btn.setChecked(False)
+        _pump(qapp, lambda: False, 0.2)
+        assert not win.library.isVisible() and not win.inspector.isVisible()
+        assert win.preview.width() > 900                                                   # the viewer takes the room
+        inside(win)
+        win.lib_btn.setChecked(True)
+        win.insp_btn.setChecked(True)
     finally:
         win.close()
     compact = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), sound=False, compact=True)
     try:
-        assert not hasattr(compact, "side") and not hasattr(compact, "tools")              # beside the table as before
+        assert not hasattr(compact, "inspector") and not hasattr(compact, "library")        # beside the table as before
         assert compact.sound_box.window() is compact and compact.expand_btn is not None
+        assert compact.timeline.start == 0.0 and compact.mark_btn is not None
     finally:
         compact.close()
 
@@ -514,10 +516,7 @@ def test_black_borders_of_a_round_are_found_shown_large_and_cut_in_the_big_edito
         vr, area = win.preview.view_rect(), QRectF(win.preview.rect()).adjusted(2, 2, -2, -2)
         assert abs(vr.width() - area.width()) < 1.5 or abs(vr.height() - area.height()) < 1.5      # fills the box
         assert vr.width() / vr.height() == pytest.approx(224 / 112, rel=0.05)
-        tiles = win.timeline.tiles()
-        assert len(tiles) >= 3
-        for t, _i in tiles[:-1]:                                            # the strip: the game part's shape
-            assert t.width() / t.height() == pytest.approx(224 / 112, rel=0.05)
+        assert win.timeline.view == win._content                            # the track's pictures: the game part
         win.preview.set_editing(True)
         _drag(win.preview, (0.3, 0.3), (0.5, 0.5))
         assert win.preview.boxes[-1] == pytest.approx([0.3, 0.3, 0.2, 0.2], abs=0.01)
@@ -553,7 +552,7 @@ def test_without_borders_nothing_is_cut_and_the_compact_editor_shows_what_it_sav
     try:
         assert _pump(qapp, lambda: win._load_state["strip"])
         _pump(qapp, lambda: False, 0.2)
-        assert win._content is None and win.crop_box.findData("content") < 0
+        assert win._content is None and win.crop_box.findData("content") < 0 and win.timeline.view is None
         assert win.crop_box.currentData() == "none" and win.preview.view is None
         assert win.content_hint.isHidden()
     finally:
@@ -594,36 +593,41 @@ def test_a_still_is_cut_like_the_clip(qapp, bordered, clip, tmp_path):
         win.close()
 
 
-def test_the_clip_tab_lists_the_marks_and_makes_a_clip_around_one(qapp, clip, tmp_path, monkeypatch):
-    """1.12.7 (the clip tab of the big editor was half empty): the F8 marks as a list – a click jumps there,
-    „Clip um Marke“ makes the clip MARK_BEFORE_S before to MARK_AFTER_S after the picked one (without a pick: the
-    one nearest the playhead). Without marks: no list, the button off, a hint. The compact editor has none of it."""
-    from fogscout import qt_clip
-    monkeypatch.setattr(qt_clip, "MARK_BEFORE_S", 2.0)
-    monkeypatch.setattr(qt_clip, "MARK_AFTER_S", 1.0)
-    win = qt_clip.ClipWindow(clip, [8.0, 3.0], str(tmp_path / "Clips"), sound=False)
-    win.show()
+def test_the_marks_section_lists_the_marks_and_makes_a_clip_around_one(qapp, clip, tmp_path, monkeypatch):
+    """1.12.7 / 1.16: the F8 marks as a list in the inspector – a click jumps there (when the moment is on the
+    timeline), „Clip um Marke“ makes the clip MARK_BEFORE_S before to MARK_AFTER_S after the picked one (without a
+    pick: the one nearest the playhead). Without marks: no section, the buttons off. The compact editor has none of it."""
+    from fogscout import qt_clip, qt_editor
+    monkeypatch.setattr(qt_editor, "MARK_BEFORE_S", 2.0)
+    monkeypatch.setattr(qt_editor, "MARK_AFTER_S", 1.0)
+    win = _window(qapp, clip, tmp_path, marks=[8.0, 3.0])
     try:
-        assert _pump(qapp, lambda: win.preview._img is not None and (win.loading is None or win.loading.finished))
-        assert win.tools.widget(0).isAncestorOf(win.mark_list) and win.mark_list.count() == 2
+        assert win.sections["marks"].isAncestorOf(win.mark_list) and win.mark_list.count() == 2
         assert [win.mark_list.item(i).text() for i in range(2)] == ["⚑  0:03.0", "⚑  0:08.0"]
-        assert (win.timeline.start, win.timeline.end) == (1.0, 4.0)          # opened around the first mark
+        assert [(p.start, p.end) for p in win.parts] == [(1.0, 4.0)]        # opened around the first mark
+        assert [t for t in win.timeline.marks] == [3.0, 8.0]
+        win.mark_list.setCurrentRow(0)
+        win.mark_list.itemClicked.emit(win.mark_list.item(0))
+        assert win.pos == pytest.approx(2.0, abs=0.01)                      # 3.0 s of the recording = 2.0 s in
         win.mark_list.setCurrentRow(1)
-        win.mark_list.itemClicked.emit(win.mark_list.item(1))
-        assert win.timeline.pos == pytest.approx(8.0, abs=0.01)
+        win.mark_list.itemClicked.emit(win.mark_list.item(1))                # 8.0 s: not on the timeline
+        assert win.pos == pytest.approx(2.0, abs=0.01) and "0:08.0" in win.status.text()
         win.around_btn.click()
-        assert (win.timeline.start, win.timeline.end) == (6.0, 9.0) and win.timeline.pos == pytest.approx(6.0)
+        assert [(p.start, p.end) for p in win.parts] == [(6.0, 9.0)] and win.pos == pytest.approx(0.0)
         win.mark_list.setCurrentRow(-1)
-        win.goto(3.5)
-        win.clip_around_mark()                                               # no pick: the nearest mark
-        assert (win.timeline.start, win.timeline.end) == (1.0, 4.0)
+        win.goto(2.5)                                                        # 8.5 s of the recording: nearest is 8
+        win.clip_around_mark()
+        assert [(p.start, p.end) for p in win.parts] == [(6.0, 9.0)]
+        win.undo()                                                           # the same clip again was no step
+        assert [(p.start, p.end) for p in win.parts] == [(1.0, 4.0)]
+        assert not win.history.can_undo()
     finally:
         win.close()
     bare = _window(qapp, clip, tmp_path)
     try:
-        assert bare.mark_list.isHidden() and not bare.around_btn.isEnabled()
+        assert not bare.sections["marks"].isVisibleTo(bare) and not bare.around_btn.isEnabled()
         bare.clip_around_mark()                                              # nothing happens
-        assert (bare.timeline.start, bare.timeline.end) == (0.0, pytest.approx(12.0, abs=0.1))
+        assert [(p.start, round(p.end, 1)) for p in bare.parts] == [(0.0, 12.0)]
     finally:
         bare.close()
     compact = qt_clip.ClipWindow(clip, [3.0], str(tmp_path / "Clips"), sound=False, compact=True)
