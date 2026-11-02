@@ -364,12 +364,12 @@ def test_a_hanging_slot_blocks_no_other_and_never_shows_saved(tmp_path):
     reg.submit(a, "wa", content("a"))
     assert reached.wait(30)
     reg.submit(b, "wb", content("b"))
-    done = threading.Event()
-    while not done.is_set():
+    tick = threading.Event()
+    for _i in range(3000):                                                    # bounded: never hangs the run
         if b.written_seq == 1:
-            done.set()
-        done.wait(0.01)
-    assert os.path.exists(folder / ("b" + project.EXT))
+            break
+        tick.wait(0.01)
+    assert b.written_seq == 1 and os.path.exists(folder / ("b" + project.EXT))
     now[0] = projectsave.HANG_S + 1
     assert projectsave.status_of(a, now=now[0]) == "hang"
     reg.secure_all()                                                          # quit: the local copy secures it
