@@ -562,9 +562,14 @@ class RecordingsTab:
 
     def _rec_tab_tick(self):
         """From App._rec_tick (4×/s): a change from the recorder or the refresh interval re-reads the index –
-        only while the tab is on display."""
+        only while the tab is on display. 1.22.4 (audit, prompt.md): and only while the window can be seen – the
+        tab stays selected when the window goes to the tray, and the index, a stat per file, the clips and the
+        screenshots were read every REC_REFRESH_S and OBS asked every STATUS_POLL_S for nobody."""
         self._clip_windows_prune()
         if self.nb.select() != str(self.tab_recordings):
+            return
+        q = getattr(self, "qt", None)
+        if q is not None and (not q.isVisible() or q.isMinimized()):
             return
         if self._rec_dirty or time.time() - self._rec_rendered > REC_REFRESH_S:
             self._rec_render()

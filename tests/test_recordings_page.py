@@ -698,3 +698,55 @@ def test_marked_rounds_open_as_one_montage_listed_in_the_library(app_root, tmp_p
             w.close()
     finally:
         app.quit()
+
+
+def test_the_recordings_page_reads_nothing_while_the_window_is_hidden(app_root, tmp_path):
+    """1.22.4 (audit, prompt.md): the tab stays selected when the window goes to the tray – the index, the clips,
+    the screenshots and OBS's state were read every few seconds for nobody. Shown again, it catches up at once."""
+    from fogscout.app import App
+    _settings(app_root, rec_on=True, rec_folder=_mkdir(str(tmp_path / "rec")))
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        renders, polls = [], []
+        app._rec_render = lambda *a, **k: renders.append(1)
+        app.recorder.poll = lambda: polls.append(1)
+        app.nb.select(str(app.tab_recordings))
+        app.qt.show()
+        app.qt.hide()
+        renders.clear()                                                   # the tab change renders once itself
+        app._rec_dirty, app._rec_poll_t = True, 0.0
+        app._rec_tab_tick()
+        assert renders == [] and polls == []
+        app.qt.show()
+        app._rec_tab_tick()
+        assert renders == [1] and polls == [1]
+    finally:
+        app.quit()
+
+
+def test_a_click_is_handled_in_the_next_pass_of_the_event_loop(app_root):
+    """1.22.4 (audit, prompt.md): a click waited for the next _poll (0–50 ms); now _qt_post asks for a pass at once
+    – once, however many clicks come before it; posts from other threads keep the 50-ms beat."""
+    import threading
+    from fogscout.app import App
+    _settings(app_root)
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._drain_events()
+        timers, seen = [], []
+        real_after, real_dispatch = app.root.after, app._dispatch
+        app.root.after = lambda ms, fn: timers.append((ms, fn)) or real_after(ms, fn)
+        app._dispatch = lambda ev: seen.append(ev) if ev[:2] == ("ui", "bench-click") else real_dispatch(ev)
+        app._qt_post("bench-click", 1)
+        app._qt_post("bench-click", 2)
+        assert [ms for ms, _fn in timers] == [0]                         # one pass, at once
+        timers[0][1]()                                                    # the pass the event loop runs
+        assert [ev[2] for ev in seen] == [1, 2]                           # both, in order
+        th = threading.Thread(target=app._qt_post, args=("bench-click", 3))
+        th.start()
+        th.join()
+        assert [ms for ms, _fn in timers] == [0]                          # another thread: no timer from there
+        app._drain_events()
+        assert [ev[2] for ev in seen] == [1, 2, 3]
+    finally:
+        app.quit()
