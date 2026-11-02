@@ -486,6 +486,30 @@ class PreviewView(QWidget):
         self.selected = None
         self.update()
 
+    def _boxes_shown(self) -> list:
+        """1.18: the boxes as drawn – the one being moved or resized where the mouse has it (the list itself keeps
+        the original until the release, so a save in between never sees half a drag)."""
+        if self._drag and self._drag[0] in ("move", "resize") and len(self._drag) > 3 \
+                and self.selected is not None and 0 <= self.selected < len(self.boxes):
+            shown = list(self.boxes)
+            shown[self.selected] = self._drag[3]
+            return shown
+        return self.boxes
+
+    def gesture_active(self) -> bool:
+        """1.18: a drag (crop, drawing, box) is under way."""
+        return bool(self._drag)
+
+    def cancel_gesture(self) -> bool:
+        """1.18 (Esc): a drag under way ends and leaves nothing behind – no signal, so no undo step; False when there
+        was none. The release that follows finds no drag and does nothing."""
+        if not self._drag:
+            return False
+        self._drag = None
+        self._preview_new = None
+        self.update()
+        return True
+
     def set_editing(self, on: bool):
         self.editing = bool(on)
         self.setCursor(Qt.CrossCursor if self.editing else Qt.ArrowCursor)
@@ -608,7 +632,12 @@ class PreviewView(QWidget):
         return True
 
     def _shown_shapes(self):
-        shown = [s for s in self.shapes if self.now is None or s.shown_at(self.now)]
+        shapes = self.shapes
+        if self._drag and self._drag[0] == "shape_move" and len(self._drag) > 3 \
+                and self.shape_sel is not None and 0 <= self.shape_sel < len(shapes):
+            shapes = list(shapes)                             # 1.18: the drawing as it is being moved
+            shapes[self.shape_sel] = self._drag[3]
+        shown = [s for s in shapes if self.now is None or s.shown_at(self.now)]
         drawing = getattr(self, "_preview_new", None)
         return shown + [drawing] if drawing is not None else shown
 
@@ -618,7 +647,7 @@ class PreviewView(QWidget):
         if kind == "shape_new":
             return getattr(self, "_preview_new", None)
         if kind == "shape_move" and self.shape_sel is not None and 0 <= self.shape_sel < len(self.shapes):
-            return self.shapes[self.shape_sel]
+            return self._drag[3] if len(self._drag) > 3 else self._drag[2]
         return None
 
     @staticmethod
@@ -717,7 +746,7 @@ class PreviewView(QWidget):
             p.setClipRect(vr)                                   # 1.12.6: a zoomed picture stops at its part
         p.drawImage(vr.topLeft(), scaled)
         accent = QColor(c["accent"])
-        for i, box in enumerate(self.boxes):
+        for i, box in enumerate(self._boxes_shown()):
             r = self._box_rect(box)
             if self.active:
                 self._draw_censored(p, scaled, r, vr)
@@ -753,7 +782,7 @@ class PreviewView(QWidget):
             p.drawImage(f.topLeft(), self._layer[1])
         if active is not None and any(s is active for s in shown):
             p.drawImage(f.topLeft(), self._shape_image(size, [active]))
-        sel = self.selected_shape()
+        sel = active if active is not None and self._drag and self._drag[0] == "shape_move" else self.selected_shape()
         if sel is not None and self.shape_tool is not None:
             x0, y0, x1, y1 = annotate.bounds(sel, int(f.width()), int(f.height()))
             p.setPen(QPen(accent, 1, Qt.DashLine))
@@ -862,7 +891,7 @@ class PreviewView(QWidget):
             i = self._shape_hit(pt)
             if i is not None:
                 self.shape_sel = i
-                self._drag = ("shape_move", (fx, fy), self.shapes[i])
+                self._drag = ("shape_move", (fx, fy), self.shapes[i], self.shapes[i])   # 1.18: (…, original, moved copy)
                 self.shape_picked.emit(i)
             elif self.shape_tool == "text":
                 shape = annotate.Shape("text", [(fx, fy)], self.pen["colour"], self.pen["text_size"],
@@ -889,7 +918,7 @@ class PreviewView(QWidget):
     def _move_extra(self, pt) -> bool:
         if not self._drag or not (self._drag[0].startswith("crop") or self._drag[0].startswith("shape")):
             return False
-        kind, (px, py), orig = self._drag
+        kind, (px, py), orig = self._drag[:3]
         fx, fy = self._to_frac(pt)
         if kind == "crop_new":
             f = self.frame_rect()                             # a click (a pixel of hand jitter) is no new box
@@ -907,8 +936,8 @@ class PreviewView(QWidget):
         elif kind == "shape_move":
             if self.shape_sel is None or not 0 <= self.shape_sel < len(self.shapes):
                 self._drag = None                             # the drawing is gone
-            else:
-                self.shapes[self.shape_sel] = orig.moved(fx - px, fy - py)
+            else:                                             # 1.18: the list keeps the original until release
+                self._drag = (kind, (px, py), orig, orig.moved(fx - px, fy - py))
         elif kind == "shape_new":
             if orig.kind == "free":
                 if math.dist(orig.pts[-1], (fx, fy)) > 0.003:
@@ -922,7 +951,8 @@ class PreviewView(QWidget):
     def _release_extra(self) -> bool:
         if not self._drag or not (self._drag[0].startswith("crop") or self._drag[0].startswith("shape")):
             return False
-        kind, _p, box = self._drag
+        drag = self._drag
+        kind, _p, box = drag[:3]
         self._drag = None
         self._preview_new = None
         if kind.startswith("crop"):
@@ -935,7 +965,11 @@ class PreviewView(QWidget):
             if far > 0.01:
                 self._new_shape(box)
         elif kind == "shape_move":
-            self.shapes_changed.emit()
+            moved = drag[3] if len(drag) > 3 else box
+            if moved is not box and self.shape_sel is not None and 0 <= self.shape_sel < len(self.shapes):
+                self.shapes[self.shape_sel] = moved
+                self._layer = None
+                self.shapes_changed.emit()
         self.update()
         return True
 
@@ -969,7 +1003,7 @@ class PreviewView(QWidget):
             self.setCursor(Qt.SizeFDiagCursor if kind == "resize" else Qt.SizeAllCursor if kind == "move"
                            else Qt.CrossCursor)
             return
-        kind, (px, py), orig = self._drag
+        kind, (px, py), orig = self._drag[:3]
         fx, fy = self._to_frac(e.position())
         if kind == "new":
             x0, y0 = min(px, fx), min(py, fy)
@@ -978,11 +1012,11 @@ class PreviewView(QWidget):
             w, h = orig[2], orig[3]
             x = min(max(0.0, orig[0] + fx - px), 1.0 - w)
             y = min(max(0.0, orig[1] + fy - py), 1.0 - h)
-            self.boxes[self.selected] = [x, y, w, h]
+            self._drag = (kind, (px, py), orig, [x, y, w, h])      # 1.18: boxes keep the original until release
         else:
             w = min(max(self.MIN_BOX, orig[2] + fx - px), 1.0 - orig[0])
             h = min(max(self.MIN_BOX, orig[3] + fy - py), 1.0 - orig[1])
-            self.boxes[self.selected] = [orig[0], orig[1], w, h]
+            self._drag = (kind, (px, py), orig, [orig[0], orig[1], w, h])
         self.update()
 
     def mouseReleaseEvent(self, e):
@@ -990,7 +1024,8 @@ class PreviewView(QWidget):
             return
         if self._drag is None:
             return
-        kind, _p, box = self._drag
+        drag = self._drag
+        kind, _p, box = drag[:3]
         self._drag = None
         if kind == "new":
             if box[2] >= self.MIN_BOX and box[3] >= self.MIN_BOX:
@@ -999,7 +1034,10 @@ class PreviewView(QWidget):
                 self.update()
             return
         self.update()
-        self.boxes_changed.emit()
+        if len(drag) > 3 and self.selected is not None and 0 <= self.selected < len(self.boxes) \
+                and drag[3] != self.boxes[self.selected]:
+            self.boxes[self.selected] = list(drag[3])
+            self.boxes_changed.emit()
 
 
 class LoadingScreen(QWidget):
