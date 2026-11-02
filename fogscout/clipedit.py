@@ -181,13 +181,14 @@ def track_levels(path: str, n_tracks: int, ffmpeg: str | None = None, timeout: f
 
 
 def frame_at(path: str, t: float, height: int = PREVIEW_H, info: Info | None = None, ffmpeg: str | None = None,
-             keyframe: bool = False):
+             keyframe: bool = False, vf=None):
     """One picture at second ``t`` as PIL image (RGB), or None. Seeks to the key frame before ``t`` and decodes
     up to it – about 40 ms for 1080p, more for 1440p and up to a key-frame interval of decoding (OBS: 2–4 s of
     frames, measured 70–190 ms at 1080p60). ``keyframe`` (1.8.3): only the key frame at or before ``t``, no decoding
     up to ``t`` – ~40 ms whatever the interval, the picture up to one interval early (strip, first look). Needs
     ``-fps_mode passthrough``: that frame carries a negative output timestamp, and the constant-rate default
-    drops it unless a later frame follows – near the end of a file none does (measured: nothing came back)."""
+    drops it unless a later frame follows – near the end of a file none does (measured: nothing came back).
+    ``vf`` (1.19) = more filters on the scaled picture (a clip's effects: preview_filters)."""
     from PIL import Image
     ffmpeg = ffmpeg or ffmpeg_exe()
     info = info or probe(path, ffmpeg)
@@ -198,7 +199,8 @@ def frame_at(path: str, t: float, height: int = PREVIEW_H, info: Info | None = N
     out = ["-an", "-fps_mode", "passthrough"] if keyframe else []
     try:
         p = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", *quick, "-ss", f"{max(0.0, t):.3f}", "-i", path,
-                            *out, "-frames:v", "1", "-vf", f"scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                            *out, "-frames:v", "1", "-vf", ",".join([f"scale={w}:{h}", *(vf or ())]),
+                            "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30,
                            creationflags=_flags())
     except (OSError, subprocess.TimeoutExpired):
@@ -577,7 +579,7 @@ def discord_plan(seconds: float, target_mb: float, info: Info | None = None) -> 
 
 
 def sound_wav(path: str, start: float, end: float, ffmpeg: str | None = None, mix=None,
-              n_tracks: int = 0, speed: float = 1.0, volume: float = 1.0) -> str | None:
+              n_tracks: int = 0, speed: float = 1.0, volume: float = 1.0, reverse: bool = False) -> str | None:
     """The sound of ``start``..``end`` as a temporary WAV (for winsound while the preview plays); None on failure
     or when the ``mix`` (1.8.6, as in cut(); ``n_tracks`` = the file's audio tracks) leaves no sound. 1.16:
     ``speed`` = the part's tempo (atempo, as the saved clip has it), ``volume`` = the preview's own level (0–1)."""
@@ -587,7 +589,8 @@ def sound_wav(path: str, start: float, end: float, ffmpeg: str | None = None, mi
     flt, amap = audio_graph(n_tracks, mix)
     if amap is None or volume <= 0:
         return None
-    post = [f for f in (atempo(speed) if abs(speed - 1.0) > 1e-6 else "",
+    post = [f for f in ("areverse" if reverse else "",              # 1.19: a clip played backwards
+                        atempo(speed) if abs(speed - 1.0) > 1e-6 else "",
                         f"volume={volume:.3f}" if abs(volume - 1.0) > 1e-3 else "") if f]
     if flt:
         if post:
@@ -622,11 +625,14 @@ class FramePlayer(threading.Thread):
     ``on_end()`` when the file or the stretch is over. ``stop()`` ends it at once."""
 
     def __init__(self, path: str, start: float, info: Info, on_frame, on_end, end: float | None = None,
-                 height: int = PREVIEW_H, ffmpeg: str | None = None, speed: float = 1.0):
+                 height: int = PREVIEW_H, ffmpeg: str | None = None, speed: float = 1.0, vf=None,
+                 reverse: bool = False):
         super().__init__(name="clip-player", daemon=True)
         self.path, self.start_t, self.info = path, max(0.0, start), info
         self.end_t = end
         self.speed = max(0.05, float(speed or 1.0))   # 1.16: a part's tempo – the clock runs that much faster
+        self.vf = list(vf or ())                      # 1.19: the clip's effects on the scaled picture
+        self.reverse = bool(reverse)                  # 1.19: the stretch backwards (ffmpeg's reverse, small frames)
         self.on_frame, self.on_end = on_frame, on_end
         self.height = height
         self.ffmpeg = ffmpeg or ffmpeg_exe()
@@ -672,7 +678,8 @@ class FramePlayer(threading.Thread):
         args = [self.ffmpeg, "-hide_banner", "-loglevel", "error", "-ss", f"{self.start_t:.3f}"]
         if self.end_t is not None:
             args += ["-to", f"{self.end_t:.3f}"]
-        args += ["-i", self.path, "-an", "-vf", f"fps={fps:g},scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+        chain = [f"fps={fps:g}", f"scale={w}:{h}", *self.vf] + (["reverse"] if self.reverse else [])
+        args += ["-i", self.path, "-an", "-vf", ",".join(chain), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
         try:
             self._proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                           stderr=subprocess.DEVNULL, creationflags=_flags(), bufsize=0)
@@ -722,11 +729,144 @@ MAX_INPUTS = 4                  # more far-apart scenes than this share inputs a
 ASPECTS = (("free", None), ("16:9", 16 / 9), ("9:16", 9 / 16), ("1:1", 1.0), ("4:5", 4 / 5))
 
 
+# 1.19 (user: "Bild & Effekte" – je Clip): colour, a zoom that moves, a still that holds, a clip played backwards
+COLOR_NONE = (0.0, 1.0, 1.0)     # (brightness, contrast, saturation) of ffmpeg's eq that change nothing
+BRIGHTNESS = (-0.5, 0.5)
+CONTRAST = (0.5, 2.0)
+SATURATION = (0.0, 2.0)
+HOLDS = (1.0, 2.0, 3.0, 5.0)     # seconds a still is offered for
+HOLD_MAX_S = 30.0
+HOLD_READ_S = 0.1                # a still reads this much of the recording (its first frame is the picture)
+ZOOM_MIN = 0.1                   # a zoom box is at least this share of the picture (10× zoom)
+REVERSE_BUDGET = 1.5e9           # bytes ffmpeg's reverse may hold: it keeps every frame of the part (measured
+                                 # 3440x1440@60: 1 s 760 MB, 2 s 1.2 GB, 4 s 2.05 GB peak; inputs per second no help)
+REVERSE_FLOOR_S = 1.0
+
+
 @dataclass
 class Part:
     start: float                 # seconds of the recording
     end: float
     speed: float = 1.0
+    color: tuple | None = None   # 1.19: (brightness, contrast, saturation) – None = as recorded
+    zoom: tuple | None = None    # 1.19: (box at the clip's first moment, box at its last) – fractions (x, y, w, h)
+    reverse: bool = False        # 1.19: played backwards
+    hold: float = 0.0            # 1.19: > 0 = a still of the picture at ``start`` for this many seconds (end = start)
+
+
+def part_seconds(p) -> float:
+    """Output seconds of one part (a still: its hold)."""
+    if getattr(p, "hold", 0.0) > 0:
+        return float(p.hold)
+    return max(0.0, p.end - p.start) / max(0.01, p.speed)
+
+
+def has_effects(p) -> bool:
+    return bool(getattr(p, "color", None) or getattr(p, "zoom", None) or getattr(p, "reverse", False)
+                or getattr(p, "hold", 0.0) > 0)
+
+
+def clean_color(c) -> tuple | None:
+    """(brightness, contrast, saturation) inside their ranges, None when it changes nothing or is not one."""
+    try:
+        b, k, s = (float(v) for v in c)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in (b, k, s)):
+        return None
+    out = (round(min(max(b, BRIGHTNESS[0]), BRIGHTNESS[1]), 3), round(min(max(k, CONTRAST[0]), CONTRAST[1]), 3),
+           round(min(max(s, SATURATION[0]), SATURATION[1]), 3))
+    return None if out == COLOR_NONE else out
+
+
+def clean_box(b) -> tuple | None:
+    """A zoom box (x, y, w, h) – fractions, at least ZOOM_MIN, inside the picture – or None."""
+    try:
+        x, y, w, h = (float(v) for v in b)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in (x, y, w, h)):
+        return None
+    w, h = min(max(w, ZOOM_MIN), 1.0), min(max(h, ZOOM_MIN), 1.0)
+    x, y = min(max(x, 0.0), 1.0 - w), min(max(y, 0.0), 1.0 - h)
+    return (round(x, 5), round(y, 5), round(w, 5), round(h, 5))
+
+
+def clean_zoom(z) -> tuple | None:
+    """(box at the start, box at the end); both boxes full (no zoom) = None."""
+    try:
+        a, b = z
+    except (TypeError, ValueError):
+        return None
+    a, b = clean_box(a), clean_box(b)
+    if a is None or b is None:
+        return None
+    if a == (0.0, 0.0, 1.0, 1.0) and b == a:
+        return None
+    return (a, b)
+
+
+def zoom_at(zoom, u: float) -> tuple:
+    """The zoom box a fraction ``u`` (0 = the clip's first moment, 1 = its last) into the clip."""
+    a, b = zoom
+    u = min(max(float(u), 0.0), 1.0)
+    return tuple(round(p + (q - p) * u, 5) for p, q in zip(a, b))
+
+
+def reverse_max_s(info) -> float:
+    """1.19: the longest part played backwards at this picture size (REVERSE_BUDGET; half-second steps)."""
+    per_s = max(1.0, (info.width or 1920) * (info.height or 1080) * 1.5 * (info.fps or 30.0))
+    return max(REVERSE_FLOOR_S, math.floor(REVERSE_BUDGET / per_s * 2) / 2)
+
+
+def zoom_filters(zoom, w: int, h: int, off: float = 0.0, dur: float | None = None, u: float | None = None) -> list:
+    """1.19: ffmpeg filters that show ``zoom``'s box of a w×h picture at w×h. ``u`` given = the box at that fraction
+    of the clip (one picture: crop + scale); else a ride from the first box to the last over ``dur`` seconds of the
+    picture's own time starting at ``off`` – the picture scaled per frame (``eval=frame``; crop cannot change its
+    size per frame) and cut to w×h at the box."""
+    if u is not None or dur is None or zoom[0] == zoom[1]:
+        box = zoom_at(zoom, u) if u is not None else zoom[0]
+        cw, ch, cx, cy = crop_px(box, w, h)
+        return [f"crop={cw}:{ch}:{cx}:{cy}", f"scale={w}:{h}"]
+    (x0, y0, w0, h0), (x1, y1, w1, h1) = zoom
+    k = f"clip((t-{off:.3f})/{max(float(dur), 1e-3):.3f},0,1)"
+
+    def lin(a, b):
+        return f"({a:.5f}+({b - a:.5f})*{k})"
+    bw, bh, bx, by = lin(w0, w1), lin(h0, h1), lin(x0, x1), lin(y0, y1)
+    return [f"scale=w='trunc({w}/{bw}/2)*2':h='trunc({h}/{bh}/2)*2':eval=frame",
+            f"crop={w}:{h}:x='min(max(0,{bx}*in_w),in_w-{w})':y='min(max(0,{by}*in_h),in_h-{h})'",
+            "setsar=1"]
+
+
+def color_filter(color) -> str:
+    b, k, s = color
+    return f"eq=brightness={b:.3f}:contrast={k:.3f}:saturation={s:.3f}"
+
+
+def preview_filters(p, w: int, h: int, t0: float | None = None, still: bool = False) -> list:
+    """1.19: the effects of part ``p`` on a w×h preview picture – the same filters the export uses. ``t0`` = the
+    second of the recording the picture's time 0 is (a player started inside the clip); ``still`` = one picture at
+    source second ``t0`` (scrubbing)."""
+    out = []
+    if p is None:
+        return out
+    if p.zoom:
+        span = max(1e-3, p.end - p.start)
+        if p.hold > 0 or still:
+            u = 0.0 if p.hold > 0 else ((p.end - t0) if p.reverse else (t0 - p.start)) / span
+            out += zoom_filters(p.zoom, w, h, u=u)
+        else:
+            zoom = (p.zoom[1], p.zoom[0]) if p.reverse else p.zoom
+            out += zoom_filters(zoom, w, h, off=p.start - (t0 if t0 is not None else p.start), dur=span)
+    if p.color:
+        out.append(color_filter(p.color))
+    return out
+
+
+def read_range(p) -> tuple:
+    """(first, last) second of the recording a part needs (a still: its first HOLD_READ_S)."""
+    return (p.start, p.start + HOLD_READ_S) if getattr(p, "hold", 0.0) > 0 else (p.start, p.end)
 
 
 @dataclass
@@ -745,11 +885,11 @@ class Edit:
     def simple(self) -> bool:
         """One part at normal tempo and nothing else – cut() alone does it (stream copy possible)."""
         return (len(self.parts) == 1 and abs(self.parts[0].speed - 1.0) < 1e-6 and not self.crop
-                and not self.shapes and self.fade_in <= 0 and self.fade_out <= 0)
+                and not self.shapes and self.fade_in <= 0 and self.fade_out <= 0 and not has_effects(self.parts[0]))
 
     def seconds(self) -> float:
         """Length of the finished clip."""
-        return sum(max(0.0, p.end - p.start) / max(0.01, p.speed) for p in self.parts)
+        return sum(part_seconds(p) for p in self.parts)
 
 
 def clean_parts(parts, duration: float = 0.0) -> list:
@@ -761,8 +901,14 @@ def clean_parts(parts, duration: float = 0.0) -> list:
         start, end = max(0.0, float(p.start)), float(p.end)
         if duration > 0:
             end = min(end, duration)
-        if end - start >= 0.1:
-            out.append(Part(start, end, max(lo, min(hi, float(p.speed or 1.0)))))
+        hold = float(getattr(p, "hold", 0.0) or 0.0)
+        if hold > 0:                                     # 1.19: a still – its picture must lie inside the recording
+            if duration > 0:
+                start = min(start, max(0.0, duration - HOLD_READ_S))
+            out.append(replace(p, start=start, end=start, speed=1.0, reverse=False,
+                               hold=min(hold, HOLD_MAX_S)))
+        elif end - start >= 0.1:
+            out.append(replace(p, start=start, end=end, speed=max(lo, min(hi, float(p.speed or 1.0)))))
     return out
 
 
@@ -795,16 +941,17 @@ def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -
     of a 3440x1440 round). Pure."""
     join_gap = JOIN_GAP_S if join_gap is None else join_gap
     most = MAX_INPUTS if most is None else most
+    rng = [read_range(p) for p in parts]             # 1.19: a still reads only its first frames
     lanes = []                                       # parts that never overlap, as few lanes as the overlaps allow
     # 1.16: the parts come in play order (the timeline) – the inputs are grouped by where they lie in the recording
-    for i in sorted(range(len(parts)), key=lambda k: (parts[k].start, parts[k].end)):
-        p = parts[i]
-        free = [ln for ln in lanes if parts[ln[-1]].end <= p.start + 1e-6]
+    for i in sorted(range(len(parts)), key=lambda k: rng[k]):
+        start = rng[i][0]
+        free = [ln for ln in lanes if rng[ln[-1]][1] <= start + 1e-6]
         if free:
-            max(free, key=lambda ln: parts[ln[-1]].end).append(i)     # the lane with the shortest gap
+            max(free, key=lambda ln: rng[ln[-1]][1]).append(i)        # the lane with the shortest gap
         else:
             lanes.append([i])
-    gaps = sorted(((parts[b].start - parts[a].end, k, j) for k, ln in enumerate(lanes)
+    gaps = sorted(((rng[b][0] - rng[a][1], k, j) for k, ln in enumerate(lanes)
                    for j, (a, b) in enumerate(zip(ln, ln[1:]))), reverse=True)
     cuts, count = set(), len(lanes)
     for gap, k, j in gaps:
@@ -821,7 +968,7 @@ def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -
             else:
                 groups[-1].append(b)
     groups.sort(key=lambda g: g[0])
-    return [(parts[g[0]].start, max(parts[i].end for i in g), g) for g in groups]
+    return [(rng[g[0]][0], max(rng[i][1] for i in g), g) for g in groups]
 
 
 def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB, censor=None,
@@ -860,35 +1007,69 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
             if shared:
                 chains.append(f"{a}asplit={len(members)}" + "".join(f"[sa{i}]" for i in members))
             asrc.update({i: f"[sa{i}]" if shared else a for i in members})
+    fps = info.fps or 30.0
     for i, p in enumerate(parts):
         k, base, shared = where[i]
         cur = vsrc[i]
+        r0, r1 = read_range(p)
         if shared:                                       # this part of the input (its times stay those of the input)
-            chains.append(f"{cur}trim=start={p.start - base:.3f}:end={p.end - base:.3f}[vt{i}]")
+            chains.append(f"{cur}trim=start={r0 - base:.3f}:end={r1 - base:.3f}[vt{i}]")
             cur = f"[vt{i}]"
+        if p.hold > 0:                                   # 1.19: a still – its first picture, held
+            frames = max(1, int(round(p.hold * fps)))
+            chains.append(f"{cur}trim=end_frame=1,loop=loop={frames - 1}:size=1:start=0,"
+                          f"setpts=N/({fps:g})/TB[vh{i}]")
+            cur = f"[vh{i}]"
         if censor:                                               # on the recording's own picture
             chains.append(censor_graph(censor, censor_style, w, h, src=cur, out=f"[vc{i}]", tag=f"_{i}"))
             cur = f"[vc{i}]"
         for j, inp in enumerate(shape_inputs):
             idx, t0, t1 = inp[:3]
             x, y = inp[3:5] if len(inp) >= 5 else (0, 0)
-            if (t1 is not None and t1 <= p.start) or (t0 is not None and t0 >= p.end):
+            if p.hold > 0:                                       # a still shows what is drawn at its moment
+                if (t1 is not None and t1 < p.start) or (t0 is not None and t0 > p.start):
+                    continue
+                when = ""
+            elif (t1 is not None and t1 <= p.start) or (t0 is not None and t0 >= p.end):
                 continue                                         # not shown in this part
-            when = ""
-            if t0 is not None or t1 is not None:                 # times of the recording → of this part's input
-                a = max(0.0, (t0 if t0 is not None else 0.0) - base)
-                b = (t1 - base) if t1 is not None else 1e9
-                when = f":enable='between(t,{a:.3f},{b:.3f})'"
+            else:
+                when = ""
+                if t0 is not None or t1 is not None:             # times of the recording → of this part's input
+                    a = max(0.0, (t0 if t0 is not None else 0.0) - base)
+                    b = (t1 - base) if t1 is not None else 1e9
+                    when = f":enable='between(t,{a:.3f},{b:.3f})'"
             chains.append(f"{cur}[{idx}:v]overlay={x}:{y}:format=auto{when}[vs{i}_{j}]")
             cur = f"[vs{i}_{j}]"
+        if p.zoom:                                       # 1.19: on the whole picture, before the clip's crop
+            if p.hold > 0:
+                zf = zoom_filters(p.zoom, w, h, off=0.0, dur=p.hold)
+            else:
+                zoom = (p.zoom[1], p.zoom[0]) if p.reverse else p.zoom
+                zf = zoom_filters(zoom, w, h, off=p.start - base, dur=p.end - p.start)
+            chains.append(f"{cur}{','.join(zf)}[vz{i}]")
+            cur = f"[vz{i}]"
         if edit.crop:
             cw, ch, cx, cy = crop_px(edit.crop, w, h)
             chains.append(f"{cur}crop={cw}:{ch}:{cx}:{cy}[vcr{i}]")
             cur, out_w, out_h = f"[vcr{i}]", cw, ch
-        chains.append(f"{cur}setpts=(PTS-STARTPTS)/{p.speed:.4g}[v{i}]")
+        effects = []
+        if p.color:
+            effects.append(color_filter(p.color))
+        if p.reverse and p.hold <= 0:
+            effects.append("reverse")
+        if p.hold > 0:
+            effects.append("setpts=PTS-STARTPTS")
+        else:
+            effects.append(f"setpts=(PTS-STARTPTS)/{p.speed:.4g}")
+        chains.append(f"{cur}{','.join(effects)}[v{i}]")
         if sound:
-            trim = f"atrim=start={p.start - base:.3f}:end={p.end - base:.3f}," if shared else ""
-            chains.append(f"{asrc[i]}{trim}asetpts=PTS-STARTPTS,{atempo(p.speed)}[a{i}]")
+            trim = f"atrim=start={r0 - base:.3f}:end={r1 - base:.3f}," if shared else ""
+            if p.hold > 0:                                       # silence as long as the still (the part's own
+                chains.append(f"{asrc[i]}{trim}asetpts=PTS-STARTPTS,volume=0,"   # format, so concat takes it)
+                              f"apad=whole_dur={p.hold:.3f},atrim=duration={p.hold:.3f}[a{i}]")
+            else:
+                back = "areverse," if p.reverse else ""
+                chains.append(f"{asrc[i]}{trim}asetpts=PTS-STARTPTS,{back}{atempo(p.speed)}[a{i}]")
     if n > 1:
         ins = "".join(f"[v{i}]" + (f"[a{i}]" if sound else "") for i in range(n))
         chains.append(f"{ins}concat=n={n}:v=1:a={1 if sound else 0}[vcat]" + ("[acat]" if sound else ""))
