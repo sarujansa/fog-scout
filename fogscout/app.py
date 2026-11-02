@@ -49,6 +49,7 @@ REJECT_HOLD = 60.0        # s: a rejected map is not shown again by the same ban
 UNSURE_DELAY = 2.5        # s: a doubtful read is shown only if the banner did not read cleanly meanwhile
 QUIT_WATCHDOG_S = 15     # s: quitting takes longer than this -> the process ends anyway (1.65.1)
 QUIT_RECORDER_S = 8      # s: quitting waits this long for OBS to stop a round still running (1.8.38)
+SOON_GAP_S = 0.05        # s: a click refreshes at once, unless a click refreshed this recently (1.23.1)
 STYLE_CACHE = os.path.join("cache", "maps_dark")      # below the program folder, made from maps/ (gitignored)
 CATS = [N_("Erkennung"), N_("Overlay"), N_("System"), N_("Fehler")]   # log categories (keys; shown translated)
 
@@ -808,6 +809,39 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         event is reported and the rest still runs (the loop must never stop). 1.3.4 (user: "wenn ich einen Button
         wähle, wechselt die Farbe erst nach 1 s"): after a click in the window the window is refreshed at once –
         before, the new state waited for the next _tick_overlay (up to 250 ms)."""
+        self._drain_events()
+        if not self._quitting:
+            self.root.after(50, self._poll)
+
+    def _poll_soon(self):
+        """1.22.4 (audit, prompt.md): a click in the window is handled in the next pass of the event loop, not at
+        the next _poll – it waited 0–50 ms there (measured with tools/bench.py). Only from the GUI thread (the
+        timer is a Qt object); the other threads keep the 50 ms beat. 1.23.1 (review): only when the window was
+        not refreshed for a click in the last SOON_GAP_S – a slider or a drag in the preview posts on every mouse
+        move, and each pass refreshes the window; a stream stays at the beat's rate, a lone click comes at once."""
+        if getattr(self, "_poll_soon_due", False) or self._quitting \
+                or threading.current_thread() is not threading.main_thread() \
+                or time.monotonic() - getattr(self, "_ui_refresh_t", -1e9) < SOON_GAP_S:
+            return
+        self._poll_soon_due = True
+        self.root.after(0, self._poll_soon_run)
+
+    def _poll_soon_run(self):
+        self._poll_soon_due = False
+        self._drain_events()
+
+    def _drain_events(self):
+        """Every event waiting, in order (from _poll and _poll_soon_run; never nested – a handler that pumps the
+        event loop leaves the queue to the pass already running)."""
+        if getattr(self, "_draining", False):
+            return
+        self._draining = True
+        try:
+            self._drain_events_now()
+        finally:
+            self._draining = False
+
+    def _drain_events_now(self):
         clicked = False
         while not self._quitting:
             try:
@@ -824,12 +858,11 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             if took >= 30:
                 self.root.note("Ereignis " + _event_name(ev), took)
         if clicked and not self._quitting:
+            self._ui_refresh_t = time.monotonic()           # 1.23.1: _poll_soon waits SOON_GAP_S after this
             try:
                 self._qt_refresh()
             except Exception:
                 self._report_once("Fenster", traceback.format_exc())
-        if not self._quitting:
-            self.root.after(50, self._poll)
 
     def _dispatch(self, ev):
         if isinstance(ev, tuple) and ev[0] == "hotkey":
@@ -1458,7 +1491,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
     def _clear_aliases(self):
         if not self.settings.get("user_aliases"):
             return
-        if not self._ask(_("Eigene Zuordnungen"), _("Alle eigenen Map-Zuordnungen löschen?"), self._clear_aliases):
+        if not self._ask(_("Eigene Zuordnungen"), _("Alle eigenen Map-Zuordnungen löschen?"), self._clear_aliases,
+                         ok_text=_("Löschen"), danger=True):
             return
         self.settings.set("user_aliases", {})
         self._save_soon()
@@ -1476,6 +1510,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
 
     def _apply_theme(self):
         """Dark/light: the Qt window's colours, the server table's ping colours and the charts."""
+        from .qt_theme import STATE
         from .theme import LOG_COLORS
         dark = bool(self.dark_var.get()) if hasattr(self, "dark_var") else bool(self.settings.get("dark_mode", True))
         colors = LOG_COLORS[dark]
@@ -1483,7 +1518,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self.swatches.dark = dark
         for tag, key in (("p_good", "Erkennung"), ("p_bad", "Fehler"), ("p_na", "ts")):
             self.srv_tree.tag_configure(tag, foreground=colors[key])
-        self.srv_tree.tag_configure("p_mid", foreground="#d29922" if dark else "#9a6700")
+        self.srv_tree.tag_configure("p_mid", foreground=STATE[dark]["warn"])          # 1.22.3: the theme's
         self.srv_tree.tag_configure("group", foreground=colors["text"])
         for chart in (getattr(self, "trend", None), getattr(self, "sys_trend", None)):
             if chart is not None:

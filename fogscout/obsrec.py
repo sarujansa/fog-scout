@@ -58,6 +58,7 @@ MAX_MANUAL_S = 4 * 3600         # 1.15: a recording started by hand (record_star
 STATUS_POLL_S = 2.0             # 1.15: the recordings page asks OBS for its state this often, only while it is shown
 PROFILE_EVERY_S = 30.0          # … the slow-changing values (encoder, buffer length, output size) only this often
 FREE_CHECK_S = 10.0             # 1.15: while recording, the drive's free space is looked at this often (MIN_FREE)
+FOLDER_TTL_S = 5.0              # 1.22.4: Recorder.folder() asks the drive letters at most this often (find_folder)
 EARLY_WAIT_S = 180              # 1.6: started at the end of the loading screen – no banner within this: filed as it is
 CLIP_SECONDS = (15, 30, 45, 60, 90, 120, 180, 300)   # 1.6: F8 instant clip – the last n seconds of the replay buffer
                                                      # (1.15: up to 5 min; the card warns when OBS's buffer is shorter)
@@ -1198,6 +1199,7 @@ class Recorder(threading.Thread):
         self._poll_waiting = False   # 1.15: a "poll" command sits in the queue
         self._slow = {}              # 1.15: slow-changing OBS values for the card (encoder, buffer length, output size)
         self._slow_t = 0.0
+        self._folder_hit = None      # 1.22.4: (key, time, path) of the last find_folder (Recorder.folder)
         self._free_t = 0.0           # 1.15: last look at the drive's free space while recording
         self.paused = False          # 1.15: the recording on air is paused (ours)
         self.start_obs = self._start_obs_process       # tests replace it
@@ -1597,7 +1599,20 @@ class Recorder(threading.Thread):
             self._post("changed", what="clip", file=name)
 
     def folder(self) -> str | None:
-        return find_folder(self.cfg.volume, self.cfg.rel, self.cfg.folder)
+        """The recordings folder now (find_folder). 1.22.4 (audit, prompt.md): on Windows find_folder asks all 26
+        drive letters for their volume – the recordings page asked twice per render, the recorder thread on each
+        of its steps. The answer is kept FOLDER_TTL_S for the same settings; a kept folder that is gone (drive
+        unplugged, letter changed) is looked up again at once. 1.23.1 (review): a missing drive is not kept – a
+        round right after plugging it in must record (it was None for up to FOLDER_TTL_S). Called from the GUI and
+        the recorder thread: the cache is one tuple, replaced whole."""
+        key = (self.cfg.volume, self.cfg.rel, self.cfg.folder)
+        now = time.monotonic()
+        hit = self._folder_hit
+        if hit is not None and hit[0] == key and now - hit[1] < FOLDER_TTL_S and os.path.isdir(hit[2]):
+            return hit[2]
+        path = find_folder(*key)
+        self._folder_hit = (key, now, path) if path else None
+        return path
 
     def _test(self):
         c = self._client()

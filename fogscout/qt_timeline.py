@@ -32,8 +32,6 @@ SNAP_PX = 6                                    # a trimmed edge snaps to the pla
 CLIP_COLOURS = {True: {"video": "#355a80", "audio": "#2f6b4c", "text": "#ffffff", "label": QColor(0, 0, 0, 110)},
                 False: {"video": "#a9c4e2", "audio": "#b4dac2", "text": "#17191c", "label": QColor(255, 255, 255, 140)}}
 MUSIC_COLOURS = {True: "#6a4c93", False: "#cdb8e8"}   # 1.21: the clips on A2
-MARK_COLOUR = "#e8a33d"
-PLAYHEAD = "#ffffff"
 
 
 def _qimage(img) -> QImage:
@@ -501,7 +499,7 @@ class SequenceTimeline(QWidget):
         xe = self._x(total)
         p.setPen(QPen(QColor(c["dim"]), 1, Qt.DotLine))
         p.drawLine(QPointF(xe, RULER_H), QPointF(xe, self.height()))
-        mark = QColor(MARK_COLOUR)
+        mark = QColor(c["mark"])                                       # 1.22.3: readable on light pages
         p.setPen(Qt.NoPen)
         p.setBrush(mark)
         marks = [(0, m) for m in self.marks] + [(s, m) for s, ms in self.src_marks.items() for m in ms]
@@ -552,7 +550,9 @@ class SequenceTimeline(QWidget):
         p.fillRect(label, cc["label"])
         p.setPen(QColor(cc["text"]))
         if part.src in self.missing:                                  # 1.22: its recording is gone – red, no export
-            p.fillRect(vrect.adjusted(0.5, 0.5, -0.5, -0.5), QColor(200, 40, 40, 120))
+            red = QColor(c["err"])
+            red.setAlpha(120)
+            p.fillRect(vrect.adjusted(0.5, 0.5, -0.5, -0.5), red)
         p.drawText(label.adjusted(6, 0, -4, 0), Qt.AlignLeft | Qt.AlignVCenter,
                    clip_label(i, part, self.src_names.get(part.src, "") if self.src_names else ""))
         p.setClipRect(QRectF(HEAD_W, 0, self._track_width(), self.height()))
@@ -639,10 +639,10 @@ class SequenceTimeline(QWidget):
         x = self._x(self.pos)
         if x < HEAD_W - 1:
             return
-        p.setPen(QPen(QColor(PLAYHEAD), 1.5))
+        p.setPen(QPen(QColor(c["playhead"]), 1.5))                     # 1.22.3: was white – invisible on light
         p.drawLine(QPointF(x, RULER_H - 8), QPointF(x, self.height()))
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(PLAYHEAD))
+        p.setBrush(QColor(c["playhead"]))
         path = QPainterPath()
         path.moveTo(x - 6, 4)
         path.lineTo(x + 6, 4)

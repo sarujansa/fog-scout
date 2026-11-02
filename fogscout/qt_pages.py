@@ -156,7 +156,7 @@ class OverviewPage(QWidget):
         # 1.14: "Schnell ein/aus" – one tick box per feature (overview.switches), made as the model names them
         self.switch_card = _card()
         swl = QVBoxLayout(self.switch_card)
-        swl.setContentsMargins(14, 12, 14, 12)
+        swl.setContentsMargins(*qt_theme.PAD_CARD)
         swl.setSpacing(8)
         swl.addWidget(_label(_("Schnell ein/aus").upper(), "h2"))
         self.switch_row = FlowRow(spacing=18)
@@ -168,7 +168,7 @@ class OverviewPage(QWidget):
         # 1.8.79: what changed since the version last run (HISTORY.md rows), until "Verstanden"
         self.news_card = _card()
         self.news_lay = QVBoxLayout(self.news_card)
-        self.news_lay.setContentsMargins(14, 12, 14, 12)
+        self.news_lay.setContentsMargins(*qt_theme.PAD_CARD)
         nh = QHBoxLayout()
         self.news_title = _label(cls="h2")
         nh.addWidget(self.news_title)
@@ -195,7 +195,7 @@ class OverviewPage(QWidget):
         for i in range(5):                        # 1.4.2: the fifth ("Aufnahmen") only while recording is on
             t = _card()
             tl = QVBoxLayout(t)
-            tl.setContentsMargins(14, 12, 14, 12)
+            tl.setContentsMargins(*qt_theme.PAD_CARD)
             box = FactBox(bar=True, post=post)
             box.sub.setWordWrap(True)
             tl.addWidget(box)
@@ -218,7 +218,7 @@ class OverviewPage(QWidget):
         for _i in range(5):
             t = _card()
             tl = QVBoxLayout(t)
-            tl.setContentsMargins(14, 12, 14, 12)
+            tl.setContentsMargins(*qt_theme.PAD_CARD)
             box = FactBox(post=post)
             box.sub.setWordWrap(True)
             tl.addWidget(box)
@@ -234,7 +234,7 @@ class OverviewPage(QWidget):
         row = TileGrid(min_width=300, columns=2)  # side by side, below each other in a narrow window
         sysc = _card()
         self.sys_lay = QVBoxLayout(sysc)
-        self.sys_lay.setContentsMargins(14, 12, 14, 12)
+        self.sys_lay.setContentsMargins(*qt_theme.PAD_CARD)
         self.sys_lay.addWidget(_label(_("System").upper(), "h2"))
         self.sys_rows = []
         self.sys_note = _label(cls="dim", wrap=True)
@@ -243,7 +243,7 @@ class OverviewPage(QWidget):
         row.addWidget(sysc)
         last = _card()
         self.last_lay = QVBoxLayout(last)
-        self.last_lay.setContentsMargins(14, 12, 14, 12)
+        self.last_lay.setContentsMargins(*qt_theme.PAD_CARD)
         self.last_lay.addWidget(_label(_("Letzte Runden").upper(), "h2"))
         self.last_rows = []
         self.last_empty = _label(_("Noch keine Runden gespeichert."), "dim")
@@ -530,7 +530,7 @@ class CapSlider(QSlider):
         handle = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
         span = max(1, groove.width() - handle.width())
         x = groove.x() + handle.width() / 2 + QStyle.sliderPositionFromValue(lo, hi, round(self.cap), span)
-        colour = QColor(qt_theme.DOT["warn"])
+        colour = QColor(qt_theme.dot_colour("warn"))
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         tint = QColor(colour)
@@ -1098,7 +1098,7 @@ class FormPage(QWidget, _Arranged):
                     if rows and all(r[0] == "card" for r in rows):    # 1.8.90: a tab of cards (the settings page)
                         bl.setContentsMargins(0, 8, 0, 0)             # – the cards bring their own padding
                     else:
-                        bl.setContentsMargins(14, 12, 14, 12)
+                        bl.setContentsMargins(*qt_theme.PAD_CARD)
                     bl.setSpacing(6)
                     self._group = []
                     self._place(rows, bl, page_key)
@@ -1138,7 +1138,7 @@ class FormPage(QWidget, _Arranged):
         (shown/hidden with the model's frame)."""
         card = _card()
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(14, 12, 14, 12)
+        cl.setContentsMargins(*qt_theme.PAD_CARD)
         cl.setSpacing(6)
         head, hrow = _card_head(cl)
         self.controls[item[1]] = ("title", head, None)
@@ -1166,7 +1166,7 @@ class FormPage(QWidget, _Arranged):
     def _panel(self, rows):
         card = _card()
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(14, 12, 14, 12)
+        cl.setContentsMargins(*qt_theme.PAD_CARD)
         self._group = []
         for row in rows:
             self._add(row, cl)
@@ -1458,6 +1458,8 @@ class AutoPage(QWidget, _Arranged):
             self.controls[key] = ("tabs", tw, None)
             return
         w, extra = make_control(kind, key, self._post)
+        if n.get("note"):                                 # 1.23: a warning line of the model ("Note.TLabel")
+            w.setProperty("class", "note")
         if kind == "table" and n.get("fit"):
             w.fit_rows()
         grow = kind in ("table", "chart", "log") or (kind == "hint" and isinstance(lay, QHBoxLayout)) or \
@@ -1592,19 +1594,34 @@ class MessageBox(QDialog):
         lay.addLayout(row)
         self.setFixedWidth(self.WIDTH)
 
-    def ask(self, title: str, text: str, ask: bool, activate: bool = True):
-        """Show it; ``activate`` False = without taking the focus (DBD in front)."""
+    def ask(self, title: str, text: str, ask: bool, activate: bool = True, ok_text: str | None = None,
+            danger: bool = False):
+        """Show it; ``activate`` False = without taking the focus (DBD in front). 1.23 (audit, prompt.md): the
+        button says what it does (``ok_text``), and a question that deletes or replaces data (``danger``) has a red
+        button and Cancel as its default – Enter and the focus keep the data."""
         self.heading.setText(title)
         self.text.setText(text)
         self.cancel.setVisible(ask)
+        risky = bool(danger and ask)
+        self.ok.setText(ok_text or _("OK"))
+        name = "danger" if risky else "primary"
+        if self.ok.objectName() != name:
+            self.ok.setObjectName(name)
+            self.ok.style().unpolish(self.ok)
+            self.ok.style().polish(self.ok)
+        self.ok.setDefault(not risky)
+        self.cancel.setDefault(risky)
+        # 1.23.1 (CI Windows): unactivated (DBD in front) the focus may stay on the red button – a focused
+        # autoDefault button takes Enter; without autoDefault Enter goes to the default, Cancel
+        self.ok.setAutoDefault(not risky)
         self._open = True
         self.setAttribute(Qt.WA_ShowWithoutActivating, not activate)
         self.adjustSize()
         self.show()
         self.raise_()
+        (self.cancel if risky else self.ok).setFocus()   # 1.23.1: also unactivated – Enter later = this button
         if activate:
             self.activateWindow()
-            self.ok.setFocus()
 
     def withdraw(self):
         """The program took the question back: closed without an answer."""

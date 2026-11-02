@@ -441,7 +441,7 @@ class SettingsTab:
                                                command=self._export_settings)).pack(side="left")
         self._reg("st.more.import", ui.Button(bk, text=_("Einstellungen importieren …"),
                                                command=self._import_settings)).pack(side="left", padx=6)
-        self._reg("st.more.clear_hist", ui.danger(ui.Button(bk, text=_("Verlauf löschen"),    # 1.2.16: moved
+        self._reg("st.more.clear_hist", ui.danger(ui.Button(bk, text=_("Alle Runden löschen …"),    # 1.2.16: moved; 1.23 named
                                                              command=self._stats_clear))).pack(side="right")
         self._reg("st.more.reset_all", ui.danger(ui.Button(bk, text=_("Alle Einstellungen zurücksetzen"),  # 1.2.19
                                                             command=self._reset_all_settings))).pack(side="right",
@@ -479,7 +479,8 @@ class SettingsTab:
         """1.2.19: back to the defaults (PC-specific values stay), then a restart like after an import."""
         if not self._ask(_("Alle Einstellungen zurücksetzen"),
                          _("Alle Einstellungen auf die Auslieferung zurücksetzen? Runden, Match-Daten und eigene "
-                           "Bilder bleiben. Das Programm startet danach neu."), self._reset_all_settings):
+                           "Bilder bleiben. Das Programm startet danach neu."), self._reset_all_settings,
+                         ok_text=_("Zurücksetzen"), danger=True):
             return
         from .config import reset_data
         self.settings.data = reset_data(self.settings.data)
@@ -509,7 +510,7 @@ class SettingsTab:
             return
         if not self._ask(_("Einstellungen importieren"),
                          _("Alle Einstellungen durch die aus der Datei ersetzen? Das Programm startet danach neu."),
-                         lambda: self._import_settings(path)):
+                         lambda: self._import_settings(path), ok_text=_("Importieren"), danger=True):
             return
         self.settings.data = data
         self.settings.save()
@@ -1106,7 +1107,7 @@ class SettingsTab:
         count, day = backups.status(self.root_dir)
         state = _("{n} Dateien, zuletzt {day}", n=count, day=day) if count else _("noch keine")
         return _("Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die "
-                 "letzten {n} Stände je Datei; vor „Verlauf löschen“ eine zusätzliche): {state}",
+                 "letzten {n} Stände je Datei; vor „Alle Runden löschen“ eine zusätzliche): {state}",
                  folder=backups.DIR, n=backups.KEEP, state=state)
 
     def _news_check(self):

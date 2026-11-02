@@ -150,6 +150,8 @@ class KeyHelp(QFrame):
 
 def editor_qss(c: dict, zoom: float = 1.0) -> str:
     """The editor's own style on top of the window's sheet: flat panels, tool buttons, the viewer's transport."""
+    TYPE, RADIUS = qt_theme.TYPE, qt_theme.RADIUS          # 1.23: the window's scales
+
     def px(size):
         return f"{max(8, round(size * zoom))}px"
     return f"""
@@ -160,23 +162,24 @@ QFrame#panel QScrollArea, QFrame#panel QScrollArea > QWidget > QWidget {{ backgr
 QFrame#viewer {{ background: {c['bg']}; border: none; }}
 QFrame#statusbar {{ background: {c['panel']}; border-top: 1px solid {c['border']}; }}
 QFrame#tlbar {{ background: {c['panel']}; border-bottom: 1px solid {c['border']}; }}
-QLabel[class="section"] {{ color: {c['dim']}; font-size: {px(11)}; font-weight: 700; letter-spacing: 1px; }}
-QLabel[class="title"] {{ color: {c['head']}; font-size: {px(13)}; font-weight: 700; }}
-QLabel[class="brand"] {{ color: {c['dim']}; font-size: {px(12)}; font-weight: 600; }}
-QLabel[class="time"] {{ color: {c['head']}; font-size: {px(13)}; font-weight: 600; }}
+QLabel[class="section"] {{ color: {c['dim']}; font-size: {px(TYPE['label'])}; font-weight: 700; letter-spacing: 1px; }}
+QLabel[class="title"] {{ color: {c['head']}; font-size: {px(TYPE['body'])}; font-weight: 700; }}
+QLabel[class="brand"] {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; font-weight: 600; }}
+QLabel[class="time"] {{ color: {c['head']}; font-size: {px(TYPE['body'])}; font-weight: 600; }}
 QLabel[class="label"] {{ color: {c['dim']}; }}
-QLineEdit#projectname {{ background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px;
-    font-size: {px(13)}; font-weight: 600; color: {c['head']}; }}
+QLineEdit#projectname {{ background: transparent; border: 1px solid transparent; border-radius: {RADIUS['m']}px; padding: 4px 8px;
+    font-size: {px(TYPE['body'])}; font-weight: 600; color: {c['head']}; }}
 QLineEdit#projectname:hover {{ border-color: {c['border']}; background: {c['field']}; }}
 QLineEdit#projectname:focus {{ border-color: {c['accent']}; background: {c['field']}; }}
-QLineEdit#search {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 4px 8px; }}
-QToolButton#toolbtn {{ background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 3px; }}
+QLineEdit#search {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: {RADIUS['m']}px; padding: 4px 8px; }}
+QLineEdit#search:focus {{ border-color: {c['accent']}; }}  /* 1.22.3: the ID rule hid the focus */
+QToolButton#toolbtn {{ background: transparent; border: 1px solid transparent; border-radius: {RADIUS['m']}px; padding: 3px; }}
 QToolButton#toolbtn:hover {{ background: {c['hover']}; }}
 QToolButton#toolbtn:pressed {{ background: {c['press']}; }}
 QToolButton#toolbtn:checked {{ background: {c['accent']}; border-color: {c['accent']}; }}
 QToolButton#toolbtn:disabled {{ background: transparent; }}
 QToolButton#toolbtn::menu-indicator {{ image: none; }}
-QToolButton#quietbtn {{ background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 3px; }}
+QToolButton#quietbtn {{ background: transparent; border: 1px solid transparent; border-radius: {RADIUS['m']}px; padding: 3px; }}
 QToolButton#quietbtn:hover {{ background: {c['hover']}; }}
 QToolButton#quietbtn:checked {{ background: {c['field']}; border-color: {c['border']}; }}
 QToolButton#playbtn {{ background: {c['accent']}; border: 1px solid {c['accent']}; border-radius: 18px; padding: 0; }}
@@ -190,31 +193,27 @@ QFrame#noticebar {{ background: {c['field']}; border: none; border-bottom: 1px s
     border-left: 3px solid {c['accent']}; }}
 QFrame#noticebar QLabel {{ color: {c['head']}; }}
 QLabel#savestatus {{ color: {c['dim']}; padding: 0 4px; }}
-QFrame#keyhelp {{ background: {c['panel']}; border: 1px solid {c['border']}; border-radius: 10px; }}
+QFrame#keyhelp {{ background: {c['panel']}; border: 1px solid {c['border']}; border-radius: {RADIUS['xl']}px; }}
 QLabel#keyhelptitle {{ font-weight: 700; color: {c['head']}; }}
-QLabel#keyhelphead {{ font-size: {px(11)}; font-weight: 700; color: {c['dim']}; letter-spacing: 1px; padding-bottom: 2px; }}
-QLabel#kbd {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: 4px; padding: 1px 6px;
+QLabel#keyhelphead {{ font-size: {px(TYPE['label'])}; font-weight: 700; color: {c['dim']}; letter-spacing: 1px; padding-bottom: 2px; }}
+QLabel#kbd {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: {RADIUS['s']}px; padding: 1px 6px;
     color: {c['head']}; }}
 QFrame#inspector QPushButton, QFrame#panel QPushButton {{ padding: 4px 10px; }}
 QFrame#inspector QComboBox {{ padding: 3px 26px 3px 8px; }}
 QFrame#inspector QLineEdit {{ padding: 4px 8px; }}
-QSlider::groove:horizontal {{ height: 4px; background: {c['border']}; border-radius: 2px; }}
-QSlider::sub-page:horizontal {{ background: {c['accent']}; border-radius: 2px; }}
+QSlider::groove:horizontal {{ height: 4px; background: {c['border']}; border-radius: {RADIUS['xs']}px; }}
+QSlider::sub-page:horizontal {{ background: {c['accent']}; border-radius: {RADIUS['xs']}px; }}
 QSlider::handle:horizontal {{ width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; background: {c['head']};
     border: 1px solid {c['border']}; }}
 QSlider::handle:horizontal:hover {{ background: {c['accent']}; }}
 QSlider::sub-page:horizontal:disabled {{ background: {c['border']}; }}
 QListView#media {{ background: transparent; border: none; outline: 0; }}
-QListWidget#marks {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 2px; outline: 0; }}
-QListWidget#marks::item {{ padding: 4px 6px; border-radius: 4px; }}
-QListWidget#marks::item:selected {{ background: {c['select']}; color: #ffffff; }}
+QListWidget#marks {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: {RADIUS['m']}px; padding: 2px; outline: 0; }}
+QListWidget#marks::item {{ padding: 4px 6px; border-radius: {RADIUS['s']}px; }}
+QListWidget#marks::item:selected {{ background: {c['select']}; color: {c['on_select']}; }}
 QListWidget#marks::item:hover:!selected {{ background: {c['hover']}; }}
-QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
-QScrollBar::handle:horizontal {{ background: {c['hover']}; border-radius: 4px; min-width: 30px; }}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QProgressBar#busy {{ max-height: 4px; min-height: 4px; }}
 QFrame#section {{ background: transparent; border: none; border-bottom: 1px solid {c['border']}; }}
-QFrame#section:last {{ border-bottom: none; }}
 QPushButton[class="swatch"] {{ border: 2px solid {c['border']}; border-radius: 11px; padding: 0; }}
 QPushButton[class="swatch"]:checked {{ border: 2px solid {c['head']}; }}
 """
@@ -313,7 +312,7 @@ class EditorWindow(MontageMixin, MusicMixin, ProjectMixin, ClipBase):
 
     def _build(self, mode, sound):
         c = self.colours = qt_theme.colours(self.dark)
-        self.setStyleSheet((self.styleSheet() or "") + editor_qss(c))
+        self.setStyleSheet((self.styleSheet() or "") + editor_qss(c, qt_theme.current_zoom()))   # 1.22.3: zoom
         self.ratio = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
