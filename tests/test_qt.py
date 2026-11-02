@@ -78,7 +78,7 @@ def test_overview_with_a_map_in_a_round():
     timer, server, ping, who = o.facts
     assert timer.value == "01:05" and server.value == "Frankfurt" and ping.value == "31 ms" and who.value == "Oni"
     assert "1.2.3.4" not in repr(o)                                 # never the server address
-    assert o.today[0].value == "1" and o.rounds == [("Coal Tower", "Oni · 09:00")]
+    assert o.today[0].value == "1" and [tuple(r[:2]) for r in o.rounds] == [("Coal Tower", "Oni · 09:00")]
 
 
 def test_overview_doubt_and_unknown():
@@ -2196,3 +2196,85 @@ def test_the_name_column_is_never_squeezed_below_its_contents(qapp, keep):
     qapp.processEvents()
     assert few.header().sectionResizeMode(0) == few.header().ResizeMode.Stretch
     assert few.columnWidth(0) >= need
+
+
+def test_the_play_button_of_an_overview_round_shows_only_with_a_recording(qapp, keep):
+    """1.17.1: ▶ only on a row whose round has a recording – also while the window was never shown (isVisible() is
+    False then: every row kept its ▶); a click on the row posts ov_round, ▶ posts ov_recording."""
+    from fogscout import overview
+    from fogscout.qt_pages import RoundRowView
+    posted = []
+    rows = [keep(RoundRowView(lambda a, arg=None: posted.append((a, arg)))) for _i in range(2)]
+    rows[0].show_round(overview.RoundRow("Coal Tower", "Nurse", 10.0, None))
+    rows[1].show_round(overview.RoundRow("Coal Tower", "Nurse", 20.0, "/r/a.mkv"))
+    assert rows[0].play.isHidden() and not rows[1].play.isHidden()
+    rows[1].show_round(overview.RoundRow("Dead Sands", "Survivor", 30.0, None))          # refilled without one
+    assert rows[1].play.isHidden()
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    ev = QMouseEvent(QMouseEvent.Type.MouseButtonPress, QPointF(5, 5), QPointF(5, 5), Qt.LeftButton, Qt.LeftButton,
+                     Qt.NoModifier)
+    rows[0].mousePressEvent(ev)
+    rows[0].show_round(overview.RoundRow("Coal Tower", "Nurse", 10.0, "/r/b.mkv"))
+    rows[0].play.click()
+    assert posted == [("ov_round", 10.0), ("ov_recording", 10.0)]
+
+
+def test_a_long_hint_on_its_own_line_wraps_at_a_readable_width_and_shows_every_line(qapp, keep):
+    """1.17.1: a hint alone in a column wraps at about HINT_CHARS characters instead of running across the card, its
+    height is that of the capped width (the page's layouts ask with the full width – the last lines were cut);
+    beside a button in a row it still takes the room."""
+    from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+    from fogscout import qt_pages
+    text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 12
+    col = keep(QWidget())
+    v = QVBoxLayout(col)
+    alone = qt_pages.HintLabel()
+    alone.setText(text)
+    v.addWidget(alone)
+    row = QHBoxLayout()
+    v.addLayout(row)
+    row.addWidget(QPushButton("Ordner wählen …"))
+    beside = qt_pages.HintLabel()
+    beside.setText("/ein/langer/pfad/zum/aufnahmeordner")
+    row.addWidget(beside, 1)
+    col.resize(1800, 600)
+    col.show()
+    qapp.processEvents()
+    cap = alone.fontMetrics().averageCharWidth() * qt_pages.HINT_CHARS
+    assert alone.width() <= cap < 1800 and alone.maximumWidth() == cap
+    assert alone.heightForWidth(1800) == alone.heightForWidth(cap) > alone.fontMetrics().height() * 3
+    assert alone.height() >= alone.heightForWidth(cap)                  # every line has room
+    assert beside.maximumWidth() > 10000 and beside.width() > cap / 2   # in a row: no cap
+
+
+def test_page_keys_never_get_in_the_way_of_typing(qapp, keep):
+    """1.17.1: Ctrl+1 … Ctrl+9 open pages, but digits typed into the search field or a spin box stay there (no page
+    change); no key sequence is bound twice in the window."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QShortcut
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QSpinBox
+    from fogscout import qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.show()
+    win.activateWindow()
+    qapp.processEvents()
+    keys = [k.toString() for s in win.findChildren(QShortcut) for k in s.keys()]
+    assert len(keys) == len(set(keys)), sorted(k for k in keys if keys.count(k) > 1)
+    start = win.current_key()
+    win.search.setFocus()
+    QTest.keyClicks(win.search, "123")
+    assert win.search.text() == "123" and win.current_key() == start
+    spin = QSpinBox(win.overview)
+    spin.setRange(0, 999)
+    spin.show()
+    spin.setFocus()
+    spin.selectAll()
+    QTest.keyClicks(spin, "42")
+    assert spin.value() == 42 and win.current_key() == start
+    QTest.keyClick(win, Qt.Key_3, Qt.ControlModifier)
+    qapp.processEvents()
+    assert win.current_key() == win.nav_keys()[2]
+    win.allow_close = True
+    win.close()
