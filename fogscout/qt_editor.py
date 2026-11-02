@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCh
 
 from . import annotate, clipedit, imageedit, medialib, obsrec, project, qt_icons, qt_theme, sequence
 from .i18n import N_, _
+from .editormusic import MusicMixin
 from .editorproject import ProjectMixin
 from .qt_clip import (CENSOR_LABELS, CONTENT_LABEL, CROP_LABELS, DRAW_TOOLS, MARK_AFTER_S, MARK_BEFORE_S, SHOW_FOR,
                       SIZE_LABELS, SPEED_LABELS, STEP_BIG, STEP_SMALL, ClipBase, PreviewView)
@@ -250,7 +251,7 @@ class Section(QFrame):
         return r
 
 
-class EditorWindow(ProjectMixin, ClipBase):
+class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
     """The full editor – see the module's docstring. ``media`` = the App's list of MediaItems for the library
     (callable), ``on_open(item, window)`` = the App opens another recording (a new window; ``window`` = this one, to
     be replaced when nothing was edited here), ``cache_dir`` = where the library's pictures are kept,
@@ -275,6 +276,7 @@ class EditorWindow(ProjectMixin, ClipBase):
         self._applying = False
         self._zoom_edit = None              # 1.19: (clip index, 0 start / 1 end) while the zoom frame is edited
         self._short = None                  # 1.20: shorts.ShortSpec of this cut (layout, title, subtitles)
+        self._music_init()                  # 1.21: the own audio track A2 (editormusic)
         self._short_view = False            # 1.20: the preview shows the composed short
         self._crop_saved = (None, None, False)
         super().__init__(path, marks, clips_dir, mode, sound, flags=Qt.Window, **kw)
@@ -1191,6 +1193,7 @@ class EditorWindow(ProjectMixin, ClipBase):
     def _section_sound(self, sec, mode):
         sec.body.addLayout(self._mix_row(stacked=True))
         self.mix_label.setVisible(False)                     # the section has the heading
+        self._section_music(sec, mode)                       # 1.21: the own audio track A2
 
     def _section_export(self, sec, mode):
         self._mode_boxes(mode)
@@ -1260,6 +1263,7 @@ class EditorWindow(ProjectMixin, ClipBase):
         self.timeline.edited.connect(self._timeline_edited)
         self.timeline.picked.connect(self._timeline_pick)
         self.timeline.dropped.connect(self._dropped)
+        self._music_wire(self.timeline)                      # 1.21: the own audio track A2
         self.timeline.viewed.connect(self._sync_scroll)
         lay.addWidget(self.timeline)
         self.tl_scroll = QScrollBar(Qt.Horizontal)
@@ -1449,7 +1453,7 @@ class EditorWindow(ProjectMixin, ClipBase):
                                   [replace(s, pts=list(s.pts)) for s in self.preview.shapes],
                                   float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
                                   [list(b) for b in self.preview.boxes], self._censor_on, self._censor_style,
-                                  self._short.copy() if self._short is not None else None)
+                                  self._short.copy() if self._short is not None else None, self._music_state())
 
     def _apply(self, state: sequence.EditState):
         """Show ``state`` (undo/redo, a loaded project) without writing history."""
@@ -1457,6 +1461,7 @@ class EditorWindow(ProjectMixin, ClipBase):
         self._short = state.short.copy() if getattr(state, "short", None) is not None else None
         self._applying = True
         try:
+            self._music_apply(getattr(state, "music", None))     # 1.21
             self.parts = [replace(p) for p in state.parts]
             self.timeline.set_parts(self.parts)
             key = state.crop_key if state.crop else "none"
@@ -1750,6 +1755,8 @@ class EditorWindow(ProjectMixin, ClipBase):
         self.status.setText(_("Clip geteilt – jetzt {n} Clips.", n=len(self.parts)))
 
     def delete_selected(self):
+        if self.timeline.music_sel is not None and self._music_remove():   # 1.21: a clip on A2
+            return
         i = self.timeline.selection
         if i is None:
             return
@@ -1811,6 +1818,8 @@ class EditorWindow(ProjectMixin, ClipBase):
         self._inspector_refresh()
 
     def _timeline_pick(self, ident, t, i):
+        if self._music_pick(ident, t, i):                        # 1.21: the menu of A2
+            return
         if ident == "seek":
             self.goto(t)
         elif ident == "split":
@@ -1868,7 +1877,7 @@ class EditorWindow(ProjectMixin, ClipBase):
         shapes = [replace(s, pts=list(s.pts)) for s in self.preview.shapes if s.kind != "text" or s.text.strip()]
         return clipedit.Edit([replace(p) for p in self.parts], crop, shapes,
                              float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
-                             self._short.copy() if self._short is not None else None)
+                             self._short.copy() if self._short is not None else None, self._music_state())
 
     def _saving(self, on: bool):
         self.busy.setVisible(on)
@@ -2194,6 +2203,9 @@ class EditorWindow(ProjectMixin, ClipBase):
         done = False
         if self.timeline.selection is not None:
             self.timeline.select(None)
+            done = True
+        if self.timeline.music_sel is not None:                  # 1.21
+            self.timeline.select_music(None)
             done = True
         pv = self.preview
         if pv.selected is not None:
