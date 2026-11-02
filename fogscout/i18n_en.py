@@ -2754,7 +2754,12 @@ EN = {
     "Ganze Zeitleiste zeigen": "Show the whole timeline",
     "Auswählen": "Select",
     "Bildausschnitt": "Crop",
-    "Vollbild verlassen, sonst zurück zu Auswählen, sonst schliessen": "Leave full screen, else back to select, else close",
+    "Ziehen abbrechen, sonst zurück zu Auswählen, sonst Auswahl aufheben, sonst Vollbild verlassen – schliesst nie":
+        "Cancel the drag, else back to select, else clear the selection, else leave full screen – never closes",
+    "Strg+W": "Ctrl+W",
+    "Editor schliessen": "Close the editor",
+    "Abgebrochen.": "Cancelled.",
+    "Esc schliesst den Editor nicht – schliessen mit × oder Strg+W.": "Esc does not close the editor – close it with × or Ctrl+W.",
     "Strg+Z / Strg+Y": "Ctrl+Z / Ctrl+Y",
     "Rückgängig / Wiederholen": "Undo / redo",
     "Strg+S": "Ctrl+S",

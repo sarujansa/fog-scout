@@ -411,7 +411,7 @@ def test_every_key_in_the_help_does_what_it_says(qapp, clip, tmp_path, monkeypat
     from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut
     from fogscout import qt_editor, qt_timeline
     calls = []
-    quiet = {"save", "toggle_play", "toggle_fullscreen", "save_project"}       # would export / play / go full screen
+    quiet = {"save", "toggle_play", "toggle_fullscreen", "save_project", "close"}   # export / play / full screen / close
 
     def spy(cls, name):
         orig = getattr(cls, name)
@@ -462,6 +462,7 @@ def test_every_key_in_the_help_does_what_it_says(qapp, clip, tmp_path, monkeypat
                         assert name in calls, (keys, chk, calls)
         assert win.isVisible()                                 # Esc went back to select, it did not close
     finally:
+        monkeypatch.undo()                                     # the real close again
         win.close()
 
 
@@ -511,4 +512,199 @@ def test_no_key_is_bound_twice_in_the_editor(qapp, clip, tmp_path):
                         seq = QKeySequence(qt_editor.Qt.KeyboardModifier(chk[1]).value | chk[0]).toString()
                         assert seq not in keys, seq
     finally:
+        win.close()
+
+
+def _press_esc(win):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    win.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key_Escape, Qt.NoModifier, ""))
+
+
+def _on_picture(view, kind, fx, fy):
+    f = view.frame_rect()
+    _mouse(view, kind, f.left() + fx * f.width(), f.top() + fy * f.height())
+
+
+def test_esc_goes_one_step_per_press_and_never_closes_the_editor(qapp, clip, tmp_path):
+    """1.18 (user: „Esc darf den Editor nie schliessen“, order F2): with a tool on, a clip marked and the full screen,
+    each Esc does one thing – tool back to select, then the selection goes, then the full screen ends – and further
+    presses leave the window open (one hint in the status line)."""
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.goto(6.0)
+        win.split_at_playhead()
+        win.timeline.select(0)
+        win.mode_btns["draw"].setChecked(True)
+        win.toggle_fullscreen()
+        assert win.mode == "draw" and win.timeline.selection == 0 and win._fullscreen is not None
+        _press_esc(win)
+        assert win.mode == "select" and win.timeline.selection == 0 and win._fullscreen is not None
+        _press_esc(win)
+        assert win.timeline.selection is None and win._fullscreen is not None
+        _press_esc(win)
+        assert win._fullscreen is None and win.isVisible()
+        _press_esc(win)
+        assert win.isVisible() and "Strg+W" in win.status.text()
+        for _i in range(3):
+            _press_esc(win)
+        assert win.isVisible()
+    finally:
+        win.close()
+
+
+def test_esc_cancels_a_trim_and_a_clip_move_without_an_undo_step(qapp, clip, tmp_path):
+    """1.18: Esc during a drag on the timeline – the clips stay as they were, no undo step, and the release that
+    follows changes nothing."""
+    win = _window(qapp, clip, tmp_path)
+    tl = win.timeline
+    try:
+        win.goto(6.0)
+        win.split_at_playhead()
+        before = [(p.start, p.end) for p in win.parts]
+        steps = len(win.history._past)
+        r0 = tl.clip_rect(0)
+        x_edge = r0.right()
+        _mouse(tl, "press", x_edge - 1, r0.center().y())
+        _mouse(tl, "move", x_edge - 2 * tl.scale, r0.center().y())
+        assert tl.gesture_active()
+        _press_esc(win)
+        assert not tl.gesture_active() and win.status.text() == "Abgebrochen."
+        _mouse(tl, "move", x_edge - 3 * tl.scale, r0.center().y())
+        _mouse(tl, "release", x_edge - 3 * tl.scale, r0.center().y())
+        assert [(p.start, p.end) for p in win.parts] == before and len(win.history._past) == steps
+        r1 = tl.clip_rect(1)                                                  # the second clip dragged to the front
+        _mouse(tl, "press", r1.center().x(), r1.center().y())
+        _mouse(tl, "move", r1.center().x() - 20, r1.center().y())
+        _mouse(tl, "move", tl.clip_rect(0).left() + 2, r1.center().y())
+        assert tl._drag[0] == "move"
+        _press_esc(win)
+        _mouse(tl, "release", tl.clip_rect(0).left() + 2, r1.center().y())
+        assert [(p.start, p.end) for p in win.parts] == before and len(win.history._past) == steps
+    finally:
+        win.close()
+
+
+def test_moving_a_drawing_or_a_box_changes_nothing_until_release_and_esc_drops_it(qapp, clip, tmp_path):
+    """1.18: a drawing or censor box being moved is a copy until the release (a save in between sees the state
+    before the drag); Esc drops the copy – no undo step; a normal release takes it over as one step."""
+    win = _window(qapp, clip, tmp_path)
+    pv = win.preview
+    try:
+        win.mode_btns["draw"].setChecked(True)
+        win.draw_btns["rect"].setChecked(True)
+        _on_picture(pv, "press", 0.2, 0.2)
+        _on_picture(pv, "move", 0.5, 0.5)
+        _on_picture(pv, "release", 0.5, 0.5)
+        assert len(pv.shapes) == 1
+        pts = list(pv.shapes[0].pts)
+        steps = len(win.history._past)
+        _on_picture(pv, "press", 0.2, 0.35)                                   # grab it at its edge
+        _on_picture(pv, "move", 0.3, 0.45)
+        assert pv.gesture_active() and pv.shapes[0].pts == pts                # the list keeps the original
+        assert [list(s.pts) for s in win._state().shapes] == [pts]
+        _press_esc(win)
+        assert not pv.gesture_active() and win.mode == "draw"                 # Esc ended the drag, not the tool
+        _on_picture(pv, "release", 0.3, 0.45)
+        assert pv.shapes[0].pts == pts and len(win.history._past) == steps
+        _on_picture(pv, "press", 0.2, 0.35)                                   # moved for real: one step
+        _on_picture(pv, "move", 0.3, 0.45)
+        _on_picture(pv, "release", 0.3, 0.45)
+        assert pv.shapes[0].pts != pts and len(win.history._past) == steps + 1
+        # a censor box
+        win.mode_btns["censor"].setChecked(True)
+        pv.add_box([0.1, 0.1, 0.2, 0.2])
+        box = list(pv.boxes[-1])
+        steps = len(win.history._past)
+        _on_picture(pv, "press", 0.2, 0.2)
+        _on_picture(pv, "move", 0.4, 0.4)
+        assert pv.boxes[-1] == box and pv._boxes_shown()[-1] != box
+        _press_esc(win)
+        _on_picture(pv, "release", 0.4, 0.4)
+        assert pv.boxes[-1] == box and len(win.history._past) == steps
+        _on_picture(pv, "press", 0.2, 0.2)
+        _on_picture(pv, "move", 0.4, 0.4)
+        _on_picture(pv, "release", 0.4, 0.4)
+        assert pv.boxes[-1] != box and len(win.history._past) == steps + 1
+    finally:
+        win.close()
+
+
+def test_esc_in_a_text_field_only_leaves_the_field(qapp, clip, tmp_path):
+    """1.18: Esc while the project name has the focus – the focus goes back to the window, the text stays, the
+    window stays open (before 1.18 the key reached the window and closed it)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.activateWindow()
+        win.name_edit.setFocus()
+        win.name_edit.setText("Mein Clip")
+        qapp.processEvents()
+        QTest.keyClick(win.name_edit, Qt.Key_Escape)
+        qapp.processEvents()
+        assert win.isVisible() and win.name_edit.text() == "Mein Clip"
+        assert QApplication.focusWidget() is not win.name_edit
+    finally:
+        win.close()
+
+
+def test_ctrl_w_closes_the_editor(qapp, clip, tmp_path):
+    """1.18 (F6): Strg+W closes the editor (Esc does not)."""
+    import shiboken6
+    from PySide6.QtGui import QKeySequence, QShortcut
+    win = _window(qapp, clip, tmp_path)
+    sc = next(s for s in win.findChildren(QShortcut) if QKeySequence("Ctrl+W") in s.keys())
+    sc.activated.emit()
+    qapp.processEvents()
+    assert not shiboken6.isValid(win) or not win.isVisible()             # closed (deleted on close)
+
+
+def test_the_compact_editor_still_closes_its_preview_on_esc(qapp, clip, tmp_path, monkeypatch):
+    """1.18 (F3): beside the tables Esc keeps closing the compact preview – it holds no project."""
+    from fogscout import qt_clip
+    closed = []
+    monkeypatch.setattr(qt_clip.ClipWindow, "close", lambda self: closed.append(True))
+    win = qt_clip.ClipWindow(clip, [], str(tmp_path / "Clips"), sound=False, compact=True)
+    try:
+        _press_esc(win)
+        assert closed == [True]
+    finally:
+        monkeypatch.undo()
+        win.close()
+
+
+def test_no_key_but_ctrl_w_closes_the_editor(qapp, clip, tmp_path, monkeypatch):
+    """1.18 guard: every key of the help (and Esc) pressed in every tool, with and without a marked clip, in and out
+    of the full screen – the window stays open. Exports, playback and project saves are stubbed."""
+    from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut
+    from fogscout import qt_editor
+    for name in ("save", "toggle_play", "save_project"):
+        monkeypatch.setattr(qt_editor.EditorWindow, name, lambda self, *a, **k: None)
+    win = _window(qapp, clip, tmp_path, marks=[3.0])
+    try:
+        shortcuts = [s for s in win.findChildren(QShortcut) if QKeySequence("Ctrl+W") not in s.keys()]
+        keys = [(c[0], c[1]) for _g, rows in qt_editor.SHORTCUTS for _k, _w, checks in rows for c in checks
+                if len(c) == 3] + [(qt_editor.Qt.Key_Escape, 0)]
+        for mode in ("select", "crop", "draw", "censor"):
+            for marked in (False, True):
+                for full in (False, True):
+                    win.mode_btns[mode].setChecked(True)
+                    if not win.parts:
+                        win.goto(0.0)
+                        win.clip_around_mark()
+                    win.timeline.select(0 if marked else None)
+                    if (win._fullscreen is not None) != full:
+                        win.toggle_fullscreen()
+                    for key, mods in keys:
+                        win.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, key, qt_editor.Qt.KeyboardModifier(mods), ""))
+                        assert win.isVisible(), (mode, marked, full, key)
+                    for sc in shortcuts:
+                        sc.activated.emit()
+                        assert win.isVisible(), (mode, marked, full, [k.toString() for k in sc.keys()])
+                    if getattr(win, "key_help", None) is not None:
+                        win.key_help.hide()
+    finally:
+        monkeypatch.undo()
         win.close()

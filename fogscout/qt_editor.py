@@ -15,8 +15,8 @@ from dataclasses import replace
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-                               QProgressBar, QPushButton, QScrollArea, QScrollBar, QSizePolicy, QSlider, QSplitter,
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QFrame, QGridLayout,
+                               QHBoxLayout, QLabel, QLineEdit, QListWidget, QProgressBar, QPushButton, QScrollArea, QScrollBar, QSizePolicy, QSlider, QSplitter,
                                QToolButton, QVBoxLayout)
 
 from . import annotate, clipedit, imageedit, medialib, obsrec, project, qt_icons, qt_theme, sequence
@@ -69,12 +69,14 @@ SHORTCUTS = (
         ("C", N_("Bildausschnitt"), ((Qt.Key_C, 0, "mode:crop"),)),
         ("D", N_("Zeichnen"), ((Qt.Key_D, 0, "mode:draw"),)),
         ("X", N_("Zensieren"), ((Qt.Key_X, 0, "mode:censor"),)),
-        ("Esc", N_("Vollbild verlassen, sonst zurück zu Auswählen, sonst schliessen"),
+        ("Esc", N_("Ziehen abbrechen, sonst zurück zu Auswählen, sonst Auswahl aufheben, sonst Vollbild verlassen – "
+                   "schliesst nie"),
          ((Qt.Key_Escape, 0, "mode:select"),)))),
     (N_("Projekt"), (
         (N_("Strg+Z / Strg+Y"), N_("Rückgängig / Wiederholen"), (("Ctrl+Z", "undo"), ("Ctrl+Y", "redo"))),
         (N_("Strg+S"), N_("Projekt speichern"), (("Ctrl+S", "save_project"),)),
         (N_("Strg+E"), N_("Exportieren"), (("Ctrl+E", "save"),)),
+        (N_("Strg+W"), N_("Editor schliessen"), (("Ctrl+W", "close"),)),
         ("?", N_("Diese Übersicht ein / aus"), ((Qt.Key_Question, 0, "help"),)))),
 )
 
@@ -264,6 +266,7 @@ class EditorWindow(ClipBase):
         self.setMinimumSize(MIN_W, MIN_H)
         self.setObjectName("editor")
         self.setAttribute(Qt.WA_DeleteOnClose)          # 1.16.1: the Qt side goes with the window (App prunes its list)
+        self.setFocus()                                 # 1.18: the keys belong to the window, not to the first text field
 
     # ---- set-up
     def _ready(self, ok: bool):
@@ -822,7 +825,8 @@ class EditorWindow(ClipBase):
         for std, extra, slot in ((QKeySequence.Undo, (), self.undo), (QKeySequence.Redo, ("Ctrl+Y",), self.redo),
                                  (QKeySequence.Save, (), self.save_project), (None, ("Ctrl+E",), self.save),
                                  (None, ("Ctrl+0",), lambda: self.timeline.zoom_fit()),
-                                 (None, ("Ctrl+B",), self.split_at_playhead)):
+                                 (None, ("Ctrl+B",), self.split_at_playhead),
+                                 (None, ("Ctrl+W",), self.close)):             # 1.18: Esc no longer closes
             keys = list(QKeySequence.keyBindings(std)) if std is not None else []
             keys += [QKeySequence(k) for k in extra if QKeySequence(k) not in keys]
             sc = QShortcut(self)
@@ -1640,14 +1644,59 @@ class EditorWindow(ClipBase):
             else:
                 self.delete_selected()
         elif k == Qt.Key_Escape:
-            if self._fullscreen is not None:
-                self.toggle_fullscreen()
-            elif self.mode != "select":
-                self.mode_btns["select"].setChecked(True)
-            else:
-                self.close()
+            self._escape()
         else:
             super().keyPressEvent(e)
+
+    def _escape(self):
+        """1.18 (user: „Esc darf den Editor nie schliessen“): one step per press – the focus leaves a text field, else
+        a drag under way is cancelled (nothing of it stays, no undo step), else the tool goes back to select, else the
+        selection goes, else the full screen ends. Nothing closes the window but × and Strg+W."""
+        fw = QApplication.focusWidget()
+        if isinstance(fw, (QLineEdit, QAbstractSpinBox)) and self.isAncestorOf(fw):
+            fw.clearFocus()
+            self.setFocus()
+            return
+        if self.preview.cancel_gesture():
+            self.status.setText(_("Abgebrochen."))
+            return
+        if self.timeline.cancel_gesture():
+            self.goto(self.pos)                                  # a trim showed its edge: back to the playhead
+            self.status.setText(_("Abgebrochen."))
+            return
+        if self.mode != "select":
+            self.mode_btns["select"].setChecked(True)
+            return
+        if self._clear_selection():
+            return
+        if self._fullscreen is not None:
+            self.toggle_fullscreen()
+            return
+        if not getattr(self, "_esc_hinted", False):
+            self._esc_hinted = True
+            self.status.setText(_("Esc schliesst den Editor nicht – schliessen mit × oder Strg+W."))
+
+    def _clear_selection(self) -> bool:
+        """1.18: the marked clip, drawing, censor box and mark are unmarked; False when nothing was marked."""
+        done = False
+        if self.timeline.selection is not None:
+            self.timeline.select(None)
+            done = True
+        pv = self.preview
+        if pv.selected is not None:
+            pv.selected = None
+            pv.update()
+            done = True
+        if pv.shape_sel is not None:
+            pv.shape_sel = None
+            pv.update()
+            pv.shape_picked.emit(-1)
+            done = True
+        if self.mark_list.currentRow() >= 0 or self.mark_list.selectedItems():
+            self.mark_list.clearSelection()
+            self.mark_list.setCurrentRow(-1)
+            done = True
+        return done
 
     def closeEvent(self, e):
         self._layout_save()
