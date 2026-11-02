@@ -74,9 +74,11 @@ def output_at(parts, i: int, src: float) -> float:
     return starts(parts)[i] + ((p.end - src) if p.reverse else (src - p.start)) / max(0.01, p.speed)
 
 
-def occurrences(parts, src: float) -> list:
-    """Every output time at which source second ``src`` plays (a part used twice shows a mark twice)."""
-    return [output_at(parts, i, src) for i, p in enumerate(parts) if p.start - 1e-9 <= src <= p.end + 1e-9]
+def occurrences(parts, src: float, source: int | None = None) -> list:
+    """Every output time at which source second ``src`` plays (a part used twice shows a mark twice); 1.22:
+    ``source`` = only the parts of that montage source (None: any)."""
+    return [output_at(parts, i, src) for i, p in enumerate(parts) if p.start - 1e-9 <= src <= p.end + 1e-9
+            and (source is None or getattr(p, "src", 0) == source)]
 
 
 def split(parts, t: float) -> tuple[list, int | None]:
@@ -147,7 +149,7 @@ def insert_hold(parts, t: float, seconds: float) -> tuple[list, int | None]:
     p = parts[i]
     seconds = min(max(0.1, float(seconds)), HOLD_MAX_S)
     at = p.start if p.hold > 0 else min(src, max(p.start, p.end - HOLD_READ_S))
-    still = Part(at, at, 1.0, color=p.color, hold=seconds)      # the clip's colour comes along
+    still = Part(at, at, 1.0, color=p.color, hold=seconds, src=p.src)   # the clip's colour (and file) come along
     out, j = split(parts, t)
     if j is None:                                       # on an edge (or a still): before or after the clip
         st = starts(parts)
@@ -217,13 +219,14 @@ class EditState:
     censor_style: str = "pixel"
     short: object = None                     # 1.20: shorts.ShortSpec – layout, title, subtitles of a vertical short
     music: object = None                     # 1.21: musictrack.MusicSpec – the track A2 and how it mixes
+    sources: list = field(default_factory=list)   # 1.22: a montage's recordings (paths, Part.src indexes them)
 
     def copy(self) -> "EditState":
         return EditState([replace(p) for p in self.parts], self.crop, self.crop_key,
                          [replace(s, pts=list(s.pts)) for s in self.shapes], self.fade_in, self.fade_out,
                          [list(b) for b in self.boxes], self.censor_on, self.censor_style,
                          self.short.copy() if self.short is not None else None,
-                         self.music.copy() if self.music is not None else None)
+                         self.music.copy() if self.music is not None else None, list(self.sources))
 
 
 class History:
