@@ -54,7 +54,8 @@ def _window(app, clip, tmp_path, **kw):
     win = qt_editor.EditorWindow(clip, kw.pop("marks", []), str(tmp_path / "Clips"), sound=False, **kw)
     win.resize(1400, 860)
     win.show()
-    assert _pump(app, lambda: win.preview._img is not None and (win.loading is None or win.loading.finished))
+    assert _pump(app, lambda: win.preview._img is not None and (win.loading is None or win.loading.finished)
+                 and win._pstate != "loading")                     # 1.18.1: the project lookup is through
     return win
 
 
@@ -178,14 +179,21 @@ def test_a_project_is_saved_and_comes_back_when_the_recording_opens_again(qapp, 
         win.fade_out_box.setCurrentIndex(win.fade_out_box.findData(1.0))
         win.name_edit.setText("Nurse Doppel-Blink")
         win.name_edit.setModified(True)
-        win.save_project()
-        path = project.project_path(str(tmp_path / "Clips"), clip)
-        assert os.path.isfile(path) and "Projekt gespeichert" in win.status.text()
+        win.save_project()                                                    # 1.18.1: format 2 through projectsave
+        slot = win._slot
+        assert _pump(qapp, lambda: slot.has_file and slot.written_seq >= slot.latest_seq
+                     and (win._rec or {}).get("sha256") and slot.disk_meta and slot.disk_meta[0])
+        folder = str(tmp_path / "Clips" / project.PROJECT_DIR)
+        names = [n for n in os.listdir(folder) if n.endswith(project.EXT)]
+        assert names == [project.file_name2(clip, slot.pid)]
+        assert not os.path.exists(project.project_path(str(tmp_path / "Clips"), clip))     # never format 1 again
+        assert _pump(qapp, lambda: win.save_status.text().startswith("✓"))
         assert win.library.item_for(clip) is None                              # no App list here: nothing to flag
     finally:
         win.close()
     again = _window(qapp, clip, tmp_path)
     try:
+        assert _pump(qapp, lambda: again._project_loaded)
         assert [(round(p.start, 1), round(p.end, 1), p.speed) for p in again.parts] == [(0.0, 3.0, 1.0), (3.0, 12.0, 2.0)]
         assert len(again.preview.shapes) == 1 and again.fade_out_box.currentData() == 1.0
         assert again.name_edit.text() == "Nurse Doppel-Blink" and "Projekt geladen" in again.status.text()

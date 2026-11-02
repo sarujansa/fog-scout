@@ -573,3 +573,33 @@ def test_saved_is_shown_only_when_the_newest_state_reached_the_disk():
         if word == "saved":
             assert slot.written_seq == slot.latest_seq and not dirty and not gesture and slot.in_flight is None
             assert slot.status == "saved" and slot.has_file
+
+
+# ---- 1.18.1: wiring into the editor
+def test_a_hash_known_after_the_first_write_is_written_by_itself(tmp_path):
+    """The editor may save before the recording's full hash is known: the next job with the hash writes it even when
+    the content is the same (otherwise the next open could never assign the project automatically)."""
+    reg, slot, path = written_project(tmp_path)
+    assert slot.disk_meta == (None, None)
+    n = len(slot.written)
+    reg.submit(slot, "w1", content(), source={"file": "rec.mkv"})            # same content, still no hash: nothing
+    assert reg.wait_idle() and len(slot.written) == n
+    reg.submit(slot, "w1", content(), source={"file": "rec.mkv", "sha256": "a" * 64})
+    assert reg.wait_idle() and len(slot.written) == n + 1
+    assert load(path)["source"]["sha256"] == "a" * 64 and slot.disk_meta == ("a" * 64, None)
+    reg.submit(slot, "w1", content(), source={"file": "rec.mkv", "sha256": "a" * 64})
+    assert reg.wait_idle() and len(slot.written) == n + 1
+
+
+def test_a_new_project_makes_its_folder_but_a_vanished_folder_is_never_made_again(tmp_path):
+    reg = make_registry(tmp_path)
+    folder = tmp_path / "Clips" / project.PROJECT_DIR
+    path = str(folder / project.file_name2("rec.mkv", "q" * 32))
+    slot, _m = reg.claim(["q" * 32], "w1", path, "q" * 32)
+    reg.submit(slot, "w1", content(), source={"file": "rec.mkv"})
+    assert reg.wait_idle() and os.path.exists(path)
+    import shutil
+    shutil.rmtree(folder)                                                    # the whole folder gone (drive, user)
+    reg.submit(slot, "w1", content("later"), source={"file": "rec.mkv"})
+    assert reg.wait_idle()
+    assert not folder.exists() and slot.status in ("missing", "error")

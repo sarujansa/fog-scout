@@ -112,7 +112,9 @@ class _Bridge:
              "levels",       # 1.8.18: {track index: loudest moment in dB}
              "content",      # 1.12.6: the game part of a recording with black borders (x, y, w, h)
              "encoders",     # 1.15: {ffmpeg encoder: works} once the self-tests are through
-             "wave")         # 1.16: the loudness along the recording (clipedit.waveform) for the audio track
+             "wave",         # 1.16: the loudness along the recording (clipedit.waveform) for the audio track
+             "project",      # 1.18.1: the recording's identity and the project files found (editorproject)
+             "hash")         # 1.18.1: the full SHA-256 of the recording (filehash.Hasher: done/progress/…)
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
 
@@ -1099,6 +1101,11 @@ class LoadingScreen(QWidget):
             self.detail.setText(_("Lädt länger als erwartet – das Fenster ist trotzdem bedienbar."))
 
 
+# 1.18.1: settings a project keeps (an export choice changed = the project changed)
+CONTENT_SETTINGS = frozenset(("clip_mode", "clip_target_mb", "clip_mix_on", "clip_mix_vol", "clip_codec", "clip_quality",
+                              "clip_height", "clip_hw", "clip_censor_on", "clip_censor_style", "clip_censor_boxes"))
+
+
 class ClipBase(QWidget):
     """What every editor of one recording shares (1.16: split out of ClipWindow when the big editor became
     qt_editor.EditorWindow): the file and its facts, the bridge from the ffmpeg threads, the scrub/strip/level
@@ -1512,6 +1519,11 @@ class ClipBase(QWidget):
     def _setting(self, key, value):
         if self.on_setting:
             self.on_setting(key, value)
+        if key in CONTENT_SETTINGS:
+            self._changed()
+
+    def _changed(self):
+        """1.18.1: the project's content may have changed (the big editor saves it – editorproject)."""
 
     # ---- censoring (1.7.2)
     def _censor_args(self) -> dict:

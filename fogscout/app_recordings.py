@@ -6,8 +6,10 @@ deleted only when they are named in it.
 Mixin of App (app.py) – uses App's attributes; never imports app.py."""
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -32,6 +34,10 @@ REC_REFRESH_S = 20            # the table re-reads the index this often while th
 PREVIEW_DELAY_MS = 180               # 1.8.11: the clip preview is built once the marking stays
 SHOT_KINDS = [("all", N_("Alle Bilder")), ("taken", N_("Aufgenommen (F12)")), ("edited", N_("Bearbeitet"))]   # 1.12
 SHOT_THUMBS = os.path.join("cache", "shots")   # 1.12.2: the gallery's thumbnails (thumbs.py), gitignored
+SECURE_POLL_MS = 100                 # 1.18.1: quit phase 1 looks this often whether the editors' states are safe
+SECURE_NOTE_S = 1.0                  # … says so after this long
+SECURE_ASK_S = 10.0                  # … and asks after this long (never ends the process with a state unsaved)
+log = logging.getLogger("fogscout")
 SHOT_GALLERY_MIN_H = 460             # 1.12.2: px (logical) the gallery keeps on the scrolling page
 
 
@@ -886,7 +892,7 @@ class RecordingsTab:
         path = self._clip_editable(c)
         if path is None:
             return
-        win = self._clip_window(clip_round(c, obsrec.load_index(self.recorder.folder())), path)
+        win = self._editor_for(path) or self._clip_window(clip_round(c, obsrec.load_index(self.recorder.folder())), path)
         if at is not None and win.info.ok:
             win.take_over(*at)
         self._editor_show(win)
@@ -1164,14 +1170,106 @@ class RecordingsTab:
         path = self._rec_editable(r)
         if path is None:
             return
-        win = self._clip_window(r, path)
+        win = self._editor_for(path) or self._clip_window(r, path)
         if at is not None and win.info.ok:
             win.take_over(*at)
         self._editor_show(win)
 
+    def _editors(self) -> list:
+        """1.18.1: the big editor windows open now."""
+        self._clip_windows_prune()
+        out = []
+        for w in self._clip_windows:
+            try:
+                if not getattr(w, "compact", True) and not w._closed:
+                    out.append(w)
+            except RuntimeError:
+                continue
+        return out
+
+    def _editors_secure(self, flush: bool = True) -> bool:
+        """1.18.1 (plan 4.7, quit phase 1): every editor hands over its state (with the view, ``flush``), every
+        unconfirmed state gets a local copy too; True once nothing is unsaved anywhere – the program may end then."""
+        ps = sys.modules.get(__package__ + ".projectsave")
+        if ps is None or not ps._REGISTRY:                       # no editor was ever opened
+            return True
+        reg = ps._REGISTRY[0]
+        if flush:
+            for w in self._editors():
+                try:
+                    w.project_flush()
+                    w._closing_asked = True                      # closing at quit asks nothing (it is secured)
+                except Exception:
+                    log.exception("Editor sichern")
+            reg.secure_all()
+        return not reg.unsecured() and not reg.rescuing()
+
+    def _quit_phase1(self, then) -> bool:
+        """True when quitting/updating may go on now; else the states are secured first and ``then`` runs again
+        once they are (or the user chose to go on without them)."""
+        if getattr(self, "_secure_force", False) or self._editors_secure(flush=getattr(self, "_secure_job", None) is None):
+            return True
+        self._secure_then = then
+        if getattr(self, "_secure_job", None) is None:
+            self._secure_since = time.monotonic()
+            self._secure_noted = False
+            self._secure_job = self.root.after(SECURE_POLL_MS, self._secure_poll)
+        return False
+
+    def _secure_poll(self):
+        self._secure_job = None
+        if self._editors_secure(flush=False):
+            then, self._secure_then = self._secure_then, None
+            if then is not None:
+                then()
+            return
+        waited = time.monotonic() - self._secure_since
+        if waited >= SECURE_ASK_S:
+            self._secure_give_up()
+            return
+        if waited >= SECURE_NOTE_S and not self._secure_noted:
+            self._secure_noted = True
+            self._log(_("Editor-Projekte werden noch gesichert …"), "System")
+        self._secure_job = self.root.after(SECURE_POLL_MS, self._secure_poll)
+
+    def _secure_give_up(self):
+        """Nothing secured after SECURE_ASK_S (the disk hangs, the data folder is gone): the user decides. OK = end
+        without those states, Cancel = keep running (quitting again tries again)."""
+        if not self._ask(_("Editor-Projekte nicht gesichert"),
+                         _("Mindestens ein Editor-Stand ist weder im Projekt noch lokal gesichert (Speichern hängt "
+                           "oder der Ordner ist nicht erreichbar). Trotzdem beenden? Die ungesicherten Änderungen "
+                           "gehen dann verloren."), self._secure_give_up):
+            return
+        self._secure_force = True
+        then, self._secure_then = self._secure_then, None
+        if then is not None:
+            then()
+
+    def _hasher_tick(self):
+        """1.18.1: the full hash of a recording waits while a round is played (no disk load next to OBS)."""
+        fh = sys.modules.get(__package__ + ".filehash")
+        if fh is not None and fh._HASHER:
+            fh._HASHER[0].set_paused(self._round_running())
+
+    def _editor_for(self, path):
+        """1.18.1: the big editor already open on ``path`` – a second one would hold the same project (one window
+        per project; a hand-over then asks there, F1)."""
+        key = os.path.normcase(os.path.abspath(path))
+        self._clip_windows_prune()
+        for w in self._clip_windows:
+            try:
+                if not getattr(w, "compact", True) and not w._closed \
+                        and os.path.normcase(os.path.abspath(w.path)) == key:
+                    return w
+            except RuntimeError:
+                continue
+        return None
+
     def _editor_show(self, win, replacing=None):
         """An editor window goes up (1.16: ``replacing`` = the editor it takes the place of – same geometry, that
         one closes)."""
+        if replacing is win:
+            replacing = None
         if replacing is not None:
             try:
                 win.setGeometry(replacing.geometry())
@@ -1182,7 +1280,10 @@ class RecordingsTab:
             if maxed:
                 win.showMaximized()
         self._clip_windows_prune()
-        self._clip_windows.append(win)
+        if win not in self._clip_windows:
+            self._clip_windows.append(win)
+        if win.isMinimized():
+            win.showNormal()
         win.show()
         win.raise_()
         win.activateWindow()
@@ -1230,6 +1331,12 @@ class RecordingsTab:
         if not os.path.exists(item.path) or obsrec.ffmpeg_exe() is None:
             self._log(_("Aufnahme fehlt: {file}", file=os.path.basename(item.path)), "Fehler")
             return
+        found = self._editor_for(item.path)
+        if found is not None:                                      # open already: that window comes up …
+            if replacing is not None and replacing is not found:
+                replacing.close()                                  # … and the pristine one goes as it would have
+            self._editor_show(found)
+            return
         win = self._clip_window(r, item.path)
         self._editor_show(win, replacing)
 
@@ -1259,7 +1366,9 @@ class RecordingsTab:
             from .qt_editor import EditorWindow as Window
             extra.update(media=self._media_items, on_open=self._editor_open,
                          cache_dir=os.path.join(self.root_dir, "cache", "clipthumbs"),
-                         layout=self.settings.get("editor_layout") or {})
+                         layout=self.settings.get("editor_layout") or {},
+                         autosave=bool(self.settings.get("editor_autosave", True)),     # 1.18.1
+                         round_t=(getattr(r, "t", 0.0) or None))
         win = Window(path, r.marks, os.path.join(self.recorder.folder(), CLIPS_DIR),   # one "Clips" for all
                      mode=str(self.settings.get("clip_mode", "copy")), sound=bool(self.settings.get("clip_sound", True)),
                          on_setting=self.settings.set, log=self._log,

@@ -32,6 +32,15 @@ def _never_the_real_data_folder(monkeypatch, tmp_path_factory):
         return real()
     monkeypatch.setattr(paths, "_qt_location", guarded)
     yield
+    # the program's one registry and hasher belong to this test's data folder: the next test gets new ones
+    ps, fh = sys.modules.get("fogscout.projectsave"), sys.modules.get("fogscout.filehash")
+    if ps is not None and ps._REGISTRY:
+        ps._REGISTRY[0].wait_idle(10)
+        ps._REGISTRY[0].stop()
+        ps._REGISTRY.clear()
+    if fh is not None and fh._HASHER:
+        fh._HASHER[0].stop()
+        fh._HASHER.clear()
 
 
 @pytest.fixture(autouse=True)
