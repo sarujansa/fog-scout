@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCh
 
 from . import annotate, clipedit, imageedit, medialib, obsrec, project, qt_icons, qt_theme, sequence
 from .i18n import N_, _
+from .editorproject import ProjectMixin
 from .qt_clip import (CENSOR_LABELS, CONTENT_LABEL, CROP_LABELS, DRAW_TOOLS, MARK_AFTER_S, MARK_BEFORE_S, SHOW_FOR,
                       SIZE_LABELS, SPEED_LABELS, STEP_BIG, STEP_SMALL, ClipBase, PreviewView)
 from .qt_common import guard_wheel
@@ -78,6 +79,10 @@ SHORTCUTS = (
         (N_("Strg+W"), N_("Editor schliessen"), (("Ctrl+W", "close"),)),
         ("?", N_("Diese Übersicht ein / aus"), ((Qt.Key_Question, 0, "help"),)))),
 )
+
+
+# 1.18.1: keys that change the cut – ignored while the recording is checked against a saved project
+EDIT_KEYS = frozenset((Qt.Key_I, Qt.Key_O, Qt.Key_S, Qt.Key_Delete, Qt.Key_Backspace, Qt.Key_C, Qt.Key_D, Qt.Key_X))
 
 
 class KeyHelp(QFrame):
@@ -239,14 +244,17 @@ class Section(QFrame):
         return r
 
 
-class EditorWindow(ClipBase):
+class EditorWindow(ProjectMixin, ClipBase):
     """The full editor – see the module's docstring. ``media`` = the App's list of MediaItems for the library
     (callable), ``on_open(item, window)`` = the App opens another recording (a new window; ``window`` = this one, to
     be replaced when nothing was edited here), ``cache_dir`` = where the library's pictures are kept,
-    ``layout`` = the splitter sizes remembered (setting editor_layout)."""
+    ``layout`` = the splitter sizes remembered (setting editor_layout). 1.18.1: ``registry`` (projectsave; tests),
+    ``autosave`` (setting editor_autosave), ``round_t`` (start of the round – part of the recording's identity)."""
 
     def __init__(self, path: str, marks: list, clips_dir: str, mode: str = "copy", sound: bool = True, media=None,
-                 on_open=None, cache_dir: str | None = None, layout: dict | None = None, **kw):
+                 on_open=None, cache_dir: str | None = None, layout: dict | None = None, registry=None,
+                 autosave: bool = True, round_t=None, **kw):
+        self._project_init(registry, autosave, round_t)
         self.media, self.on_open, self.cache_dir = media, on_open, cache_dir
         self._layout = dict(layout or {})
         self.parts = []
@@ -259,7 +267,6 @@ class EditorWindow(ClipBase):
         self._fullscreen = None             # what to restore when leaving the full screen
         self._layout_timer = None
         self._applying = False
-        self._project_loaded = False
         super().__init__(path, marks, clips_dir, mode, sound, flags=Qt.Window, **kw)
         self.resize(1480, 900)
         self.setMinimumSize(MIN_W, MIN_H)
@@ -276,17 +283,19 @@ class EditorWindow(ClipBase):
                 w.setEnabled(False)
             self.history = sequence.History(sequence.EditState([]))
             self._refresh_undo()
+            self._pstate = "unbound"                     # 1.18.1: an unreadable file has no project
+            self._status_tick()
             return
         first = self.marks[0] if self.marks else None
         if first is not None:                            # a mark: the clip starts 20 s before it, ends 10 s after
             self.parts = [clipedit.Part(max(0.0, first - MARK_BEFORE_S), min(self.info.duration, first + MARK_AFTER_S))]
         else:
             self.parts = [clipedit.Part(0.0, self.info.duration)]
-        self._load_project()
         self.history = sequence.History(self._state())
         self.timeline.set_parts(self.parts)
         self._refresh()
         self.goto(0.0)
+        self._project_begin()                            # 1.18.1: the project is looked up in a thread
 
     def _build(self, mode, sound):
         c = self.colours = qt_theme.colours(self.dark)
@@ -297,6 +306,9 @@ class EditorWindow(ClipBase):
         outer.setSpacing(0)
         self.topbar = self._build_topbar(c)
         outer.addWidget(self.topbar)
+        top = self.topbar.layout()
+        self._project_widgets(top, top.indexOf(self.name_edit) + 1)      # 1.18.1: save status and the notice bar
+        outer.addWidget(self.notice)
         self.vsplit = QSplitter(Qt.Vertical)
         self.vsplit.setChildrenCollapsible(False)
         self.hsplit = QSplitter(Qt.Horizontal)
@@ -331,6 +343,7 @@ class EditorWindow(ClipBase):
             sp.splitterMoved.connect(self._layout_changed)
         self._set_mode("select")
         self._mode_changed(self.mode_box.currentIndex(), save=False)
+        self.gif_box.currentIndexChanged.connect(lambda _i: self._changed())
         self._fill_library()
 
     def _tool(self, name, tip, slot=None, checkable=False, size=18, quiet=False):
@@ -821,10 +834,13 @@ class EditorWindow(ClipBase):
             self.key_help.place()
 
     def _shortcuts(self):
-        for std, extra, slot in ((QKeySequence.Undo, (), self.undo), (QKeySequence.Redo, ("Ctrl+Y",), self.redo),
+        def editing(fn):                                 # 1.18.1: nothing is edited while the recording is checked
+            return lambda: None if self._edit_locked() else fn()
+        for std, extra, slot in ((QKeySequence.Undo, (), editing(self.undo)),
+                                 (QKeySequence.Redo, ("Ctrl+Y",), editing(self.redo)),
                                  (QKeySequence.Save, (), self.save_project), (None, ("Ctrl+E",), self.save),
                                  (None, ("Ctrl+0",), lambda: self.timeline.zoom_fit()),
-                                 (None, ("Ctrl+B",), self.split_at_playhead),
+                                 (None, ("Ctrl+B",), editing(self.split_at_playhead)),
                                  (None, ("Ctrl+W",), self.close)):             # 1.18: Esc no longer closes
             keys = list(QKeySequence.keyBindings(std)) if std is not None else []
             keys += [QKeySequence(k) for k in extra if QKeySequence(k) not in keys]
@@ -889,8 +905,10 @@ class EditorWindow(ClipBase):
                 items = list(self.media() or [])
             except Exception:                           # the list is a convenience: never breaks the editor
                 items = []
+        # 1.18.1: the project files' heads (format 1 and 2, cached by mtime and size) say which rows have one
+        names = {e.source.get("file") for e in project.scan(os.path.join(self.clips_dir, project.PROJECT_DIR)) if e.ok}
         for it in items:
-            it.project = project.exists(self.clips_dir, it.path)
+            it.project = os.path.basename(it.path) in names
         self.library.set_items(items, current=self.path)
 
     def _open_media(self, item):
@@ -926,6 +944,8 @@ class EditorWindow(ClipBase):
     def event(self, e):
         if e.type() == QEvent.WindowActivate and getattr(self, "library", None) is not None and self._pumping_ok():
             self._fill_library()
+        elif e.type() == QEvent.WindowDeactivate and not self._closed:
+            self._submit(view_event=True)                # 1.18.1: focus away – the state with its view
         return super().event(e)
 
     def _pumping_ok(self) -> bool:
@@ -1007,6 +1027,7 @@ class EditorWindow(ClipBase):
             return
         if self.history.push(self._state(), key):
             self._refresh_undo()
+            self._changed()
         self._refresh()
 
     def _refresh_undo(self):
@@ -1019,12 +1040,14 @@ class EditorWindow(ClipBase):
         if self.history is not None and self.history.can_undo():
             self._apply(self.history.undo())
             self._refresh_undo()
+            self._changed()
             self.status.setText(_("Rückgängig."))
 
     def redo(self):
         if self.history is not None and self.history.can_redo():
             self._apply(self.history.redo())
             self._refresh_undo()
+            self._changed()
             self.status.setText(_("Wiederholt."))
 
     def _refresh(self):
@@ -1135,8 +1158,9 @@ class EditorWindow(ClipBase):
         self.preview.set_now(src)
         self._scrub(src, quick=True)
 
-    def take_over(self, start: float, end: float, pos: float):
-        """1.8.8: the compact editor hands over its range and position (source seconds)."""
+    def _apply_take_over(self, start: float, end: float, pos: float):
+        """1.8.8: the compact editor hands over its range and position (source seconds). 1.18.1: called by
+        ProjectMixin.take_over – once the project is known and the user agreed to replace its clips (F1)."""
         if not self.info.ok:
             return
         self.parts = [clipedit.Part(max(0.0, start), min(self.info.duration, max(start + 0.1, end)))]
@@ -1377,6 +1401,7 @@ class EditorWindow(ClipBase):
                 self.mode_btns["crop"].setChecked(True)
         if self._content_crop_auto and self.history is not None and not self.history.can_undo():
             self.history = sequence.History(self._state())      # found borders are the starting point, no step
+            self._baseline_moved()                              # 1.18.1: … and no change worth a project file
             self._refresh()
         else:
             self._commit()
@@ -1516,46 +1541,12 @@ class EditorWindow(ClipBase):
 
     # ---- projects (1.16)
     def _project_extra(self) -> dict:
-        return {"name": self.name_edit.text(), "mode": self.mode_box.currentData(), "target_mb": self._target_mb,
+        name = self.name_edit.text() if self.name_edit.isModified() else ""     # 1.18.1: the derived name is no work
+        return {"name": name, "mode": self.mode_box.currentData(), "target_mb": self._target_mb,
                 "gif_h": int(self.gif_box.currentData() or clipedit.DEFAULT_GIF_H),
                 "encoding": {"codec": self._encoding.codec, "quality": self._encoding.quality,
                              "height": int(self._encoding.height), "hw": self._encoding.hw},
                 "mix_on": dict(self._mix_on), "mix_vol": dict(self._mix_vol)}
-
-    def save_project(self):
-        if not self.info.ok:
-            return
-        path = project.project_path(self.clips_dir, self.path)
-        data = project.to_dict(self._state(), self.path, self.name_edit.text(), self._project_extra())
-        if project.save(path, data):
-            self.status.setText(_("Projekt gespeichert: {file}", file=os.path.basename(path)))
-            self.log(_("Projekt gespeichert: {file}", file=path), "System")
-            self.library.set_items(self.library.items, current=self.path)
-            it = self.library.item_for(self.path)
-            if it is not None:
-                it.project = True
-                self.library.view.viewport().update()
-        else:
-            self.status.setText(_("Projekt nicht gespeichert – Ordner nicht beschreibbar: {folder}",
-                                  folder=os.path.dirname(path)))
-
-    def _load_project(self):
-        """A saved project of this recording comes back when the editor opens (the hand-over of the compact editor
-        and „Clip um Marke“ still replace its clips)."""
-        data = project.load(project.project_path(self.clips_dir, self.path))
-        if data is None:
-            return
-        got = project.from_dict(data, self.info.duration)
-        if got is None:
-            return
-        state, extra = got
-        self._project_loaded = True
-        self._apply_project_extra(extra)
-        if state.crop_key == "content" and self.crop_box.findData("content") < 0:
-            self.crop_box.insertItem(1, _(CONTENT_LABEL), "content")
-        self._crop_chosen = state.crop is not None
-        self._apply(state)
-        self.status.setText(_("Projekt geladen: {name}", name=extra.get("name") or os.path.basename(self.path)))
 
     def _apply_project_extra(self, extra: dict):
         name = str(extra.get("name") or "")
@@ -1597,7 +1588,9 @@ class EditorWindow(ClipBase):
         k, mods = e.key(), e.modifiers()
         big, frame = bool(mods & Qt.ShiftModifier), bool(mods & Qt.ControlModifier)
         help_on = getattr(self, "key_help", None) is not None and not self.key_help.isHidden()
-        if k == Qt.Key_Question or e.text() == "?":
+        if k in EDIT_KEYS and self._edit_locked():
+            e.accept()                                     # 1.18.1: the recording is checked (editorproject)
+        elif k == Qt.Key_Question or e.text() == "?":
             self.toggle_help()
         elif k == Qt.Key_Escape and help_on:
             self.key_help.hide()
@@ -1698,6 +1691,10 @@ class EditorWindow(ClipBase):
         return done
 
     def closeEvent(self, e):
+        if not self._project_close_ok():                 # 1.18.1: the notice bar asks first (never a modal dialog)
+            e.ignore()
+            return
+        self._project_release()
         self._layout_save()
         lib = getattr(self, "library", None)
         if lib is not None:

@@ -554,6 +554,10 @@ def test_marking_a_recording_shows_the_compact_editor_beside_the_table(four_trac
         ed.expand_btn.click()
         full = app._clip_windows[-1]
         assert full is not ed and full.isWindow() and not full.compact
+        deadline = time.time() + 30                                 # 1.18.1: the hand-over waits for the project lookup
+        while time.time() < deadline and full._pstate == "loading":
+            qapp.processEvents()
+            time.sleep(0.01)
         assert [(p.start, p.end) for p in full.parts] == [(1.0, 3.0)] and full.pos == pytest.approx(1.0)   # 1.16: one clip
         assert len(probed) == 1 and full.info == ed.info and full.info is not ed.info    # the kept probe, a copy
         full.close()
@@ -752,6 +756,10 @@ def test_marking_a_clip_shows_the_compact_editor_beside_the_clips_table(four_tra
         ed.expand_btn.click()
         full = app._clip_windows[-1]
         assert full is not ed and full.isWindow() and not full.compact
+        deadline = time.time() + 30                                 # 1.18.1: the hand-over waits for the project lookup
+        while time.time() < deadline and full._pstate == "loading":
+            qapp.processEvents()
+            time.sleep(0.01)
         assert [(p.start, p.end) for p in full.parts] == [(1.0, 3.0)]
         full.close()
         app.clip_table.selection_set(rows["still.png"])                   # a still: nothing to play

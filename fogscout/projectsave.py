@@ -499,6 +499,12 @@ def status_of(slot, dirty: bool = False, gesture: bool = False, now: float | Non
 
 
 # ---- registry and slots (3.4)
+def source_meta(source) -> tuple:
+    """What of a job's ``source`` is worth a write by itself: the recording's full hash and who confirmed it."""
+    source = source if isinstance(source, dict) else {}
+    return (source.get("sha256"), source.get("verified"))
+
+
 class Job:
     __slots__ = ("seq", "content", "content_hash", "view", "view_event", "source", "kind")
 
@@ -525,6 +531,7 @@ class Slot:
         self.base_hash = None                 # full SHA-256 of the bytes last written/read by us (G1)
         self.disk_content_hash = None
         self.disk_view = None
+        self.disk_meta = None                  # (source sha256, verified) on disk – a newly known hash is written
         self.baseline_hash = None              # content when opened (a file is made only for a real change)
         self.status = "saved"
         self.reason = ""
@@ -586,6 +593,7 @@ class Registry:
                     slot.base_hash = base.get("base_hash")
                     slot.disk_content_hash = base.get("content_hash")
                     slot.disk_view = base.get("view")
+                    slot.disk_meta = base.get("meta")
                     slot.baseline_hash = base.get("baseline_hash") or base.get("content_hash")
                 self.slots.append(slot)
             slot.keys |= set(keys)
@@ -711,6 +719,8 @@ class Registry:
             self.rescue(slot, job, "fehlt" if slot.status == "missing" else "rettung")
             return
         view_due = job.view_event and project.view_differs(job.view, slot.disk_view)
+        if slot.has_file and job.source.get("sha256") and source_meta(job.source) != slot.disk_meta:
+            view_due = True                             # 1.18.1: the recording's hash came after the first write
         same = job.content_hash == (slot.disk_content_hash if slot.has_file else slot.baseline_hash)
         if same and not view_due:
             with slot.cv:                               # the disk already holds what this job asks for
@@ -730,6 +740,10 @@ class Registry:
         else:
             kind = "zwischen"
         data = self._data(slot, job)
+        if not slot.has_file:
+            # 1.18.1: a new project makes its folder (Clips/Projekte); a folder that held our file and vanished is
+            # never made again – that path (has_file) goes through classify in write_guarded
+            os.makedirs(os.path.dirname(slot.path), exist_ok=True)
         out = None
         for wait in BUSY_RETRY_S + (None,):
             out = write_guarded(slot.path, data, slot.base_hash, kind, job.seq, self.key, self.writer,
@@ -746,6 +760,7 @@ class Registry:
                 slot.base_hash = out.new_hash
                 slot.disk_content_hash = job.content_hash
                 slot.disk_view = job.view
+                slot.disk_meta = source_meta(job.source)
                 slot.written_seq = max(slot.written_seq, job.seq)
                 slot.written.append(job.seq)
                 slot.status, slot.reason, slot.retries = "saved", "", 0
@@ -919,6 +934,11 @@ class Registry:
         for s in self.unsecured():
             if s.latest is not None:
                 self.rescue(s, s.latest, "rettung")
+
+    def rescuing(self) -> bool:
+        """A local copy is still being written (quit phase 1 waits for it, also for Autosave-off states)."""
+        with self._rescue_cv:
+            return bool(self._rescue_jobs) or (self._rescue_thread is not None and self._rescue_thread.is_alive())
 
     def wait_idle(self, timeout: float = 30.0) -> bool:
         """Tests: until no slot has anything waiting or running."""
