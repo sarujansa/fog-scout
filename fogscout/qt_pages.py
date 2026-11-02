@@ -454,6 +454,57 @@ class RoundRowView(QFrame):
         super().mousePressEvent(e)
 
 
+class HintLabel(QLabel):
+    """1.17.1: a hint text. Standing on a line of its own (in a vertical layout) it wraps at about HINT_CHARS
+    characters instead of running across a 1400-px card; beside controls (a row) it takes the room as before. The
+    cap is part of heightForWidth – the page's own layouts ask with the full width and would cut the last lines."""
+
+    def __init__(self, cls="hint"):
+        super().__init__("")
+        self.setProperty("class", cls)
+        self.setWordWrap(True)
+        self._capped = None                       # None = not decided yet (first show), then True/False
+
+    def _cap(self) -> int:
+        return self.fontMetrics().averageCharWidth() * HINT_CHARS
+
+    def _decide(self):
+        p = self.parentWidget()
+        holder = _holder(p.layout(), self) if p is not None and p.layout() is not None else None
+        self._capped = isinstance(holder, QBoxLayout) and holder.direction() in (QBoxLayout.TopToBottom,
+                                                                                QBoxLayout.BottomToTop)
+        self.setMaximumWidth(self._cap() if self._capped else 16777215)
+        self.updateGeometry()
+
+    def showEvent(self, e):
+        if self._capped is None:
+            self._decide()
+        super().showEvent(e)
+
+    def changeEvent(self, e):
+        super().changeEvent(e)
+        if self._capped and e.type() in (QEvent.FontChange, QEvent.StyleChange):
+            self.setMaximumWidth(self._cap())          # zoom: the cap follows the font
+
+    def heightForWidth(self, w: int) -> int:
+        return super().heightForWidth(min(w, self._cap()) if self._capped else w)
+
+
+def _holder(layout, w):
+    """The layout (nested ones included) that holds widget ``w``, or None."""
+    for i in range(layout.count()):
+        it = layout.itemAt(i)
+        if it.widget() is w:
+            return layout
+        if it.layout() is not None:
+            found = _holder(it.layout(), w)
+            if found is not None:
+                return found
+    return None
+
+
+HINT_CHARS = 100                            # 1.17.1: a hint line wraps at about this many characters
+
 NOTE_KEYS = {"ov.size_cap"}                 # 1.8.24: hints that warn (amber) instead of explaining (grey)
 
 
@@ -555,8 +606,10 @@ def make_control(kind, key, post):
         w.setMinimumSize(200, 120)
     elif kind == "hotkey":
         w = HotkeyButton(key, post)
-    elif kind in ("hint", "plain"):
-        w = _label(cls="note" if key in NOTE_KEYS else "dim", wrap=True)
+    elif kind == "hint":                     # 1.17.1: a hint on a line of its own keeps a readable line length
+        w = HintLabel(cls="note" if key in NOTE_KEYS else "hint")
+    elif kind == "plain":
+        w = _label(cls="dim", wrap=True)
     elif kind == "big":
         w = _label(cls="big", wrap=True)
     elif kind == "value":
