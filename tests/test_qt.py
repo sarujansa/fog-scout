@@ -2176,6 +2176,69 @@ def test_danger_buttons_get_their_style_from_the_model():
         assert w.objectName() == name
 
 
+def test_a_question_that_deletes_says_so_and_keeps_the_data_on_enter(qapp, keep):
+    """1.23 (audit, prompt.md): the questions said "OK" and OK was the default, also before deleting – the button
+    names the action now, and when data goes it is red and Cancel takes Enter and the focus (Qt makes the focused
+    button of a dialog its default – autoDefault – so the focus is what Enter presses)."""
+    from fogscout import qt_window
+    posted = queue.Queue()
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.put((a, arg))))
+    win.show()
+    box = win.message
+    win.show_question(("Aufnahme löschen", "x.mkv von der Platte löschen?", True, "Löschen", True))
+    assert box.ok.text() == "Löschen" and box.ok.objectName() == "danger"
+    assert box.cancel.isDefault() and not box.ok.isDefault() and box.focusWidget() is box.cancel
+    box.reject()
+    assert posted.get_nowait() == ("answer", False)
+    win.show_question(None)
+    win.show_question(("Serverregionen anwenden", "…", True, "Anwenden", False))
+    assert box.ok.text() == "Anwenden" and box.ok.objectName() == "primary" and box.focusWidget() is box.ok
+    win.show_question(None)
+    win.show_question(("Hinweis", "Nur zur Info", False))        # a note: "OK", whatever came before
+    assert box.ok.text() == "OK" and box.focusWidget() is box.ok
+    win.allow_close = True
+    win.close()
+
+
+def test_a_tile_button_ends_in_dots_when_the_tile_is_narrow(qapp, keep):
+    """1.23 (audit, seen at 1280 px): the overview tile's "Match-Daten einrichten …" was cut on both sides; it
+    ends in "…" now and shows whole when there is room."""
+    from fogscout.qt_views import ElideButton
+    b = keep(ElideButton())
+    b.show()
+    b.setStyleSheet(qt_theme.stylesheet(True))
+    b.set_full_text("Match-Daten einrichten …")
+    b.resize(b.sizeHint())
+    assert b.text() == "Match-Daten einrichten …"
+    assert b.minimumSizeHint().width() < b.sizeHint().width() // 2       # the layout may make it narrow …
+    b.resize(90, b.height())
+    assert b.text().endswith("…") and b.text() != "Match-Daten einrichten …" and b.text()[0] == "M"   # … cut at the end
+    assert b.full_text() == "Match-Daten einrichten …"
+
+
+def test_a_double_click_or_enter_on_a_row_posts_open_only_where_the_model_has_an_action(qapp, keep):
+    """1.23 (audit, prompt.md): double-click / Enter = the row's main action (Aufnahmen, Clips: play) – a table
+    without one (statistics) stays as it was."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from fogscout import qt_window
+    posted = []
+    t = keep(qt_window.Table(".nb.f9.treeview2", lambda a, arg=None: posted.append((a, arg))))
+    cols = [("map", "Map", "w")]
+    rows = [("a", 0, "", ["Gas Heaven"], [], False), ("b", 0, "", ["Coal Tower"], [], False)]
+    t.resize(300, 200)
+    t.show()
+    for open_on in (False, True):
+        posted.clear()
+        t.show_state({"columns": cols, "rows": rows, "colours": {}, "selection": [], "selectable": True,
+                      "open": open_on})
+        qapp.processEvents()
+        pos = t.visualItemRect(t.topLevelItem(1)).center()
+        QTest.mouseDClick(t.viewport(), Qt.LeftButton, Qt.NoModifier, pos)
+        opened = [arg for a, arg in posted if a == "act" and arg[1][0] == "open"]
+        assert opened == ([(".nb.f9.treeview2", ("open", "b"))] if open_on else []), posted
+
+
 def test_a_disabled_primary_button_does_not_look_active_and_shows_the_focus(qapp):
     """1.22.3 (audit): the ID rule QPushButton#primary outranked :disabled – a disabled primary button kept the
     accent fill and looked clickable; the focus of an ID-styled button (rowplay) was invisible."""

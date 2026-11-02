@@ -1486,7 +1486,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
     def _clear_aliases(self):
         if not self.settings.get("user_aliases"):
             return
-        if not self._ask(_("Eigene Zuordnungen"), _("Alle eigenen Map-Zuordnungen löschen?"), self._clear_aliases):
+        if not self._ask(_("Eigene Zuordnungen"), _("Alle eigenen Map-Zuordnungen löschen?"), self._clear_aliases,
+                         ok_text=_("Löschen"), danger=True):
             return
         self.settings.set("user_aliases", {})
         self._save_soon()

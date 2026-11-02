@@ -263,7 +263,7 @@ class LabelFrame(Widget):
 
 class Label(Widget):
     """Text (``text``/``textvariable``) or a picture (``image`` = PIL image). Kind from ``style``:
-    "Big.TLabel" = big value, "Dim.TLabel" = grey hint."""
+    "Big.TLabel" = big value, "Dim.TLabel" = grey hint, "Note.TLabel" = a hint that warns (1.23, amber)."""
 
 
 def danger(w):
