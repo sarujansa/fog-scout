@@ -808,6 +808,36 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         event is reported and the rest still runs (the loop must never stop). 1.3.4 (user: "wenn ich einen Button
         wähle, wechselt die Farbe erst nach 1 s"): after a click in the window the window is refreshed at once –
         before, the new state waited for the next _tick_overlay (up to 250 ms)."""
+        self._drain_events()
+        if not self._quitting:
+            self.root.after(50, self._poll)
+
+    def _poll_soon(self):
+        """1.22.4 (audit, prompt.md): a click in the window is handled in the next pass of the event loop, not at
+        the next _poll – it waited 0–50 ms there (measured with tools/bench.py). Only from the GUI thread (the
+        timer is a Qt object); the other threads keep the 50 ms beat."""
+        if getattr(self, "_poll_soon_due", False) or self._quitting \
+                or threading.current_thread() is not threading.main_thread():
+            return
+        self._poll_soon_due = True
+        self.root.after(0, self._poll_soon_run)
+
+    def _poll_soon_run(self):
+        self._poll_soon_due = False
+        self._drain_events()
+
+    def _drain_events(self):
+        """Every event waiting, in order (from _poll and _poll_soon_run; never nested – a handler that pumps the
+        event loop leaves the queue to the pass already running)."""
+        if getattr(self, "_draining", False):
+            return
+        self._draining = True
+        try:
+            self._drain_events_now()
+        finally:
+            self._draining = False
+
+    def _drain_events_now(self):
         clicked = False
         while not self._quitting:
             try:
@@ -828,8 +858,6 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 self._qt_refresh()
             except Exception:
                 self._report_once("Fenster", traceback.format_exc())
-        if not self._quitting:
-            self.root.after(50, self._poll)
 
     def _dispatch(self, ev):
         if isinstance(ev, tuple) and ev[0] == "hotkey":
