@@ -47,11 +47,13 @@ ABSENT_TIPS = {"other": N_("In OBS gab es bei dieser Aufnahme keine Hintergrund-
                          "ausgeschaltet.")}
 # 1.12.2: short names in the box (the long ones were cut off beside the recordings table), the long ones as tips
 MODE_LABELS = {"copy": N_("Schnell (ohne Neukodieren)"), "exact": N_("Genau (neu kodiert)"),
-               "discord": N_("Für Discord (Zielgrösse)"), "gif": N_("GIF (ohne Ton)")}
+               "discord": N_("Für Discord (Zielgrösse)"), "gif": N_("GIF (ohne Ton)"),
+               "shorts": N_("Short / TikTok (9:16)")}                                     # 1.20
 MODE_TIPS = {"copy": N_("Schnell (an Schlüsselbildern, Anfang bis zu ein paar Sekunden früher)"),
              "exact": N_("Genau (Bild neu kodiert, dauert etwas)"),
              "discord": N_("Für Discord (passt unter die Zielgrösse)"),
-             "gif": N_("GIF (ohne Ton, für Chats)")}                                    # 1.12
+             "gif": N_("GIF (ohne Ton, für Chats)"),                                    # 1.12
+             "shorts": N_("Hochformat 1080×1920 für YouTube Shorts und TikTok, höchstens 3 min")}      # 1.20
 HEIGHT_LABELS = {0: N_("Wie aufgenommen"), 1440: "1440p", 1080: "1080p", 720: "720p"}   # 1.15: export height
 SPEED_LABELS = {0.25: "×0.25", 0.5: "×0.5", 0.75: "×0.75", 1.0: N_("normal"), 1.5: "×1.5", 2.0: "×2", 4.0: "×4"}
 CONTENT_LABEL = N_("Ohne schwarze Ränder")      # 1.12.6: crop to the game part, offered when the recording has borders
@@ -459,6 +461,7 @@ class PreviewView(QWidget):
         self.crop = None                  # (x, y, w, h) or None
         self.crop_ratio = None            # width/height in pixels the box keeps (None: free)
         self.crop_edit = False            # the crop tool is on
+        self.overlays = True              # 1.20: False = the picture shown is a composed short (no boxes, crop, drawings)
         self.zoom_crop = False            # 1.12.6: show only the crop box, large (the clip editor's "no black borders")
         self.shapes = []
         self.shape_tool = None            # annotate kind to draw, None = off
@@ -747,6 +750,9 @@ class PreviewView(QWidget):
         if self.view:
             p.setClipRect(vr)                                   # 1.12.6: a zoomed picture stops at its part
         p.drawImage(vr.topLeft(), scaled)
+        if not self.overlays:                           # 1.20: the composed short – the source's boxes do not fit it
+            p.end()
+            return
         accent = QColor(c["accent"])
         for i, box in enumerate(self._boxes_shown()):
             r = self._box_rect(box)
@@ -1603,7 +1609,7 @@ class ClipBase(QWidget):
     def _scrub(self, t: float, quick: bool | None = None, vf=None):
         """Ask the scrub thread for the picture at source second ``t`` (1.19: ``vf`` = the clip's effects)."""
         with self._scrub_lock:
-            self._want = (t, self._first_look if quick is None else quick, tuple(vf or ()))
+            self._want = (t, self._first_look if quick is None else quick, tuple(vf or ()), self._play_size())
             self._first_look = False
             self._scrub_lock.notify()
 
@@ -1615,15 +1621,16 @@ class ClipBase(QWidget):
                 want, self._want = self._want, None
             if want is None:
                 continue
-            t, quick, vf = want
+            t, quick, vf, size = want
             if quick:                                   # 1.8.3: the key frame at once (~40 ms), the exact frame after
-                img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, keyframe=True, vf=vf)
+                img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, keyframe=True, vf=vf,
+                                        size=size)
                 if img is not None and not self._closed:
                     self.bridge.frame.emit(t, img)
                 with self._scrub_lock:
                     if self._want is not None:          # a newer wish meanwhile: that one, not this exact frame
                         continue
-            img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, vf=vf)
+            img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, vf=vf, size=size)
             if img is not None and not self._closed:
                 self.bridge.frame.emit(t, img)
 
@@ -1750,6 +1757,18 @@ class ClipBase(QWidget):
         else:
             self._run_player(seg)
 
+    def _play_vf(self, part, t0, still: bool = False) -> list:
+        """The filters on the preview picture of ``part`` from source second ``t0`` (1.19: its effects; the big
+        editor adds the short's canvas)."""
+        if part is None:
+            return []
+        w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
+        return clipedit.preview_filters(part, w, h, t0=t0, still=still)
+
+    def _play_size(self):
+        """1.20: the size of the preview picture when its filters change it (the big editor's short), else None."""
+        return None
+
     def _seg_source(self, t):
         """The second of the recording the picture played at player time ``t`` shows (1.19: backwards / still)."""
         seg = self._seg
@@ -1768,12 +1787,11 @@ class ClipBase(QWidget):
         left = seg[5] if len(seg) > 5 else part.hold
         holder = _Hold(self, left)
         self.player = holder
-        w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
-        vf = clipedit.preview_filters(part, w, h, t0=start, still=True)
-        path, info, ffmpeg, b = self.path, self.info, self.ffmpeg, self.bridge
+        vf = self._play_vf(part, start, still=True)
+        path, info, ffmpeg, b, size = self.path, self.info, self.ffmpeg, self.bridge, self._play_size()
 
         def still():
-            img = clipedit.frame_at(path, start, clipedit.PREVIEW_H, info, ffmpeg, vf=vf)
+            img = clipedit.frame_at(path, start, clipedit.PREVIEW_H, info, ffmpeg, vf=vf, size=size)
             if img is not None and not holder.stopped:
                 b.played.emit(start, img)
         threading.Thread(target=still, name="clip-still", daemon=True).start()
@@ -1797,11 +1815,11 @@ class ClipBase(QWidget):
         b = self.bridge
         start, end, speed, _out = seg[:4]
         part = seg_part(seg)
-        w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
-        vf = clipedit.preview_filters(part, w, h, t0=start) if part is not None else ()
+        vf = self._play_vf(part, start)
         self.player = clipedit.FramePlayer(self.path, start, self.info, lambda t, img: b.played.emit(t, img),
                                            lambda: b.ended.emit(self.player), end=end, ffmpeg=self.ffmpeg,
-                                           speed=speed, vf=vf, reverse=bool(part is not None and part.reverse))
+                                           speed=speed, vf=vf, reverse=bool(part is not None and part.reverse),
+                                           size=self._play_size())
         self.player.start()
 
     def _show_playing(self, on: bool):
@@ -1869,6 +1887,11 @@ class ClipBase(QWidget):
         if mode == "gif":
             gh = int(self.gif_box.currentData() or clipedit.DEFAULT_GIF_H) if hasattr(self, "gif_box") else 0
             parts.append(_("GIF {h}p, {fps} Bilder/s, ohne Ton", h=gh, fps=clipedit.GIF_FPS))
+        elif mode == "shorts":                                     # 1.20
+            from . import shorts
+            parts.append(_("Short 1080×1920, {fps} fps", fps=f"{shorts.fps(self.info.fps):g}"))
+            if secs > shorts.MAX_S + 0.05:
+                parts.append(_("⚠ länger als {n} min – so nicht exportierbar", n=f"{shorts.MAX_S / 60:g}"))
         elif mode == "discord":
             kbps, h, fps = clipedit.discord_plan(secs, self._target_mb, self.info)
             parts.append(_("wird {h}p {fps} fps, ≈ {kbps} kbit/s, unter {mb} MB",
@@ -1891,7 +1914,7 @@ class ClipBase(QWidget):
             flt, amap = obsrec.audio_graph(self.info.audio_tracks, self.mix())
             if flt or amap is None:
                 parts.append(_("ohne Ton") if amap is None else _("Ton neu gemischt"))
-        reencoded = mode in ("exact", "discord") or (mode == "copy" and (self._censor_args() or not edit.simple()))
+        reencoded = mode in ("exact", "discord", "shorts") or (mode == "copy" and (self._censor_args() or not edit.simple()))
         if reencoded and hasattr(self, "hw_box"):                  # 1.15: what will encode it
             parts.append(self.encoding().summary(_))
         self.size_label.setText(" · ".join(parts))
@@ -1902,6 +1925,8 @@ class ClipBase(QWidget):
         self.gif_box.setVisible(mode == "gif")
         for w in getattr(self, "enc_widgets", ()):               # 1.15: a GIF has no video encoder
             w.setVisible(mode != "gif")
+        if mode == "shorts" and getattr(self, "height_box", None) is not None:
+            self.height_box.setVisible(False)                     # 1.20: a short is always 1080×1920
         if save:
             self._setting("clip_mode", mode)
         self._show_size()
@@ -1938,6 +1963,14 @@ class ClipBase(QWidget):
         censor = self._censor_args()
         gif_h = int(self.gif_box.currentData() or clipedit.DEFAULT_GIF_H)
         encoding = self.encoding()                                # 1.15: resolved now, the thread keeps it
+        if mode == "shorts":                                      # 1.20: refused before ffmpeg starts
+            from . import shorts
+            if edit.seconds() > shorts.MAX_S + 0.05:
+                self.save_btn.setEnabled(True)
+                self.saved_seconds.pop(out, None)
+                self.status.setText(_("Ein Short ist höchstens {limit} min lang, dieser Schnitt {seconds} s – kürzer "
+                                      "schneiden.", limit=f"{shorts.MAX_S / 60:g}", seconds=f"{edit.seconds():.0f}"))
+                return
         if mode != "copy" or censor or not edit.simple():
             self.status.setText(_("Kodiere {file} … ({how}, dauert etwas)", file=os.path.basename(out),
                                   how=encoding.summary(_)))
