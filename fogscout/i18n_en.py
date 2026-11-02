@@ -2754,8 +2754,7 @@ EN = {
     "Ganze Zeitleiste zeigen": "Show the whole timeline",
     "Auswählen": "Select",
     "Bildausschnitt": "Crop",
-    "Ziehen abbrechen, sonst zurück zu Auswählen, sonst Auswahl aufheben, sonst Vollbild verlassen – schliesst nie":
-        "Cancel the drag, else back to select, else clear the selection, else leave full screen – never closes",
+    "Abbrechen, Werkzeug oder Auswahl aufheben – schliesst nie": "Cancel, leave the tool or clear the selection – never closes",
     "Strg+W": "Ctrl+W",
     "Editor schliessen": "Close the editor",
     "Abgebrochen.": "Cancelled.",
