@@ -3027,4 +3027,72 @@ EN = {
         "medium",
     "⚠ länger als {n} min – so nicht exportierbar":
         "⚠ longer than {n} min – cannot be exported like this",
+    "(Datei fehlt – wird nicht exportiert)":
+        "(file missing – not exported)",
+    "Beginnt am Abspielkopf":
+        "Starts at the playhead",
+    "Der Spielton wird von selbst leiser, solange Musik läuft – „stark“ drückt ihn am meisten. Aus: beide gleich laut wie eingestellt.":
+        "The game sound gets quieter by itself while music plays – “strong” lowers it the most. Off: both as loud as set.",
+    "Der markierte Ton-Clip beginnt am Abspielkopf.":
+        "The selected audio clip starts at the playhead.",
+    "Die Musik wird am Anfang des Clips lauter.":
+        "The music fades in at the start of the clip.",
+    "Die Musik wird zum Ende des Clips leiser.":
+        "The music fades out towards the end of the clip.",
+    "Die Vorschau spielt die Musik mit – Standbilder sind in der Vorschau still, im Export läuft die Musik weiter.":
+        "The preview plays the music too – stills are silent in the preview, in the export the music keeps playing.",
+    "Eigene Tonspur (A2)":
+        "Own audio track (A2)",
+    "Eine eigene Ton- oder Videodatei (Musik, Kommentar) am Abspielkopf auf die Spur A2 legen – oder die Datei direkt auf A2 ziehen.":
+        "Put an audio or video file of your own (music, commentary) on track A2 at the playhead – or drag the file onto A2.",
+    "Höchstens {n} Ton-Clips.":
+        "At most {n} audio clips.",
+    "Kein Ton in {file}.":
+        "No sound in {file}.",
+    "Keine Ton- oder Videodatei: {file}":
+        "Not an audio or video file: {file}",
+    "Lautstärke":
+        "Volume",
+    "Lautstärke der ganzen Spur A2.":
+        "Volume of the whole track A2.",
+    "Lautstärke des Spieltons im fertigen Clip.":
+        "Volume of the game sound in the finished clip.",
+    "Lautstärke nur dieses Ton-Clips.":
+        "Volume of this audio clip only.",
+    "Lese {file} …":
+        "Reading {file} …",
+    "Musik aus":
+        "Music out",
+    "Musik ein":
+        "Music in",
+    "Musik hinzufügen":
+        "Add music",
+    "Musik hinzufügen …":
+        "Add music …",
+    "Musik oder Kommentar hierher ziehen – oder Rechtsklick „Musik hinzufügen …“":
+        "Drag music or commentary here – or right-click “Add music …”",
+    "Nimmt den markierten Ton-Clip von der Spur A2 – die Datei bleibt.":
+        "Takes the selected audio clip off track A2 – the file stays.",
+    "Noch keine Musik – Spielton wie aufgenommen.":
+        "No music yet – game sound as recorded.",
+    "Spielton":
+        "Game sound",
+    "Spielton unter Musik":
+        "Game under music",
+    "Ton und Video":
+        "Audio and video",
+    "Ton-Clip entfernen":
+        "Remove audio clip",
+    "Ton-Clip {file} entfernt – die Datei bleibt.":
+        "Audio clip {file} removed – the file stays.",
+    "leicht":
+        "light",
+    "stark":
+        "strong",
+    "{file} liegt auf A2 ab {at} – der Spielton wird darunter leiser.":
+        "{file} is on A2 from {at} – the game sound gets quieter under it.",
+    "{file}: {start} – {end} der Datei, im Clip ab {at}":
+        "{file}: {start} – {end} of the file, in the clip from {at}",
+    "{n} Ton-Clip(s) auf A2.":
+        "{n} audio clip(s) on A2.",
 }
