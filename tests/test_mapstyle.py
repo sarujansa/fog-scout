@@ -90,18 +90,36 @@ def _styled_in_the_background(appmod, fake):
     return styled
 
 
-def test_app_takes_the_dark_picture_only_when_chosen_and_never_for_own_pictures(tmp_path):
+def test_app_takes_the_dark_picture_only_when_chosen_and_for_own_pictures_too(tmp_path):
+    """1.22.1 (user: „wenn ich eine Map hinzufüge, direkt die verschiedenen Varianten“ → die Kartenstile): an own
+    picture of the community maps' kind takes the style like a supplied one (until 1.22 never); a picture of
+    another kind stays as it is."""
     from fogscout import app as appmod
+    from fogscout import mapimage as mi
+    from PIL import Image
     path = os.path.join(MAPS, "McMillan", "Coal Tower.webp")
-    own = {"x": False}
-    cat = types.SimpleNamespace(image_path=lambda mid, v=1: (path, v), is_own=lambda mid, v=1: own["x"])
+    current = {"p": path}
+    cat = types.SimpleNamespace(image_path=lambda mid, v=1: (current["p"], v), is_own=lambda mid, v=1: True)
     fake = _fake_app(appmod, cat, tmp_path, "classic")
     assert appmod.App._map_file(fake, "coal", 1) == (path, 1)
     fake.settings["overlay"]["map_style"] = "dark"
+    own = str(tmp_path / "user_maps" / "Eigene Maps" / "Coal Copy.webp")      # added through the dialog
+    os.makedirs(os.path.dirname(own))
+    mi.save(path, own, True, None)
+    current["p"] = own
     dark = _styled_in_the_background(appmod, fake)
     assert dark.startswith(os.path.join(str(tmp_path), appmod.STYLE_CACHE))
-    own["x"] = True
-    assert appmod.App._map_file(fake, "coal", 1) == (path, 1)
+    appmod.App._style_all(fake, own)                                           # saved: every style at once
+    made = [fake.events.get(timeout=120) for _s in mapstyle.STYLES]
+    assert all(fn is fake._style_ready and args == (own,) for _k, fn, args in made)
+    for style in mapstyle.STYLES:
+        made_own = mapstyle.styled_path(own, os.path.join(str(tmp_path), appmod.STYLE_CACHE), False, style)
+        assert made_own != own and os.sep + "own-Eigene Maps" + os.sep in made_own   # never a supplied one's name
+    plain = str(tmp_path / "user_maps" / "Eigene Maps" / "Foto.png")          # not of the community maps' kind
+    Image.new("RGBA", (200, 120), (30, 140, 60, 255)).save(plain)
+    current["p"] = plain
+    assert appmod.App._map_file(fake, "coal", 1, request=False) == (plain, 1)
+    assert mapstyle.styled_path(plain, str(tmp_path / "c"), True, "grey") == plain
 
 
 WORKERS = max(1, min(4, os.cpu_count() or 1))   # 1.8.31: numpy/OpenCV let threads run side by side (74 → 23 s)

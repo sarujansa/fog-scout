@@ -18,6 +18,12 @@ DUCKS = {                      # sidechaincompress settings: the game sound gets
     "strong": (0.02, 12.0),
 }
 DUCK_ORDER = ("off", "light", "medium", "strong")
+SOUND_EXTS = (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".wma")   # files that are only sound
+# 1.22.1 (user: YouTube-Links als Ton → gewählt: „Lieber Audiomediathek“): YouTube's own free music and effects,
+# cleared for videos (no Content ID claims) – opened in the browser, the MP3 lands in the download folder
+AUDIO_LIBRARY_URL = "https://www.youtube.com/audiolibrary"
+RECENT_SHOWN = 5
+RECENT_MAX_DAYS = 30
 FADE_MAX = 5.0
 VOL_MAX = 2.0                  # 200 %
 MAX_CLIPS = 50
@@ -70,6 +76,29 @@ def _clamp(v, lo, hi, default):
 
 def is_audio(path: str) -> bool:
     return os.path.splitext(str(path or ""))[1].lower() in AUDIO_EXTS
+
+
+def recent_files(folder: str, n: int = RECENT_SHOWN, now: float | None = None,
+                 max_days: float = RECENT_MAX_DAYS) -> list:
+    """1.22.1: the ``n`` newest sound files in ``folder`` (the download folder) of the last ``max_days`` – newest
+    first; nothing below it, nothing but sound."""
+    import time
+    now = time.time() if now is None else now
+    out = []
+    try:
+        with os.scandir(folder) as it:
+            for e in it:
+                if not e.is_file() or os.path.splitext(e.name)[1].lower() not in SOUND_EXTS:
+                    continue
+                try:
+                    mt = e.stat().st_mtime
+                except OSError:
+                    continue
+                if now - mt <= max_days * 86400:
+                    out.append((mt, e.path))
+    except OSError:
+        return []
+    return [p for _mt, p in sorted(out, reverse=True)[:n]]
 
 
 def clean(clips) -> list:

@@ -384,6 +384,8 @@ def styled_path(path: str, cache_dir: str, make: bool = True, style: str = "dark
     tag = "" if style == "dark" else f"-{style}"            # "dark" keeps its old names (cache made before 1.8.16)
     name = f"{os.path.splitext(os.path.basename(path))[0]}-{int(st.st_mtime)}-{st.st_size}{tag}-v{STYLE_VERSION}.webp"
     sub = os.path.basename(os.path.dirname(path))
+    if os.path.basename(os.path.dirname(os.path.dirname(path))) == "user_maps":
+        sub = "own-" + sub                      # 1.22.1: own pictures never share a name with a supplied one
     target = os.path.join(cache_dir, sub, name)
     if os.path.exists(target):
         return target
