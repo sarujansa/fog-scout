@@ -6,7 +6,7 @@ from __future__ import annotations
 import html
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QContextMenuEvent
 from PySide6.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
@@ -15,6 +15,58 @@ from . import qt_theme
 from .qt_layouts import FlowRow, TileGrid
 from .i18n import _
 from .qt_common import _label, _card, _set, _tip
+
+
+ELIDE_SLACK = 2                          # px: ElideButton keeps its whole text this close to its width
+
+
+class ElideButton(QPushButton):
+    """1.23 (audit, prompt.md, seen at 1280 px): a button whose text ends in "…" when its room is narrower than
+    the text – a tile's "Match-Daten einrichten …" was cut on both sides ("atch-Daten einrichten"). It asks for its
+    whole text and can shrink to "…"; the whole text is its tooltip anyway."""
+
+    def __init__(self):
+        super().__init__()
+        self._full = ""
+
+    def full_text(self) -> str:
+        return self._full
+
+    def set_full_text(self, text: str):
+        if text != self._full:
+            self._full = text
+            self._elide()
+            self.updateGeometry()
+
+    def _pad(self) -> int:
+        return super().sizeHint().width() - self.fontMetrics().horizontalAdvance(self.text())
+
+    def sizeHint(self):
+        s = super().sizeHint()
+        fm = self.fontMetrics()
+        return QSize(s.width() - fm.horizontalAdvance(self.text()) + fm.horizontalAdvance(self._full), s.height())
+
+    def minimumSizeHint(self):
+        s = super().minimumSizeHint()
+        return QSize(min(s.width(), self._pad() + self.fontMetrics().horizontalAdvance("…")), s.height())
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._elide()
+
+    def _elide(self):
+        # 1.23.1 (CI, other fonts): at exactly its size hint elidedText cut the last character – its measure differs
+        # from horizontalAdvance by a fraction of a pixel; the whole text stays while it fits within ELIDE_SLACK
+        fm = self.fontMetrics()
+        room = max(0, self.width() - self._pad())
+        if not self._full:
+            text = ""
+        elif fm.horizontalAdvance(self._full) <= room + ELIDE_SLACK:
+            text = self._full
+        else:
+            text = fm.elidedText(self._full, Qt.ElideRight, room)
+        if text != self.text():
+            super().setText(text)
 
 
 class FactBox(QWidget):
@@ -41,7 +93,7 @@ class FactBox(QWidget):
         lay.addWidget(self.sub)
         # 1.2.15: a fact can carry a small button (overview: "Server aus" → server tab, no stats data → setup)
         self._post, self._action = post, ""
-        self.link = QPushButton()
+        self.link = ElideButton()                # 1.23: ends in "…" in a narrow tile
         self.link.setFocusPolicy(Qt.TabFocus)
         self.link.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.link.clicked.connect(lambda _c=False: self._post and self._action and self._post(self._action))
@@ -55,12 +107,12 @@ class FactBox(QWidget):
         _set(self.value, f.value)
         _set(self.sub, f.sub)
         action = getattr(f, "action", "") if self._post else ""
-        if action != self._action or (action and self.link.text() != f.action_label):
+        if action != self._action or (action and self.link.full_text() != f.action_label):
             self._action = action
-            _set(self.link, f.action_label if action else "")
+            self.link.set_full_text(f.action_label if action else "")
             self.link.setToolTip(_tip(f.action_label) if action else "")
             self.link.setVisible(bool(action))
-        colour = qt_theme.hex_colour(f.colour) if f.colour is not None else None
+        colour = qt_theme.readable(f.colour) if f.colour is not None else None    # 1.22.3: readable on light
         if colour != self._colour:
             self._colour = colour
             self.value.setStyleSheet(f"color: {colour};" if colour else "")
@@ -98,6 +150,8 @@ class Table(QTreeWidget):
         self.header().sectionClicked.connect(self._sort)
         self.itemClicked.connect(self._clicked)
         self.itemSelectionChanged.connect(self._selection_changed)
+        self.itemActivated.connect(self._activated)      # 1.23: double-click / Enter = the row's main action
+        self._open_on = False
         self._multi = False
         self._cols = []
         self._titles = []
@@ -352,6 +406,10 @@ class Table(QTreeWidget):
         gp = self.viewport().mapToGlobal(pos)
         self._post("act", (self._key, ("menu", (gp.x(), gp.y()))))
 
+    def _activated(self, item, _col):
+        if self._open_on and item is not None:
+            self._post("act", (self._key, ("open", item.data(0, Qt.UserRole))))
+
     def _clicked(self, item, _col):
         if not self._multi:                       # multi-select: the selection itself is posted (Ctrl/Shift-clicks)
             self._post("act", (self._key, ("click", item.data(0, Qt.UserRole))))
@@ -362,6 +420,7 @@ class Table(QTreeWidget):
 
     def _select(self, st):
         self._menu_on = bool(st.get("menu"))
+        self._open_on = bool(st.get("open"))
         sel = set(st.get("selection", []))
         self._model_sel = sel                     # 1.8.11: what the App has marked (right click compares)
         self._multi = bool(st.get("multi"))
@@ -857,7 +916,7 @@ class TilesView(QWidget):
         while len(self._tiles) < len(data):
             card = _card()
             cl = QVBoxLayout(card)
-            cl.setContentsMargins(14, 12, 14, 12)
+            cl.setContentsMargins(*qt_theme.PAD_CARD)
             box = FactBox(bar=True)
             box.sub.setWordWrap(True)
             cl.addWidget(box)
@@ -888,7 +947,7 @@ class DashboardView(QWidget):
         for _i in range(8):                       # 1.6.3: seven tiles (bloodpoints per hour), two rows of four
             card = _card()
             cl = QVBoxLayout(card)
-            cl.setContentsMargins(14, 12, 14, 12)
+            cl.setContentsMargins(*qt_theme.PAD_CARD)
             box = FactBox(bar=True)
             box.sub.setWordWrap(True)                 # "no killer rounds with stats data": wraps in a narrow window
             cl.addWidget(box)
@@ -909,7 +968,7 @@ class DashboardView(QWidget):
     def _chart_card(lay, title, widget):
         card = _card()
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(14, 12, 14, 12)
+        cl.setContentsMargins(*qt_theme.PAD_CARD)
         cl.setSpacing(8)
         cl.addWidget(_label(title.upper(), "h2"))
         cl.addWidget(widget)

@@ -543,6 +543,33 @@ def test_the_folder_is_found_by_its_volume_or_the_last_path(tmp_path):
         assert obsrec.volume_of(str(tmp_path)) == ("", str(tmp_path))
 
 
+def test_the_recorder_asks_the_drive_letters_once_in_a_while_not_on_every_call(tmp_path, monkeypatch):
+    """1.22.4 (audit, prompt.md): find_folder asks all 26 drive letters on Windows – the recordings page called it
+    twice per render, the recorder thread on each step. Kept FOLDER_TTL_S for the same settings; a kept folder
+    that is gone is looked up again at once, other settings are looked up at once; a missing drive is not kept
+    (1.23.1: a round right after plugging it in records)."""
+    calls = []
+    real = obsrec.find_folder
+    monkeypatch.setattr(obsrec, "find_folder", lambda *a: calls.append(a) or real(*a))
+    clock = [1000.0]
+    monkeypatch.setattr(obsrec.time, "monotonic", lambda: clock[0])
+    r = obsrec.Recorder(lambda kind, **d: None)
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    r.cfg = obsrec.Config(folder=str(a))
+    assert [r.folder() for _ in range(5)] == [str(a)] * 5 and len(calls) == 1
+    clock[0] += obsrec.FOLDER_TTL_S
+    assert r.folder() == str(a) and len(calls) == 2                       # asked again after the time
+    r.cfg = obsrec.Config(folder=str(b))
+    assert r.folder() == str(b) and len(calls) == 3                       # other settings: at once
+    b.rmdir()
+    assert r.folder() is None and len(calls) == 4                         # gone: looked up again at once
+    assert r.folder() is None and len(calls) == 5                         # 1.23.1: a missing drive is not kept …
+    b.mkdir()
+    assert r.folder() == str(b) and len(calls) == 6                       # … plugged in: found on the next look
+
+
 def test_the_recorder_thread_survives_errors(obs, tmp_path):
     r, posted = _recorder(obs, str(tmp_path), pre=False)
     r.start()

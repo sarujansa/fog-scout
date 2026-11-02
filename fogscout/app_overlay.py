@@ -126,7 +126,7 @@ class OverlayTab:
         self._reg("ov.size_cap", ui.Label(pos, textvariable=self.size_cap_var, style="Dim.TLabel")).pack(anchor="w")
         r = ui.Frame(pos)
         r.pack(fill="x", pady=(0, 4))
-        self._reg("ov.anchor.label", ui.Label(r, text=_("Vorgabe"), width=12)).pack(side="left")
+        self._reg("ov.anchor.label", ui.Label(r, text=_("Position"), width=12)).pack(side="left")
         self.anchor_var = ui.StringVar(value=anchor_label(o["anchor"]))
         cb = self._reg("ov.anchor", ui.Combobox(r, textvariable=self.anchor_var, values=[_(a[1]) for a in ANCHORS],
                                                  state="readonly", width=16))

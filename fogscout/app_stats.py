@@ -1140,7 +1140,7 @@ class StatsTab:
 
     def _stats_alias_reset(self):
         if not self._ask(_("Zuordnungen löschen"), _("Alle eigenen Killer-Zuordnungen löschen?"),
-                         self._stats_alias_reset):
+                         self._stats_alias_reset, ok_text=_("Löschen"), danger=True):
             return
         self.settings.set("killer_aliases", {})
         self._save_soon()
@@ -1319,7 +1319,8 @@ class StatsTab:
         found = self._stats_farm_candidates()
         if not found or not self._ask(_("Als Farming markieren"),
                                       _("{n} Runden als Farming-Runden markieren?", n=len(found)) + "\n\n"
-                                      + self._stats_farm_reasons(found), self._stats_farm_found):
+                                      + self._stats_farm_reasons(found), self._stats_farm_found,
+                                      ok_text=_("Markieren")):
             return
         done = 0
         try:
@@ -1350,7 +1351,8 @@ class StatsTab:
             question = _("Runde {what} aus der Statistik löschen?", what=what)
         else:
             question = _("{n} Runden aus der Statistik löschen?", n=len(sel))
-        if not self._ask(_("Runde löschen"), question, self._stats_delete_round):
+        if not self._ask(_("Runde löschen"), question, self._stats_delete_round,
+                         ok_text=_("Löschen"), danger=True):
             return
         gone = []
         try:
@@ -1406,8 +1408,11 @@ class StatsTab:
 
     def _stats_clear(self):
         if not os.path.exists(self._hist_path()):
+            self._inform(_("Alle Runden löschen"), _("Es sind keine Runden gespeichert."))    # 1.23: said nothing
             return
-        if not self._ask(_("Verlauf löschen"), _("Alle gespeicherten Runden löschen?"), self._stats_clear):
+        if not self._ask(_("Alle Runden löschen"), _("Alle gespeicherten Runden löschen? Vorher wird eine Kopie in "
+                                                     "{folder}/ angelegt.", folder="backup"), self._stats_clear,
+                         ok_text=_("Alle löschen"), danger=True):
             return
         from . import backups
         self._backup_done(backups.snapshot(self.root_dir, tag="vorher"))     # 1.8.80: one more copy first
