@@ -7,6 +7,9 @@ at their edges, split at the playhead; everything the user does comes out as a s
 All arithmetic on the parts is sequence.py (pure, tested); here is the painting and the mouse."""
 from __future__ import annotations
 
+import os
+from dataclasses import replace
+
 from PySide6.QtCore import QMimeData, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import QApplication, QMenu, QSizePolicy, QWidget
@@ -19,6 +22,7 @@ HEAD_W = 56                                    # px: the track names at the left
 RULER_H = 26
 V_H, A_H = 64, 40                              # px: the two tracks (the video track grows with the panel, up to V_MAX)
 V_MAX = 120
+M_H = 30                                       # px: 1.21 the own audio track A2 (music, commentary)
 GAP = 3                                        # px between the tracks
 EDGE = 7                                       # px from a clip's edge that trims instead of moving
 MIN_SCALE, MAX_SCALE = 0.02, 600.0             # px per second
@@ -27,6 +31,7 @@ PAD_END_S = 2.0                                # seconds of room after the last 
 SNAP_PX = 6                                    # a trimmed edge snaps to the playhead / a mark this close
 CLIP_COLOURS = {True: {"video": "#355a80", "audio": "#2f6b4c", "text": "#ffffff", "label": QColor(0, 0, 0, 110)},
                 False: {"video": "#a9c4e2", "audio": "#b4dac2", "text": "#17191c", "label": QColor(255, 255, 255, 140)}}
+MUSIC_COLOURS = {True: "#6a4c93", False: "#cdb8e8"}   # 1.21: the clips on A2
 MARK_COLOUR = "#e8a33d"
 PLAYHEAD = "#ffffff"
 
@@ -54,6 +59,9 @@ class SequenceTimeline(QWidget):
     picked = Signal(str, float, object)   # right-click menu: (ident, output time, clip index or None)
     dropped = Signal(str)             # a media path from the library was dropped here
     viewed = Signal()                 # scale or offset changed (the scroll bar follows)
+    music_edited = Signal(object)     # 1.21: the clips on A2 after a drag (list of musictrack.AudioClip)
+    music_selected = Signal(object)   # 1.21: a clip on A2 (index) or None
+    music_dropped = Signal(str, float)    # 1.21: an audio file dropped on A2 at this output time
 
     def __init__(self, dark=True):
         super().__init__()
@@ -64,6 +72,10 @@ class SequenceTimeline(QWidget):
         self.fps = 30.0
         self.marks = []
         self.subs = []                    # 1.20: (from, to) of the short's subtitles, output seconds
+        self.music = []                   # 1.21: musictrack.AudioClip on A2 (output times)
+        self.music_lengths = {}           # 1.21: {path: seconds of the file} – trimming stops at the file's end
+        self.music_sel = None
+        self._drop_lane = None            # 1.21: "music" while an audio file hovers over A2
         self.thumbs = {}
         self.n_thumbs = clipedit.THUMBS
         self.view = None              # the game part of each thumbnail (x, y, w, h), None = all of it
@@ -78,7 +90,7 @@ class SequenceTimeline(QWidget):
         self._drop_hover = False
         self._menu = None
         self._layer = None            # 1.16.1: (key, QPixmap) of everything but the playhead – playback moves only that
-        self.setMinimumHeight(RULER_H + V_H + A_H + GAP + 6)
+        self.setMinimumHeight(RULER_H + V_H + A_H + M_H + 2 * GAP + 6)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.NoFocus)
@@ -106,6 +118,23 @@ class SequenceTimeline(QWidget):
             self.subs = subs
             self.update()
 
+    def set_music(self, clips, lengths=None):
+        """1.21: the clips on A2 (copies); ``lengths`` = {path: seconds} of their files."""
+        self.music = [replace(c) for c in clips]
+        if lengths is not None:
+            self.music_lengths = dict(lengths)
+        if self.music_sel is not None and self.music_sel >= len(self.music):
+            self.music_sel = None
+            self.music_selected.emit(None)
+        self.update()
+
+    def select_music(self, k):
+        k = k if k is not None and 0 <= k < len(self.music) else None
+        if k != self.music_sel:
+            self.music_sel = k
+            self.update()
+            self.music_selected.emit(k)
+
     def set_marks(self, marks):
         self.marks = sorted(float(m) for m in marks)
         self.update()
@@ -129,6 +158,8 @@ class SequenceTimeline(QWidget):
 
     def select(self, i):
         i = i if i is not None and 0 <= i < len(self.parts) else None
+        if i is not None:
+            self.select_music(None)                     # 1.21: one selection at a time (Entf deletes it)
         if i != self.selection:
             self.selection = i
             self.update()
@@ -220,13 +251,35 @@ class SequenceTimeline(QWidget):
         return max(0.0, self.offset + (x - HEAD_W) / self.scale)
 
     def _v_h(self) -> float:
-        return min(V_MAX, max(V_H, self.height() - RULER_H - 2 - GAP - A_H - 8))
+        return min(V_MAX, max(V_H, self.height() - RULER_H - 2 - 2 * GAP - A_H - M_H - 8))
 
     def _v_rect(self) -> QRectF:
         return QRectF(HEAD_W, RULER_H + 2, self._track_width(), self._v_h())
 
     def _a_rect(self) -> QRectF:
         return QRectF(HEAD_W, RULER_H + 2 + self._v_h() + GAP, self._track_width(), A_H)
+
+    def _m_rect(self) -> QRectF:
+        """1.21: the own audio track A2 under the game sound."""
+        return QRectF(HEAD_W, RULER_H + 2 + self._v_h() + GAP + A_H + GAP, self._track_width(), M_H)
+
+    def music_rect(self, k: int, clip=None) -> QRectF:
+        c = clip or self.music[k]
+        r = self._m_rect()
+        x0, x1 = self._x(c.at), self._x(c.at + c.length)
+        return QRectF(x0, r.top(), max(2.0, x1 - x0), r.height())
+
+    def _hit_music(self, x) -> tuple:
+        for k in range(len(self.music) - 1, -1, -1):
+            r = self.music_rect(k)
+            if r.left() - EDGE <= x <= r.right() + EDGE:
+                if abs(x - r.left()) <= EDGE and x >= r.left() - EDGE / 2:
+                    return "m_edge_start", k
+                if abs(x - r.right()) <= EDGE:
+                    return "m_edge_end", k
+                if r.left() <= x <= r.right():
+                    return "m_body", k
+        return "m_lane", None
 
     def clip_rect(self, i: int, lane: str = "video") -> QRectF:
         """Where clip ``i`` lies on the video (or audio) track, in widget px."""
@@ -242,6 +295,9 @@ class SequenceTimeline(QWidget):
             return "head", None
         if y < RULER_H:
             return "ruler", None
+        mr = self._m_rect()
+        if mr.top() <= y <= mr.bottom():
+            return self._hit_music(x)
         lanes = (self._v_rect(), self._a_rect())
         if not any(r.top() <= y <= r.bottom() for r in lanes):
             return None, None
@@ -260,6 +316,7 @@ class SequenceTimeline(QWidget):
     def _layer_key(self) -> tuple:
         return (self.width(), self.height(), round(self.scale, 6), round(self.offset, 6),
                 tuple(repr(p) for p in self.parts), tuple(self.subs), self.selection, self.hover, len(self.thumbs),
+                tuple(repr(m) for m in self.music), self.music_sel,
                 len(self.wave), self.view, tuple(self.marks), self.dark, self.devicePixelRatioF(),
                 tuple(sorted(qt_theme.colours(self.dark).items())))   # post-review: a theme change redraws
 
@@ -271,7 +328,8 @@ class SequenceTimeline(QWidget):
         cc = CLIP_COLOURS[bool(self.dark)]
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        live = (self._drag is not None and self._drag[0] in ("trim_start", "trim_end", "move")) or self._drop_hover
+        live = (self._drag is not None and self._drag[0] in ("trim_start", "trim_end", "move", "m_trim_start",
+                                                               "m_trim_end", "m_move")) or self._drop_hover
         if live:
             self._paint_tracks(p, c, cc)
         else:
@@ -293,8 +351,8 @@ class SequenceTimeline(QWidget):
 
     def _paint_tracks(self, p, c, cc):
         p.fillRect(self.rect(), QColor(c["panel"]))
-        vr, ar = self._v_rect(), self._a_rect()
-        for r in (vr, ar):
+        vr, ar, mr = self._v_rect(), self._a_rect(), self._m_rect()
+        for r in (vr, ar, mr):
             p.fillRect(r, QColor(c["field"]))
         p.setClipRect(QRectF(HEAD_W, 0, self._track_width(), self.height()))
         self._paint_ruler(p, c)
@@ -309,13 +367,64 @@ class SequenceTimeline(QWidget):
                              QRectF(x0, ar.top(), x1 - x0, ar.height()), faded=bool(ghost))
         if self._drag and self._drag[0] == "move":
             self._paint_move(p, c, cc, st)
+        self._paint_music(p, c, mr)
         if self._drop_hover:                                     # a library row over the tracks
             pen = QPen(QColor(c["accent"]), 2, Qt.DashLine)
             p.setPen(pen)
             p.setBrush(Qt.NoBrush)
-            p.drawRoundedRect(vr.adjusted(1, 1, -1, -1), 4, 4)
+            p.drawRoundedRect((mr if self._drop_lane == "music" else vr).adjusted(1, 1, -1, -1), 4, 4)
         p.setClipping(False)
         self._paint_head(p, c)
+
+    def _music_now(self) -> list:
+        """The clips on A2 as drawn: during a drag on A2 its preview."""
+        if self._drag and self._drag[0] in ("m_trim_start", "m_trim_end", "m_move"):
+            return self._drag[2]
+        return self.music
+
+    def _paint_music(self, p, c, mr):
+        """1.21: the clips on A2 – file name and level; past the end of the cut faded (it is cut off there)."""
+        clips = self._music_now()
+        if not clips:
+            font = QFont(self.font())
+            font.setPixelSize(11)
+            p.setFont(font)
+            p.setPen(QColor(c["dim"]))
+            p.drawText(mr.adjusted(8, 0, -8, 0), Qt.AlignLeft | Qt.AlignVCenter,
+                       _("Musik oder Kommentar hierher ziehen – oder Rechtsklick „Musik hinzufügen …“"))
+            return
+        base = QColor(MUSIC_COLOURS[bool(self.dark)])
+        font = QFont(self.font())
+        font.setPixelSize(11)
+        font.setBold(True)
+        p.setFont(font)
+        end_x = self._x(self.total())
+        for k, clip in enumerate(clips):
+            r = self.music_rect(k, clip)
+            if r.right() < HEAD_W or r.left() > self.width():
+                continue
+            p.setPen(Qt.NoPen)
+            p.setBrush(base)
+            p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
+            if r.right() > end_x:                                    # beyond the cut: not in the export
+                p.fillRect(QRectF(max(end_x, r.left()), r.top(), r.right() - max(end_x, r.left()), r.height()),
+                           QColor(0, 0, 0, 110) if self.dark else QColor(255, 255, 255, 140))
+            p.save()
+            p.setClipRect(r.adjusted(0, 0, -0.5, 0), Qt.IntersectClip)
+            p.setPen(QColor(CLIP_COLOURS[bool(self.dark)]["text"]))
+            vol = "" if abs(clip.volume - 1.0) < 1e-6 else f"  {round(clip.volume * 100)} %"
+            p.drawText(r.adjusted(6, 0, -4, 0), Qt.AlignLeft | Qt.AlignVCenter,
+                       f"♪ {os.path.basename(clip.path)}{vol}")
+            p.restore()
+            sel = k == self.music_sel and not (self._drag and self._drag[0] == "m_move" and self._drag[1] != k)
+            if sel:
+                p.setPen(QPen(QColor(c["accent"]), 2))
+                p.setBrush(Qt.NoBrush)
+                p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 3, 3)
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(c["accent"]))
+                for x in (r.left() + 1, r.right() - 4):
+                    p.drawRoundedRect(QRectF(x, r.top() + 4, 3, r.height() - 8), 1.5, 1.5)
 
     def _paint_head(self, p, c):
         """The track names at the left."""
@@ -327,7 +436,7 @@ class SequenceTimeline(QWidget):
         font.setBold(True)
         p.setFont(font)
         p.setPen(QColor(c["dim"]))
-        for name, r in (("V1", self._v_rect()), ("A1", self._a_rect())):
+        for name, r in (("V1", self._v_rect()), ("A1", self._a_rect()), ("A2", self._m_rect())):
             p.drawText(QRectF(0, r.top(), HEAD_W - 10, r.height()), Qt.AlignRight | Qt.AlignVCenter, name)
 
     def _paint_ruler(self, p, c):
@@ -501,11 +610,11 @@ class SequenceTimeline(QWidget):
 
     # ---- mouse
     def _cursor_for(self, kind):
-        if kind in ("edge_start", "edge_end"):
+        if kind in ("edge_start", "edge_end", "m_edge_start", "m_edge_end"):
             return Qt.SizeHorCursor
-        if kind == "body":
+        if kind in ("body", "m_body"):
             return Qt.OpenHandCursor
-        if kind in ("ruler", "lane"):
+        if kind in ("ruler", "lane", "m_lane"):
             return Qt.PointingHandCursor
         return Qt.ArrowCursor
 
@@ -528,13 +637,28 @@ class SequenceTimeline(QWidget):
             r = self.clip_rect(i)
             self._drag = ("press", i, pt.x() - r.left(), pt.x(), pt)
             self.setCursor(Qt.ClosedHandCursor)
+        elif kind == "m_lane":                                  # 1.21: an empty spot on A2 – seek like a lane
+            self.select(None)
+            self.select_music(None)
+            self._drag = ("seek",)
+            self.seek.emit(self._t(pt.x()))
+        elif kind in ("m_edge_start", "m_edge_end"):
+            self.select(None)
+            self.select_music(i)
+            self._drag = ("m_trim_start" if kind == "m_edge_start" else "m_trim_end", i, list(self.music))
+            self.setCursor(Qt.SizeHorCursor)
+        elif kind == "m_body":
+            self.select(None)
+            self.select_music(i)
+            self._drag = ("m_press", i, pt.x(), pt)
+            self.setCursor(Qt.ClosedHandCursor)
         e.accept()
 
     def mouseMoveEvent(self, e):
         pt = e.position()
         if self._drag is None:
             kind, i = self._hit(pt)
-            hover = (kind, i) if kind in ("edge_start", "edge_end", "body") else None
+            hover = (kind, i) if kind in ("edge_start", "edge_end", "body") else None   # A2 has no hover look
             if hover != self.hover:
                 self.hover = hover
                 self.update()
@@ -554,6 +678,56 @@ class SequenceTimeline(QWidget):
         elif kind == "move":
             self._drag = self._drag[:4] + (pt.x(),)
             self.update()
+        elif kind == "m_press":
+            _k, k, x0, p0 = self._drag
+            if (pt - p0).manhattanLength() >= QApplication.startDragDistance():
+                self._drag = ("m_move", k, list(self.music), x0)
+                self._music_move_to(pt.x())
+        elif kind == "m_move":
+            self._music_move_to(pt.x())
+        elif kind in ("m_trim_start", "m_trim_end"):
+            self._music_trim_to(kind, pt.x())
+
+    def _music_snap(self, t: float) -> float:
+        """1.21: an output second on A2 pulled onto the playhead, a clip boundary, 0 or the end within SNAP_PX."""
+        tol = SNAP_PX / self.scale
+        targets = [0.0, self.pos, self.total()] + list(sequence.starts(self.parts))
+        for x in targets:
+            if abs(x - t) <= tol:
+                return x
+        return t
+
+    def _music_move_to(self, x):
+        _k, k, _clips, x0 = self._drag[:4]
+        orig = self.music[k]
+        at = max(0.0, orig.at + (x - x0) / self.scale)
+        snapped = self._music_snap(at)
+        if snapped == at:                                       # or its end onto a target
+            end = self._music_snap(at + orig.length)
+            snapped = end - orig.length if end != at + orig.length and end - orig.length >= 0 else at
+        new = [replace(c) for c in self.music]
+        new[k] = replace(orig, at=round(snapped, 3))
+        self._drag = ("m_move", k, new, x0)
+        self.update()
+
+    def _music_trim_to(self, kind, x):
+        """1.21: the left edge moves where the clip starts and what of the file it plays from (the right edge stays);
+        the right edge where it stops – never before the file's start or past its end."""
+        k = self._drag[1]
+        c = self.music[k]
+        t = self._music_snap(self._t(x))
+        new = [replace(m) for m in self.music]
+        if kind == "m_trim_start":
+            d = min(max(t - c.at, -c.start, -c.at), c.length - 0.1)
+            new[k] = replace(c, at=round(c.at + d, 3), start=round(c.start + d, 3))
+        else:
+            end = c.start + max(0.1, t - c.at)
+            limit = self.music_lengths.get(c.path)
+            if limit:
+                end = min(end, limit)
+            new[k] = replace(c, end=round(end, 3))
+        self._drag = (kind, k, new)
+        self.update()
 
     def _trim_to(self, i, kind, x):
         """The edge of clip ``i`` under the mouse, snapped to the playhead or a mark when close."""
@@ -610,12 +784,17 @@ class SequenceTimeline(QWidget):
                 self.selection = j
                 self.edited.emit("move", new)
                 self.selected.emit(j)
+        elif kind in ("m_move", "m_trim_start", "m_trim_end"):    # 1.21: the editor cleans (no overlaps) and commits
+            if drag[2] != self.music:
+                self.music_edited.emit(drag[2])
         self.update()
 
     def mouseDoubleClickEvent(self, e):
         kind, i = self._hit(e.position())
         if kind == "body" and i is not None:
             self.seek.emit(sequence.starts(self.parts)[i])
+        elif kind == "m_body" and i is not None:
+            self.seek.emit(self.music[i].at)
 
     def leaveEvent(self, e):
         if self.hover is not None:
@@ -641,6 +820,24 @@ class SequenceTimeline(QWidget):
         t = self._t(e.pos().x())
         menu = QMenu(self)
         menu.setAttribute(Qt.WA_DeleteOnClose)                   # 1.16.1: else every right click stays a child
+        if kind.startswith("m_"):                                # 1.21: the own audio track A2
+            if i is not None:
+                self.select(None)
+                self.select_music(i)
+                vol = menu.addMenu(_("Lautstärke"))
+                for v in (0.25, 0.5, 0.75, 1.0, 1.5, 2.0):
+                    act = vol.addAction(f"{round(v * 100)} %")
+                    act.setCheckable(True)
+                    act.setChecked(abs(self.music[i].volume - v) < 1e-6)
+                    act.triggered.connect(lambda _c=False, v=v: self.picked.emit("m_volume", v, i))
+                menu.addAction(_("Beginnt am Abspielkopf")).triggered.connect(
+                    lambda _c=False: self.picked.emit("m_here", self.pos, i))
+                menu.addAction(_("Entfernen")).triggered.connect(lambda _c=False: self.picked.emit("m_remove", t, i))
+                menu.addSeparator()
+            menu.addAction(_("Musik hinzufügen …")).triggered.connect(lambda _c=False: self.picked.emit("m_add", t, None))
+            self._menu = menu
+            menu.popup(e.globalPos())
+            return
         if kind in ("body", "edge_start", "edge_end") and i is not None:
             self.select(i)
             menu.addAction(_("Hier teilen")).triggered.connect(lambda _c=False: self.picked.emit("split", t, i))
@@ -678,24 +875,38 @@ class SequenceTimeline(QWidget):
                     return url.toLocalFile()
         return ""
 
+    def _lane_at(self, y) -> str | None:
+        r = self._m_rect()
+        return "music" if r.top() - GAP <= y <= r.bottom() + 4 else None
+
     def dragEnterEvent(self, e):
         if self.mime_path(e.mimeData()):
             self._drop_hover = True
+            self._drop_lane = self._lane_at(e.position().y())
             self.update()
             e.acceptProposedAction()
 
     def dragMoveEvent(self, e):
         if self.mime_path(e.mimeData()):
+            lane = self._lane_at(e.position().y())
+            if lane != self._drop_lane:
+                self._drop_lane = lane
+                self.update()
             e.acceptProposedAction()
 
     def dragLeaveEvent(self, e):
         self._drop_hover = False
+        self._drop_lane = None
         self.update()
 
     def dropEvent(self, e):
+        lane, self._drop_lane = self._drop_lane, None
         self._drop_hover = False
         self.update()
         path = self.mime_path(e.mimeData())
         if path:
             e.acceptProposedAction()
-            self.dropped.emit(path)
+            if lane == "music":                                  # 1.21: a file on A2 is its sound, at the drop
+                self.music_dropped.emit(path, self._t(e.position().x()))
+            else:
+                self.dropped.emit(path)
