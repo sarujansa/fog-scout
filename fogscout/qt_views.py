@@ -905,7 +905,7 @@ class TilesView(QWidget):
         while len(self._tiles) < len(data):
             card = _card()
             cl = QVBoxLayout(card)
-            cl.setContentsMargins(14, 12, 14, 12)
+            cl.setContentsMargins(*qt_theme.PAD_CARD)
             box = FactBox(bar=True)
             box.sub.setWordWrap(True)
             cl.addWidget(box)
@@ -936,7 +936,7 @@ class DashboardView(QWidget):
         for _i in range(8):                       # 1.6.3: seven tiles (bloodpoints per hour), two rows of four
             card = _card()
             cl = QVBoxLayout(card)
-            cl.setContentsMargins(14, 12, 14, 12)
+            cl.setContentsMargins(*qt_theme.PAD_CARD)
             box = FactBox(bar=True)
             box.sub.setWordWrap(True)                 # "no killer rounds with stats data": wraps in a narrow window
             cl.addWidget(box)
@@ -957,7 +957,7 @@ class DashboardView(QWidget):
     def _chart_card(lay, title, widget):
         card = _card()
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(14, 12, 14, 12)
+        cl.setContentsMargins(*qt_theme.PAD_CARD)
         cl.setSpacing(8)
         cl.addWidget(_label(title.upper(), "h2"))
         cl.addWidget(widget)
