@@ -69,8 +69,7 @@ SHORTCUTS = (
         ("C", N_("Bildausschnitt"), ((Qt.Key_C, 0, "mode:crop"),)),
         ("D", N_("Zeichnen"), ((Qt.Key_D, 0, "mode:draw"),)),
         ("X", N_("Zensieren"), ((Qt.Key_X, 0, "mode:censor"),)),
-        ("Esc", N_("Ziehen abbrechen, sonst zurück zu Auswählen, sonst Auswahl aufheben, sonst Vollbild verlassen – "
-                   "schliesst nie"),
+        ("Esc", N_("Abbrechen, Werkzeug oder Auswahl aufheben – schliesst nie"),
          ((Qt.Key_Escape, 0, "mode:select"),)))),
     (N_("Projekt"), (
         (N_("Strg+Z / Strg+Y"), N_("Rückgängig / Wiederholen"), (("Ctrl+Z", "undo"), ("Ctrl+Y", "redo"))),
