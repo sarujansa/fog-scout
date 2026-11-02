@@ -325,7 +325,7 @@ class ProjectMixin:
         self.notice.clear()
         self._saved_at = entry.saved or None
         content = project.content_dict(self._state(), self._project_extra())
-        newer_version = int(data.get("version") or 1) > project.VERSION2
+        newer_version = int(data.get("version") or 1) > project.CURRENT
         if entry.version >= project.VERSION2 and entry.id:
             self._bind(entry.id, entry.path, base={"base_hash": entry.hash, "content_hash": project.content_hash(content),
                                                    "view": data.get("view"), "baseline_hash": project.content_hash(content),

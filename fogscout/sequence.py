@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from .clipedit import Part, SPEEDS
+from .clipedit import HOLD_MAX_S, HOLD_READ_S, Part, SPEEDS, part_seconds, zoom_at
 
 MIN_LEN = 0.1                    # seconds of source a clip keeps at least (clean_parts drops shorter ones)
 HISTORY_KEPT = 100               # undo steps kept
@@ -21,8 +21,8 @@ LABEL_GAP_PX = 84                # at least this far between two labels of the r
 
 
 def length(part: Part) -> float:
-    """Output seconds of one part."""
-    return max(0.0, part.end - part.start) / max(0.01, part.speed)
+    """Output seconds of one part (1.19: a still lasts its hold)."""
+    return part_seconds(part)
 
 
 def duration(parts) -> float:
@@ -58,14 +58,20 @@ def source_at(parts, t: float) -> tuple[int | None, float]:
         return None, max(0.0, t)
     base = starts(parts)[i]
     p = parts[i]
-    src = p.start + max(0.0, t - base) * p.speed
+    if p.hold > 0:                                      # 1.19: a still shows one moment all along
+        return i, p.start
+    dt = max(0.0, t - base) * p.speed
+    src = p.end - dt if p.reverse else p.start + dt     # 1.19: backwards from its end
     return i, min(max(p.start, src), p.end)
 
 
 def output_at(parts, i: int, src: float) -> float:
     """Output time of source second ``src`` inside part ``i``."""
     p = parts[i]
-    return starts(parts)[i] + (min(max(p.start, src), p.end) - p.start) / max(0.01, p.speed)
+    if p.hold > 0:
+        return starts(parts)[i]
+    src = min(max(p.start, src), p.end)
+    return starts(parts)[i] + ((p.end - src) if p.reverse else (src - p.start)) / max(0.01, p.speed)
 
 
 def occurrences(parts, src: float) -> list:
@@ -80,10 +86,17 @@ def split(parts, t: float) -> tuple[list, int | None]:
     if i is None:
         return list(parts), None
     p = parts[i]
-    if src - p.start < MIN_LEN - 1e-9 or p.end - src < MIN_LEN - 1e-9:
+    if p.hold > 0 or src - p.start < MIN_LEN - 1e-9 or p.end - src < MIN_LEN - 1e-9:
         return list(parts), None
+    first, second = replace(p, end=src), replace(p, start=src)
+    if p.reverse:                                       # 1.19: played backwards, the later source plays first
+        first, second = second, first
+    if p.zoom:                                          # 1.19: each half rides its share of the zoom
+        u = (t - starts(parts)[i]) / max(1e-6, length(p))
+        mid = zoom_at(p.zoom, u)
+        first, second = replace(first, zoom=(p.zoom[0], mid)), replace(second, zoom=(mid, p.zoom[1]))
     out = list(parts)
-    out[i:i + 1] = [Part(p.start, src, p.speed), Part(src, p.end, p.speed)]
+    out[i:i + 1] = [first, second]
     return out, i + 1
 
 
@@ -118,9 +131,45 @@ def remove(parts, i: int) -> list:
 
 def with_speed(parts, i: int, speed: float) -> list:
     out = list(parts)
-    if 0 <= i < len(out):
+    if 0 <= i < len(out) and out[i].hold <= 0:          # a still has no tempo
         lo, hi = SPEEDS[0], SPEEDS[-1]
         out[i] = replace(out[i], speed=max(lo, min(hi, float(speed))))
+    return out
+
+
+def insert_hold(parts, t: float, seconds: float) -> tuple[list, int | None]:
+    """1.19: a still of the picture at output ``t`` for ``seconds``, put in at that moment (the clip under it is
+    split there; near a clip's edge it goes before/after that clip). (parts, index of the still) – None without
+    parts."""
+    i, src = source_at(parts, t)
+    if i is None:
+        return list(parts), None
+    p = parts[i]
+    seconds = min(max(0.1, float(seconds)), HOLD_MAX_S)
+    at = p.start if p.hold > 0 else min(src, max(p.start, p.end - HOLD_READ_S))
+    still = Part(at, at, 1.0, color=p.color, hold=seconds)      # the clip's colour comes along
+    out, j = split(parts, t)
+    if j is None:                                       # on an edge (or a still): before or after the clip
+        st = starts(parts)
+        j = i if t - st[i] < (st[i + 1] - t) else i + 1
+        out = list(parts)
+    out.insert(j, still)
+    return out, j
+
+
+def set_hold(parts, i: int, seconds: float) -> list:
+    """1.19: the length of still ``i``."""
+    out = list(parts)
+    if 0 <= i < len(out) and out[i].hold > 0:
+        out[i] = replace(out[i], hold=min(max(0.1, float(seconds)), HOLD_MAX_S))
+    return out
+
+
+def with_effects(parts, i: int, **fields) -> list:
+    """1.19: part ``i`` with ``color``/``zoom``/``reverse`` set (clipedit cleans the values)."""
+    out = list(parts)
+    if 0 <= i < len(out):
+        out[i] = replace(out[i], **fields)
     return out
 
 
@@ -168,7 +217,7 @@ class EditState:
     censor_style: str = "pixel"
 
     def copy(self) -> "EditState":
-        return EditState([Part(p.start, p.end, p.speed) for p in self.parts], self.crop, self.crop_key,
+        return EditState([replace(p) for p in self.parts], self.crop, self.crop_key,
                          [replace(s, pts=list(s.pts)) for s in self.shapes], self.fade_in, self.fade_out,
                          [list(b) for b in self.boxes], self.censor_on, self.censor_style)
 
