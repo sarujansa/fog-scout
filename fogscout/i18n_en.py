@@ -283,7 +283,7 @@ EN = {
     "oben schon einen Namen, passiert nichts. Beim Drehen bleibt der Name aufrecht.":
         "Writes the map name in white with a shadow above the map, in the style of the supplied maps. If the "
         "picture already has a name on top, nothing happens. The name stays upright when the map is rotated.",
-    "Drehen ↻": "Rotate ↻",
+    "Drehen": "Rotate",
     "Karte drehen": "Rotate map",
     "Etage wechseln": "Change floor",
     "Beide Etagen": "Both floors",
@@ -2327,8 +2327,7 @@ EN = {
         'Mark a recording: play, cut a clip, keep, delete – or right-click.',
     'Clip markieren: abspielen, im Editor öffnen, löschen – oder Rechtsklick.':
         'Mark a clip: play, open in the editor, delete – or right-click.',
-    'Filter{count} ▾': 'Filters{count} ▾',
-    'Filter{count} ▴': 'Filters{count} ▴',
+    'Filter{count}': 'Filters{count}',
     'Filter zurücksetzen': 'Reset filters',
     'Alle Filter der Statistik zurück auf „alle“ – Zeitraum, Rolle, Region, Killer, Map, Modus und „Farming ausblenden“.':
         'Every filter of the statistics back to "all" – period, role, region, killer, map, mode and "Hide farming".',
@@ -3156,4 +3155,20 @@ EN = {
         "New in the download folder – a click puts it on A2 at the playhead:",
     "Öffnet YouTubes Audiomediathek im Browser: kostenlose Musik und Effekte, für Videos freigegeben (keine Content-ID-Ansprüche). Heruntergeladene MP3s erscheinen hier darunter.":
         "Opens YouTube's Audio Library in the browser: free music and effects, cleared for videos (no Content ID claims). Downloaded MP3s show up below.",
+    # 1.24 (phase 2): page purposes, the state at the foot of the navigation
+    "Status, aktuelle Map und deine Runden auf einen Blick": "Status, current map and your rounds at a glance",
+    "Alle Callout-Karten – ansehen, von Hand einblenden, eigene Bilder und Notizen":
+        "All callout maps – look at them, show one by hand, own pictures and notes",
+    "Was im Spiel erscheint, wo und wie gross": "What shows in the game, where and how big",
+    "Deine Runden, Kills und Wartezeiten – nur auf diesem PC gespeichert":
+        "Your rounds, kills and waiting times – stored on this PC only",
+    "Runden, Clips und Screenshots – abspielen, schneiden, aufräumen":
+        "Rounds, clips and screenshots – play, cut, tidy up",
+    "Server-Regionen wählen und die Verbindung im Blick behalten":
+        "Choose the server regions and keep an eye on the connection",
+    "Alles, was Fog Scout tut – suchen mit Strg+F": "Everything Fog Scout does – search with Ctrl+F",
+    "Was das Programm gemacht hat – zum Nachlesen und für die Fehlersuche":
+        "What the program did – to read up on and for troubleshooting",
+    "Übersicht öffnen": "Open the overview",
+
 }

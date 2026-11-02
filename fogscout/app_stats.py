@@ -111,12 +111,12 @@ class StatsTab:
                           state="readonly", width=13)
         cb.pack(side="left", padx=(8, 0))
         cb.bind("<<ComboboxSelected>>", lambda e: self._stats_render())
-        self.stats_filter_btn = ui.Button(fr, text=_("Filter{count} ▾", count=""),
-                                        command=self._stats_more_toggle)
+        self.stats_filter_btn = ui.glyph(ui.Button(fr, text=_("Filter{count}", count=""),    # 1.24: drawn chevron
+                                                   command=self._stats_more_toggle), "chevron_down")
         self.stats_filter_btn.pack(side="left", padx=(8, 0))
         self.stats_reset_btn = ui.Button(fr, text=_("Filter zurücksetzen"), command=self._stats_filters_reset)
-        ui.Button(fr, text=_("Stats-Seite öffnen"),
-                  command=lambda: self._official_open(False)).pack(side="right")
+        ui.glyph(ui.Button(fr, text=_("Stats-Seite öffnen"),            # 1.24: opens the browser – says so
+                           command=lambda: self._official_open(False)), "external").pack(side="right")
         self._stats_regions = [(None, _("Alle Regionen"))]
         self.stats_region_var = ui.StringVar(value=self._stats_regions[0][1])
         self.stats_region_cb = ui.Combobox(more, textvariable=self.stats_region_var, state="readonly", width=20,
@@ -426,8 +426,8 @@ class StatsTab:
         elif not self._stats_more_open and self.stats_more_row.winfo_manager():
             self.stats_more_row.pack_forget()
         count = f" ({hidden_set})" if hidden_set else ""
-        self.stats_filter_btn.configure(text=_("Filter{count} ▴", count=count) if self._stats_more_open
-                                      else _("Filter{count} ▾", count=count))
+        self.stats_filter_btn.configure(text=_("Filter{count}", count=count))
+        ui.glyph(self.stats_filter_btn, "chevron_up" if self._stats_more_open else "chevron_down")
         if (hidden_set or shown_set) and not self.stats_reset_btn.winfo_manager():
             self.stats_reset_btn.pack(side="left", padx=(6, 0), after=self.stats_filter_btn)
         elif not (hidden_set or shown_set) and self.stats_reset_btn.winfo_manager():

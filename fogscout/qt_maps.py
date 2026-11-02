@@ -16,7 +16,7 @@ from . import qt_theme, thumbs
 from .qt_layouts import FlowRow
 from .i18n import N_, _
 from .mapnotes import MAX_CHARS as NOTE_CHARS
-from .qt_common import pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page
+from .qt_common import pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page, set_glyph
 
 
 TILE_W, TILE_H = 150, 190          # px (logical) of a map tile on the maps page (1.2.18: + info line)
@@ -167,7 +167,7 @@ class MapsPage(QWidget):
         # another resize), made in a thread, kept on disk
         ratio = self.devicePixelRatioF()
         self._loader = thumbs.Loader((round((TILE_W - 24) * ratio), round((TILE_PIC - 8) * ratio)), cache_dir)
-        page, lay = _scroll_page("Maps", scroll=False)
+        page, lay = _scroll_page("Maps", scroll=False, page_key="maps")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(page)
@@ -231,7 +231,8 @@ class MapsPage(QWidget):
         cl.setContentsMargins(*qt_theme.PAD_CARD)
         cl.setSpacing(6)
         top = QHBoxLayout()
-        self.p_back = QPushButton("← " + _("Zurück"))
+        self.p_back = QPushButton(_("Zurück"))
+        set_glyph(self.p_back, "back")            # 1.24: a drawn arrow, not "←"
         self.p_back.setToolTip(_tip("Zurück"))
         self.p_back.clicked.connect(self.close_big)
         top.addWidget(self.p_back)
@@ -544,7 +545,7 @@ class MapsPage(QWidget):
             target.setFocus(Qt.OtherFocusReason)
 
     # ------------------------------------------------------------------ right click (1.2.18)
-    MENU = (("show", N_("Anzeigen")), ("rotate", N_("Drehen ↻")),
+    MENU = (("show", N_("Anzeigen")), ("rotate", N_("Drehen")),
             ("size_reset", N_("Eigene Grösse und Drehung zurücksetzen")), ("picture", N_("Kartenbild ersetzen …")),
             ("note", N_("Notiz bearbeiten …")))
 

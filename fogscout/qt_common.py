@@ -8,7 +8,19 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (QAbstractScrollArea, QAbstractSlider, QAbstractSpinBox, QApplication, QComboBox, QFrame,
                                QLabel, QScrollArea, QVBoxLayout, QWidget)
 
-from .i18n import _
+from .i18n import N_, _
+
+# 1.24 (phase 2, prompt_phase2.md): one line under each page's title – what the page is for
+PAGE_SUBTITLES = {
+    "overview": N_("Status, aktuelle Map und deine Runden auf einen Blick"),
+    "maps": N_("Alle Callout-Karten – ansehen, von Hand einblenden, eigene Bilder und Notizen"),
+    "overlay": N_("Was im Spiel erscheint, wo und wie gross"),
+    "stats": N_("Deine Runden, Kills und Wartezeiten – nur auf diesem PC gespeichert"),
+    "recordings": N_("Runden, Clips und Screenshots – abspielen, schneiden, aufräumen"),
+    "server": N_("Server-Regionen wählen und die Verbindung im Blick behalten"),
+    "settings": N_("Alles, was Fog Scout tut – suchen mit Strg+F"),
+    "log": N_("Was das Programm gemacht hat – zum Nachlesen und für die Fehlersuche"),
+}
 
 
 SLIDER_MAX = 420                  # px (logical): longest slider (overlay position, size, opacity)
@@ -68,6 +80,28 @@ def _label(text="", cls=None, wrap=False):
     return w
 
 
+def set_glyph(w, name, primary=False):
+    """1.24 (phase 2): a drawn sign (qt_icons) on a button in the colours of the theme now – set again only when the
+    sign, the mode or the accent changed (show_control runs on every refresh). The name is kept as the property
+    "glyph" (the search knows a closed fold by "chevron_right")."""
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QIcon
+    from . import qt_icons, qt_theme
+    c = qt_theme.colours(qt_theme.current_dark())
+    normal = c["on_accent"] if primary else c["fg"]
+    key = (name, normal, c["fg_dis"], c["accent"])
+    if getattr(w, "_glyph_key", None) == key:
+        return
+    w._glyph_key = key
+    w.setProperty("glyph", name or "")
+    if not name:
+        w.setIcon(QIcon())
+        return
+    ratio = w.devicePixelRatioF() or 1.0
+    w.setIcon(qt_icons.icon(name, normal, disabled=c["fg_dis"], size=qt_theme.ICON["m"], ratio=ratio))
+    w.setIconSize(QSize(qt_theme.ICON["m"], qt_theme.ICON["m"]))
+
+
 def _tip(label: str) -> str:
     """Hover text of a button of the window itself (tooltip.TIPS, by German label)."""
     from .tooltip import tip_for_label
@@ -103,9 +137,21 @@ def steady_scroll(sa):
     return sa
 
 
-def _scroll_page(title, scroll=True):
+def page_head(title: str, page_key: str = "") -> QVBoxLayout:
+    """1.24: a page's title and the line under it (PAGE_SUBTITLES) – close together, apart from the page."""
+    head = QVBoxLayout()
+    head.setContentsMargins(0, 0, 0, 0)
+    head.setSpacing(2)
+    head.addWidget(_label(title, "h1"))
+    sub = PAGE_SUBTITLES.get(page_key)
+    if sub:
+        head.addWidget(_label(_(sub), "subtitle", wrap=True))
+    return head
+
+
+def _scroll_page(title, scroll=True, page_key=""):
     """(page, body layout): a page that scrolls as a whole, with its title on top (``scroll`` False: a page that
-    fits the window, its parts scroll on their own)."""
+    fits the window, its parts scroll on their own); 1.24: the page's purpose under the title (``page_key``)."""
     page = QWidget()
     page.setObjectName("page")
     outer = QVBoxLayout(page)
@@ -124,5 +170,5 @@ def _scroll_page(title, scroll=True):
     lay = QVBoxLayout(body)
     lay.setContentsMargins(22, 18, 22, 18)
     lay.setSpacing(12)
-    lay.addWidget(_label(title, "h1"))
+    lay.addLayout(page_head(title, page_key))
     return page, lay

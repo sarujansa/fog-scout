@@ -180,6 +180,10 @@ def ui_state(w) -> dict:
         st["pil"] = w._dbdms_pil
     if getattr(w, "_dbdms_danger", False):       # 1.12.3: deletes or resets data (ui.danger)
         st["danger"] = True
+    if getattr(w, "_dbdms_primary", False):      # 1.24: the main action (ui.primary)
+        st["primary"] = True
+    if getattr(w, "_dbdms_glyph", None):         # 1.24: a drawn sign before the text (ui.glyph)
+        st["glyph"] = w._dbdms_glyph
     if isinstance(w, (ui.Button, ui.Checkbutton, ui.Radiobutton, ui.Combobox, ui.Entry)):
         st["enabled"] = not w.instate(["disabled"])
         tip = getattr(w, "_dbdms_tip", None)
@@ -605,6 +609,8 @@ class QtShell:
                 self._save_soon()
         if not (visible or force):
             return
+        st = self._user_state()                       # 1.24: the state at the foot of the navigation, every page
+        q.show_status(st.kind, st.text)
         page = q.current_key()
         if page == "overview":
             q.show_model(overview.overview_model(self, now, IS_WIN), self._overview_thumb(), self._qt_tip)

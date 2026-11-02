@@ -272,6 +272,20 @@ def danger(w):
     return w
 
 
+def primary(w):
+    """1.24 (phase 2): the main action of a view – filled in the accent (Qt object name "primary"); at most one per
+    card, and never one that deletes (that is ``danger``)."""
+    w._dbdms_primary = True
+    return w
+
+
+def glyph(w, name: str):
+    """1.24 (phase 2): a drawn sign (qt_icons.GLYPHS) before a button's text – instead of Unicode signs like ↻ ▸ ✕.
+    May change later (a fold: chevron_right ↔ chevron_down)."""
+    w._dbdms_glyph = name
+    return w
+
+
 class Button(Widget):
     def invoke(self):
         cmd = self._opts.get("command")

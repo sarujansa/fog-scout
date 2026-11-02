@@ -13,10 +13,11 @@ import collections
 from PySide6.QtCore import QByteArray, QEvent, QModelIndex, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap, QStandardItem
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCompleter,
-                               QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
+                               QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
                                QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget)
 
-from . import i18n, qt_theme
+from . import i18n, qt_icons, qt_theme
+from .status import DOT_STYLE
 from .i18n import N_, _
 from .qt_app import FIRA, application          # 1.14.2: made before the heavy imports (splash)
 from .qt_common import (SLIDER_MAX, WheelGuard, guard_wheel, pixmap_from_pil, _label, _tip, _card, _set,
@@ -474,6 +475,48 @@ class _Forms(dict):
         return page
 
 
+class NavStatus(QFrame):
+    """1.24 (phase 2): the foot of the navigation – a dot in the state's colour and the state in words (two lines
+    at most; colour never alone). A click, Enter or Space opens the overview. Narrow: only the dot."""
+
+    def __init__(self, on_click):
+        super().__init__()
+        self.setObjectName("navstatus")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.TabFocus)
+        self._on_click = on_click
+        h = QHBoxLayout(self)
+        h.setContentsMargins(14, 10, 10, 12)
+        h.setSpacing(8)
+        self.dot = QLabel()
+        self.text = QLabel()
+        self.text.setObjectName("navstatustext")
+        self.text.setWordWrap(True)
+        h.addWidget(self.dot, 0, Qt.AlignTop)
+        h.addWidget(self.text, 1)
+        self._shown = None
+
+    def show_state(self, colour: str, text: str, compact: bool, ratio: float = 1.0):
+        if (colour, text, compact) == self._shown:
+            return
+        self._shown = (colour, text, compact)
+        self.dot.setPixmap(qt_icons.pixmap("record", colour, qt_theme.ICON["s"], ratio))
+        _set(self.text, "" if compact else text)
+        self.text.setVisible(not compact)
+        self.setAccessibleName(text)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.LeftButton and self.rect().contains(e.position().toPoint()):
+            self._on_click()
+        super().mouseReleaseEvent(e)
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self._on_click()
+            return
+        super().keyPressEvent(e)
+
+
 class _NavList(QListWidget):
     """The navigation. Qt's list view makes the first row current as soon as it gets the keyboard focus while no
     row is current – on the first start that threw the user out of the setup assistant about a second after it
@@ -553,9 +596,14 @@ class MainWindow(QMainWindow):
         self.search_btn.setToolTip(_("Einstellung suchen (Strg+F)"))
         self.search_btn.clicked.connect(self.focus_search)
         self.search_btn.hide()
+        sl.addWidget(self._brand_row())           # 1.24 (phase 2): the program's name on top …
         sl.addWidget(self.search)
         sl.addWidget(self.search_btn)
         sl.addWidget(self.nav, 1)
+        self.status_btn = NavStatus(lambda: self.show_page("overview"))   # … what it does now at the foot
+        self.status_btn.setFixedWidth(NAV_W)
+        self._status = None                       # (kind, text) shown – status.user_state
+        sl.addWidget(self.status_btn)
         self._found = {}                  # completer text -> (page key, widget)
         from PySide6.QtGui import QStandardItemModel
         self._search_model = QStandardItemModel(self)
@@ -588,6 +636,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(560, 480)            # narrower: the navigation shows only icons, the pages wrap
         self._log_alert = False
         self._dark = True
+        self._brand_paint()                       # 1.24: drawn again by apply_theme
         self._nav_icons()
         self.dialogs = {}                 # dialog path (UI model) -> DialogWindow
         self._qss = ""                    # the style sheet, set per part (_style_lazily)
@@ -826,7 +875,7 @@ class MainWindow(QMainWindow):
         self.show_page(key)
         self.search.clear()
         self.search.clearFocus()
-        if isinstance(w, QPushButton) and w.text().startswith("▸"):
+        if isinstance(w, QPushButton) and w.property("glyph") == "chevron_right":   # 1.24: the fold's sign
             w.click()                                  # 1.23: a closed fold opens (Log › Erweitert)
         if self._nav_kept:
             self._nav_kept = False
@@ -1048,6 +1097,8 @@ class MainWindow(QMainWindow):
         self._style_lazily(qt_theme.stylesheet(dark, zoom))
         self._dark = bool(dark)
         self._nav_icons()
+        self._brand_paint()                                        # 1.24: compass and state dot in the theme
+        self._status_paint()
         try:
             hints = QApplication.styleHints()
             hints.setColorScheme(Qt.ColorScheme.Dark if dark else Qt.ColorScheme.Light)   # title bar (Qt 6.8+)
@@ -1153,6 +1204,43 @@ class MainWindow(QMainWindow):
         super().resizeEvent(e)
         self._compact_nav(self.width() < NAV_COMPACT_BELOW)
 
+    def _brand_row(self) -> QWidget:
+        """1.24 (phase 2, prompt_phase2.md): the compass of the program's icon and its name above the search – the
+        window says whose it is; narrow, only the compass stays."""
+        row = QWidget()
+        row.setObjectName("navbrand")
+        h = QHBoxLayout(row)
+        h.setContentsMargins(16, 14, 10, 0)
+        h.setSpacing(8)
+        self.brand_icon = QLabel()
+        self.brand_name = QLabel("Fog Scout")
+        self.brand_name.setObjectName("brandname")
+        h.addWidget(self.brand_icon)
+        h.addWidget(self.brand_name)
+        h.addStretch(1)
+        return row
+
+    def _brand_paint(self):
+        c = qt_theme.colours(self._dark)
+        self.brand_icon.setPixmap(qt_icons.pixmap("compass", c["accent"], qt_theme.ICON["l"],
+                                                  self.devicePixelRatioF() or 1.0))
+
+    def show_status(self, kind: str, text: str):
+        """1.24 (phase 2): the state of Fog Scout (status.user_state – the same words as the tray's dot) at the foot
+        of the navigation on every page; before, only the overview showed it. A click opens the overview. Set only
+        when it changed (called on every refresh of the window)."""
+        if (kind, text) != self._status:
+            self._status = (kind, text)
+            self._status_paint()
+
+    def _status_paint(self):
+        if self._status is None:
+            return
+        kind, text = self._status
+        colour = qt_theme.dot_colour(DOT_STYLE.get(kind, "idle"), self._dark)
+        self.status_btn.show_state(colour, text, self._nav_compact, self.devicePixelRatioF() or 1.0)
+        self.status_btn.setToolTip(text + " · " + _("Übersicht öffnen"))
+
     def _compact_nav(self, on: bool, keep: bool = False):
         """A narrow window: the navigation shows only its icons (names as hover text) – the page gets the room.
         ``keep``: opened for a search (Ctrl+F) – stays open until a hit is chosen."""
@@ -1171,6 +1259,9 @@ class MainWindow(QMainWindow):
         self.nav.setFixedWidth(NAV_COMPACT_W if on else NAV_W)
         self.search.setFixedWidth(NAV_W)
         self.search_btn.setFixedWidth(NAV_COMPACT_W)
+        self.brand_name.setVisible(not on)
+        self.status_btn.setFixedWidth(NAV_COMPACT_W if on else NAV_W)
+        self._status_paint()
         self._nav_texts()
 
     def _nav_texts(self):
