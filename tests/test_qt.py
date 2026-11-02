@@ -78,7 +78,7 @@ def test_overview_with_a_map_in_a_round():
     timer, server, ping, who = o.facts
     assert timer.value == "01:05" and server.value == "Frankfurt" and ping.value == "31 ms" and who.value == "Oni"
     assert "1.2.3.4" not in repr(o)                                 # never the server address
-    assert o.today[0].value == "1" and o.rounds == [("Coal Tower", "Oni · 09:00")]
+    assert o.today[0].value == "1" and [tuple(r[:2]) for r in o.rounds] == [("Coal Tower", "Oni · 09:00")]
 
 
 def test_overview_doubt_and_unknown():
@@ -2196,3 +2196,25 @@ def test_the_name_column_is_never_squeezed_below_its_contents(qapp, keep):
     qapp.processEvents()
     assert few.header().sectionResizeMode(0) == few.header().ResizeMode.Stretch
     assert few.columnWidth(0) >= need
+
+
+def test_the_play_button_of_an_overview_round_shows_only_with_a_recording(qapp, keep):
+    """1.17.1: ▶ only on a row whose round has a recording – also while the window was never shown (isVisible() is
+    False then: every row kept its ▶); a click on the row posts ov_round, ▶ posts ov_recording."""
+    from fogscout import overview
+    from fogscout.qt_pages import RoundRowView
+    posted = []
+    rows = [keep(RoundRowView(lambda a, arg=None: posted.append((a, arg)))) for _i in range(2)]
+    rows[0].show_round(overview.RoundRow("Coal Tower", "Nurse", 10.0, None))
+    rows[1].show_round(overview.RoundRow("Coal Tower", "Nurse", 20.0, "/r/a.mkv"))
+    assert rows[0].play.isHidden() and not rows[1].play.isHidden()
+    rows[1].show_round(overview.RoundRow("Dead Sands", "Survivor", 30.0, None))          # refilled without one
+    assert rows[1].play.isHidden()
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    ev = QMouseEvent(QMouseEvent.Type.MouseButtonPress, QPointF(5, 5), QPointF(5, 5), Qt.LeftButton, Qt.LeftButton,
+                     Qt.NoModifier)
+    rows[0].mousePressEvent(ev)
+    rows[0].show_round(overview.RoundRow("Coal Tower", "Nurse", 10.0, "/r/b.mkv"))
+    rows[0].play.click()
+    assert posted == [("ov_round", 10.0), ("ov_recording", 10.0)]
