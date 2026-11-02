@@ -2970,4 +2970,61 @@ EN = {
         "{n}  Still {length} s",
     "Übernimmt Helligkeit, Kontrast und Sättigung dieses Clips für alle Clips auf der Zeitleiste (ein Schritt, Strg+Z macht ihn rückgängig).":
         "Applies this clip's brightness, contrast and saturation to every clip on the timeline (one step, Ctrl+Z undoes it).",
+    # 1.20: shorts
+    "Als Short anzeigen":
+        "Show as short",
+    "Beginnt hier":
+        "Starts here",
+    "Der Text erscheint ab dem Abspielkopf {n} s lang unten im Short.":
+        "The text shows from the playhead for {n} s at the bottom of the short.",
+    "Der markierte Untertitel beginnt am Abspielkopf.":
+        "The marked subtitle starts at the playhead.",
+    "Der markierte Untertitel endet am Abspielkopf.":
+        "The marked subtitle ends at the playhead.",
+    "Die Vorschau zeigt das fertige Hochformat mit Titel und Untertiteln – Zeichnungen und Zensur sind im Export drin, hier nicht zu sehen.":
+        "The preview shows the finished vertical video with title and subtitles – drawings and censoring are in the export, not shown here.",
+    "Ein Short ist höchstens {limit} min lang, dieser Schnitt {seconds} s – kürzer schneiden.":
+        "A short is at most {limit} min long, this cut {seconds} s – cut it shorter.",
+    "Endet hier":
+        "Ends here",
+    "Entfernen":
+        "Remove",
+    "Entfernt den markierten Untertitel.":
+        "Removes the marked subtitle.",
+    "Erst den Text des Untertitels eingeben.":
+        "Enter the subtitle's text first.",
+    "Hochformat 1080×1920 für YouTube Shorts und TikTok, höchstens 3 min":
+        "Vertical 1080×1920 for YouTube Shorts and TikTok, at most 3 min",
+    "Schriftgrösse des Titels.":
+        "Font size of the title.",
+    "Short (9:16)":
+        "Short (9:16)",
+    "Short / TikTok (9:16)":
+        "Short / TikTok (9:16)",
+    "Short 1080×1920, {fps} fps":
+        "Short 1080×1920, {fps} fps",
+    "Text eingeben, dann „Untertitel am Abspielkopf“":
+        "Enter the text, then \"Subtitle at playhead\"",
+    "Titel":
+        "Title",
+    "Titel oben (leer = keiner)":
+        "Title at the top (empty = none)",
+    "Unscharfer Hintergrund":
+        "Blurred background",
+    "Unscharfer Hintergrund: das ganze Spielbild in der Mitte, oben und unten dasselbe Bild unscharf. Zuschnitt: die Mitte (oder der 9:16-Ausschnitt unter Bild) füllt das Hochformat.":
+        "Blurred background: the whole game picture in the middle, the same picture blurred above and below. Crop: the middle (or the 9:16 crop under Picture) fills the vertical frame.",
+    "Untertitel":
+        "Subtitles",
+    "Untertitel am Abspielkopf":
+        "Subtitle at playhead",
+    "Zuschnitt 9:16":
+        "Crop 9:16",
+    "gross":
+        "large",
+    "klein":
+        "small",
+    "mittel":
+        "medium",
+    "⚠ länger als {n} min – so nicht exportierbar":
+        "⚠ longer than {n} min – cannot be exported like this",
 }

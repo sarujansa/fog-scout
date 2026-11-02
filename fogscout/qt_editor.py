@@ -274,6 +274,8 @@ class EditorWindow(ProjectMixin, ClipBase):
         self._layout_timer = None
         self._applying = False
         self._zoom_edit = None              # 1.19: (clip index, 0 start / 1 end) while the zoom frame is edited
+        self._short = None                  # 1.20: shorts.ShortSpec of this cut (layout, title, subtitles)
+        self._short_view = False            # 1.20: the preview shows the composed short
         self._crop_saved = (None, None, False)
         super().__init__(path, marks, clips_dir, mode, sound, flags=Qt.Window, **kw)
         self.resize(1480, 900)
@@ -569,7 +571,8 @@ class EditorWindow(ProjectMixin, ClipBase):
                                   ("marks", _("Marken (F8)"), self._section_marks),
                                   ("draw", _("Zeichnen"), self._section_draw), ("censor", _("Zensieren"), self._section_censor),
                                   ("picture", _("Bild"), self._section_picture), ("sound", _("Ton"), self._section_sound),
-                                  ("export", _("Export"), self._section_export)):
+                                  ("export", _("Export"), self._section_export),
+                                  ("short", _("Short (9:16)"), self._section_short)):
             sec = Section(title)
             build(sec, mode)
             self.sections[key] = sec
@@ -799,6 +802,8 @@ class EditorWindow(ProjectMixin, ClipBase):
             self._zoom_leave()
             return
         self._zoom_leave()
+        if self._short_view:                                  # 1.20: the frame belongs on the recording's picture
+            self.short_view_box.setChecked(False)
         if self.mode != "select":
             self.mode_btns["select"].setChecked(True)
         pv = self.preview
@@ -863,6 +868,198 @@ class EditorWindow(ProjectMixin, ClipBase):
         if p is not None and p.zoom:
             self._zoom_leave()
             self._fx_set(i, None, zoom=None)
+
+    # ---- 1.20: the vertical short (export format "Short / TikTok")
+    def _section_short(self, sec, mode):
+        from . import shorts
+        self.short_layout = self._combo(None, [("blur", _("Unscharfer Hintergrund")), ("crop", _("Zuschnitt 9:16"))],
+                                        "blur", _("Unscharfer Hintergrund: das ganze Spielbild in der Mitte, oben und "
+                                                  "unten dasselbe Bild unscharf. Zuschnitt: die Mitte (oder der "
+                                                  "9:16-Ausschnitt unter Bild) füllt das Hochformat."),
+                                        self._short_layout_picked)
+        sec.row(_("Vorlage"), self.short_layout)
+        self.short_view_box = QCheckBox(_("Als Short anzeigen"))
+        self.short_view_box.setToolTip(_("Die Vorschau zeigt das fertige Hochformat mit Titel und Untertiteln – "
+                                         "Zeichnungen und Zensur sind im Export drin, hier nicht zu sehen."))
+        self.short_view_box.toggled.connect(self._short_view_toggled)
+        sec.body.addWidget(self.short_view_box)
+        self.short_title = QLineEdit()
+        self.short_title.setPlaceholderText(_("Titel oben (leer = keiner)"))
+        self.short_title.setMaxLength(shorts.MAX_TEXT)
+        self.short_title.textEdited.connect(self._short_title_edited)
+        self.short_title.returnPressed.connect(self.setFocus)
+        sec.row(_("Titel"), self.short_title)
+        self.short_size = self._combo(None, [(0, _("klein")), (1, _("mittel")), (2, _("gross"))], 1,
+                                      _("Schriftgrösse des Titels."), self._short_size_picked)
+        sec.row(_("Grösse"), self.short_size, stretch=False)
+        lbl = QLabel(_("Untertitel"))
+        lbl.setProperty("class", "label")
+        sec.body.addWidget(lbl)
+        self.sub_text = QLineEdit()
+        self.sub_text.setPlaceholderText(_("Text eingeben, dann „Untertitel am Abspielkopf“"))
+        self.sub_text.setMaxLength(shorts.MAX_TEXT)
+        self.sub_text.returnPressed.connect(self._sub_add)
+        sec.body.addWidget(self.sub_text)
+        row = FlowRow(spacing=6)
+        self.sub_add_btn = self._btn(row, _("Untertitel am Abspielkopf"), self._sub_add,
+                                     _("Der Text erscheint ab dem Abspielkopf {n} s lang unten im Short.",
+                                       n=f"{shorts.SUB_DEFAULT_S:g}"))
+        sec.body.addLayout(row)
+        self.sub_list = QListWidget()
+        self.sub_list.setObjectName("marks")
+        self.sub_list.setMaximumHeight(130)
+        self.sub_list.setFocusPolicy(Qt.NoFocus)
+        self.sub_list.itemClicked.connect(self._sub_picked)
+        sec.body.addWidget(self.sub_list)
+        row = FlowRow(spacing=6)
+        self.sub_start_btn = self._btn(row, _("Beginnt hier"), lambda: self._sub_edge(0),
+                                       _("Der markierte Untertitel beginnt am Abspielkopf."))
+        self.sub_end_btn = self._btn(row, _("Endet hier"), lambda: self._sub_edge(1),
+                                     _("Der markierte Untertitel endet am Abspielkopf."))
+        self.sub_del_btn = self._btn(row, _("Entfernen"), self._sub_remove, _("Entfernt den markierten Untertitel."))
+        sec.body.addLayout(row)
+
+    def _mode_changed(self, _i, save=True):
+        super()._mode_changed(_i, save)
+        if getattr(self, "sections", None) is None:
+            return
+        if self.mode_box.currentData() != "shorts" and self._short_view:
+            self.short_view_box.setChecked(False)
+        self._inspector_refresh()
+
+    def _short_spec(self):
+        from . import shorts
+        return self._short.copy() if self._short is not None else shorts.ShortSpec()
+
+    def _short_set(self, spec, key=None):
+        """The short changed: one undo step (``key`` merges typing), the preview and the timeline follow."""
+        self._short = None if spec.empty() else spec
+        self._commit(key)
+        self._short_show()
+        if self._short_view:
+            self.goto(self.pos)
+
+    def _short_show(self):
+        """The section shows the short (without firing its handlers)."""
+        spec = self._short_spec()
+        for box, value in ((self.short_layout, spec.layout), (self.short_size, spec.title_size)):
+            box.blockSignals(True)
+            box.setCurrentIndex(max(0, box.findData(value)))
+            box.blockSignals(False)
+        if self.short_title.text() != spec.title and not self.short_title.hasFocus():
+            self.short_title.setText(spec.title)
+        row = self.sub_list.currentRow()
+        self.sub_list.blockSignals(True)
+        self.sub_list.clear()
+        for sub in spec.subs:
+            self.sub_list.addItem(f"{clipedit.fmt_pos(sub.t0)}–{clipedit.fmt_pos(sub.t1)}  {sub.text}")
+        if 0 <= row < self.sub_list.count():
+            self.sub_list.setCurrentRow(row)
+        self.sub_list.blockSignals(False)
+        has = self.sub_list.currentRow() >= 0
+        for b in (self.sub_start_btn, self.sub_end_btn, self.sub_del_btn):
+            b.setEnabled(has)
+        self.timeline.set_subs([(s.t0, s.t1) for s in spec.subs])
+
+    def _short_layout_picked(self, _i=None):
+        spec = self._short_spec()
+        spec.layout = self.short_layout.currentData() or "blur"
+        self._short_set(spec)
+
+    def _short_size_picked(self, _i=None):
+        spec = self._short_spec()
+        spec.title_size = int(self.short_size.currentData() or 0)
+        self._short_set(spec)
+
+    def _short_title_edited(self, text):
+        from . import shorts
+        spec = self._short_spec()
+        spec.title = shorts.clean_text(text)
+        self._short_set(spec, key="short_title")
+
+    def _sub_add(self):
+        from . import shorts
+        text = shorts.clean_text(self.sub_text.text())
+        if not text or not self.parts:
+            self.status.setText(_("Erst den Text des Untertitels eingeben."))
+            return
+        spec = self._short_spec()
+        t0 = round(self.pos, 2)
+        t1 = round(min(self.timeline.total(), t0 + shorts.SUB_DEFAULT_S), 2)
+        if t1 - t0 < 0.1:
+            t0 = max(0.0, t1 - shorts.SUB_DEFAULT_S)
+        spec.subs.append(shorts.Sub(t0, t1, text))
+        spec.subs.sort(key=lambda s: s.t0)
+        self.sub_text.clear()
+        self._short_set(spec)
+        self.sub_list.setCurrentRow(next(i for i, s in enumerate(spec.subs) if s.t0 == t0 and s.text == text))
+        self._short_show()
+
+    def _sub_picked(self, _item=None):
+        spec = self._short_spec()
+        i = self.sub_list.currentRow()
+        if 0 <= i < len(spec.subs):
+            self.goto(spec.subs[i].t0)
+        self._short_show()
+
+    def _sub_edge(self, which):
+        spec = self._short_spec()
+        i = self.sub_list.currentRow()
+        if not 0 <= i < len(spec.subs):
+            return
+        s = spec.subs[i]
+        if which == 0:
+            s.t0 = round(min(self.pos, s.t1 - 0.1), 2)
+        else:
+            s.t1 = round(max(self.pos, s.t0 + 0.1), 2)
+        self._short_set(spec)
+
+    def _sub_remove(self):
+        spec = self._short_spec()
+        i = self.sub_list.currentRow()
+        if 0 <= i < len(spec.subs):
+            del spec.subs[i]
+            self._short_set(spec)
+
+    def _short_view_toggled(self, on):
+        if on and self.mode != "select":
+            self.mode_btns["select"].setChecked(True)
+        if on:
+            self._zoom_leave()
+        self._short_view = bool(on)
+        self.preview.overlays = not on
+        self.goto(self.pos)
+
+    def _short_canvas(self) -> tuple:
+        _w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
+        return h * 9 // 16 // 2 * 2, h // 2 * 2
+
+    def _play_size(self):
+        return self._short_canvas() if self._short_view else None
+
+    def _short_vf(self) -> list:
+        """1.20: the clip crop and the short's canvas on the preview picture (only while it shows the short)."""
+        if not self._short_view:
+            return []
+        from . import shorts
+        cw, ch = self._short_canvas()
+        out = []
+        crop = self.edit_plan().crop
+        if crop:
+            x, y, w_, h_ = crop
+            out.append(f"crop=iw*{w_:.5f}:ih*{h_:.5f}:iw*{x:.5f}:ih*{y:.5f}")
+        spec = self._short_spec()
+        out.append(shorts.canvas_filters(spec.layout, cw, ch, label="p"))
+        return out
+
+    def _play_vf(self, part, t0, still: bool = False) -> list:
+        return super()._play_vf(part, t0, still) + self._short_vf()
+
+    def _paint(self, img):
+        if self._short_view and self._short is not None:          # the title and subtitles at the playhead
+            from . import shorts
+            img = shorts.paste_texts(img, self._short, self.pos)
+        super()._paint(img)
 
     def _section_marks(self, sec, mode):
         self.mark_list = QListWidget()
@@ -1251,11 +1448,13 @@ class EditorWindow(ProjectMixin, ClipBase):
                                   str(self.crop_box.currentData() or "none"),
                                   [replace(s, pts=list(s.pts)) for s in self.preview.shapes],
                                   float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
-                                  [list(b) for b in self.preview.boxes], self._censor_on, self._censor_style)
+                                  [list(b) for b in self.preview.boxes], self._censor_on, self._censor_style,
+                                  self._short.copy() if self._short is not None else None)
 
     def _apply(self, state: sequence.EditState):
         """Show ``state`` (undo/redo, a loaded project) without writing history."""
         self._zoom_leave()
+        self._short = state.short.copy() if getattr(state, "short", None) is not None else None
         self._applying = True
         try:
             self.parts = [replace(p) for p in state.parts]
@@ -1342,6 +1541,9 @@ class EditorWindow(ProjectMixin, ClipBase):
         secs = self.sections
         secs["clip"].setVisible(sel is not None)
         secs["fx"].setVisible(sel is not None)
+        secs["short"].setVisible(self.mode_box.currentData() == "shorts")     # 1.20
+        if secs["short"].isVisibleTo(self):
+            self._short_show()
         secs["marks"].setVisible(bool(self.marks))
         secs["draw"].setVisible(self.mode == "draw")
         secs["censor"].setVisible(self.mode == "censor")
@@ -1378,6 +1580,8 @@ class EditorWindow(ProjectMixin, ClipBase):
             return
         if mode != "select":
             self._zoom_leave()
+            if self._short_view:                              # 1.20: tools work on the recording's picture
+                self.short_view_box.setChecked(False)
         self.mode = mode
         btn = self.mode_btns[mode]
         if not btn.isChecked():
@@ -1429,7 +1633,7 @@ class EditorWindow(ProjectMixin, ClipBase):
         if self._zoom_edit is not None:
             p = replace(p, zoom=None)
         w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
-        return clipedit.preview_filters(p, w, h, t0=src, still=True)
+        return clipedit.preview_filters(p, w, h, t0=src, still=True) + self._short_vf()
 
     def goto_src(self, src):
         """The playhead to the output moment at which source second ``src`` plays (the nearest one when the
@@ -1659,10 +1863,12 @@ class EditorWindow(ProjectMixin, ClipBase):
     # ---- the plan
     def edit_plan(self) -> clipedit.Edit:
         """What will be saved: the clips in play order, crop, drawings (copies), fades."""
-        crop = self.preview.crop if self.crop_box.currentData() != "none" else None
+        frame = self.preview.crop if self._zoom_edit is None else self._crop_saved[0]   # 1.19: the zoom tool borrows it
+        crop = frame if self.crop_box.currentData() != "none" else None
         shapes = [replace(s, pts=list(s.pts)) for s in self.preview.shapes if s.kind != "text" or s.text.strip()]
         return clipedit.Edit([replace(p) for p in self.parts], crop, shapes,
-                             float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0))
+                             float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
+                             self._short.copy() if self._short is not None else None)
 
     def _saving(self, on: bool):
         self.busy.setVisible(on)
