@@ -40,13 +40,14 @@ def read_password(stored) -> tuple[str, bool]:
 
 
 
-def rec_status_level(text: str, ok: bool) -> str:
+def rec_status_level(text: str, ok: bool, err: bool = False) -> str:
     """1.24.3 (phase 2, pure): the colour of the OBS line under "Verbindung testen" – it was grey like a hint, the
-    error too. ok = green; OBS away or a failure = red; anything else not ok (sound/picture source, buffer, drive)
-    = amber. The words stay – colour is never the only sign."""
+    error too. ok = green; a failure = red (1.24.5: the recorder marks them – ``err`` – a wrong password or "no
+    obs-websocket on this port" were amber before; the text check stays for the older wording); anything else not
+    ok (sound/picture source, buffer, drive) = amber. The words stay – colour is never the only sign."""
     if ok:
         return "ok"
-    if text.startswith(_("OBS nicht erreichbar")) or text.startswith(_("Fehler")):
+    if err or text.startswith(_("OBS nicht erreichbar")) or text.startswith(_("Fehler")):
         return "err"
     return "warn"
 
@@ -756,7 +757,7 @@ class SettingsTab:
         """Recorder thread -> UI: status (text, ok) | started | saved | deleted."""
         if kind == "status":
             self.rec_status_var.set(d.get("text", ""))
-            ui.level(self.rec_status_label, rec_status_level(d.get("text", ""), d.get("ok", True)))
+            ui.level(self.rec_status_label, rec_status_level(d.get("text", ""), d.get("ok", True), d.get("err", False)))
             if not d.get("ok", True):
                 self._log(_("Aufnahme: {text}", text=d.get("text", "")), "Fehler")
         elif kind == "warn":                    # 1.4.1: OBS/drive missing when DBD starts, a broken file

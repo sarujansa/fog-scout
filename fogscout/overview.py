@@ -181,9 +181,14 @@ def switch_state(app, key: str, on: bool, is_win: bool = True) -> tuple[str, str
             return "warn", (_("Platte nicht angeschlossen") if app.settings.get("rec_folder") else _("kein Ordner gewählt"))
         obs = getattr(app, "_obs_state", None)                  # known once the recordings page asked OBS –
         fresh = time.time() - float(getattr(app, "_obs_state_t", 0.0) or 0.0) <= OBS_STATE_FRESH_S   # only then
-        if obs is not None and fresh and not obs.get("connected"):     # (OBS started later: no stale warning)
-            return "warn", _("OBS nicht erreichbar")
-        return "ok", _("bereit")
+        if obs is not None and fresh:                                  # (OBS started later: no stale warning)
+            return ("ok", _("bereit")) if obs.get("connected") else ("warn", _("OBS nicht erreichbar"))
+        ready = getattr(rec, "obs_ready", None)        # 1.24.5 (review): the recorder's own answer while DBD runs –
+        if ready is True:                               # never "bereit" without knowing
+            return "ok", _("bereit")
+        if ready is False:
+            return "warn", _("OBS nicht verbunden")
+        return "off", _("wartet auf DBD")
     if key == "conn":
         c = getattr(app, "conn", None)
         if c is None:
@@ -201,7 +206,14 @@ def switch_state(app, key: str, on: bool, is_win: bool = True) -> tuple[str, str
         mon = getattr(app, "sysmon", None)
         if mon is None or not getattr(mon, "active", False):
             return "off", _("wartet auf DBD")
-        return ("ok", _("aktiv")) if getattr(mon, "hwinfo_seen", False) else ("warn", _("HWiNFO fehlt"))
+        # 1.24.5 (review): the reading of now, not "seen once" – HWiNFO closed mid-session says so; never seen: only
+        # after HWINFO_WAIT_S (App._hwinfo_told, the same moment the log says it), not in the first second
+        snap = getattr(mon, "snapshot", None)
+        if snap is None or time.time() - float(getattr(snap, "t", 0.0) or 0.0) > 3 or getattr(snap, "hwinfo", False):
+            return "ok", _("aktiv")
+        if getattr(mon, "hwinfo_seen", False) or getattr(app, "_hwinfo_told", False):
+            return "warn", _("HWiNFO fehlt")
+        return "ok", _("aktiv")
     if key == "media":
         err = getattr(getattr(app, "media", None), "error", "")
         return ("warn", _("Mediensteuerung nicht verfügbar")) if err else ("", "")

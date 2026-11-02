@@ -534,7 +534,7 @@ def test_an_empty_table_and_an_empty_log_say_why(qapp, keep):
     assert t._empty == "" and t.topLevelItemCount() == 1
     log = keep(qt_window.LogView())
     log.show_state({"lines": [], "dark": True, "rev": 1})
-    assert log.document().isEmpty() and log.placeholderText() == "Keine Zeile passt zu Suche und Kategorien."
+    assert log.document().isEmpty() and log.placeholderText().startswith("Keine Zeilen – das Log ist leer")
 
 
 def test_log_view_appends_new_lines_and_rebuilds_only_when_needed(qapp, keep):
@@ -2084,9 +2084,13 @@ def test_each_feature_says_whether_it_works_now_and_what_is_missing():
     app.recorder.space.folder = "D:\\Aufnahmen"
     app._obs_state, app._obs_state_t = {"connected": False}, time.time()
     assert st(app, "rec", True) == ("warn", "OBS nicht erreichbar")
-    app._obs_state_t = time.time() - overview.OBS_STATE_FRESH_S - 5           # stale (page closed, OBS started
-    assert st(app, "rec", True) == ("ok", "bereit")                             # since): no old warning
     app._obs_state = {"connected": True}
+    assert st(app, "rec", True) == ("ok", "bereit")
+    app._obs_state_t = time.time() - overview.OBS_STATE_FRESH_S - 5           # stale (page closed, OBS started
+    assert st(app, "rec", True) == ("off", "wartet auf DBD")                    # since): no old answer, and
+    app.recorder.obs_ready = False                                              # 1.24.5: never "bereit" unknown –
+    assert st(app, "rec", True) == ("warn", "OBS nicht verbunden")              # the recorder's own answer while
+    app.recorder.obs_ready = True                                               # DBD runs
     assert st(app, "rec", True) == ("ok", "bereit")
     app.recorder.recording = True
     assert st(app, "rec", True) == ("ok", "nimmt auf")
@@ -2103,10 +2107,17 @@ def test_each_feature_says_whether_it_works_now_and_what_is_missing():
     assert st(app, "conn", True) == ("err", "Fehler – Details im Log")
     assert st(app, "sysinfo", True, is_win=False) == ("off", "nur unter Windows")
     assert st(app, "sysinfo", True) == ("off", "wartet auf DBD")
-    app.sysmon = SimpleNamespace(active=True, hwinfo_seen=False)
+    app.sysmon = SimpleNamespace(active=True, hwinfo_seen=False, snapshot=None)
+    assert st(app, "sysinfo", True) == ("ok", "aktiv")                         # 1.24.5: no reading yet – no claim
+    app.sysmon.snapshot = SimpleNamespace(t=time.time(), hwinfo=False)
+    assert st(app, "sysinfo", True) == ("ok", "aktiv")                         # not HWINFO_WAIT_S yet
+    app._hwinfo_told = True                                                     # the moment the log says it
     assert st(app, "sysinfo", True) == ("warn", "HWiNFO fehlt")
-    app.sysmon.hwinfo_seen = True
+    app._hwinfo_told = False
+    app.sysmon.snapshot.hwinfo, app.sysmon.hwinfo_seen = True, True
     assert st(app, "sysinfo", True) == ("ok", "aktiv")
+    app.sysmon.snapshot.hwinfo = False                                          # closed mid-session: said at once
+    assert st(app, "sysinfo", True) == ("warn", "HWiNFO fehlt")
     app.media = SimpleNamespace(error="")
     assert st(app, "media", True) == ("", "")
     app.media.error = "OSError: nicht verfügbar"
@@ -2621,7 +2632,7 @@ def test_the_navigation_shows_the_name_and_the_state_on_every_page(qapp, keep):
     win.show_page("log")
     win.show_status("wait", "Wartet auf das nächste Match")
     st = win.status_btn
-    assert st.text.text() == "Wartet auf das nächste Match" and not st.dot.pixmap().isNull()
+    assert st.text.text().replace("\n", " ") == "Wartet auf das nächste Match" and not st.dot.pixmap().isNull()
     assert "Übersicht öffnen" in st.toolTip()
     QTest.mouseClick(st, Qt.LeftButton)
     assert win.current_key() == "overview"
@@ -2629,12 +2640,50 @@ def test_the_navigation_shows_the_name_and_the_state_on_every_page(qapp, keep):
     st.setFocus()
     QTest.keyClick(st, Qt.Key_Return)
     assert win.current_key() == "overview"
+    # 1.24.5 (review): two lines at most (the whole text is the tooltip), a problem has its own sign – not only
+    # its colour
+    long = "Die Erkennung ist abgestürzt – bitte Fog Scout neu starten. " * 3
+    win.show_status("err", long.strip())
+    assert st.text.text().count("\n") <= 1 and st.text.text().endswith("…") and st._shown[-1] == "warning"
+    assert long.strip() in st.toolTip()
+    win.show_status("wait", "Wartet auf das nächste Match")
+    assert st._shown[-1] == "record"
     win.resize(900, 700)                                    # narrow: icons only
     qapp.processEvents()
     assert win._nav_compact and st.text.isHidden() and not win.brand_name.isVisible()
     assert "Wartet auf das nächste Match" in st.toolTip()
+    assert not win.overview.status_line.isHidden()          # 1.24.5: the overview says it in words again
+    win.resize(1280, 800)
+    qapp.processEvents()
+    assert win.overview.status_line.isHidden()
     win.allow_close = True
     win.close()
+
+
+def test_signs_made_before_the_theme_follow_it_and_another_screen_scale(qapp, keep):
+    """1.24.5 (review): the overview and the maps page are built before App sets the theme – their drawn signs
+    (Zurück, Suche leeren, the rounds' ▶) kept the dark colours in the light mode. apply_theme draws them again
+    (qt_common.refresh_glyphs), and so does a change of the screen's pixel ratio (QEvent.DevicePixelRatioChange)."""
+    from PySide6.QtCore import QEvent
+    from fogscout import qt_theme, qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    back = win.maps.p_back
+    dark = qt_theme.current_dark()
+    try:
+        win.apply_theme(True, 1.0)
+        assert back._glyph_key[-1][0] is True
+        win.apply_theme(False, 1.0)
+        assert back._glyph_key[-1][0] is False and win.maps.no_hits_clear._glyph_key[-1][0] is False
+        win.show_status("ok", "Coal Tower")
+        drawn = win.status_btn._shown
+        win.status_btn._shown = ("stale",)                    # what a screen change has to replace
+        type(qapp).sendEvent(win, QEvent(QEvent.DevicePixelRatioChange))
+        qapp.processEvents()
+        assert win.status_btn._shown == drawn and not win.brand_icon.pixmap().isNull()
+    finally:
+        win.apply_theme(dark, 1.0)
+        win.allow_close = True
+        win.close()
 
 
 def test_a_model_button_can_be_the_main_action_and_carry_a_drawn_sign(qapp):
@@ -2656,6 +2705,15 @@ def test_a_model_button_can_be_the_main_action_and_carry_a_drawn_sign(qapp):
     ui.glyph(b, "chevron_down")
     show_control("button", w, extra, ui_state(b))
     assert w.property("glyph") == "chevron_down"
+    # 1.24.5: the key is the theme's inputs (qt_theme.look_key), not its palette – another mode still redraws
+    from fogscout import qt_theme
+    key, dark = w._glyph_key, qt_theme.current_dark()
+    try:
+        qt_theme.set_dark(not dark)
+        show_control("button", w, extra, ui_state(b))
+        assert w._glyph_key != key and not w.icon().isNull()
+    finally:
+        qt_theme.set_dark(dark)
 
 
 def test_every_page_says_what_it_is_for_under_its_title():
@@ -2678,11 +2736,13 @@ def test_the_new_signs_are_drawn(qapp):
 def test_the_overview_draws_a_main_action_only_when_the_player_has_to_act():
     """1.24 (phase 2): "Scannen" was always the accent button – a fallback, not the next step. Now: "Stimmt" while a
     doubtful map waits for the player, "Map wählen …" while the automatic detection is off, otherwise none."""
+    # 1.24.5: a real "now" – 1000.0 (1970) broke datetime.timestamp() on the Windows runner (OSError 22)
+    now = time.time()
     app = fake_app()
-    o = overview.overview_model(app, 1000.0, True)
+    o = overview.overview_model(app, now, True)
     assert o.primary is None and o.actions["scan"][0]                  # the map comes by itself
     app.settings["auto_detect"] = False
-    assert overview.overview_model(app, 1000.0, True).primary == "choose"
+    assert overview.overview_model(app, now, True).primary == "choose"
     app = fake_app(current=("coal", 1), source="auto")
     app._unsure = {"shown": True, "label": "Coal Tower", "name": "COAL"}
-    assert overview.overview_model(app, 1000.0, True).primary == "confirm"
+    assert overview.overview_model(app, now, True).primary == "confirm"

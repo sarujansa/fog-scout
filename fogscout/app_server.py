@@ -239,8 +239,7 @@ class ServerTab:
         err = bool(st.get("error"))
         ui.level(self.srv_status_label, "err" if err else "")
         if not self._srv_busy:
-            for b in self.srv_btns[1:]:
-                b.state(["disabled"] if err else ["!disabled"])
+            self._srv_lock()
         if err:
             self.srv_status.set(_("hosts-Datei nicht lesbar: {error}", error=st["error"]))
             self._srv_render()
@@ -285,12 +284,20 @@ class ServerTab:
             self.events.put(("srv_ping", res))
         threading.Thread(target=work, daemon=True, name="ping").start()
 
+    def _srv_lock(self):
+        """1.24.5 (review): "Auswahl anwenden"/"Alles freigeben" only with a readable hosts file – also after a ping
+        or a job, which enable every button again ("Ping messen" never touches the file)."""
+        err = bool((self.srv_state or {}).get("error"))
+        for b in self.srv_btns[1:]:
+            b.state(["disabled"] if err else ["!disabled"])
+
     def _srv_ping_done(self, res):
         self._srv_busy = False
         self._srv_last_ping = time.time()
         for b in self.srv_btns:
             b.state(["!disabled"])
         if "_error" in res:
+            self._srv_lock()
             self._srv_render()
             self.srv_status.set(_("Ping fehlgeschlagen: {error}", error=res["_error"]))
             ui.level(self.srv_status_label, "err")
@@ -304,6 +311,7 @@ class ServerTab:
                 f"{_(regions.NAMES[c])} {ok[c]:.0f} ms" for c in best)))
         else:
             self.srv_status.set(_("Keine Region hat geantwortet (Internet/Firewall/VPN?)."))
+            ui.level(self.srv_status_label, "warn")                     # 1.24.5: a failure, said in amber too
 
     def srv_apply(self):
         if self._srv_busy:

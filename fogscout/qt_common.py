@@ -80,26 +80,42 @@ def _label(text="", cls=None, wrap=False):
     return w
 
 
-def set_glyph(w, name, primary=False):
+def set_glyph(w, name, primary=False, tone="fg"):
     """1.24 (phase 2): a drawn sign (qt_icons) on a button in the colours of the theme now – set again only when the
-    sign, the mode or the accent changed (show_control runs on every refresh). The name is kept as the property
-    "glyph" (the search knows a closed fold by "chevron_right")."""
+    sign, the mode, the accent or the screen's pixel ratio changed (show_control runs on every refresh). The name is
+    kept as the property "glyph" (the search knows a closed fold by "chevron_right"). ``tone`` "dim": a quiet sign
+    that turns to the accent with the keyboard focus (the rounds' ▶ on the overview). 1.24.5: what was asked is
+    kept (``_glyph_args``) – refresh_glyphs draws signs made before the theme was known, or on another screen."""
+    from . import qt_theme
+    ratio = w.devicePixelRatioF() or 1.0
+    key = (name, bool(primary), tone, ratio, qt_theme.look_key())   # 1.24.5: no palette built just to compare
+    w._glyph_args = (name, bool(primary), tone)
+    if w.__dict__.get("_glyph_key") == key:             # (getattr of a missing name on a Qt widget: 3.7 µs)
+        return
     from PySide6.QtCore import QSize
     from PySide6.QtGui import QIcon
-    from . import qt_icons, qt_theme
+    from . import qt_icons
     c = qt_theme.colours(qt_theme.current_dark())
-    normal = c["on_accent"] if primary else c["fg"]
-    key = (name, normal, c["fg_dis"], c["accent"])
-    if getattr(w, "_glyph_key", None) == key:
-        return
+    normal = c["on_accent"] if primary else c["dim"] if tone == "dim" else c["fg"]
     w._glyph_key = key
     w.setProperty("glyph", name or "")
     if not name:
         w.setIcon(QIcon())
         return
-    ratio = w.devicePixelRatioF() or 1.0
-    w.setIcon(qt_icons.icon(name, normal, disabled=c["fg_dis"], size=qt_theme.ICON["m"], ratio=ratio))
+    w.setIcon(qt_icons.icon(name, normal, active=c["accent"] if tone == "dim" else None, disabled=c["fg_dis"],
+                            size=qt_theme.ICON["m"], ratio=ratio))
     w.setIconSize(QSize(qt_theme.ICON["m"], qt_theme.ICON["m"]))
+
+
+def refresh_glyphs(root):
+    """1.24.5 (review): signs set once – on pages built before MainWindow.apply_theme (overview, maps) or before the
+    window moved to a screen with another scale – drawn again in the colours and pixel ratio of now. Called on a
+    theme change and on QEvent.DevicePixelRatioChange; the model's buttons follow on their own (show_control)."""
+    from PySide6.QtWidgets import QAbstractButton
+    for w in root.findChildren(QAbstractButton):
+        args = w.__dict__.get("_glyph_args")
+        if args and args[0]:
+            set_glyph(w, *args)
 
 
 def _tip(label: str) -> str:

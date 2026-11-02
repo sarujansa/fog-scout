@@ -607,6 +607,7 @@ def test_the_recording_card_text_follows_obs_state():
     assert rec_card_level({"connected": False}, True) == "err" and rec_card_level(rec, True) == "ok"
     assert rec_card_level(dict(rec, paused=True), True) == "warn"
     assert rec_card_level(dict(base, buffer=None), True) == "warn" and rec_card_level(base, True) == ""
+    assert rec_card_level({"connected": False}, True, rec_on=False) == ""     # 1.24.5: off on purpose – no error
     assert "von OBS selbst gestartet" in rec_card_text(dict(rec, ours=False))[0]
     warn = rec_card_text(dict(rec, output_skipped=20, output_total=1000, render_skipped=1, render_total=1000))[2]
     assert "lässt Bilder aus (20 von 1000" in warn and "Rendern" not in warn   # 0.1 % rendering: no warning
