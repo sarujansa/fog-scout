@@ -68,13 +68,17 @@ def ui_layout(w, reg: dict):
         return {"kind": "tabs", "key": key, "fill": fill, "segments": bool(getattr(w, "_dbdms_segments", False)),
                 "children": [n for n in (ui_layout(p, reg) for p in pages) if n]}
     kind = next((k for cls, k in KINDS if isinstance(w, cls)), None)
+    note = False
     if kind is None and isinstance(w, ui.Label):
         style = str(w.cget("style"))
+        note = style == "Note.TLabel"             # 1.23: a hint that warns (amber, QSS class "note")
         kind = ("image" if hasattr(w, "_dbdms_pil") else "big" if style == "Big.TLabel"
-                else "hint" if style == "Dim.TLabel" else "label")
+                else "hint" if style in ("Dim.TLabel", "Note.TLabel") else "label")
     if kind is not None:
         reg[key] = w
         node = {"kind": kind, "key": key, "side": _side(w)}
+        if note:
+            node["note"] = True
         if isinstance(w, ui.Treeview):           # packed without expand: as tall as its rows (server regions)
             try:
                 node["fit"] = not w.pack_info().get("expand")
@@ -157,6 +161,7 @@ def ui_state(w) -> dict:
                   selectable=str(w.cget("selectmode")) != "none" or hasattr(w, "_dbdms_click"),
                   multi=str(w.cget("selectmode")) == "extended",          # 1.5.4: several rows at once
                   menu=hasattr(w, "_dbdms_menu"),                         # 1.8.10: right-click actions
+                  open=hasattr(w, "_dbdms_open"),                         # 1.23: double-click / Enter
                   see=getattr(w, "_see", None))                           # 1.17.1: scroll a row into view
         return st
     if isinstance(w, ui.Scale):
@@ -238,6 +243,14 @@ def ui_act(w, value=None):
         elif what == "select":                            # 1.5.4: the whole selection of a multi-select table
             w.selection_set([i for i in (arg or []) if w.exists(i)])
             w.event_generate("<<TreeviewSelect>>")
+        elif what == "open" and w.exists(arg):            # 1.23: double-click / Enter on a row
+            fn = getattr(w, "_dbdms_open", None)
+            if fn is not None:
+                if arg not in w.selection():
+                    w.selection_set([arg])
+                    w.focus(arg)
+                    w.event_generate("<<TreeviewSelect>>")
+                fn(arg)
         elif what == "menu":                              # 1.8.10: right click on a row (marked before)
             menu = getattr(w, "_dbdms_menu", None)
             if menu is not None:
@@ -331,21 +344,22 @@ class QtShell:
         except Exception:
             log.debug("warm pages", exc_info=True)
 
-    def _ask(self, title, text, retry, parent=None) -> bool:
+    def _ask(self, title, text, retry, parent=None, ok_text=None, danger=False) -> bool:
         """OK/Cancel before something that cannot be undone: a small window to answer (1.8.44, before a bar at
         the top; MessageBox, shown with show() – exec() would stop the timers); OK runs ``retry`` again, which then
-        gets True here."""
+        gets True here. 1.23 (audit, prompt.md): ``ok_text`` = the verb on the button instead of "OK" ("Löschen"),
+        ``danger`` = it deletes or replaces data – the button is red and Cancel is the default (Enter, focus)."""
         if getattr(self, "_confirmed", False):
             self._confirmed = False
             return True
-        self._qt_question = (title, text, retry)
+        self._qt_question = (title, text, retry, ok_text, bool(danger))
         if self.qt is not None:
             self.qt.bring_to_front()
             self._qt_refresh(force=True)
         return False
 
     def _inform(self, title, text):
-        self._qt_question = (title, text, None)
+        self._qt_question = (title, text, None, None, False)
         if self.qt is not None:
             self._qt_refresh(force=True)
 
@@ -619,7 +633,7 @@ class QtShell:
         else:   # 1.8.44: a window of its own – it must not take the focus from DBD (a crash note while playing)
             front = getattr(self, "game", None) is not None and not getattr(self, "simulate", False) \
                 and is_game_window(foreground_root())
-            q.show_question((qq[0], qq[1], qq[2] is not None), activate=not front)
+            q.show_question((qq[0], qq[1], qq[2] is not None) + tuple(qq[3:5]), activate=not front)
 
     def _qt_preview(self, sel):
         """(map_id, variant, name, realm, picture) of the map selected on the maps page (the shown map before a

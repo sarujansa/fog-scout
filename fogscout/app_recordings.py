@@ -67,6 +67,10 @@ def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: fl
         return _("Warte auf OBS …"), "", ""
     if not d.get("connected"):
         why = d.get("error") or ""
+        head = _("OBS nicht erreichbar")
+        if why.startswith(head):                   # 1.23: the recorder's message repeats title and advice –
+            cause = why.rsplit("(", 1)[-1].rstrip(")") if why.endswith(")") else ""   # keep only the cause
+            why = _("Ursache: {cause}", cause=cause) if cause else ""
         return _("OBS nicht erreichbar"), (_("OBS starten, WebSocket-Server einschalten, Port/Passwort prüfen (Einstellungen → "
                                               "Aufnahmen → Verbindung testen). {why}", why=why).strip()), ""
     rec, paused = bool(d.get("recording")), bool(d.get("paused"))
@@ -229,6 +233,8 @@ class RecordingsTab:
         self.rec_clip_btn.pack(side="left", padx=(6, 0))
         self.rec_yt_btn = ui.Button(sel, text=_("Auf YouTube hochladen"), command=self._rec_youtube, state="disabled")  # 1.10
         self.rec_yt_btn.pack(side="left", padx=(6, 0))
+        # 1.23 (audit, prompt.md): several rows marked – the montage was only in the right-click menu
+        self.rec_montage_btn = ui.Button(sel, text=_("Als Montage öffnen …"), command=self._recs_montage)
         self._clip_windows = []
         self.rec_folder_btn = ui.Button(row, text=_("Aufnahmeordner öffnen"), command=self._rec_open_folder)
         self.rec_folder_btn.pack(side="right")
@@ -248,6 +254,7 @@ class RecordingsTab:
         self.rec_table._dbdms_hide = ("file",)
         self.rec_table.pack(side="left", fill="both", expand=True)
         self.rec_table.bind("<<TreeviewSelect>>", lambda e: self._rec_buttons())
+        self.rec_table._dbdms_open = lambda iid: self._rec_play()          # 1.23: double-click / Enter
         # 1.8.8 (user: "click on it and a preview comes where I can play it and quickly edit, sound tracks on/off"):
         # the compact clip editor beside the table, shown once a recording is marked
         self.rec_host = ui.Host(tf)
@@ -325,6 +332,7 @@ class RecordingsTab:
         self.clip_delete_btn.pack(side="left", padx=(6, 0))
         self.clip_yt_btn = ui.Button(sel, text=_("Auf YouTube hochladen"), command=self._clip_youtube, state="disabled")
         self.clip_yt_btn.pack(side="left", padx=(6, 0))                                                      # 1.10
+        self.clip_montage_btn = ui.Button(sel, text=_("Als Montage öffnen …"), command=self._clips_montage)  # 1.23
         self.clip_folder_btn = ui.Button(row, text=_("Clips-Ordner öffnen"), command=self._clip_open_folder)
         self.clip_folder_btn.pack(side="right")
 
@@ -344,6 +352,7 @@ class RecordingsTab:
         self.clip_table._dbdms_hide = ("file",)                                                   # 1.12.2
         self.clip_table.pack(side="left", fill="both", expand=True)
         self.clip_table.bind("<<TreeviewSelect>>", lambda e: self._clip_buttons())
+        self.clip_table._dbdms_open = lambda iid: self._clip_play()        # 1.23: double-click / Enter
         self.clip_host = ui.Host(tf)             # 1.11.4 (user: "Clips soll ebenfalls eine Vorschau erhalten")
         self._clip_preview_key = None
         self._table_menu(self.clip_table, self._clip_menu_items, self._clip_menu_act)
@@ -838,6 +847,7 @@ class RecordingsTab:
         self.clip_edit_btn.configure(state="normal" if c is not None else "disabled")      # 1.12: stills too
         self.clip_yt_btn.configure(state="normal" if c is not None and self._clip_uploadable(c) else "disabled")
         self._sel_buttons(self.clip_sel_row, self.clip_sel_hint, c is not None)
+        self._montage_button(self.clip_montage_btn, len(self._clips_selected()))
         self._clip_preview_follow(c)
 
     @staticmethod
@@ -1014,7 +1024,8 @@ class RecordingsTab:
         c = self._clip_selected()
         if c is None:
             return
-        if not self._ask(_("Clip löschen"), _("{file} von der Platte löschen?", file=c.file), self._clip_delete):
+        if not self._ask(_("Clip löschen"), _("{file} von der Platte löschen?", file=c.file), self._clip_delete,
+                         ok_text=_("Löschen"), danger=True):
             return
         self.recorder.delete_clip(c.file)
 
@@ -1096,6 +1107,7 @@ class RecordingsTab:
         self.rec_keep_btn.configure(text=_("Nicht mehr behalten") if r is not None and r.keep else _("Behalten"))
         self.rec_yt_btn.configure(state="normal" if r is not None and self._rec_uploadable(r) else "disabled")
         self._sel_buttons(self.rec_sel_row, self.rec_sel_hint, r is not None)
+        self._montage_button(self.rec_montage_btn, len(self._recs_selected()))
         self._rec_preview_follow(r)
         if r is None:
             self.rec_marks_var.set("")
@@ -1103,6 +1115,14 @@ class RecordingsTab:
             self.rec_marks_var.set(_("Marken: {list}", list=" · ".join(fmt_duration(m) for m in r.marks)))
         else:
             self.rec_marks_var.set(_("Keine Marken – F8 während der Runde setzt eine."))
+
+    @staticmethod
+    def _montage_button(btn, n: int):
+        """1.23: „Als Montage öffnen …“ beside the buttons while two or more rows are marked."""
+        if n > 1 and not btn.winfo_manager():
+            btn.pack(side="left", padx=(6, 0))
+        elif n <= 1 and btn.winfo_manager():
+            btn.pack_forget()
 
     @staticmethod
     def _sel_buttons(row, hint, marked: bool):
@@ -1209,7 +1229,8 @@ class RecordingsTab:
         r = self._rec_selected()
         if r is None:
             return
-        if not self._ask(_("Aufnahme löschen"), _("{file} von der Platte löschen?", file=r.file), self._rec_delete):
+        if not self._ask(_("Aufnahme löschen"), _("{file} von der Platte löschen?", file=r.file), self._rec_delete,
+                         ok_text=_("Löschen"), danger=True):
             return
         self.recorder.delete(r.t)
 
@@ -1288,7 +1309,8 @@ class RecordingsTab:
         if not self._ask(_("Editor-Projekte nicht gesichert"),
                          _("Mindestens ein Editor-Stand ist weder im Projekt noch lokal gesichert (Speichern hängt "
                            "oder der Ordner ist nicht erreichbar). Trotzdem beenden? Die ungesicherten Änderungen "
-                           "gehen dann verloren."), self._secure_give_up):
+                           "gehen dann verloren."), self._secure_give_up,
+                         ok_text=_("Trotzdem beenden"), danger=True):
             return
         self._secure_force = True
         then, self._secure_then = self._secure_then, None

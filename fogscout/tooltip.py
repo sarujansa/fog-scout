@@ -407,7 +407,10 @@ TIPS = {
                                  "wird erst mit „Aktualisieren und neu starten“.",
     "Aktualisieren und neu starten": "Beendet das Programm und startet es über start.bat neu – dabei wird das "
                                      "Update installiert.",
-    "Verlauf löschen": "Löscht alle gespeicherten Runden (Datei rounds.jsonl).",
+    "Als Montage öffnen …": "Öffnet die markierten Runden bzw. Clips nacheinander im grossen Editor – als eine "
+                             "Montage (mehrere markieren: Strg- oder Umschalt-Klick).",
+    "Alle Runden löschen …": "Löscht alle gespeicherten Runden (Datei rounds.jsonl) – nach einer Rückfrage, "
+                              "vorher kommt eine Kopie in den Ordner backup.",
     "Runde löschen": "Entfernt die markierte Runde aus der Statistik – z. B. eine Map, die mitten im Match falsch "
                      "erkannt wurde. Fragt vorher nach.",
     "Stats-Seite öffnen, wenn DBD beendet wird":

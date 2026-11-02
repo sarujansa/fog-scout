@@ -750,3 +750,37 @@ def test_a_click_is_handled_in_the_next_pass_of_the_event_loop(app_root):
         assert [ev[2] for ev in seen] == [1, 2, 3]
     finally:
         app.quit()
+
+
+def test_a_double_click_plays_the_clip_and_two_marked_offer_a_montage(app_root, tmp_path, monkeypatch):
+    """1.23 (audit, prompt.md): a row did nothing on double-click or Enter – it plays now (the Qt table posts
+    ("open", row)); with two or more rows marked, „Als Montage öffnen …“ stands beside the buttons, not only in the
+    right-click menu."""
+    from fogscout.app_qt import ui_act, ui_state
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    try:
+        app._rec_render(force=True)
+        played = []
+        app._open = played.append
+        assert ui_state(app.clip_table)["open"] is True
+        ui_act(app.clip_table, ("open", "clip.mp4"))
+        assert app.clip_table.selection() == ("clip.mp4",) and [os.path.basename(p) for p in played] == ["clip.mp4"]
+        assert not app.clip_montage_btn.winfo_manager()                 # one row: no montage button
+        app.clip_table.selection_set(["clip.mp4", "clip.gif"])
+        app._clip_buttons()
+        assert app.clip_montage_btn.winfo_manager()
+        app.clip_table.selection_set(["clip.mp4"])
+        app._clip_buttons()
+        assert not app.clip_montage_btn.winfo_manager()
+    finally:
+        app.quit()
+
+
+def test_the_obs_card_does_not_repeat_its_title_in_the_reason():
+    from fogscout.app_recordings import rec_card_text
+    state, values, _warn = rec_card_text({"connected": False, "error": "OBS nicht erreichbar – läuft OBS, ist der "
+                                          "WebSocket-Server an? (ConnectionRefusedError)"})
+    assert state == "OBS nicht erreichbar" and values.endswith("Ursache: ConnectionRefusedError")
+    assert "läuft OBS" not in values
+    _s, values, _w = rec_card_text({"connected": False, "error": "Passwort falsch"})
+    assert values.endswith("Passwort falsch")                           # any other message stays as it is

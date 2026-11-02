@@ -2929,3 +2929,86 @@ def test_a_fired_or_cancelled_timer_is_freed():
     gc.collect()
     assert len(fired) == 300 and loop._jobs == set()
     assert len(made) <= 2, len(made)                          # not 350: fired and cancelled timers are gone
+
+
+def test_the_search_finds_the_folded_advanced_part_and_opens_it(app_root):
+    """1.23 (audit, prompt.md): Log › „Erweitert“ is folded by default – the search skipped its button (and the
+    folded tick boxes). Its name and what it holds (debug pictures, window capture …) find it; going there opens it."""
+    import json
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        assert not app.adv_open.get()
+        app._qt_event("search_open")
+        app.qapp.processEvents()
+        app._qt_refresh(force=True)
+        app.qt.update_search_index()
+        hit = "Erweitert (Fehlersuche, Technik)  ·  Log"
+        assert hit in app.qt._found
+        hay = app.qt._search_hits()[hit][3]
+        assert "debug" in hay and "fensteraufnahme" in hay
+        app.qt.go_to_found(hit)
+        for _i in range(5):
+            app.qapp.processEvents()
+            app._poll()
+        assert app.qt.current_key() == "log" and app.adv_open.get()
+    finally:
+        app.quit()
+
+
+def test_the_server_page_says_when_the_ticks_are_not_applied(app_root):
+    """1.23 (audit, prompt.md): ticking a region changes nothing until „Auswahl anwenden“ – the list looked
+    applied. A line says how many regions differ from the hosts file."""
+    import json
+    from fogscout import regions
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        codes = [c for c, _n, _g in regions.REGIONS]
+        app.srv_state = {"regions": {c: "frei" for c in codes}, "own": False, "foreign": 0}
+        app.srv_sel = set(codes)
+        app._srv_render()
+        assert app.srv_pending.get() == ""
+        app._srv_toggle("r:" + codes[0])
+        assert app.srv_pending.get().startswith("Nicht angewendet – 1 Änderung.")
+        app._srv_toggle("r:" + codes[1])
+        assert app.srv_pending.get().startswith("Nicht angewendet – 2 Änderungen.")
+        app.srv_state = {"regions": {c: ("frei" if c in app.srv_sel else "gesperrt") for c in codes}, "own": True}
+        app._srv_render()
+        assert app.srv_pending.get() == ""                                 # applied: the line goes
+        from fogscout.app_qt import ui_layout
+        reg = {}
+        node = ui_layout(app.tab_server, reg)
+        notes = []
+
+        def walk(n):
+            if n.get("note"):
+                notes.append(n)
+            for c in n.get("children", ()):
+                walk(c)
+        walk(node)
+        assert notes and notes[0]["kind"] == "hint"                        # amber in the Qt window (class note)
+    finally:
+        app.quit()
+
+
+def test_deleting_all_rounds_asks_with_a_red_button_or_says_there_are_none(app_root):
+    """1.23: „Verlauf löschen“ did nothing without saved rounds, and asked with "OK" as the default otherwise."""
+    import json
+    from fogscout import history
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._stats_clear()
+        assert app._qt_question == ("Alle Runden löschen", "Es sind keine Runden gespeichert.", None, None, False)
+        app._qt_question = None
+        history.append(str(app_root / "rounds.jsonl"), history.Round(time.time() - 900, 600, "coal", "Coal Tower"))
+        app._stats_clear()
+        title, _text, retry, ok_text, danger = app._qt_question
+        assert (title, ok_text, danger) == ("Alle Runden löschen", "Alle löschen", True) and retry is not None
+        assert (app_root / "rounds.jsonl").exists()                        # nothing deleted before the answer
+    finally:
+        app.quit()

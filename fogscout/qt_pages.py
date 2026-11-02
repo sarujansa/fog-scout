@@ -1458,6 +1458,8 @@ class AutoPage(QWidget, _Arranged):
             self.controls[key] = ("tabs", tw, None)
             return
         w, extra = make_control(kind, key, self._post)
+        if n.get("note"):                                 # 1.23: a warning line of the model ("Note.TLabel")
+            w.setProperty("class", "note")
         if kind == "table" and n.get("fit"):
             w.fit_rows()
         grow = kind in ("table", "chart", "log") or (kind == "hint" and isinstance(lay, QHBoxLayout)) or \
@@ -1592,11 +1594,23 @@ class MessageBox(QDialog):
         lay.addLayout(row)
         self.setFixedWidth(self.WIDTH)
 
-    def ask(self, title: str, text: str, ask: bool, activate: bool = True):
-        """Show it; ``activate`` False = without taking the focus (DBD in front)."""
+    def ask(self, title: str, text: str, ask: bool, activate: bool = True, ok_text: str | None = None,
+            danger: bool = False):
+        """Show it; ``activate`` False = without taking the focus (DBD in front). 1.23 (audit, prompt.md): the
+        button says what it does (``ok_text``), and a question that deletes or replaces data (``danger``) has a red
+        button and Cancel as its default – Enter and the focus keep the data."""
         self.heading.setText(title)
         self.text.setText(text)
         self.cancel.setVisible(ask)
+        risky = bool(danger and ask)
+        self.ok.setText(ok_text or _("OK"))
+        name = "danger" if risky else "primary"
+        if self.ok.objectName() != name:
+            self.ok.setObjectName(name)
+            self.ok.style().unpolish(self.ok)
+            self.ok.style().polish(self.ok)
+        self.ok.setDefault(not risky)
+        self.cancel.setDefault(risky)
         self._open = True
         self.setAttribute(Qt.WA_ShowWithoutActivating, not activate)
         self.adjustSize()
@@ -1604,7 +1618,7 @@ class MessageBox(QDialog):
         self.raise_()
         if activate:
             self.activateWindow()
-            self.ok.setFocus()
+            (self.cancel if risky else self.ok).setFocus()
 
     def withdraw(self):
         """The program took the question back: closed without an answer."""

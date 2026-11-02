@@ -43,6 +43,8 @@ class ServerTab:
         ui.Label(f, textvariable=self.srv_summary, style="Big.TLabel").pack(anchor="w", pady=(6, 0))
         self.srv_status = ui.StringVar(value="")
         ui.Label(f, textvariable=self.srv_status, wraplength=430).pack(anchor="w", pady=(2, 0))
+        self.srv_pending = ui.StringVar(value="")       # 1.23: ticked regions differ from the hosts file
+        ui.Label(f, textvariable=self.srv_pending, style="Note.TLabel", wraplength=430).pack(anchor="w", pady=(2, 0))
         tf = ui.Frame(f)
         tf.pack(fill="x", pady=(6, 0))
         t = ui.Treeview(tf, columns=("ping", "state"), show="tree headings", height=11, selectmode="browse")
@@ -183,8 +185,26 @@ class ServerTab:
         self._save_soon()
         self._srv_render()
 
+    def _srv_pending_text(self) -> str:
+        """1.23 (audit, prompt.md): a tick changes nothing until „Auswahl anwenden“ – while the ticks differ from
+        what the hosts file allows, a line says so (before, the list looked applied)."""
+        st = self.srv_state or {}
+        rs = st.get("regions") or {}
+        if not rs or st.get("error") or self._srv_busy:
+            return ""
+        codes = [c for c, _, _ in regions.REGIONS]
+        free = {c for c in codes if rs.get(c) == "frei"}
+        n = len(free ^ (set(self.srv_sel) & set(codes)))
+        if not n:
+            return ""
+        return (_("Nicht angewendet – 1 Änderung. „Auswahl anwenden“ übernimmt sie, danach DBD neu starten.")
+                if n == 1 else _("Nicht angewendet – {n} Änderungen. „Auswahl anwenden“ übernimmt sie, danach DBD "
+                                 "neu starten.", n=n))
+
     def _srv_render(self):
         t = self.srv_tree
+        if hasattr(self, "srv_pending"):
+            self.srv_pending.set(self._srv_pending_text())
         states = self.srv_state.get("regions", {})
         for g in regions.GROUPS:
             codes = [c for c, _, grp in regions.REGIONS if grp == g]
@@ -291,7 +311,7 @@ class ServerTab:
             msg += "\n\n" + _("{n} vorhandene Einträge anderer Programme (z. B. Make Your Choice) für DBD-Server "
                                  "werden dabei entfernt.", n=foreign)
         msg += "\n\n" + _("Danach DBD neu starten, damit es wirkt.")
-        if not self._ask(_("Serverregionen anwenden"), msg, self.srv_apply):
+        if not self._ask(_("Serverregionen anwenden"), msg, self.srv_apply, ok_text=_("Anwenden")):
             return
         self._srv_run({"block": regions.block_list(sel), "allowed": sel, "remove_foreign": True},
                       _("Nur noch {names} erlaubt", names=names))
@@ -306,7 +326,7 @@ class ServerTab:
         msg = (_("Alle Sperren für DBD-Serverregionen aus der hosts-Datei entfernen (auch die von Make Your Choice)?")
                if st.get("myc") else _("Alle Sperren für DBD-Serverregionen aus der hosts-Datei entfernen?"))
         msg += "\n\n" + _("Windows fragt gleich nach Administratorrechten. Danach DBD neu starten.")
-        if not self._ask(_("Serverregionen freigeben"), msg, self.srv_release):
+        if not self._ask(_("Serverregionen freigeben"), msg, self.srv_release, ok_text=_("Freigeben")):
             return
         self._srv_run({"block": [], "remove_foreign": True}, _("Alle Regionen freigegeben"))
 
