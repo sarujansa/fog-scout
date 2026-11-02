@@ -1106,6 +1106,45 @@ CONTENT_SETTINGS = frozenset(("clip_mode", "clip_target_mb", "clip_mix_on", "cli
                               "clip_height", "clip_hw", "clip_censor_on", "clip_censor_style", "clip_censor_boxes"))
 
 
+def seg_part(seg):
+    """1.19: the clip (clipedit.Part) a playback stretch belongs to – the big editor puts it 5th; None else."""
+    return seg[4] if seg is not None and len(seg) > 4 else None
+
+
+class _Hold:
+    """1.19: plays a still – stands in for a FramePlayer (``stop``); a timer moves the playhead for ``seconds``,
+    then the window gets ``ended`` like after a player."""
+    TICK_MS = 40
+
+    def __init__(self, win, seconds: float):
+        self.win, self.seconds, self.stopped = win, max(0.0, float(seconds)), False
+        self.timer = QTimer(win)
+        self.timer.setInterval(self.TICK_MS)
+        self.timer.timeout.connect(self._tick)
+        self.t0 = None
+
+    def start(self):
+        import time as _t
+        self.t0 = _t.monotonic()
+        self.timer.start()
+
+    def _tick(self):
+        import time as _t
+        if self.stopped:
+            return
+        done = _t.monotonic() - self.t0
+        seg = self.win._seg
+        if seg is not None:
+            self.win._played_at(seg[0] + min(done, self.seconds))
+        if done >= self.seconds:
+            self.stop()
+            self.win._player_ended(self)
+
+    def stop(self):
+        self.stopped = True
+        self.timer.stop()
+
+
 class ClipBase(QWidget):
     """What every editor of one recording shares (1.16: split out of ClipWindow when the big editor became
     qt_editor.EditorWindow): the file and its facts, the bridge from the ffmpeg threads, the scrub/strip/level
@@ -1561,10 +1600,10 @@ class ClipBase(QWidget):
     def _extra_threads(self):
         """A subclass starts what else it needs (the editor: the waveform)."""
 
-    def _scrub(self, t: float, quick: bool | None = None):
-        """Ask the scrub thread for the picture at source second ``t``."""
+    def _scrub(self, t: float, quick: bool | None = None, vf=None):
+        """Ask the scrub thread for the picture at source second ``t`` (1.19: ``vf`` = the clip's effects)."""
         with self._scrub_lock:
-            self._want = (t, self._first_look if quick is None else quick)
+            self._want = (t, self._first_look if quick is None else quick, tuple(vf or ()))
             self._first_look = False
             self._scrub_lock.notify()
 
@@ -1576,15 +1615,15 @@ class ClipBase(QWidget):
                 want, self._want = self._want, None
             if want is None:
                 continue
-            t, quick = want
+            t, quick, vf = want
             if quick:                                   # 1.8.3: the key frame at once (~40 ms), the exact frame after
-                img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, keyframe=True)
+                img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, keyframe=True, vf=vf)
                 if img is not None and not self._closed:
                     self.bridge.frame.emit(t, img)
                 with self._scrub_lock:
                     if self._want is not None:          # a newer wish meanwhile: that one, not this exact frame
                         continue
-            img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg)
+            img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, vf=vf)
             if img is not None and not self._closed:
                 self.bridge.frame.emit(t, img)
 
@@ -1667,7 +1706,7 @@ class ClipBase(QWidget):
     def _show_played(self, t, img):
         if self.playing:
             self._played_at(t)
-            self.preview.set_now(t)
+            self.preview.set_now(self._seg_source(t))
             self._show_pos()
             self._paint(img)
 
@@ -1697,14 +1736,48 @@ class ClipBase(QWidget):
             self._finish_playing()
             return
         self._seg = seg = self._queue.pop(0)
-        start, end, speed, _out = seg
+        start, end, speed, _out = seg[:4]
+        part = seg_part(seg)
+        if part is not None and part.hold > 0:                  # 1.19: a still – no sound, one picture held
+            self._run_hold(seg)
+            return
+        back = bool(part is not None and part.reverse)
         if self._sound_wanted():
             mix, n, vol = self.mix(), self.info.audio_tracks, self._volume
             threading.Thread(target=lambda: self.bridge.sound.emit(
-                clipedit.sound_wav(self.path, start, end, self.ffmpeg, mix=mix, n_tracks=n, speed=speed, volume=vol),
-                start), name="clip-sound", daemon=True).start()
+                clipedit.sound_wav(self.path, start, end, self.ffmpeg, mix=mix, n_tracks=n, speed=speed, volume=vol,
+                                   reverse=back), start), name="clip-sound", daemon=True).start()
         else:
             self._run_player(seg)
+
+    def _seg_source(self, t):
+        """The second of the recording the picture played at player time ``t`` shows (1.19: backwards / still)."""
+        seg = self._seg
+        part = seg_part(seg) if seg is not None else None
+        if part is None:
+            return t
+        if part.hold > 0:
+            return part.start
+        return seg[1] - (t - seg[0]) if part.reverse else t
+
+    def _run_hold(self, seg):
+        """1.19: a still in the preview – its picture once (with the clip's effects), the playhead runs on a timer
+        for the still's (remaining) time, then the next stretch."""
+        start, _end, _speed, _out = seg[:4]
+        part = seg_part(seg)
+        left = seg[5] if len(seg) > 5 else part.hold
+        holder = _Hold(self, left)
+        self.player = holder
+        w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
+        vf = clipedit.preview_filters(part, w, h, t0=start, still=True)
+        path, info, ffmpeg, b = self.path, self.info, self.ffmpeg, self.bridge
+
+        def still():
+            img = clipedit.frame_at(path, start, clipedit.PREVIEW_H, info, ffmpeg, vf=vf)
+            if img is not None and not holder.stopped:
+                b.played.emit(start, img)
+        threading.Thread(target=still, name="clip-still", daemon=True).start()
+        holder.start()
 
     def _sound_ready(self, wav, start):
         if not self.playing or self.player is not None or self._seg is None or abs(self._seg[0] - start) > 1e-6:
@@ -1722,10 +1795,13 @@ class ClipBase(QWidget):
 
     def _run_player(self, seg):
         b = self.bridge
-        start, end, speed, _out = seg
+        start, end, speed, _out = seg[:4]
+        part = seg_part(seg)
+        w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
+        vf = clipedit.preview_filters(part, w, h, t0=start) if part is not None else ()
         self.player = clipedit.FramePlayer(self.path, start, self.info, lambda t, img: b.played.emit(t, img),
                                            lambda: b.ended.emit(self.player), end=end, ffmpeg=self.ffmpeg,
-                                           speed=speed)
+                                           speed=speed, vf=vf, reverse=bool(part is not None and part.reverse))
         self.player.start()
 
     def _show_playing(self, on: bool):

@@ -2907,4 +2907,67 @@ EN = {
         "✓ Saved {at}",
     "Der grosse Editor speichert sein Projekt von selbst (1,5 s nach einer Änderung, nie während du ziehst) – mit Sicherungen und einer lokalen Kopie, falls die Projektdatei nicht schreibbar ist. Aus: nur Strg+S schreibt das Projekt; dazwischen hält der Editor einen lokalen Wiederherstellungsstand.":
         "The big editor saves its project by itself (1.5 s after a change, never while you drag) – with backups and a local copy in case the project file cannot be written. Off: only Ctrl+S writes the project; in between the editor keeps a local recovery state.",
+    # 1.19: effects in the big editor
+    "Auf alle Clips":
+        "To all clips",
+    "Bild bei {at} der Aufnahme · {length} s ohne Ton":
+        "Picture at {at} of the recording · {length} s without sound",
+    "Den Ausschnitt am Anfang des Clips in der Vorschau ziehen – dazwischen fährt die Kamera gleichmässig.":
+        "Drag the frame at the clip's start in the preview – in between the camera moves evenly.",
+    "Den Ausschnitt am Ende des Clips in der Vorschau ziehen.":
+        "Drag the frame at the clip's end in the preview.",
+    "Der Clip zeigt wieder das ganze Bild.":
+        "The clip shows the whole picture again.",
+    "Effekte":
+        "Effects",
+    "Effekte entfernen":
+        "Remove effects",
+    "Ein fester Ausschnitt: Start und Ende gleich – der End-Ausschnitt folgt dem Start.":
+        "A fixed frame: start and end the same – the end frame follows the start.",
+    "End-Ausschnitt":
+        "End frame",
+    "Farbe auf alle {n} Clips übernommen.":
+        "Colour applied to all {n} clips.",
+    "Heller oder dunkler – nur dieser Clip.":
+        "Brighter or darker – this clip only.",
+    "Helligkeit, Kontrast und Sättigung dieses Clips wieder wie aufgenommen.":
+        "Brightness, contrast and saturation of this clip back to as recorded.",
+    "Hält das Bild am Abspielkopf so lange an wie eingestellt (Taste P) – ohne Ton.":
+        "Holds the picture at the playhead as long as set (key P) – without sound.",
+    "Kräftigere oder blassere Farben, ganz links schwarz-weiss – nur dieser Clip.":
+        "Stronger or paler colours, far left black and white – this clip only.",
+    "Mehr oder weniger Kontrast – nur dieser Clip.":
+        "More or less contrast – this clip only.",
+    "Ohne Bewegung":
+        "No movement",
+    "Rückwärts":
+        "Backwards",
+    "Rückwärts geht bis {n} s je Clip – diesen Clip vorher teilen.":
+        "Backwards works up to {n} s per clip – split this clip first.",
+    "Spielt den Clip rückwärts ab, auch den Ton. Bei dieser Aufnahme höchstens {n} s je Clip (sonst braucht ffmpeg zu viel Arbeitsspeicher).":
+        "Plays the clip backwards, the sound too. For this recording at most {n} s per clip (else ffmpeg needs too much memory).",
+    "Standbild am Abspielkopf einfügen":
+        "Insert a still at the playhead",
+    "Standbild einfügen":
+        "Insert still",
+    "Standbild eingefügt: {n} s ohne Ton.":
+        "Still inserted: {n} s without sound.",
+    "Standbild hier einfügen":
+        "Insert still here",
+    "Standbild – Clip {n} von {total}":
+        "Still – clip {n} of {total}",
+    "Start-Ausschnitt":
+        "Start frame",
+    "Wie lange ein Standbild steht – für ein neues, oder für das markierte Standbild.":
+        "How long a still holds – for a new one, or for the marked still.",
+    "Zoom":
+        "Zoom",
+    "Zoom entfernen":
+        "Remove zoom",
+    "Zoom: Ausschnitt in der Vorschau ziehen oder an den Ecken grösser/kleiner ziehen – Esc beendet.":
+        "Zoom: drag the frame in the preview or pull its corners bigger/smaller – Esc ends.",
+    "{n}  Standbild {length} s":
+        "{n}  Still {length} s",
+    "Übernimmt Helligkeit, Kontrast und Sättigung dieses Clips für alle Clips auf der Zeitleiste (ein Schritt, Strg+Z macht ihn rückgängig).":
+        "Applies this clip's brightness, contrast and saturation to every clip on the timeline (one step, Ctrl+Z undoes it).",
 }
