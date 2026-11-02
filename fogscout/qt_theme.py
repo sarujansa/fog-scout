@@ -64,6 +64,7 @@ THEMES = {
 TYPE = {"label": 11, "small": 12, "body": 13, "nav": 14, "big": 16, "h1": 21, "display": 22}
 RADIUS = {"xs": 2, "bar": 3, "s": 4, "m": 6, "l": 8, "xl": 10}
 PAD_CARD = (14, 12, 14, 12)               # a card's content: left, top, right, bottom
+ICON = {"s": 14, "m": 16, "l": 20}         # 1.24: glyph sizes (qt_icons) – in text, on buttons, the brand
 SWATCHES = ("#c9a227", "#e08a1e", "#e8692a", "#d93a32", "#b0203a", "#e0508f", "#c040c0", "#8a5cf0",
             "#4f5fe0", "#2f8fe0", "#1fb5c9", "#17a38a", "#3cae4f", "#8cbf26")
 CUSTOM_DEFAULT = "#2f8fe0"
@@ -287,6 +288,17 @@ QLineEdit#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; }}
 QPushButton#navsearchbtn {{ background: transparent; border: none; margin-top: 10px; padding: 8px; }}
 QPushButton#navsearchbtn:hover {{ background: {c['hover']}; }}
 QPushButton#navsearchbtn:focus {{ border: 1px solid {c['accent']}; }}
+QWidget#navbrand {{ background: {c['nav']}; }}  /* 1.24: the program's name above the navigation */
+QLabel#brandname {{ font-size: {px(TYPE['big'])}; font-weight: 700; color: {c['head']}; }}
+QFrame#navstatus {{ background: {c['nav']}; border: none; border-top: 1px solid {c['border']}; border-radius: 0; }}
+QFrame#navstatus:hover {{ background: {c['hover']}; }}  /* 1.24: what Fog Scout does now, every page */
+QFrame#navstatus:focus {{ border: 1px solid {c['accent']}; }}
+QLabel#navstatustext {{ color: {c['fg']}; font-size: {px(TYPE['small'])}; background: transparent; }}
+QLabel[class="subtitle"] {{ color: {c['dim']}; font-size: {px(TYPE['body'])}; }}  /* 1.24: a page's purpose */
+QLabel[state="ok"] {{ color: {c['ok']}; }}  /* 1.24: state words – always beside a sign, never colour alone */
+QLabel[state="warn"] {{ color: {c['warn']}; }}
+QLabel[state="err"] {{ color: {c['err']}; }}
+QLabel[state="off"] {{ color: {c['dim']}; }}
 QLabel[class="dim"] {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; }}
 QLabel[class="hint"] {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; }}  /* 1.17.1: qt_pages.HintLabel – line length */
 QLabel[class="h1"] {{ font-size: {px(TYPE['h1'])}; font-weight: 700; color: {c['head']}; }}
@@ -366,6 +378,7 @@ QTreeWidget {{ border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; 
 QTreeWidget::item {{ padding: 3px 6px; }}
 QHeaderView::section {{ padding: 3px 6px; }}
 QTreeWidget::item:selected {{ background: {c['select']}; color: {c['on_select']}; }}
+QTreeWidget::item:hover:!selected {{ background: {c['hover']}; }}  /* 1.24: the row under the mouse */
 QTreeView::indicator {{ width: 16px; height: 16px; border: 1px solid {c['dim']}; border-radius: {RADIUS['s']}px;
     background: {c['field']}; }}  /* 1.8.75: the server regions' tick boxes like the page's (were Fusion's glyphs) */
 QTreeView::indicator:hover {{ border-color: {c['accent']}; }}

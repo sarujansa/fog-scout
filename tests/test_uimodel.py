@@ -2675,21 +2675,22 @@ def test_the_statistics_filters_fold_away_count_and_reset(app_root):
     try:
         app._stats_render()
         assert not app.stats_more_row.winfo_manager() and not app.stats_reset_btn.winfo_manager()
-        assert app.stats_filter_btn.cget("text") == "Filter ▾"
+        assert app.stats_filter_btn.cget("text") == "Filter" and app.stats_filter_btn._dbdms_glyph == "chevron_down"
         app._stats_more_toggle()
-        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter ▴"
+        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter"
+        assert app.stats_filter_btn._dbdms_glyph == "chevron_up"                 # 1.24: a drawn chevron, not "▴"
         app._stats_more_toggle()
         app._dash_clicked(("map", "Coal Tower"))                       # a hidden filter set: the row opens
-        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter (1) ▴"
+        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter (1)"
         assert app.stats_reset_btn.winfo_manager()
         app.stats_period_var.set(app._stats_periods[1][1])
         app._farming_vars[0].set(True)
         app._farming_switch(app._farming_vars[0])
-        assert app.stats_filter_btn.cget("text") == "Filter (2) ▴"
+        assert app.stats_filter_btn.cget("text") == "Filter (2)"
         app._stats_filters_reset()
         assert app.stats_map_var.get() == "Alle Maps" and app.stats_period_var.get() == app._stats_periods[0][1]
         assert not app._farming_hidden() and not app.stats_reset_btn.winfo_manager()
-        assert not app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter ▾"
+        assert not app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter"
         assert app.stats_filter_btn._dbdms_tip() and app.stats_reset_btn._dbdms_tip()
         page = app.qt.forms["stats"]
         seg = [tw for _k, tw, _p, _w in page._tabs if tw.objectName() == "segments"]
@@ -3013,5 +3014,23 @@ def test_deleting_all_rounds_asks_with_a_red_button_or_says_there_are_none(app_r
         title, _text, retry, ok_text, danger = app._qt_question
         assert (title, ok_text, danger) == ("Alle Runden löschen", "Alle löschen", True) and retry is not None
         assert (app_root / "rounds.jsonl").exists()                        # nothing deleted before the answer
+    finally:
+        app.quit()
+
+
+def test_the_state_reaches_the_foot_of_the_navigation_on_every_page(app_root):
+    """1.24 (phase 2): the App hands status.user_state to the window on every refresh – the same words as the tray's
+    dot – whatever page is open; a map on display shows its name there."""
+    import json
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app.qt.show_page("log")
+        app._qt_refresh(force=True)
+        assert app.qt.status_btn.text.text() == "Simulation – wartet auf das Map-Banner"
+        app.show_map("coal-tower", 1, source="manual")
+        app._qt_refresh(force=True)
+        assert app.qt.status_btn.text.text().startswith("Im Match: Coal Tower")
     finally:
         app.quit()

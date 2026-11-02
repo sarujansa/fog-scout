@@ -306,10 +306,12 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
 
     def _show_advanced(self):
         if self.adv_open.get():
-            self.adv_btn.configure(text="▾ " + _("Erweitert (Fehlersuche, Technik)"))
+            self.adv_btn.configure(text=_("Erweitert (Fehlersuche, Technik)"))
+            ui.glyph(self.adv_btn, "chevron_down")                 # 1.24: a drawn chevron, not "▾"
             self.adv_frame.pack(fill="x", pady=(4, 0))
         else:
-            self.adv_btn.configure(text="▸ " + _("Erweitert (Fehlersuche, Technik)"))
+            self.adv_btn.configure(text=_("Erweitert (Fehlersuche, Technik)"))
+            ui.glyph(self.adv_btn, "chevron_right")
             self.adv_frame.pack_forget()
 
     # -------------------------------------------------------------- tab: log
@@ -528,7 +530,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 _("Wechselt zum nächsten Layout dieser Map (z. B. Coal Tower ↔ Coal Tower II). Die Layouts ab II "
                   "gibt es seit Patch 8.6.0 nur noch in Custom Games.") + self._hk_hint("next_variant")
         if key == "rotate":
-            return tooltip.tip_for_label("Drehen ↻") + self._hk_hint("rotate_map")
+            return tooltip.tip_for_label("Drehen") + self._hk_hint("rotate_map")
         if key == "floor":
             return _("Wechselt die Anzeige bei Karten mit Etagen (Midwich): beide untereinander → "
                      "unten → oben → beide. Gilt bis zur nächsten Map.") + self._hk_hint("next_floor")

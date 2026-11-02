@@ -856,14 +856,21 @@ class SettingsTab:
             self._log(_("Symbol im Infobereich nicht verfügbar ({error}) – Minimieren wie gewohnt.",
                         error=self.tray.error), "Fehler")
 
+    def _user_state(self):
+        """What the player reads about Fog Scout now (status.user_state): the tray's dot and – since 1.24 – the
+        foot of the window's navigation."""
+        m = self.catalog.maps.get(self.current[0]) if self.current else None
+        return status.user_state(self._worker_status, auto_detect=bool(self.settings.get("auto_detect", True)),
+                                 game_found=self.game is not None, simulate=bool(self.simulate),
+                                 has_map=self.overlay.has_map(), map_label=m.label(self.current[1]) if m else "",
+                                 visible_wanted=self.user_visible,
+                                 hidden_after_match=self.hidden_after_match, menu_paused=self.menu_paused)
+
     def _tray_tick(self):
         """1.3.6: the tray icon shows the state by a coloured dot (like the overview's status dot)."""
         if not self.tray.active:
             return
-        st = status.user_state(self._worker_status, auto_detect=bool(self.settings.get("auto_detect", True)),
-                               game_found=self.game is not None, simulate=bool(self.simulate),
-                               has_map=self.overlay.has_map(), visible_wanted=self.user_visible,
-                               hidden_after_match=self.hidden_after_match, menu_paused=self.menu_paused)
+        st = self._user_state()
         u = self._unsure
         self.tray.set_status(status.tray_dot(st, bool(u and u.get("shown")),
                                              self.game is not None or bool(self.simulate)),

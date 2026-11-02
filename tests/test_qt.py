@@ -1351,7 +1351,7 @@ def test_map_tiles_show_marks_and_a_context_menu(qapp, keep):
     assert [e for _a, _l, e in page.menu_entries(("pit", 1))] == [True, True, False, True, True]
     page.open_menu(("coal", 1), coal.mapToGlobal(coal.rect().center()))
     acts = page._menu.actions()
-    assert [a.text() for a in acts][:2] == ["Anzeigen", "Drehen ↻"]
+    assert [a.text() for a in acts][:2] == ["Anzeigen", "Drehen"]
     acts[1].trigger()
     assert posted.get_nowait() == ("map_action", ("rotate", ("coal", 1)))
     page._menu.close()
@@ -2438,3 +2438,85 @@ def test_page_keys_never_get_in_the_way_of_typing(qapp, keep):
     assert win.current_key() == win.nav_keys()[2]
     win.allow_close = True
     win.close()
+
+
+def test_the_navigation_shows_the_name_and_the_state_on_every_page(qapp, keep):
+    """1.24 (phase 2): the program's name above the navigation, and what it does now at its foot – a dot in the
+    state's colour and the words (never colour alone); narrow, only the dot with the words as hover text. A click
+    or Enter opens the overview. Before, only the overview showed the state."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from fogscout import qt_window
+    posted = []
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.append((a, arg))))
+    win.resize(1280, 800)
+    win.show()
+    assert win.brand_name.text() == "Fog Scout" and not win.brand_icon.pixmap().isNull()
+    win.show_page("log")
+    win.show_status("wait", "Wartet auf das nächste Match")
+    st = win.status_btn
+    assert st.text.text() == "Wartet auf das nächste Match" and not st.dot.pixmap().isNull()
+    assert "Übersicht öffnen" in st.toolTip()
+    QTest.mouseClick(st, Qt.LeftButton)
+    assert win.current_key() == "overview"
+    win.show_page("log")
+    st.setFocus()
+    QTest.keyClick(st, Qt.Key_Return)
+    assert win.current_key() == "overview"
+    win.resize(900, 700)                                    # narrow: icons only
+    qapp.processEvents()
+    assert win._nav_compact and st.text.isHidden() and not win.brand_name.isVisible()
+    assert "Wartet auf das nächste Match" in st.toolTip()
+    win.allow_close = True
+    win.close()
+
+
+def test_a_model_button_can_be_the_main_action_and_carry_a_drawn_sign(qapp):
+    """1.24 (phase 2): ui.primary (accent fill) and ui.glyph (qt_icons sign before the text, instead of Unicode
+    signs like ▸ ↻) reach the Qt button; the sign is set again only when it, the mode or the accent changed."""
+    from fogscout import uimodel as ui
+    from fogscout.app_qt import ui_state
+    from fogscout.qt_pages import make_control, show_control
+    root = ui.Frame()
+    b = ui.glyph(ui.primary(ui.Button(root, text="Auswahl anwenden")), "check")
+    st = ui_state(b)
+    assert st["primary"] is True and st["glyph"] == "check"
+    w, extra = make_control("button", str(b), lambda *a: None)
+    show_control("button", w, extra, st)
+    assert w.objectName() == "primary" and w.property("glyph") == "check" and not w.icon().isNull()
+    key = w._glyph_key
+    show_control("button", w, extra, st)
+    assert w._glyph_key is key                               # unchanged: not drawn again
+    ui.glyph(b, "chevron_down")
+    show_control("button", w, extra, ui_state(b))
+    assert w.property("glyph") == "chevron_down"
+
+
+def test_every_page_says_what_it_is_for_under_its_title():
+    """1.24 (phase 2): one line under each page's title (qt_common.PAGE_SUBTITLES), for all eight pages."""
+    from fogscout import qt_window
+    from fogscout.qt_common import PAGE_SUBTITLES
+    assert set(PAGE_SUBTITLES) == {k for k, _l in qt_window.PAGES}
+
+
+def test_the_new_signs_are_drawn(qapp):
+    """1.24 (phase 2): the signs that replace ↻ ▸ ▾ ✕ ★ ⚑ ⚠ ● ← ↗ draw something at every size."""
+    from fogscout import qt_icons
+    for name in ("star", "warning", "chevron_right", "chevron_down", "chevron_up", "rotate", "record", "back",
+                 "external", "close", "play", "search"):
+        img = qt_icons.pixmap(name, "#ffffff", 20).toImage()
+        lit = sum(1 for x in range(img.width()) for y in range(img.height()) if img.pixelColor(x, y).alpha() > 100)
+        assert lit > 10, name
+
+
+def test_the_overview_draws_a_main_action_only_when_the_player_has_to_act():
+    """1.24 (phase 2): "Scannen" was always the accent button – a fallback, not the next step. Now: "Stimmt" while a
+    doubtful map waits for the player, "Map wählen …" while the automatic detection is off, otherwise none."""
+    app = fake_app()
+    o = overview.overview_model(app, 1000.0, True)
+    assert o.primary is None and o.actions["scan"][0]                  # the map comes by itself
+    app.settings["auto_detect"] = False
+    assert overview.overview_model(app, 1000.0, True).primary == "choose"
+    app = fake_app(current=("coal", 1), source="auto")
+    app._unsure = {"shown": True, "label": "Coal Tower", "name": "COAL"}
+    assert overview.overview_model(app, 1000.0, True).primary == "confirm"

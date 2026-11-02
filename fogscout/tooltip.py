@@ -304,7 +304,7 @@ TIPS = {
     "Clips-Ordner öffnen": "Öffnet den Ordner „Clips“ neben den Aufnahmen im Explorer.",
     "Clip bearbeiten …": "Öffnet den Clip-Editor für die markierte Aufnahme: Vorschau, Zeitleiste mit Marken, Start/Ende "
                         "setzen, Ausschnitt als MP4 in den Ordner „Clips“ speichern.",
-    "Drehen ↻": "Dreht die angezeigte Karte um 90° im Uhrzeigersinn (für jede Map gemerkt). Der Map-Name "
+    "Drehen": "Dreht die angezeigte Karte um 90° im Uhrzeigersinn (für jede Map gemerkt). Der Map-Name "
                 "darüber bleibt aufrecht, die Zahlen in der Karte drehen sich mit.",
     "Scannen": "Sucht sofort auf dem ganzen Bildschirm nach einem Map- oder Realm-Namen – falls die "
                "automatische Erkennung das Banner verpasst hat.",

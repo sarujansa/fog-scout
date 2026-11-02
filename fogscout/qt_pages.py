@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QBoxLayout, QComboBox, QDialog, QFrame, QGridLayo
 from . import qt_theme
 from .qt_layouts import FlowRow, TileGrid, WrapCheck
 from .i18n import N_, _
-from .qt_common import SLIDER_MAX, guard_wheel, pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page
+from .qt_common import SLIDER_MAX, guard_wheel, pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page, page_head, set_glyph
 from .qt_views import FactBox, Table, LogView, HotkeyButton, Chart, SwatchView, TilesView, DashboardView
 from .qt_preview import PreviewView
 
@@ -75,7 +75,6 @@ class OverviewPage(QWidget):
         self.setObjectName("page")
         self._post = post
         self._thumb_rev = None
-        self._pill_style = None
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
@@ -90,14 +89,9 @@ class OverviewPage(QWidget):
         page.setContentsMargins(22, 18, 22, 18)
         page.setSpacing(12)                       # 1.11.14: like every other page (_scroll_page), was 14
 
-        top = FlowRow(spacing=12)                 # narrow window: the status goes below the title
-        top.right = 1
-        top.addWidget(_label(_("Übersicht"), "h1"))
-        self.pill = QLabel()
-        self.pill.setObjectName("pill")
-        self.pill.setMaximumWidth(520)
-        top.addWidget(self.pill)
-        page.addLayout(top)
+        # 1.24 (phase 2): title and purpose like every page – the state went to the foot of the navigation
+        # (MainWindow.show_status), where every page shows it; the pill here showed it on the overview only
+        page.addLayout(page_head(_("Übersicht"), "overview"))
 
         # the map on display: picture, name, values, actions
         card = _card()
@@ -132,9 +126,14 @@ class OverviewPage(QWidget):
         self.unknown_text = _label(cls="note", wrap=True)
         ul.addWidget(self.unknown_text, 1)
         for text, action in ((N_("Zuordnen …"), "assign"), (N_("Bild hinzufügen …"), "picture"),
-                             ("✕", "dismiss_unknown")):
-            ub = QPushButton(_(text))
-            ub.setToolTip(_tip(text))
+                             ("", "dismiss_unknown")):
+            ub = QPushButton(_(text) if text else "")
+            if action == "dismiss_unknown":       # 1.24: a drawn cross, not "✕"
+                set_glyph(ub, "close")
+                ub.setToolTip(_("Hinweis ausblenden."))
+                ub.setAccessibleName(_("Hinweis ausblenden."))
+            else:
+                ub.setToolTip(_tip(text))
             ub.clicked.connect(lambda _c=False, a=action: self._post(a))
             ul.addWidget(ub)
         info.addWidget(self.unknown)
@@ -143,8 +142,6 @@ class OverviewPage(QWidget):
         self.buttons = {}
         for key in ("scan", "choose", "rotate", "toggle", "reject", "confirm", "layout", "floor", "power"):
             b = QPushButton()
-            if key == "scan":
-                b.setObjectName("primary")
             b.clicked.connect(lambda _c=False, k=key: self._post(k))
             btns.addWidget(b)
             self.buttons[key] = b
@@ -263,11 +260,6 @@ class OverviewPage(QWidget):
 
     # ------------------------------------------------------------- update
     def update_page(self, o, thumb=None, tips=None):
-        _set(self.pill, "●  " + o.status_text)
-        pill = qt_theme.pill_style(o.status_kind)
-        if pill != self._pill_style:                  # re-styling repaints: only on a change
-            self._pill_style = pill
-            self.pill.setStyleSheet(pill)
         _set(self.map_name, o.map_label or _("Noch keine Map"))
         _set(self.map_line, o.map_line)
         _set(self.queue, o.queue)
@@ -296,6 +288,12 @@ class OverviewPage(QWidget):
             if a is not None:
                 _set(b, a[1])
                 b.setEnabled(a[0])
+                name = "primary" if key == o.primary else ""      # 1.24: the main action follows the state
+                if b.objectName() != name:
+                    b.setObjectName(name)
+                    b.style().unpolish(b)
+                    b.style().polish(b)
+                set_glyph(b, OVERVIEW_GLYPHS.get(key), primary=key == o.primary)
                 if tips:
                     tip = tips(key, a[1]) or ""
                     if b.toolTip() != tip:
@@ -430,7 +428,9 @@ class RoundRowView(QFrame):
         self.left.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)   # long names must not widen it
         lay.addWidget(self.left, 1)
         lay.addWidget(self.right)
-        self.play = QPushButton("▶")
+        self.play = QPushButton()
+        set_glyph(self.play, "play")              # 1.24: a drawn sign, not "▶"
+        self.play.setAccessibleName(_("Aufnahme dieser Runde öffnen"))
         self.play.setObjectName("rowplay")
         self.play.setCursor(Qt.PointingHandCursor)
         self.play.setFocusPolicy(Qt.TabFocus)
@@ -620,6 +620,10 @@ def make_control(kind, key, post):
     return w, extra
 
 
+# 1.24 (phase 2): the overview's buttons with a sign of their own (rotate, step on to the next layout/floor)
+OVERVIEW_GLYPHS = {"rotate": "rotate", "layout": "chevron_right", "floor": "chevron_right", "scan": "search"}
+
+
 def show_control(kind, w, extra, st):
     """Put a model widget's state (app_qt.ui_state) into its Qt control – never sends anything back."""
     if kind == "tab":                    # a tab of a hand-made page: hidden with its frame (extra = its body widget)
@@ -642,6 +646,12 @@ def show_control(kind, w, extra, st):
         w.setObjectName("danger")
         w.style().unpolish(w)
         w.style().polish(w)
+    if st.get("primary") and w.objectName() != "primary":     # 1.24: the main action (ui.primary)
+        w.setObjectName("primary")
+        w.style().unpolish(w)
+        w.style().polish(w)
+    if "glyph" in st or getattr(w, "_glyph_key", None):
+        set_glyph(w, st.get("glyph"), primary=bool(st.get("primary")))
     if st.get("tip") is not None and w.toolTip() != st["tip"]:
         w.setToolTip(st["tip"])
     if kind in ("check", "radio"):
@@ -1060,7 +1070,7 @@ class FormPage(QWidget, _Arranged):
         self.controls = {}                 # key -> (kind, widget, extra)
         self.columns = []
         self._tabsets = []
-        page, lay = _scroll_page(title)
+        page, lay = _scroll_page(title, page_key=page_key)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(page)
@@ -1316,7 +1326,7 @@ class AutoPage(QWidget, _Arranged):
         self._all = []
         self.columns = []
         fill = _fills(node) if node else False
-        page, lay = _scroll_page(title, scroll=not fill)
+        page, lay = _scroll_page(title, scroll=not fill, page_key=page_key)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(page)
