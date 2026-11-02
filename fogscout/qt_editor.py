@@ -182,6 +182,10 @@ QSplitter::handle {{ background: {c['border']}; }}
 QSplitter::handle:horizontal {{ width: 1px; }}
 QSplitter::handle:vertical {{ height: 1px; }}
 QSplitter::handle:hover {{ background: {c['accent']}; }}
+QFrame#noticebar {{ background: {c['field']}; border: none; border-bottom: 1px solid {c['border']};
+    border-left: 3px solid {c['accent']}; }}
+QFrame#noticebar QLabel {{ color: {c['head']}; }}
+QLabel#savestatus {{ color: {c['dim']}; padding: 0 4px; }}
 QFrame#keyhelp {{ background: {c['panel']}; border: 1px solid {c['border']}; border-radius: 10px; }}
 QLabel#keyhelptitle {{ font-weight: 700; color: {c['head']}; }}
 QLabel#keyhelphead {{ font-size: {px(11)}; font-weight: 700; color: {c['dim']}; letter-spacing: 1px; padding-bottom: 2px; }}
