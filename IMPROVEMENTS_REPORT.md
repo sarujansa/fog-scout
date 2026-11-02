@@ -350,7 +350,9 @@ Ohne Windows-Rechner und Spiel nicht geprüft – bitte am PC durchgehen:
 | `a7e19af` | 1.22.4: Klicks sofort, Ordner-Cache, Aufnahmen-Seite nur sichtbar |
 | `68a5d37` | 1.23: Begriffe, Rückfragen, Doppelklick, Server-Hinweis |
 | `f6aba5d` | Design-Tokens |
-| letzter Commit | 1.23.1: Audit-Korrekturen und dieser Bericht |
+| `8ba6ccc` | 1.23.1: Audit-Korrekturen und dieser Bericht |
+| `8f3c31a` | 1.23.1: Kachel-Knopf bei CI-Schrift, Timer an Widget |
+| letzter Commit | diese Tabelle |
 
 **Push:** Alle Commits sind nach `origin/claude/funny-feynman-gt5t6n` gepusht. Pull Request sarujansa/fog-scout#298 ist offen, **nicht gemergt** – Saru merged.
 
