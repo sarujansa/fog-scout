@@ -2246,3 +2246,35 @@ def test_a_long_hint_on_its_own_line_wraps_at_a_readable_width_and_shows_every_l
     assert alone.heightForWidth(1800) == alone.heightForWidth(cap) > alone.fontMetrics().height() * 3
     assert alone.height() >= alone.heightForWidth(cap)                  # every line has room
     assert beside.maximumWidth() > 10000 and beside.width() > cap / 2   # in a row: no cap
+
+
+def test_page_keys_never_get_in_the_way_of_typing(qapp, keep):
+    """1.17.1: Ctrl+1 … Ctrl+9 open pages, but digits typed into the search field or a spin box stay there (no page
+    change); no key sequence is bound twice in the window."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QShortcut
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QSpinBox
+    from fogscout import qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.show()
+    win.activateWindow()
+    qapp.processEvents()
+    keys = [k.toString() for s in win.findChildren(QShortcut) for k in s.keys()]
+    assert len(keys) == len(set(keys)), sorted(k for k in keys if keys.count(k) > 1)
+    start = win.current_key()
+    win.search.setFocus()
+    QTest.keyClicks(win.search, "123")
+    assert win.search.text() == "123" and win.current_key() == start
+    spin = QSpinBox(win.overview)
+    spin.setRange(0, 999)
+    spin.show()
+    spin.setFocus()
+    spin.selectAll()
+    QTest.keyClicks(spin, "42")
+    assert spin.value() == 42 and win.current_key() == start
+    QTest.keyClick(win, Qt.Key_3, Qt.ControlModifier)
+    qapp.processEvents()
+    assert win.current_key() == win.nav_keys()[2]
+    win.allow_close = True
+    win.close()
