@@ -203,7 +203,7 @@ QSlider::sub-page:horizontal {{ background: {c['accent']}; border-radius: 2px; }
 QSlider::handle:horizontal {{ width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; background: {c['head']};
     border: 1px solid {c['border']}; }}
 QSlider::handle:horizontal:hover {{ background: {c['accent']}; }}
-QSlider:disabled::sub-page:horizontal {{ background: {c['border']}; }}
+QSlider::sub-page:horizontal:disabled {{ background: {c['border']}; }}
 QListView#media {{ background: transparent; border: none; outline: 0; }}
 QListWidget#marks {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 2px; outline: 0; }}
 QListWidget#marks::item {{ padding: 4px 6px; border-radius: 4px; }}
