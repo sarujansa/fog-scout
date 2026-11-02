@@ -3131,4 +3131,12 @@ EN = {
         "{file} is no longer the same recording as when it was saved.",
     "{file}: {n} Clip(s) angehängt.":
         "{file}: {n} clip(s) appended.",
+    "Audiomediathek":
+        "Audio Library",
+    "Audiomediathek im Browser geöffnet – heruntergeladene Titel erscheinen im Abschnitt Ton, sobald du zurück im Editor bist.":
+        "Audio Library opened in the browser – downloaded tracks show up in the Sound section once you are back in the editor.",
+    "Neu im Download-Ordner – Klick legt sie am Abspielkopf auf A2:":
+        "New in the download folder – a click puts it on A2 at the playhead:",
+    "Öffnet YouTubes Audiomediathek im Browser: kostenlose Musik und Effekte, für Videos freigegeben (keine Content-ID-Ansprüche). Heruntergeladene MP3s erscheinen hier darunter.":
+        "Opens YouTube's Audio Library in the browser: free music and effects, cleared for videos (no Content ID claims). Downloaded MP3s show up below.",
 }

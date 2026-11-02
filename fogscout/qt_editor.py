@@ -1434,6 +1434,9 @@ class EditorWindow(MontageMixin, MusicMixin, ProjectMixin, ClipBase):
             self.status.setText(path)
 
     def event(self, e):
+        if e.type() == QEvent.WindowActivate and getattr(self, "music_recent_row", None) is not None \
+                and not self._closed:
+            self._music_recent_fill()                    # 1.22.1: a sound file just downloaded in the browser
         if e.type() == QEvent.WindowActivate and getattr(self, "library", None) is not None and self._pumping_ok():
             self._fill_library()
         elif e.type() == QEvent.WindowDeactivate and not self._closed:
