@@ -472,6 +472,25 @@ def test_a_still_opens_in_the_editor_from_the_row_menu_too(app_root, tmp_path, m
         app.quit()
 
 
+def test_a_table_the_filters_empty_says_so(app_root, tmp_path, monkeypatch):
+    """1.24.3 (phase 2 audit: a filter without a hit left an empty box): the clips table carries words for the
+    empty state (Table draws them), only while there are clips and the filters hide all of them."""
+    from fogscout.app_qt import ui_state
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    try:
+        app._rec_render(force=True)
+        assert app.clip_table.get_children() and app.clip_table._dbdms_empty == ""
+        app.clip_role_var.set(dict(app._rec_roles)["killer"])           # no clip has a killer role
+        app._clips_render()
+        assert app.clip_table.get_children() == ()
+        assert ui_state(app.clip_table)["empty"] == "Kein Clip passt zu den Filtern oben."
+        app.clip_role_var.set(dict(app._rec_roles)["all"])
+        app._clips_render()
+        assert app.clip_table._dbdms_empty == ""
+    finally:
+        app.quit()
+
+
 def test_a_gif_clip_is_not_offered_to_youtube(app_root, tmp_path, monkeypatch):
     """A GIF of the clip editor had an enabled YouTube button and menu entry that did nothing, without a word."""
     app = _clips_app(app_root, tmp_path, monkeypatch)
@@ -561,7 +580,7 @@ def test_a_closed_editor_window_is_let_go(app_root, tmp_path):
 
 def test_the_recording_card_text_follows_obs_state():
     """1.15 (audit of the video system): the card's three lines – state, values, warnings – from the poll."""
-    from fogscout.app_recordings import rec_card_text
+    from fogscout.app_recordings import rec_card_level, rec_card_text
     assert rec_card_text(None) == ("Warte auf OBS …", "", "")
     state, vals, warn = rec_card_text({"connected": False, "error": "Verbindung abgelehnt"})
     assert state == "OBS nicht erreichbar" and vals.endswith("Verbindung abgelehnt") and warn == ""
@@ -577,11 +596,17 @@ def test_the_recording_card_text_follows_obs_state():
     rec = dict(base, recording=True, ours=True, label="Coal Tower", manual=True, seconds=61.0, bytes=3 * 1024 ** 2,
                marks=2, active_fps=58.0)
     state, vals, warn = rec_card_text(rec, extra_s=4.0, clip_s=15, now=1000.0, last_clip=("c.mp4", 940.0))
-    assert state == "● Nimmt auf · Coal Tower · von Hand gestartet · 01:05 · 3 MB · ⚑ 2 Marken"
+    assert state == "Nimmt auf · Coal Tower · von Hand gestartet · 01:05 · 3 MB · 2 Marken"   # 1.24.3: no ●/⚑
     assert vals == "2560×1440 · 60 fps (gerade 58) · NVENC H.264 · 500 GB frei · letzter Clip c.mp4 (vor 01:00)"
     assert warn == ""
     state = rec_card_text(dict(rec, paused=True), extra_s=4.0)[0]
-    assert state.startswith("⏸ Pausiert") and "01:01" in state                 # the clock stands still
+    assert state.startswith("Pausiert") and "01:01" in state                   # the clock stands still
+    assert "· 1 Marke" in rec_card_text(dict(rec, marks=1))[0]
+    # 1.24.3 (phase 2): the line's colour (ui.level) – always with the words above
+    assert rec_card_level(None, False) == "off" and rec_card_level(None, True) == ""
+    assert rec_card_level({"connected": False}, True) == "err" and rec_card_level(rec, True) == "ok"
+    assert rec_card_level(dict(rec, paused=True), True) == "warn"
+    assert rec_card_level(dict(base, buffer=None), True) == "warn" and rec_card_level(base, True) == ""
     assert "von OBS selbst gestartet" in rec_card_text(dict(rec, ours=False))[0]
     warn = rec_card_text(dict(rec, output_skipped=20, output_total=1000, render_skipped=1, render_total=1000))[2]
     assert "lässt Bilder aus (20 von 1000" in warn and "Rendern" not in warn   # 0.1 % rendering: no warning
