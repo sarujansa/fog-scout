@@ -8,7 +8,7 @@ import sys
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QContextMenuEvent
-from PySide6.QtWidgets import (QAbstractScrollArea, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QTreeWidget, QTreeWidgetItem,
+from PySide6.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
 
 from . import qt_theme
@@ -256,6 +256,12 @@ class Table(QTreeWidget):
             self._apply_hidden()
             self._fit_height()
         self._select(st)
+        see = st.get("see")
+        if see and see != getattr(self, "_seen", None):            # 1.17.1: a jump from the overview
+            self._seen = see
+            item = next((i for i in self._items() if i.data(0, Qt.UserRole) == see[0]), None)
+            if item is not None:
+                self.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
 
     def fit_rows(self):
         """As tall as its rows (a table packed without expand – the server regions): no empty box below the last

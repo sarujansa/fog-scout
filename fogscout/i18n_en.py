@@ -2728,6 +2728,11 @@ EN = {
     "Fehler in {step} – siehe Log.": "Error in {step} – see the log.",
     # 1.17
     "Strg+{n}": "Ctrl+{n}",
+    # 1.17.1
+    "In der Statistik zeigen": "Show in the statistics",
+    "Aufnahme dieser Runde öffnen": "Open the recording of this round",
+    "Runde markieren: Rolle, Farming oder Killer korrigieren, löschen – oder Rechtsklick.":
+        "Mark a round: correct role, farming or killer, delete – or right-click.",
     "OBS-Passwort ist auf diesem PC/Benutzerkonto nicht lesbar – bitte neu eingeben.":
         "The OBS password cannot be read on this PC/user account – please enter it again.",
 }

@@ -402,21 +402,56 @@ class OverviewPage(QWidget):
 
     def _show_rounds(self, rounds):
         while len(self.last_rows) < len(rounds):
-            r = QHBoxLayout()
-            left, right = _label(), _label(cls="dim")
-            left.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)      # long names must not widen it
-            r.addWidget(left, 1)
-            r.addWidget(right)
-            self.last_lay.insertLayout(1 + len(self.last_rows), r)
-            self.last_rows.append((left, right))
-        for i, (left, right) in enumerate(self.last_rows):
+            row = RoundRowView(self._post)
+            self.last_lay.insertWidget(1 + len(self.last_rows), row)
+            self.last_rows.append(row)
+        for i, row in enumerate(self.last_rows):
             shown = i < len(rounds)
-            left.setVisible(shown)
-            right.setVisible(shown)
+            row.setVisible(shown)
             if shown:
-                _set(left, rounds[i][0])
-                _set(right, rounds[i][1])
+                row.show_round(rounds[i])
         self.last_empty.setVisible(not rounds)
+
+
+class RoundRowView(QFrame):
+    """1.17.1: one row of the overview's "Letzte Runden" – a click opens the round in Statistik › Letzte Runden,
+    ▶ (only with a recording of it) opens it on the page Aufnahmen. Rows are made once and refilled."""
+
+    def __init__(self, post):
+        super().__init__()
+        self._post, self._t = post, None
+        self.setObjectName("roundrow")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(_("In der Statistik zeigen"))
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(4, 1, 2, 1)
+        lay.setSpacing(6)
+        self.left, self.right = _label(), _label(cls="dim")
+        self.left.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)   # long names must not widen it
+        lay.addWidget(self.left, 1)
+        lay.addWidget(self.right)
+        self.play = QPushButton("▶")
+        self.play.setObjectName("rowplay")
+        self.play.setCursor(Qt.PointingHandCursor)
+        self.play.setFocusPolicy(Qt.TabFocus)
+        self.play.setToolTip(_("Aufnahme dieser Runde öffnen"))
+        self.play.clicked.connect(lambda: self._t is not None and self._post("ov_recording", self._t))
+        lay.addWidget(self.play)
+
+    def show_round(self, r):
+        _set(self.left, r[0])
+        _set(self.right, r[1])
+        self._t = r[2] if len(r) > 2 else None
+        has = len(r) > 3 and bool(r[3])
+        if self.play.isHidden() == has:              # its own flag – isVisible() is False before the window shows
+            self.play.setVisible(has)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and self._t is not None:
+            self._post("ov_round", self._t)
+            e.accept()
+            return
+        super().mousePressEvent(e)
 
 
 NOTE_KEYS = {"ov.size_cap"}                 # 1.8.24: hints that warn (amber) instead of explaining (grey)

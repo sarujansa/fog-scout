@@ -253,6 +253,10 @@ QListWidget#realms {{ border: 1px solid {c['border']}; border-radius: 8px; paddi
 QListWidget#realms::item {{ padding: 7px 0; border-radius: 6px; }}
 QListWidget#realms::item:selected {{ background: {c['nav_sel']}; }}
 QListWidget#realms::item:hover:!selected {{ background: {c['hover']}; }}
+QFrame#roundrow {{ border-radius: 6px; }}  /* 1.17.1: overview "Letzte Runden" – a row opens the round */
+QFrame#roundrow:hover {{ background: {c['hover']}; }}
+QPushButton#rowplay {{ background: transparent; border: 1px solid transparent; padding: 0 6px; color: {c['dim']}; }}
+QPushButton#rowplay:hover {{ color: {c['accent']}; border-color: {c['border']}; }}
 QLabel#pill {{ border-radius: 10px; padding: 3px 12px; font-size: {px(12)}; font-weight: 600; }}
 QPushButton {{ background: {c['btn']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 6px 14px; }}
 QPushButton:hover {{ background: {c['btn_hover']}; }}
