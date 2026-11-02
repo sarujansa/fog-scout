@@ -678,6 +678,10 @@ def show_control(kind, w, extra, st):
         w.style().polish(w)
     if "glyph" in st or getattr(w, "_glyph_key", None):
         set_glyph(w, st.get("glyph"), primary=bool(st.get("primary")))
+    if "level" in st and (w.property("state") or "") != st["level"]:     # 1.24.3: ui.level – state colour
+        w.setProperty("state", st["level"])
+        w.style().unpolish(w)
+        w.style().polish(w)
     if st.get("tip") is not None and w.toolTip() != st["tip"]:
         w.setToolTip(st["tip"])
     if kind in ("check", "radio"):

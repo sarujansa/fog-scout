@@ -166,6 +166,7 @@ class Table(QTreeWidget):
         self.header().setToolTip(_("Klick: sortieren · Rechtsklick: Spalten ein-/ausblenden"))
         self._menu_on = False             # 1.8.10: the model has actions for a right click on a row
         self._model_sel = set()
+        self._empty = ""                  # 1.24.3: words in the empty table (filters hide every row)
 
     def col_key(self) -> str:
         """The table's name in the setting: its columns – unlike the model path it stays the same when a later
@@ -253,7 +254,22 @@ class Table(QTreeWidget):
         if 0 <= index < len(self._cols):
             self._post("act", (self._key, ("sort", self._cols[index])))
 
+    def paintEvent(self, e):
+        """1.24.3 (phase 2): an empty table says why (the model's ``_dbdms_empty``) – not a blank box."""
+        super().paintEvent(e)
+        if self._empty and not self.topLevelItemCount():
+            from PySide6.QtGui import QPainter
+            p = QPainter(self.viewport())
+            p.setPen(QColor(qt_theme.colours(qt_theme.current_dark())["dim"]))
+            r = self.viewport().rect().adjusted(16, 16, -16, -16)
+            p.drawText(r, int(Qt.AlignHCenter | Qt.AlignTop | Qt.TextWordWrap), self._empty)
+            p.end()
+
     def show_state(self, st):
+        empty = st.get("empty", "")
+        if empty != self._empty:
+            self._empty = empty
+            self.viewport().update()
         cols = st.get("columns", [])
         rows = st.get("rows", [])
         shape = (tuple(tuple(c) for c in cols), tuple((r[0], r[1], r[2], tuple(r[3]), tuple(r[4])) for r in rows),
@@ -453,6 +469,8 @@ class LogView(QPlainTextEdit):
     def __init__(self):
         super().__init__()
         self.setReadOnly(True)
+        # 1.24.3 (phase 2): every line hidden by the search or the categories – say so, not a blank field
+        self.setPlaceholderText(_("Keine Zeile passt zu Suche und Kategorien."))
         self.setMinimumHeight(360)
         self.setMaximumBlockCount(self.MAX_LINES)        # old lines drop off by themselves
         self._last = None                                # last entry shown

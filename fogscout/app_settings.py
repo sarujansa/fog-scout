@@ -39,6 +39,17 @@ def read_password(stored) -> tuple[str, bool]:
     return s, True
 
 
+
+def rec_status_level(text: str, ok: bool) -> str:
+    """1.24.3 (phase 2, pure): the colour of the OBS line under "Verbindung testen" – it was grey like a hint, the
+    error too. ok = green; OBS away or a failure = red; anything else not ok (sound/picture source, buffer, drive)
+    = amber. The words stay – colour is never the only sign."""
+    if ok:
+        return "ok"
+    if text.startswith(_("OBS nicht erreichbar")) or text.startswith(_("Fehler")):
+        return "err"
+    return "warn"
+
 class SettingsTab:
     # --------------------------------------------------------- tab: settings
     def _tab_settings(self):
@@ -395,8 +406,9 @@ class SettingsTab:
         ct.pack(side="left", padx=6)
         ct.bind("<<ComboboxSelected>>", lambda e: self._rec_setting())
         self.rec_status_var = ui.StringVar(value="")
-        self._reg("st.more.rec_status", ui.Label(rc, textvariable=self.rec_status_var, wraplength=420,
-                                                  style="Dim.TLabel")).pack(anchor="w", pady=(4, 0))
+        self.rec_status_label = ui.level(self._reg("st.more.rec_status", ui.Label(   # 1.24.3: ok/warn/err colour
+            rc, textvariable=self.rec_status_var, wraplength=420, style="Dim.TLabel")))
+        self.rec_status_label.pack(anchor="w", pady=(4, 0))
         self._reg("st.more.rec_text", ui.Label(rc, text=_(
             "OBS nimmt auf, das Programm sagt nur wann: Start beim Map-Banner, Stopp beim erkannten Rundenende, "
             "Datei nach Datum, Map und Killer benannt. Dafür in OBS unter Werkzeuge → WebSocket-Servereinstellungen "
@@ -736,6 +748,7 @@ class SettingsTab:
 
     def _rec_test(self):
         self.rec_status_var.set(_("Verbinde mit OBS …"))
+        ui.level(self.rec_status_label, "")
         self.recorder.configure(self._rec_cfg())
         self.recorder.test()
 
@@ -743,6 +756,7 @@ class SettingsTab:
         """Recorder thread -> UI: status (text, ok) | started | saved | deleted."""
         if kind == "status":
             self.rec_status_var.set(d.get("text", ""))
+            ui.level(self.rec_status_label, rec_status_level(d.get("text", ""), d.get("ok", True)))
             if not d.get("ok", True):
                 self._log(_("Aufnahme: {text}", text=d.get("text", "")), "Fehler")
         elif kind == "warn":                    # 1.4.1: OBS/drive missing when DBD starts, a broken file

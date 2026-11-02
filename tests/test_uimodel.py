@@ -2891,7 +2891,8 @@ def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
         app._rec_event("obs_status", {"connected": True, "recording": True, "paused": True, "ours": True,
                                       "label": "Coal Tower", "seconds": 30.0, "bytes": 0, "buffer": True,
                                       "width": 2560, "height": 1440, "fps": 60.0, "encoder": "x264 (CPU)"})
-        assert app.rec_state_var.get().startswith("⏸ Pausiert · Coal Tower")
+        assert app.rec_state_var.get().startswith("Pausiert · Coal Tower")
+        assert app.rec_state_label._dbdms_level == "warn"                        # 1.24.3: colour + words
         assert "2560×1440" in app.rec_live_var.get() and app.rec_start_btn.cget("text") == "Aufnahme stoppen"
         assert app.rec_pause_btn.cget("text") == "Fortsetzen" and str(app.rec_mark_btn.cget("state")) == "normal"
         app.rec_start_btn.invoke()
@@ -2913,10 +2914,16 @@ def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
         # OBS unreachable: the card says so and the start button waits
         app._rec_event("obs_status", {"connected": False, "error": "x", "ours": False})
         assert app.rec_state_var.get() == "OBS nicht erreichbar" and str(app.rec_start_btn.cget("state")) == "disabled"
+        assert app.rec_state_label._dbdms_level == "err" and app.rec_obs_btn.winfo_manager()   # 1.24.3: next step
+        assert app.rec_obs_btn._dbdms_tip()
+        app.rec_obs_btn.invoke()
+        assert app.qt.current_key() == "settings"
+        app.nb.select(str(app.tab_recordings))
         # F8 clip saved: the card names it
         app._rec_event("obs_status", {"connected": True, "recording": False, "ours": False, "buffer": True})
         app._rec_event("clip", {"ok": True, "file": "c.mp4", "seconds": 30})
         assert "letzter Clip c.mp4" in app.rec_live_var.get()
+        assert not app.rec_obs_btn.winfo_manager() and app.rec_state_label._dbdms_level == ""
         # no folder and recordings off: the card says so instead of polling
         app.rec_on_var.set(False)
         app._rec_setting()
@@ -2924,6 +2931,7 @@ def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
         app._rec_poll_t = 0.0
         app._rec_tab_tick()
         assert len([c for c in calls if c[0] == "poll"]) == n and app.rec_state_var.get() == "Aufnahmen sind aus."
+        assert not app.rec_card.winfo_manager()           # 1.24.3: the summary above says it – not twice
         app.record_toggle()
         assert toasts[-1] == "Keine Aufnahme" and calls[-1][0] != "record_start"
     finally:
@@ -2997,6 +3005,47 @@ def test_the_search_finds_the_folded_advanced_part_and_opens_it(app_root):
         assert app.qt.current_key() == "log" and app.adv_open.get()
     finally:
         app.quit()
+
+
+def test_an_unreadable_hosts_file_is_an_error_and_locks_apply_and_release(app_root, monkeypatch):
+    """1.24.3 (phase 2 audit: the hosts error was plain text, the buttons stayed active): the line in the error
+    colour (ui.level – with its words), "Auswahl anwenden" and "Alles freigeben" locked until the file reads again;
+    "Ping messen" stays (it never touches the file). "Auswahl anwenden" is the page's main action."""
+    import json
+    from fogscout import regions
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        codes = [c for c, _n, _g in regions.REGIONS]
+        assert getattr(app.srv_btns[1], "_dbdms_primary", False) and not getattr(app.srv_btns[0], "_dbdms_primary", False)
+        monkeypatch.setattr(regions, "current_state",              # never the real hosts file (conftest)
+                            lambda text=None: {"error": "Zugriff verweigert", "regions": {}, "own": False,
+                                               "myc": False, "foreign": 0})
+        app._srv_refresh()
+        assert app.srv_status.get() == "hosts-Datei nicht lesbar: Zugriff verweigert"
+        assert app.srv_status_label._dbdms_level == "err"
+        assert [b.instate(["disabled"]) for b in app.srv_btns] == [False, True, True]
+        monkeypatch.setattr(regions, "current_state",
+                            lambda text=None: {"regions": {c: "frei" for c in codes}, "own": False, "myc": False,
+                                               "foreign": 0})
+        app._srv_refresh()
+        assert app.srv_status_label._dbdms_level == "" and not any(b.instate(["disabled"]) for b in app.srv_btns)
+        from fogscout.app_qt import ui_state
+        assert ui_state(app.srv_btns[1]).get("primary") and ui_state(app.srv_status_label)["level"] == ""
+    finally:
+        app.quit()
+
+
+def test_the_obs_line_in_the_settings_is_coloured_by_what_it_says():
+    """1.24.3 (phase 2 audit: a failed test was grey like a hint): ok green, OBS away or a failure red, the rest
+    of "not ok" (sound source, buffer, drive) amber – the words are always there."""
+    from fogscout.app_settings import rec_status_level
+    assert rec_status_level("OBS bereit – Runden werden aufgenommen", True) == "ok"
+    assert rec_status_level("OBS nicht erreichbar – läuft OBS, ist der WebSocket-Server an? (ConnectionRefusedError)",
+                            False) == "err"
+    assert rec_status_level("Fehler: x", False) == "err"
+    assert rec_status_level("Aufnahme-Laufwerk nicht angeschlossen – nichts gestartet", False) == "warn"
 
 
 def test_the_server_page_says_when_the_ticks_are_not_applied(app_root):
