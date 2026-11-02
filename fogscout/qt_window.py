@@ -387,9 +387,8 @@ def nav_icon(key: str, colour: str, ratio: float = 1.0, alert: bool = False) -> 
             y = m + 2 + i * 5
             p.drawLine(QPointF(m, y), QPointF(m + (size - 2 * m) * w, y))
     if alert:
-        from .theme import DOT
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(DOT["warn"]))
+        p.setBrush(QColor(qt_theme.dot_colour("warn")))
         p.drawEllipse(QPointF(size - 3.5, size - 3.5), 3.5, 3.5)
     p.end()
     return pm
@@ -1035,6 +1034,7 @@ class MainWindow(QMainWindow):
         pal.setColor(QPalette.Disabled, QPalette.Text, QColor(qt_theme.colours(dark)["fg_dis"]))
         pal.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(qt_theme.colours(dark)["fg_dis"]))
         QApplication.setPalette(pal)
+        qt_theme.set_dark(dark, zoom)                              # 1.22.3: state colours, editor zoom
         self._style_lazily(qt_theme.stylesheet(dark, zoom))
         self._dark = bool(dark)
         self._nav_icons()

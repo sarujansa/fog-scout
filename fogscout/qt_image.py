@@ -17,7 +17,7 @@ from PySide6.QtGui import QGuiApplication, QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QTabWidget,
                                QVBoxLayout, QWidget)
 
-from . import annotate, imageedit
+from . import annotate, imageedit, qt_theme
 from .i18n import N_, _
 from .qt_clip import DRAW_TOOLS, SIZE_LABELS, PreviewView
 from .qt_common import guard_wheel
@@ -253,8 +253,9 @@ class ImageWindow(QWidget):
             b.setFocusPolicy(Qt.NoFocus)
             b.setCheckable(True)
             b.setToolTip(_("Farbe"))
-            b.setStyleSheet(f"QPushButton {{ background: {colour}; border: 2px solid #555; border-radius: 4px; }}"
-                            f"QPushButton:checked {{ border: 2px solid #ffffff; }}")
+            c = qt_theme.colours(qt_theme.current_dark())             # 1.22.3: the ring was white on white
+            b.setStyleSheet(f"QPushButton {{ background: {colour}; border: 2px solid {c['border']}; border-radius: 4px; }}"
+                            f"QPushButton:checked {{ border: 2px solid {c['head']}; }}")
             b.clicked.connect(self._colour_clicked)
             r.addWidget(b)
             self.colour_btns[colour] = b
