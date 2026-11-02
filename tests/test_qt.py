@@ -2082,8 +2082,10 @@ def test_each_feature_says_whether_it_works_now_and_what_is_missing():
     app.settings["rec_folder"] = ""
     assert st(app, "rec", True) == ("warn", "kein Ordner gewählt")
     app.recorder.space.folder = "D:\\Aufnahmen"
-    app._obs_state = {"connected": False}
+    app._obs_state, app._obs_state_t = {"connected": False}, time.time()
     assert st(app, "rec", True) == ("warn", "OBS nicht erreichbar")
+    app._obs_state_t = time.time() - overview.OBS_STATE_FRESH_S - 5           # stale (page closed, OBS started
+    assert st(app, "rec", True) == ("ok", "bereit")                             # since): no old warning
     app._obs_state = {"connected": True}
     assert st(app, "rec", True) == ("ok", "bereit")
     app.recorder.recording = True

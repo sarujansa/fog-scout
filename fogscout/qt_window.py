@@ -497,9 +497,9 @@ class NavStatus(QFrame):
         self._shown = None
 
     def show_state(self, colour: str, text: str, compact: bool, ratio: float = 1.0):
-        if (colour, text, compact) == self._shown:
+        if (colour, text, compact, ratio) == self._shown:      # ratio: another screen draws the dot anew
             return
-        self._shown = (colour, text, compact)
+        self._shown = (colour, text, compact, ratio)
         self.dot.setPixmap(qt_icons.pixmap("record", colour, qt_theme.ICON["s"], ratio))
         _set(self.text, "" if compact else text)
         self.text.setVisible(not compact)
