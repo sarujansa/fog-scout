@@ -387,8 +387,12 @@ class QtShell:
                 self._confirmed = False
 
     def _qt_post(self, action, arg=None):
-        """Called from Qt slots: the click is handled in _poll (one place, in order with the other events)."""
+        """Called from Qt slots: the click is handled in _poll (one place, in order with the other events) – since
+        1.22.4 in the next pass of the event loop (_poll_soon)."""
         self.events.put(("ui", action, arg))
+        soon = getattr(self, "_poll_soon", None)          # App's; a bare QtShell (tests) keeps the 50-ms beat
+        if soon is not None:
+            soon()
 
     def _qt_event(self, action, arg=None):
         if action == "quit":

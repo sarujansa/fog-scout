@@ -15,7 +15,11 @@ Scenarios (each prints one JSON line of milliseconds or counts):
   overview    _qt_refresh(force=True) on the overview, 30 times
   stats       _stats_render() with 500 and 5000 synthetic rounds
   recordings  _rec_render(force=True) with 300 recordings + 100 clips; calls of recorder.folder()
-  idle        CPU seconds of the process over 10 s of the event loop on the overview (window shown)
+  idle        CPU seconds of the process over the first 10 s of the event loop on the overview (window shown;
+              the pages are built in the background then) and over 10 s after 15 s more (steady)
+  latency     a click posted through the window's callback (App._qt_post) every 137 ms – ms until its handler
+  folder      calls of obsrec.find_folder (26 drive letters each on Windows) and recordings renders over 10 s of
+              the event loop: recordings page shown, then the window hidden with that page selected
 """
 from __future__ import annotations
 
@@ -30,7 +34,7 @@ import tempfile
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCENARIOS = ("startup", "pages", "overview", "stats", "recordings", "idle")
+SCENARIOS = ("startup", "pages", "overview", "stats", "recordings", "idle", "latency", "folder")
 
 
 # ---------------------------------------------------------------- the child: one scenario on a fresh root
@@ -112,7 +116,7 @@ def _child(scenario: str) -> dict:
     sys.path.insert(0, ROOT)
     out = {}
     rounds = 5000 if scenario == "stats" else 0
-    recs = 300 if scenario == "recordings" else 0
+    recs = 300 if scenario in ("recordings", "folder") else 0
     root = _root(rounds=rounds, recordings=recs)
     t0 = time.perf_counter()
     from fogscout.app import App                          # noqa: E402 (timed)
@@ -194,6 +198,64 @@ def _child(scenario: str) -> dict:
             qapp.exec()
             out = {"cpu_percent_of_core": (time.process_time() - c0) / (time.perf_counter() - w0) * 100,
                    "rss_after_mb": _rss_mb()}
+            QTimer.singleShot(15_000, lambda: qapp.exit(0))
+            qapp.exec()
+            QTimer.singleShot(10_000, lambda: qapp.exit(0))
+            c0, w0 = time.process_time(), time.perf_counter()
+            qapp.exec()
+            out.update(cpu_steady_percent=(time.process_time() - c0) / (time.perf_counter() - w0) * 100,
+                       rss_steady_mb=_rss_mb())
+        elif scenario == "latency":
+            from PySide6.QtCore import QTimer
+            q.show_page("overview")
+            app._poll()
+            _settle(qapp)
+            sent, got, real = {}, [], app._dispatch
+
+            def spy(ev):
+                if isinstance(ev, tuple) and ev[:2] == ("ui", "bench-click"):
+                    got.append((time.perf_counter() - sent[ev[2]]) * 1e3)
+                    return
+                real(ev)
+            app._dispatch = spy
+
+            def click():
+                n = len(sent) + 1
+                sent[n] = time.perf_counter()
+                app._qt_post("bench-click", n)
+            beat = QTimer()
+            beat.timeout.connect(click)
+            beat.start(137)
+            QTimer.singleShot(137 * 41, lambda: qapp.exit(0))
+            qapp.exec()
+            beat.stop()
+            out = {"click_to_handler_median_ms": statistics.median(got), "click_to_handler_max_ms": max(got),
+                   "clicks": len(got)}
+        elif scenario == "folder":
+            from PySide6.QtCore import QTimer
+            from fogscout import obsrec
+            calls, renders = {"n": 0}, {"n": 0}
+            real_find, real_render = obsrec.find_folder, app._rec_render
+
+            def find(*a):
+                calls["n"] += 1
+                return real_find(*a)
+
+            def render(*a, **k):
+                renders["n"] += 1
+                return real_render(*a, **k)
+            obsrec.find_folder, app._rec_render = find, render
+            q.show_page("recordings")
+            app._poll()
+            _settle(qapp)
+            for phase in ("shown", "hidden"):
+                if phase == "hidden":
+                    q.hide()
+                calls["n"] = renders["n"] = 0
+                QTimer.singleShot(10_000, lambda: qapp.exit(0))
+                qapp.exec()
+                out[f"find_folder_{phase}"] = calls["n"]
+                out[f"renders_{phase}"] = renders["n"]
     finally:
         try:
             app.quit()
