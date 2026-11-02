@@ -623,15 +623,23 @@ def test_the_app_opens_the_new_editor_with_a_library_and_replaces_a_pristine_one
         app._rec_clip(at=(1.0, 3.0, 2.0))
         win = app._clip_windows[-1]
         assert isinstance(win, EditorWindow) and win.path == rec
+        from PySide6.QtWidgets import QApplication
+        deadline = time.time() + 30                                     # 1.18.1: the hand-over waits for the lookup
+        while time.time() < deadline and win._pstate == "loading":
+            QApplication.instance().processEvents()
+            time.sleep(0.01)
         assert [(p.start, p.end) for p in win.parts] == [(1.0, 3.0)] and win.pos == pytest.approx(1.0)
         assert win.library.model.rowCount() == 2 and win.library.model.current == os.path.normcase(os.path.abspath(rec))
         clip_item = next(it for it in items if it.kind == "clip")
         win._open_media(clip_item)                                      # cut here (the hand-over): a second window
         assert len(app._clip_windows) == 2 and app._clip_windows[-1].path == clip_item.path
         second = app._clip_windows[-1]
-        second._open_media(rnd)                                         # pristine: replaced
+        second._open_media(rnd)                                         # pristine: replaced …
         app._rec_tab_tick()
         assert second not in app._clip_windows and app._clip_windows[-1].path == rec
+        assert app._clip_windows == [win]                               # 1.18.1: … by the window open on it already
+        app._rec_clip()                                                 # the same recording again: no second window
+        assert app._clip_windows == [win]
         for w in list(app._clip_windows):
             w.close()
     finally:

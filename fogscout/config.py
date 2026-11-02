@@ -191,6 +191,7 @@ DEFAULTS = {
     "clip_mix_on": {"dbd": True, "discord": True, "mic": True},     # 1.8.6: clip editor sound mix – source on/off
     "clip_mix_vol": {"dbd": 100, "discord": 100, "mic": 100},       # and its level in percent (MIX_MAX 150)
     "editor_layout": {},                # 1.16: the editor window's panels (splitter sizes, library/inspector shown)
+    "editor_autosave": True,            # 1.18.1: the big editor saves its project by itself (off: only Strg+S)
     "discord_on": False,                # 1.7: Rich Presence over the local Discord client (user's pick)
     "discord_client_id": "",            # the Application-ID the user registered in Discord's developer portal
     "discord_killer": True,             # name the killer in the status

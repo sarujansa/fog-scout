@@ -2690,7 +2690,6 @@ EN = {
     "Projekt": "Project",
     "Projekt geladen: {name}": "Project loaded: {name}",
     "Projekt gespeichert: {file}": "Project saved: {file}",
-    "Projekt nicht gespeichert – Ordner nicht beschreibbar: {folder}": "Project not saved – folder not writable: {folder}",
     "Projekt speichern (Strg+S) – Schnitt, Ausschnitt, Zeichnungen, Zensur und Export-Einstellungen dieser Aufnahme, zum späteren Weiterarbeiten.":
         "Save the project (Ctrl+S) – cut, crop, drawings, censoring and export settings of this recording, to carry on later.",
     "Runde": "Round",
@@ -2771,4 +2770,141 @@ EN = {
         "Mark a round: correct role, farming or killer, delete – or right-click.",
     "OBS-Passwort ist auf diesem PC/Benutzerkonto nicht lesbar – bitte neu eingeben.":
         "The OBS password cannot be read on this PC/user account – please enter it again.",
+    # 1.18.1: project saving in the big editor
+    "Als neues Projekt speichern":
+        "Save as a new project",
+    "Autosave aus":
+        "Autosave off",
+    "Bereich übernehmen":
+        "Take over the range",
+    "Bereich übernommen – Strg+Z stellt das Projekt wieder her.":
+        "Range taken over – Ctrl+Z brings the project back.",
+    "Das Projekt wurde ausserhalb geändert oder liegt doppelt vor. Deine Fassung liegt unter Sicherungen und lokal.":
+        "The project was changed outside Fog Scout or exists twice. Your version is kept under Sicherungen and locally.",
+    "Die Aufnahme konnte nicht geprüft werden.":
+        "The recording could not be checked.",
+    "Die Aufnahme liegt nur in der Cloud – die Prüfung würde sie ganz herunterladen.":
+        "The recording is only in the cloud – checking it would download all of it.",
+    "Die Aufnahme passt nicht zum gespeicherten Projekt (ihr Inhalt ist anders). Es wurde nicht geladen.":
+        "The recording does not match the saved project (its content is different). It was not loaded.",
+    "Die Clips des Projekts waren unlesbar – der Standardclip wird gezeigt.":
+        "The project's clips were unreadable – the default clip is shown.",
+    "Die Projektdatei ist unlesbar und wurde nicht geladen.":
+        "The project file is unreadable and was not loaded.",
+    "Die Projektdatei wurde ausserhalb von Fog Scout gelöscht oder verschoben. Dein Stand ist lokal gesichert.":
+        "The project file was deleted or moved outside Fog Scout. Your state is kept locally.",
+    "Die Projektdatei wurde umbenannt. Dein Stand ist lokal gesichert.":
+        "The project file was renamed. Your state is kept locally.",
+    "Dieses Projekt ist schon in einem anderen Fenster offen – hier wird nichts gespeichert.":
+        "This project is already open in another window – nothing is saved here.",
+    "Editor-Projekte automatisch speichern":
+        "Save editor projects automatically",
+    "Editor-Projekte nicht gesichert":
+        "Editor projects not secured",
+    "Editor-Projekte werden noch gesichert …":
+        "Editor projects are still being secured …",
+    "Editor: automatisches Speichern an.":
+        "Editor: automatic saving on.",
+    "Editor: automatisches Speichern aus – Strg+S speichert das Projekt.":
+        "Editor: automatic saving off – Ctrl+S saves the project.",
+    "Eine wählen …":
+        "Pick one …",
+    "Erneut prüfen":
+        "Check again",
+    "Es gibt ein Projekt zu einer gleichnamigen, aber veränderten Aufnahme.":
+        "There is a project for a recording of the same name that has changed.",
+    "Für diese Aufnahme gibt es ein gespeichertes Projekt ({n} Clips). Den Bereich aus der Vorschau ({a}–{b}) übernehmen ersetzt seine Clips.":
+        "This recording has a saved project ({n} clips). Taking over the range from the preview ({a}–{b}) replaces its clips.",
+    "Gespeichertes Projekt gefunden – die Aufnahme wird geprüft.":
+        "Saved project found – the recording is being checked.",
+    "Kein Projekt":
+        "No project",
+    "Kein Projekt – Strg+S legt ein neues an.":
+        "No project – Ctrl+S makes a new one.",
+    "Keine öffnen":
+        "Open none",
+    "Laden":
+        "Load",
+    "Lokal gesicherter Stand eines fehlenden Projekts gefunden.":
+        "A locally kept state of a missing project was found.",
+    "Mindestens ein Editor-Stand ist weder im Projekt noch lokal gesichert (Speichern hängt oder der Ordner ist nicht erreichbar). Trotzdem beenden? Die ungesicherten Änderungen gehen dann verloren.":
+        "At least one editor state is neither in its project nor kept locally (saving hangs or the folder cannot be reached). Quit anyway? The unsecured changes are lost then.",
+    "Neu beginnen":
+        "Start new",
+    "Neuerer Stand aus der lokalen Rettungskopie geladen.":
+        "Newer state loaded from the local rescue copy.",
+    "Neues Projekt":
+        "New project",
+    "Nicht laden":
+        "Don't load",
+    "Nicht schliessen":
+        "Don't close",
+    "Nicht wiederherstellen":
+        "Don't restore",
+    "Nichts tun":
+        "Do nothing",
+    "Ohne Prüfung laden":
+        "Load without checking",
+    "Projekt aus Fog Scout 1.17 oder älter gefunden (gleicher Name, gleiche Grösse).":
+        "Project from Fog Scout 1.17 or older found (same name, same size).",
+    "Projekt aus neuerer Version – wird nicht überschrieben":
+        "Project from a newer version – not overwritten",
+    "Projekt behalten":
+        "Keep the project",
+    "Projekt geöffnet – der Bereich aus der Vorschau wurde nicht übernommen.":
+        "Project opened – the range from the preview was not taken over.",
+    "Projekt nicht gespeichert und keine Rettungskopie möglich: {why}":
+        "Project not saved and no rescue copy possible: {why}",
+    "Projekt wiederherstellen":
+        "Restore the project",
+    "Projekt wird gespeichert …":
+        "Saving the project …",
+    "Projekt wird gesucht …":
+        "Looking for the project …",
+    "Prüfen":
+        "Check",
+    "Prüft Aufnahme …":
+        "Checking the recording …",
+    "Prüft Aufnahme … {p} %":
+        "Checking the recording … {p} %",
+    "Speichern und schliessen":
+        "Save and close",
+    "Trotzdem laden":
+        "Load anyway",
+    "Trotzdem schliessen":
+        "Close anyway",
+    "Ungespeicherte Änderungen von {when} gefunden.":
+        "Unsaved changes from {when} found.",
+    "Ungespeicherte Änderungen.":
+        "Unsaved changes.",
+    "Update wartet: Editor-Projekte werden gesichert …":
+        "Update waits: editor projects are being secured …",
+    "Verwerfen und schliessen":
+        "Discard and close",
+    "Wiederherstellen":
+        "Restore",
+    "Zu dieser Aufnahme gibt es ein Projekt, das nie vollständig geprüft wurde. Anfang, Ende und Grösse stimmen; ob es die ganze Aufnahme ist, kann Fog Scout nicht bestätigen.":
+        "This recording has a project that was never fully checked. Start, end and size match; whether it is the whole recording, Fog Scout cannot confirm.",
+    "Zuordnung nicht geprüft":
+        "Assignment not checked",
+    "{n} Projektdateien passen zu dieser Aufnahme – keine wurde geöffnet.":
+        "{n} project files match this recording – none was opened.",
+    "● Änderungen":
+        "● Changes",
+    "⚠ Mehrere Projektdateien – Auswahl nötig":
+        "⚠ Several project files – choose one",
+    "⚠ Nicht gespeichert – {why}":
+        "⚠ Not saved – {why}",
+    "⚠ Nicht im Projekt gespeichert – lokal gesichert":
+        "⚠ Not saved in the project – kept locally",
+    "⚠ Projekt ausserhalb geändert":
+        "⚠ Project changed outside",
+    "⚠ Projektdatei fehlt – Änderungen nur lokal gesichert":
+        "⚠ Project file missing – changes kept locally only",
+    "⚠ Speichern hängt":
+        "⚠ Saving hangs",
+    "✓ Gespeichert {at}":
+        "✓ Saved {at}",
+    "Der grosse Editor speichert sein Projekt von selbst (1,5 s nach einer Änderung, nie während du ziehst) – mit Sicherungen und einer lokalen Kopie, falls die Projektdatei nicht schreibbar ist. Aus: nur Strg+S schreibt das Projekt; dazwischen hält der Editor einen lokalen Wiederherstellungsstand.":
+        "The big editor saves its project by itself (1.5 s after a change, never while you drag) – with backups and a local copy in case the project file cannot be written. Off: only Ctrl+S writes the project; in between the editor keeps a local recovery state.",
 }
