@@ -698,3 +698,103 @@ def test_marked_rounds_open_as_one_montage_listed_in_the_library(app_root, tmp_p
             w.close()
     finally:
         app.quit()
+
+
+def test_the_recordings_page_reads_nothing_while_the_window_is_hidden(app_root, tmp_path):
+    """1.22.4 (audit, prompt.md): the tab stays selected when the window goes to the tray – the index, the clips,
+    the screenshots and OBS's state were read every few seconds for nobody. Shown again, it catches up at once."""
+    from fogscout.app import App
+    _settings(app_root, rec_on=True, rec_folder=_mkdir(str(tmp_path / "rec")))
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        renders, polls = [], []
+        app._rec_render = lambda *a, **k: renders.append(1)
+        app.recorder.poll = lambda: polls.append(1)
+        app.nb.select(str(app.tab_recordings))
+        app.qt.show()
+        app.qt.hide()
+        renders.clear()                                                   # the tab change renders once itself
+        app._rec_dirty, app._rec_poll_t = True, 0.0
+        app._rec_tab_tick()
+        assert renders == [] and polls == []
+        app.qt.show()
+        app._rec_tab_tick()
+        assert renders == [1] and polls == [1]
+    finally:
+        app.quit()
+
+
+def test_a_click_is_handled_in_the_next_pass_of_the_event_loop(app_root):
+    """1.22.4 (audit, prompt.md): a click waited for the next _poll (0–50 ms); now _qt_post asks for a pass at once
+    – once, however many clicks come before it; posts from other threads keep the 50-ms beat."""
+    import threading
+    import time
+    from fogscout.app import App
+    _settings(app_root)
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._drain_events()
+        timers, seen = [], []
+        real_after, real_dispatch = app.root.after, app._dispatch
+        app.root.after = lambda ms, fn: timers.append((ms, fn)) or real_after(ms, fn)
+        app._dispatch = lambda ev: seen.append(ev) if ev[:2] == ("ui", "bench-click") else real_dispatch(ev)
+        app._qt_post("bench-click", 1)
+        app._qt_post("bench-click", 2)
+        assert [ms for ms, _fn in timers] == [0]                         # one pass, at once
+        timers[0][1]()                                                    # the pass the event loop runs
+        assert [ev[2] for ev in seen] == [1, 2]                           # both, in order
+        th = threading.Thread(target=app._qt_post, args=("bench-click", 3))
+        th.start()
+        th.join()
+        assert [ms for ms, _fn in timers] == [0]                          # another thread: no timer from there
+        app._drain_events()
+        assert [ev[2] for ev in seen] == [1, 2, 3]
+        # 1.23.1 (review): a slider or a drag posts on every mouse move – right after a refresh for a click, the
+        # next post waits for the beat (no refresh per mouse move); after SOON_GAP_S a click comes at once again
+        app._ui_refresh_t = time.monotonic()
+        app._qt_post("bench-click", 4)
+        assert [ms for ms, _fn in timers] == [0]
+        app._drain_events()
+        app._ui_refresh_t = time.monotonic() - 1.0
+        app._qt_post("bench-click", 5)
+        assert [ms for ms, _fn in timers] == [0, 0]
+    finally:
+        app.quit()
+
+
+def test_a_double_click_plays_the_clip_and_two_marked_offer_a_montage(app_root, tmp_path, monkeypatch):
+    """1.23 (audit, prompt.md): a row did nothing on double-click or Enter – it plays now (the Qt table posts
+    ("open", row)); with two or more rows marked, „Als Montage öffnen …“ stands beside the buttons, not only in the
+    right-click menu."""
+    from fogscout.app_qt import ui_act, ui_state
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    try:
+        app._rec_render(force=True)
+        played = []
+        app._open = played.append
+        assert ui_state(app.clip_table)["open"] is True
+        ui_act(app.clip_table, ("open", "clip.mp4"))
+        assert app.clip_table.selection() == ("clip.mp4",) and [os.path.basename(p) for p in played] == ["clip.mp4"]
+        assert not app.clip_montage_btn.winfo_manager()                 # one row: no montage button
+        app.clip_table.selection_set(["clip.mp4", "clip.gif"])
+        app._clip_buttons()
+        assert app.clip_montage_btn.winfo_manager()
+        app.clip_table.selection_set(["clip.mp4"])
+        app._clip_buttons()
+        assert not app.clip_montage_btn.winfo_manager()
+        app.clip_table.selection_set(["clip.mp4", "clip.gif"])           # 1.23.1 (review): within a marking …
+        ui_act(app.clip_table, ("open", "clip.gif"))
+        assert app.clip_table.selection() == ("clip.gif",)                # … that row, not the first marked one
+        assert [os.path.basename(p) for p in played] == ["clip.mp4", "clip.gif"]
+    finally:
+        app.quit()
+
+
+def test_the_obs_card_does_not_repeat_its_title_in_the_reason():
+    from fogscout.app_recordings import rec_card_text
+    state, values, _warn = rec_card_text({"connected": False, "error": "OBS nicht erreichbar – läuft OBS, ist der "
+                                          "WebSocket-Server an? (ConnectionRefusedError)"})
+    assert state == "OBS nicht erreichbar" and values.endswith("Ursache: ConnectionRefusedError")
+    assert "läuft OBS" not in values
+    _s, values, _w = rec_card_text({"connected": False, "error": "Passwort falsch"})
+    assert values.endswith("Passwort falsch")                           # any other message stays as it is

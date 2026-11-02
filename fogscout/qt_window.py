@@ -387,9 +387,8 @@ def nav_icon(key: str, colour: str, ratio: float = 1.0, alert: bool = False) -> 
             y = m + 2 + i * 5
             p.drawLine(QPointF(m, y), QPointF(m + (size - 2 * m) * w, y))
     if alert:
-        from .theme import DOT
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(DOT["warn"]))
+        p.setBrush(QColor(qt_theme.dot_colour("warn")))
         p.drawEllipse(QPointF(size - 3.5, size - 3.5), 3.5, 3.5)
     p.end()
     return pm
@@ -405,7 +404,10 @@ SEARCH_ALSO = {"tast": "hotkey shortcut tastenkürzel", "hotkey": "taste tastenk
                "opacity": "deckkraft transparenz transparency", "grösse": "size zoom", "size": "grösse zoom",
                "cross-play": "crossplay", "crossplay": "cross-play", "aufnahme": "obs recording",
                "recording": "obs aufnahme", "einrichtung": "setup assistent wizard",
-               "setup": "einrichtung assistent wizard", "aktualis": "update", "update": "aktualisieren"}
+               "setup": "einrichtung assistent wizard", "aktualis": "update", "update": "aktualisieren",
+               # 1.23: the folded part at the foot of the log page – found by what it holds
+               "erweitert (fehlersuche": "advanced debug-bilder fensteraufnahme scans/sek rundenende diagnose",
+               "advanced (troubleshooting": "erweitert debug pictures window capture scans/s end of round"}
 HAYSTACK_ROLE = Qt.UserRole + 1           # what a search hit is matched against (the list shows the entry)
 POPUP_W = (320, 720)                      # 1.8.38: the hit list as wide as its longest entry within these
 
@@ -762,7 +764,9 @@ class MainWindow(QMainWindow):
                     text = target.text()
                     folded = not _reachable(w, page)
                 text = " ".join(text.split())
-                if len(text) < 3 or text.startswith("▸"):
+                if text[:1] in ("▸", "▾"):            # 1.23: a fold's button – found without its arrow,
+                    text = text[1:].strip()            # going there opens it (go_to_found)
+                if len(text) < 3:
                     continue
                 if folded:
                     continue
@@ -822,6 +826,8 @@ class MainWindow(QMainWindow):
         self.show_page(key)
         self.search.clear()
         self.search.clearFocus()
+        if isinstance(w, QPushButton) and w.text().startswith("▸"):
+            w.click()                                  # 1.23: a closed fold opens (Log › Erweitert)
         if self._nav_kept:
             self._nav_kept = False
             self._compact_nav(self.width() < NAV_COMPACT_BELOW)
@@ -857,8 +863,9 @@ class MainWindow(QMainWindow):
                 target.setProperty("found", False)
                 target.style().unpolish(target)
                 target.style().polish(target)
-            QTimer.singleShot(FOUND_MS, done)
-        QTimer.singleShot(delay, scroll)
+            # 1.23.1: bound to the widget – Qt drops the timer with it (a closed window raised "already deleted")
+            QTimer.singleShot(FOUND_MS, target, done)
+        QTimer.singleShot(delay, self, scroll)
 
     def show_states(self, page, states):
         if page == "setup":
@@ -912,8 +919,9 @@ class MainWindow(QMainWindow):
         self._file_dialog = dlg                       # keep it alive while it is open
 
     def show_question(self, q, activate: bool = True):
-        """q = (title, text, ask) or None; ask False = only a note with OK. 1.8.44: shown in MessageBox; it waits
-        while this window is hidden or minimised (tray) and opens without the focus when ``activate`` is False."""
+        """q = (title, text, ask[, ok_text, danger]) or None; ask False = only a note with OK. 1.8.44: shown in
+        MessageBox; it waits while this window is hidden or minimised (tray) and opens without the focus when
+        ``activate`` is False. 1.23: the verb on the OK button, and Cancel first when data goes."""
         if q is None:
             if self._question is not None:
                 self._question = None
@@ -922,7 +930,8 @@ class MainWindow(QMainWindow):
         if q == self._question or not self.isVisible() or self.isMinimized():
             return
         self._question = q
-        self.message.ask(q[0], q[1], bool(q[2]), activate)
+        self.message.ask(q[0], q[1], bool(q[2]), activate, ok_text=q[3] if len(q) > 3 else None,
+                         danger=bool(q[4]) if len(q) > 4 else False)
 
     def set_hidden_columns(self, hidden: dict):
         """1.3.6: the columns the user hid, per table ({column ids joined by "|": [hidden ids]}, setting
@@ -1035,6 +1044,7 @@ class MainWindow(QMainWindow):
         pal.setColor(QPalette.Disabled, QPalette.Text, QColor(qt_theme.colours(dark)["fg_dis"]))
         pal.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(qt_theme.colours(dark)["fg_dis"]))
         QApplication.setPalette(pal)
+        qt_theme.set_dark(dark, zoom)                              # 1.22.3: state colours, editor zoom
         self._style_lazily(qt_theme.stylesheet(dark, zoom))
         self._dark = bool(dark)
         self._nav_icons()

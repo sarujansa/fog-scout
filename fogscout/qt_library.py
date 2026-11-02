@@ -224,7 +224,7 @@ class MediaDelegate(QStyledItemDelegate):
         hover = bool(option.state & QStyle.State_MouseOver)
         if selected or hover:
             p.setPen(Qt.NoPen)
-            p.setBrush(QColor(c["hover"] if not selected else c["press"]))
+            p.setBrush(QColor(c["hover"] if not selected else c["sel_bg"]))   # 1.23.1: not "press" (darker since 1.22.3)
             p.drawRoundedRect(r.adjusted(4, 2, -4, -2), 6, 6)
         if selected:
             p.setBrush(QColor(c["accent"]))

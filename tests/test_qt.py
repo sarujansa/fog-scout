@@ -18,7 +18,9 @@ def test_qt_uses_the_original_palette():
     assert "font-size: 26px" in qt_theme.stylesheet(True, 2.0)          # zoom 200 %: 13 px -> 26 px
     assert qt_theme.hex_colour((134, 239, 172, 255)) == "#86efac"
     assert qt_theme.rgba("#3fb950", 0.5) == "rgba(63, 185, 80, 128)"
-    assert theme.DOT["ok"] in qt_theme.pill_style("ok")
+    # 1.22.3: the pill takes the state colour of its mode (theme.DOT was 2.2:1 on white)
+    assert qt_theme.STATE[True]["ok"] in qt_theme.pill_style("ok", True)
+    assert qt_theme.STATE[False]["ok"] in qt_theme.pill_style("ok", False)
 
 
 # ------------------------------------------------------------------ overview model
@@ -1045,8 +1047,56 @@ def _check_theme(key, oled, custom=None):
             assert _contrast(c["on_accent"], c["accent"]) >= 4.5, (key, dark)
             assert _contrast(c["fg"], c["bg"]) >= 7, (key, dark)
             assert c["accent"] in qt_theme.stylesheet(dark)
+            # 1.22.3 (audit): the hover of an accent button, the state colours (also on their pill tint), the
+            # editor's playhead and marks – the light mode had white on white and 2.0–2.5:1 here
+            assert _contrast(c["on_accent"], c["accent_hover"]) >= 4.5, (key, dark, "hover")
+            for kind in qt_theme.STATE_KINDS:
+                for bg in ("card", "bg", "field", "panel"):
+                    assert _contrast(c[kind], c[bg]) >= 4.5, (key, dark, kind, bg)
+                tint = qt_theme.blend(c[kind], c["card"], qt_theme.PILL_TINT)
+                assert _contrast(c[kind], tint) >= 4.5, (key, dark, kind, "pill")
+            for token in ("playhead", "mark"):
+                for bg in ("field", "panel"):
+                    assert _contrast(c[token], c[bg]) >= 3, (key, dark, token, bg)
+            assert _contrast(c["on_select"], c["select"]) >= 4.5, (key, dark, "select")
+            assert c["press"] != c["btn_hover"], (key, dark, "pressed looks like hover")
+            # 1.23.1 (review): the editor's media library marks the selected row with sel_bg – more than hover
+            assert _contrast(c["sel_bg"], c["panel"]) > _contrast(c["hover"], c["panel"]), (key, dark, "selection")
     finally:
         qt_theme.set_theme("gold")
+
+
+def test_the_style_sheets_take_sizes_from_the_scales():
+    """1.23 (audit, prompt.md, Phase 3): font sizes, radii and card margins come from qt_theme.TYPE / RADIUS /
+    PAD_CARD – a new rule with a size of its own shows up here. Exceptions: a radius of half an element's own size
+    (the editor's round play button 36 px, slider handle 14 px, colour swatch 22 px)."""
+    import os
+    import re
+    from fogscout import qt_editor
+    for zoom in (1.0, 1.25):
+        for css in (qt_theme.stylesheet(True, zoom), qt_editor.editor_qss(qt_theme.colours(True), zoom)):
+            sizes = {int(v) for v in re.findall(r"font-size: (\d+)px", css)}
+            assert sizes <= {max(8, round(t * zoom)) for t in qt_theme.TYPE.values()}, (zoom, sizes)
+            radii = {int(v) for v in re.findall(r"border-radius: (\d+)px", css)}
+            assert radii <= set(qt_theme.RADIUS.values()) | {18, 7, 11}, radii
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fogscout")
+    for name in os.listdir(root):
+        if name.endswith(".py"):
+            with open(os.path.join(root, name), encoding="utf-8") as fh:
+                assert "setContentsMargins(14, 12, 14, 12)" not in fh.read(), name     # qt_theme.PAD_CARD
+
+
+def test_a_colour_is_made_readable_on_the_card_of_the_mode_shown():
+    """1.22.3: the facts' value colours – a DOT status colour becomes the mode's own, a pastel overlay colour
+    (ping, temperature) keeps its hue and gets dark enough on a light card."""
+    from fogscout.theme import DOT
+    for dark in (True, False):
+        c = qt_theme.colours(dark)
+        assert qt_theme.readable(DOT["warn"], dark) == c["warn"]
+        for pastel in ("#7ee787", "#ffd166", (255, 140, 120, 255)):
+            got = qt_theme.readable(pastel, dark)
+            assert _contrast(got, c["card"]) >= 4.5, (dark, pastel, got)
+    assert qt_theme.readable("#1b1c1e", False) == "#1b1c1e"            # readable already: unchanged
 
 
 def test_today_rows_for_the_black_bar():
@@ -2146,6 +2196,116 @@ def test_danger_buttons_get_their_style_from_the_model():
         w, extra = make_control("button", str(model), lambda *a: None)
         show_control("button", w, extra, ui_state(model))
         assert w.objectName() == name
+
+
+def test_a_question_that_deletes_says_so_and_keeps_the_data_on_enter(qapp, keep):
+    """1.23 (audit, prompt.md): the questions said "OK" and OK was the default, also before deleting – the button
+    names the action now, and when data goes it is red and Cancel takes Enter and the focus (Qt makes the focused
+    button of a dialog its default – autoDefault – so the focus is what Enter presses)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from fogscout import qt_window
+    posted = queue.Queue()
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.put((a, arg))))
+    win.show()
+    box = win.message
+    win.show_question(("Aufnahme löschen", "x.mkv von der Platte löschen?", True, "Löschen", True))
+    assert box.ok.text() == "Löschen" and box.ok.objectName() == "danger"
+    assert box.cancel.isDefault() and not box.ok.isDefault() and box.focusWidget() is box.cancel
+    box.reject()
+    assert posted.get_nowait() == ("answer", False)
+    win.show_question(None)
+    box.ok.setFocus()
+    win.show_question(("Clip löschen", "c.mp4 von der Platte löschen?", True, "Löschen", True), activate=False)
+    QTest.keyClick(box.ok, Qt.Key_Return)                   # 1.23.1: DBD in front, focus still on the red button
+    assert posted.get_nowait() == ("answer", False)         # … Enter cancels all the same (no autoDefault)
+    win.show_question(None)
+    win.show_question(("Serverregionen anwenden", "…", True, "Anwenden", False))
+    assert box.ok.text() == "Anwenden" and box.ok.objectName() == "primary" and box.focusWidget() is box.ok
+    QTest.keyClick(box.ok, Qt.Key_Return)                   # no data goes: Enter = the action
+    assert posted.get_nowait() == ("answer", True)
+    win.show_question(None)
+    win.show_question(("Serverregionen anwenden", "…", True, "Anwenden", False))
+    win.show_question(None)
+    win.show_question(("Hinweis", "Nur zur Info", False))        # a note: "OK", whatever came before
+    assert box.ok.text() == "OK" and box.focusWidget() is box.ok
+    win.allow_close = True
+    win.close()
+
+
+def test_a_tile_button_ends_in_dots_when_the_tile_is_narrow(qapp, keep):
+    """1.23 (audit, seen at 1280 px): the overview tile's "Match-Daten einrichten …" was cut on both sides; it
+    ends in "…" now and shows whole when there is room."""
+    from PySide6.QtGui import QFontDatabase
+    from fogscout.qt_views import ElideButton
+    # 1.23.1: with DejaVu Sans (the CI's font) elidedText cut the last character at exactly the size hint
+    for family in [f for f in ("DejaVu Sans", "Inter") if f in QFontDatabase.families()]:
+        for size in range(10, 18):
+            b = keep(ElideButton())
+            b.show()
+            b.setStyleSheet(f"QPushButton {{ font-family: '{family}'; font-size: {size}px; padding: 6px 14px; }}")
+            b.set_full_text("Match-Daten einrichten …")
+            b.resize(b.sizeHint())
+            assert b.text() == "Match-Daten einrichten …", (family, size, b.text())
+    b = keep(ElideButton())
+    b.show()
+    b.setStyleSheet(qt_theme.stylesheet(True))
+    b.set_full_text("Match-Daten einrichten …")
+    b.resize(b.sizeHint())
+    assert b.text() == "Match-Daten einrichten …"
+    assert b.minimumSizeHint().width() < b.sizeHint().width() // 2       # the layout may make it narrow …
+    b.resize(90, b.height())
+    assert b.text().endswith("…") and b.text() != "Match-Daten einrichten …" and b.text()[0] == "M"   # … cut at the end
+    assert b.full_text() == "Match-Daten einrichten …"
+
+
+def test_a_double_click_or_enter_on_a_row_posts_open_only_where_the_model_has_an_action(qapp, keep):
+    """1.23 (audit, prompt.md): double-click / Enter = the row's main action (Aufnahmen, Clips: play) – a table
+    without one (statistics) stays as it was."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from fogscout import qt_window
+    posted = []
+    t = keep(qt_window.Table(".nb.f9.treeview2", lambda a, arg=None: posted.append((a, arg))))
+    cols = [("map", "Map", "w")]
+    rows = [("a", 0, "", ["Gas Heaven"], [], False), ("b", 0, "", ["Coal Tower"], [], False)]
+    t.resize(300, 200)
+    t.show()
+    for open_on in (False, True):
+        posted.clear()
+        t.show_state({"columns": cols, "rows": rows, "colours": {}, "selection": [], "selectable": True,
+                      "open": open_on})
+        qapp.processEvents()
+        pos = t.visualItemRect(t.topLevelItem(1)).center()
+        QTest.mouseDClick(t.viewport(), Qt.LeftButton, Qt.NoModifier, pos)
+        opened = [arg for a, arg in posted if a == "act" and arg[1][0] == "open"]
+        assert opened == ([(".nb.f9.treeview2", ("open", "b"))] if open_on else []), posted
+
+
+def test_a_disabled_primary_button_does_not_look_active_and_shows_the_focus(qapp):
+    """1.22.3 (audit): the ID rule QPushButton#primary outranked :disabled – a disabled primary button kept the
+    accent fill and looked clickable; the focus of an ID-styled button (rowplay) was invisible."""
+    from PySide6.QtWidgets import QPushButton
+    from PySide6.QtGui import QColor
+    for dark in (True, False):
+        c = qt_theme.colours(dark)
+        qss = qt_theme.stylesheet(dark)
+        shots = []
+        for enabled in (True, False):
+            b = QPushButton("Anwenden")
+            b.setObjectName("primary")
+            b.setEnabled(enabled)
+            b.setStyleSheet(qss)
+            b.resize(140, 36)
+            shots.append(b.grab().toImage().pixelColor(8, 18))     # the padding, not the text
+        on, off = shots
+        accent = QColor(c["accent"])
+        assert on == accent, (dark, on.name())
+        assert off != accent, (dark, off.name())
+    qss = qt_theme.stylesheet(True)
+    for rule in ("QPushButton#primary:disabled", "QPushButton#primary:pressed", "QPushButton#rowplay:focus",
+                 "QPushButton#navsearchbtn:focus"):
+        assert rule in qss, rule
 
 
 def test_ctrl_and_a_number_opens_the_page_in_that_row_of_the_navigation(qapp):
