@@ -106,7 +106,7 @@ def test_a_change_is_saved_by_itself_and_only_looking_writes_nothing(qapp, clip,
         assert win._pdirty and win._save_timer.isActive()                # 1.5 s after the last change
         assert _pump(qapp, lambda: len(_files(tmp_path)) == 1) and _idle(qapp, win)
         data = json.loads(_read(os.path.join(_folder(tmp_path), _files(tmp_path)[0])))
-        assert data["version"] == project.VERSION2 and len(data["parts"]) == 2
+        assert data["version"] == project.CURRENT and len(data["parts"]) == 2
         assert data["source"]["sha256"] == win._rec["sha256"] and data["source"]["size"] == os.path.getsize(clip)
         assert _pump(qapp, lambda: win.save_status.text().startswith("✓"))
         n = len(win._slot.written)
