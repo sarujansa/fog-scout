@@ -114,3 +114,299 @@ def load(path: str) -> dict | None:
     except (OSError, ValueError):
         return None
     return d if isinstance(d, dict) and d.get("format") == FORMAT else None
+
+
+# ---- 1.18.1: format 2 (Implementierungsplan Fassung 6, chapter 2 and 4.6) – added beside format 1; the editor keeps
+# saving format 1 until projectsave is wired in. Nothing below writes a file: projectsave does, through fsops.
+VERSION2 = 2
+ID_SHOWN = 10                     # hex digits of the project id in the file name
+STEM_MAX = 80
+QFP_BYTES = 1 << 20               # quick fingerprint: size + first and last MiB (preselection only, never proof)
+DURATION_SLACK = 0.05             # s: probe durations of the same file
+VIEW_POS_S = 0.5                  # a view counts as changed beyond these (Fassung 6, 3.3)
+VIEW_SHARE = 0.01
+VIEW_PAD_S = 5.0
+_BAD_NAME = set('<>:"/\\|?*') | {chr(c) for c in range(32)}
+_HEX = set("0123456789abcdef")
+
+
+def valid_sha(v) -> bool:
+    return isinstance(v, str) and len(v) == 64 and set(v) <= _HEX
+
+
+def new_id() -> str:
+    import uuid
+    return uuid.uuid4().hex
+
+
+def clean_stem(stem: str) -> str:
+    out = "".join("_" if c in _BAD_NAME else c for c in str(stem or "")).strip(" .")
+    return (out or "Projekt")[:STEM_MAX].rstrip(" .") or "Projekt"
+
+
+def file_name2(source: str, pid: str) -> str:
+    """``<recording>--<id10>.fogscout-project.json`` – two recordings of the same name never share a file."""
+    stem = os.path.splitext(os.path.basename(source))[0]
+    return f"{clean_stem(stem)}--{str(pid)[:ID_SHOWN]}{EXT}"
+
+
+def content_dict(state: EditState, extra: dict | None = None) -> dict:
+    """What a project is about – clips, crop, drawings, fades, censoring, the clip's name and export choices. Not:
+    ``rev``, ``view``, ``saved``, ``source`` (they change without the work changing)."""
+    d = to_dict(state, "", str((extra or {}).get("name") or ""), extra)
+    for k in ("format", "version", "saved", "source"):
+        d.pop(k, None)
+    return d
+
+
+def canonical(d: dict) -> bytes:
+    return json.dumps(d, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def content_hash(content: dict) -> str:
+    import hashlib
+    return hashlib.sha256(canonical(content)).hexdigest()
+
+
+def to_dict2(content: dict, pid: str, source: dict, rev: dict, view: dict | None) -> dict:
+    """The file's data: the content (``content_dict``) plus id, source identity, revision and view."""
+    d = {"format": FORMAT, "version": VERSION2, "id": str(pid), "saved": time.time(), "rev": dict(rev or {}),
+         "source": dict(source or {}), "view": dict(view) if view else None}
+    d.update(content)
+    return d
+
+
+def view_differs(a, b) -> bool:
+    """Fassung 6, 3.3: ``a`` (window) noticeably different from ``b`` (on disk) – a missing ``b`` always is."""
+    if not a:
+        return False
+    if not b:
+        return True
+    try:
+        if abs(float(a["pos"]) - float(b["pos"])) > VIEW_POS_S:
+            return True
+        span = max(float(b["span"]), 1e-6)
+        if abs(float(a["span"]) - float(b["span"])) > VIEW_SHARE * span:
+            return True
+        return abs(float(a["offset"]) - float(b["offset"])) > VIEW_SHARE * max(span, 1.0)
+    except (KeyError, TypeError, ValueError):
+        return True
+
+
+def _finite(v) -> float | None:
+    import math
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _speed(v) -> float:
+    f = _finite(v)
+    if f is None:
+        return 1.0
+    return min(SPEEDS, key=lambda s: abs(s - f))
+
+
+def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict | None, list] | None:
+    """Fassung 6, 4.6: (state, extra, view, notes) from project data of format 1 or 2, field by field – a broken
+    field never takes the rest with it and never leaves a reference that points nowhere. Clips outside the recording,
+    empty, of unknown tempo or of the wrong type drop out; none left → ``default_parts`` (note "parts"). Drawing
+    times are seconds of the recording: clamped, never dropped for lying outside a clip. None only for data that is
+    not a project of ours."""
+    if not isinstance(d, dict) or d.get("format") != FORMAT:
+        return None
+    notes = []
+    dur = _finite(duration) or 0.0
+    parts = []
+    raw_parts = d.get("parts") if isinstance(d.get("parts"), list) else []
+    for raw in raw_parts[:MAX_PARTS]:
+        if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+            continue
+        s, e = _finite(raw[0]), _finite(raw[1])
+        if s is None or e is None:
+            continue
+        s, e = max(0.0, s), (min(e, dur) if dur > 0 else e)
+        if e - s >= 0.1 - 1e-9:
+            parts.append(Part(s, e, _speed(raw[2]) if len(raw) > 2 else 1.0))
+    if not parts:
+        parts = [Part(p.start, p.end, p.speed) for p in default_parts]
+        notes.append("parts")
+    shapes = []
+    for raw in list(d.get("shapes") or [])[:MAX_SHAPES] if isinstance(d.get("shapes"), list) else []:
+        s = annotate.from_dict(raw) if isinstance(raw, dict) else None
+        if s is None:
+            continue
+        t0, t1 = _finite(s.t0) if s.t0 is not None else None, _finite(s.t1) if s.t1 is not None else None
+        if t0 is not None:
+            t0 = min(max(0.0, t0), dur) if dur > 0 else max(0.0, t0)
+        if t1 is not None:
+            t1 = min(max(0.0, t1), dur) if dur > 0 else max(0.0, t1)
+        if t0 is not None and t1 is not None and t0 > t1:
+            t0 = t1 = None
+        s.t0, s.t1 = t0, t1
+        shapes.append(s)
+    censor = d.get("censor") if isinstance(d.get("censor"), dict) else {}
+    boxes = [b for b in (_box(x) for x in list(censor.get("boxes") or [])[:MAX_BOXES]) if b is not None] \
+        if isinstance(censor.get("boxes"), list) else []
+    style = str(censor.get("style") or "pixel")
+    crop = _box(d.get("crop")) if d.get("crop") else None
+    total = sum((p.end - p.start) / p.speed for p in parts)
+    fades = []
+    for key in ("fade_in", "fade_out"):
+        f = _finite(d.get(key)) or 0.0
+        fades.append(min(max(0.0, f), total / 2))
+    state = EditState(parts, tuple(crop) if crop else None, str(d.get("crop_key") or ("free" if crop else "none")),
+                      shapes, fades[0], fades[1], boxes, bool(censor.get("on")),
+                      style if style in ("pixel", "blur", "black", "retouch") else "pixel")
+    extra = dict(d.get("extra")) if isinstance(d.get("extra"), dict) else {}
+    extra.setdefault("name", str(d.get("name") or ""))
+    view = None
+    raw_view = d.get("view") if isinstance(d.get("view"), dict) else None
+    if raw_view:
+        pos, span, off = (_finite(raw_view.get(k)) for k in ("pos", "span", "offset"))
+        if pos is not None and span is not None and off is not None and span > 0 \
+                and (dur <= 0 or span <= dur + VIEW_PAD_S):
+            view = {"pos": min(max(0.0, pos), total), "span": span, "offset": max(0.0, off)}
+    return state, extra, view, notes
+
+
+# ---- the catalog: heads of the project files in a folder (Fassung 6, 2.2/2.5)
+class Entry:
+    """One project file: ``version`` 1 or 2, ``id`` (format 2), ``source`` dict, ``saved``, ``rev``, ``ok`` (readable),
+    ``hash`` (full SHA-256 of the file bytes – the basis of later checks)."""
+
+    __slots__ = ("path", "name", "version", "id", "source", "saved", "rev", "ok", "hash", "size", "mtime_ns",
+                 "migrated_from")
+
+    def __init__(self, path, data, raw_hash, st):
+        self.path, self.name = path, os.path.basename(path)
+        self.hash, self.size, self.mtime_ns = raw_hash, st.st_size, st.st_mtime_ns
+        ok = isinstance(data, dict) and data.get("format") == FORMAT
+        self.ok = ok
+        d = data if ok else {}
+        self.version = int(d.get("version") or 1) if ok else 0
+        self.id = str(d.get("id")) if ok and d.get("id") else None
+        self.source = d.get("source") if isinstance(d.get("source"), dict) else {}
+        self.saved = _finite(d.get("saved")) or 0.0
+        self.rev = d.get("rev") if isinstance(d.get("rev"), dict) else {}
+        self.migrated_from = str(self.source.get("migrated_from") or "") or None
+
+
+_SCAN_CACHE = {}
+
+
+def read_entry(path: str) -> Entry | None:
+    """The head of one project file, cached by mtime and size; None when it cannot be read at all."""
+    import hashlib
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    hit = _SCAN_CACHE.get(path)
+    if hit is not None and hit[0] == (st.st_mtime_ns, st.st_size):
+        return hit[1]
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        data = None
+    entry = Entry(path, data, hashlib.sha256(raw).hexdigest(), st)
+    _SCAN_CACHE[path] = ((st.st_mtime_ns, st.st_size), entry)
+    return entry
+
+
+def scan(folder: str) -> list:
+    """Every project file directly in ``folder`` (``Sicherungen`` and hidden temp names are not projects)."""
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return []
+    out = []
+    for name in names:
+        if name.startswith(".") or not name.endswith(EXT):
+            continue
+        e = read_entry(os.path.join(folder, name))
+        if e is not None:
+            out.append(e)
+    return out
+
+
+class Resolution:
+    """What ``resolve`` found: ``kind`` one of auto / ambiguous_recording / ambiguous_id / verify / mismatch /
+    unverified / legacy / changed / none, and the ``entries`` it is about."""
+
+    __slots__ = ("kind", "entries")
+
+    def __init__(self, kind, entries=()):
+        self.kind, self.entries = kind, list(entries)
+
+    def __repr__(self):
+        return f"Resolution({self.kind!r}, {[e.name for e in self.entries]})"
+
+
+def _same_size(e, rec) -> bool:
+    try:
+        return int(e.source.get("size") or -1) == int(rec["size"])
+    except (TypeError, ValueError):
+        return False
+
+
+def _same_duration(e, rec) -> bool:
+    a, b = _finite(e.source.get("duration")), _finite(rec.get("duration"))
+    return a is None or b is None or a <= 0 or b <= 0 or abs(a - b) <= DURATION_SLACK
+
+
+def resolve(rec: dict, entries: list) -> Resolution:
+    """Fassung 6, 2.5: which project belongs to the recording ``rec`` (``size``, ``qfp``, ``sha256`` – None while
+    the full hash is not known yet –, ``duration``, ``file``, ``t``). Automatic ("auto") only when exactly one
+    format-2 project carries the recording's full SHA-256 and size and no other file shares its id; everything else
+    is for the user to decide."""
+    v2 = [e for e in entries if e.ok and e.version >= VERSION2 and e.id]
+    by_id = {}
+    for e in v2:
+        by_id.setdefault(e.id, []).append(e)
+
+    def with_twins(found):
+        ids = {e.id for e in found}
+        twins = [x for i in ids for x in by_id.get(i, ()) if len(by_id[i]) > 1]
+        return twins
+
+    sha = rec.get("sha256") if valid_sha(rec.get("sha256")) else None
+    if sha:
+        hit = [e for e in v2 if e.source.get("sha256") == sha and _same_size(e, rec) and _same_duration(e, rec)]
+        if hit:
+            twins = with_twins(hit)
+            if twins:
+                return Resolution("ambiguous_id", sorted(twins, key=lambda e: e.name))
+            if len(hit) > 1:
+                return Resolution("ambiguous_recording", sorted(hit, key=lambda e: e.name))
+            return Resolution("auto", hit)
+    near = [e for e in v2 if e.source.get("qfp") == rec.get("qfp") and rec.get("qfp") and _same_size(e, rec)]
+    if near:
+        twins = with_twins(near)
+        if twins:
+            return Resolution("ambiguous_id", sorted(twins, key=lambda e: e.name))
+        if not sha:
+            return Resolution("verify", near)
+        unverified = [e for e in near if not valid_sha(e.source.get("sha256"))]
+        if unverified:
+            return Resolution("unverified", unverified)
+        return Resolution("mismatch", near)
+    stem = os.path.splitext(str(rec.get("file") or ""))[0]
+    migrated = {e.migrated_from for e in v2 if e.migrated_from}
+    for e in entries:
+        if e.ok and e.version < VERSION2 and e.name == stem + EXT and e.name not in migrated \
+                and e.source.get("file") == rec.get("file") and _same_size(e, rec) and int(rec.get("size") or 0) > 0:
+            return Resolution("legacy", [e])
+    changed = [e for e in entries if e.ok and (
+        (e.source.get("file") and e.source.get("file") == rec.get("file"))
+        or (rec.get("t") and e.source.get("t") == rec.get("t")))]
+    if changed:
+        return Resolution("changed", changed)
+    return Resolution("none")
