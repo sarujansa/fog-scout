@@ -46,7 +46,7 @@ EDGE_PX = 2                                # delogo refuses a box that touches t
 NAMES_BOX = (0.004, 0.50, 0.26, 0.32)      # DBD's survivor list bottom left (portraits + names + status text), as
                                            # fractions of the 16:9 game picture – 1.7.4 after the user's screenshot:
                                            # the list sits higher (≈ 50–82 % of the height) and long names reach further
-MODES = ("copy", "exact", "discord", "gif")   # key frames, no re-encoding / frame exact / 1.6.1: fits a size
+MODES = ("copy", "exact", "discord", "gif", "shorts")   # 1.20: shorts = 1080×1920 for YouTube Shorts / TikTok   # key frames, no re-encoding / frame exact / 1.6.1: fits a size
                                               # (Discord) / 1.12: an animated GIF (no sound)
 TARGETS_MB = (10, 25, 50, 500)  # 1.6.1: Discord's upload limits (free 10 MB, Nitro Basic 50, Nitro 500)
 DEFAULT_TARGET_MB = 10
@@ -181,20 +181,22 @@ def track_levels(path: str, n_tracks: int, ffmpeg: str | None = None, timeout: f
 
 
 def frame_at(path: str, t: float, height: int = PREVIEW_H, info: Info | None = None, ffmpeg: str | None = None,
-             keyframe: bool = False, vf=None):
+             keyframe: bool = False, vf=None, size=None):
     """One picture at second ``t`` as PIL image (RGB), or None. Seeks to the key frame before ``t`` and decodes
     up to it – about 40 ms for 1080p, more for 1440p and up to a key-frame interval of decoding (OBS: 2–4 s of
     frames, measured 70–190 ms at 1080p60). ``keyframe`` (1.8.3): only the key frame at or before ``t``, no decoding
     up to ``t`` – ~40 ms whatever the interval, the picture up to one interval early (strip, first look). Needs
     ``-fps_mode passthrough``: that frame carries a negative output timestamp, and the constant-rate default
     drops it unless a later frame follows – near the end of a file none does (measured: nothing came back).
-    ``vf`` (1.19) = more filters on the scaled picture (a clip's effects: preview_filters)."""
+    ``vf`` (1.19) = more filters on the scaled picture (a clip's effects: preview_filters); ``size`` (1.20) = the
+    picture size those filters make (a short's canvas), else the scaled size."""
     from PIL import Image
     ffmpeg = ffmpeg or ffmpeg_exe()
     info = info or probe(path, ffmpeg)
     if not ffmpeg or not info.ok:
         return None
     w, h = scaled(info, height)
+    ow, oh = size or (w, h)
     quick = ["-noaccurate_seek", "-skip_frame", "nokey"] if keyframe else []
     out = ["-an", "-fps_mode", "passthrough"] if keyframe else []
     try:
@@ -205,10 +207,10 @@ def frame_at(path: str, t: float, height: int = PREVIEW_H, info: Info | None = N
                            creationflags=_flags())
     except (OSError, subprocess.TimeoutExpired):
         return None
-    need = w * h * 3
+    need = ow * oh * 3
     if len(p.stdout) < need:
         return None
-    return Image.frombytes("RGB", (w, h), p.stdout[:need])
+    return Image.frombytes("RGB", (ow, oh), p.stdout[:need])
 
 
 def thumb_strip(path: str, times: list, height: int = THUMB_H, info: Info | None = None, ffmpeg: str | None = None,
@@ -626,13 +628,14 @@ class FramePlayer(threading.Thread):
 
     def __init__(self, path: str, start: float, info: Info, on_frame, on_end, end: float | None = None,
                  height: int = PREVIEW_H, ffmpeg: str | None = None, speed: float = 1.0, vf=None,
-                 reverse: bool = False):
+                 reverse: bool = False, size=None):
         super().__init__(name="clip-player", daemon=True)
         self.path, self.start_t, self.info = path, max(0.0, start), info
         self.end_t = end
         self.speed = max(0.05, float(speed or 1.0))   # 1.16: a part's tempo – the clock runs that much faster
         self.vf = list(vf or ())                      # 1.19: the clip's effects on the scaled picture
         self.reverse = bool(reverse)                  # 1.19: the stretch backwards (ffmpeg's reverse, small frames)
+        self.size = size                              # 1.20: the picture size ``vf`` makes (a short's canvas)
         self.on_frame, self.on_end = on_frame, on_end
         self.height = height
         self.ffmpeg = ffmpeg or ffmpeg_exe()
@@ -686,6 +689,7 @@ class FramePlayer(threading.Thread):
         except OSError:
             self.on_end()
             return
+        w, h = self.size or (w, h)
         need = w * h * 3
         t0 = None                                         # the clock starts with the first frame (ffmpeg's start-up
         i = 0                                             # and seek take 0.1–0.5 s and must not count as "late")
@@ -881,6 +885,7 @@ class Edit:
     shapes: list = field(default_factory=list)
     fade_in: float = 0.0
     fade_out: float = 0.0
+    short: object = None         # 1.20: shorts.ShortSpec (layout, title, subtitles) for the mode "shorts"
 
     def simple(self) -> bool:
         """One part at normal tempo and nothing else – cut() alone does it (stream copy possible)."""
@@ -973,7 +978,7 @@ def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -
 
 def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB, censor=None,
                censor_style: str = "pixel", mix=None, shape_inputs=(), gif_h: int = DEFAULT_GIF_H,
-               palette: int | None = None, encoding: Encoding | None = None):
+               palette: int | None = None, encoding: Encoding | None = None, text_inputs=()):
     """The filter graph of ``edit`` (graph, video label, audio label or None, encoder arguments). The first inputs
     are the recording as part_inputs reads it (each seeked to its first part); an input that holds several parts is
     split and cut (trim) per part – the gaps are dropped right there, censor, drawings and crop work on the part
@@ -1083,6 +1088,17 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
         kbps, dh, fps = discord_plan(total, target_mb, Info(total, out_w, out_h, info.fps, info.audio_tracks))
         post += [f"scale=-2:{dh}", f"fps={fps:g}"]
         args += enc.video_args(kbps) + (["-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"] if sound else [])
+    elif mode == "shorts":                                         # 1.20: the cut on a 1080×1920 canvas
+        from . import shorts
+        layout = getattr(edit.short, "layout", "blur") or "blur"
+        chains.append(f"{vcur}{shorts.canvas_filters(layout)}[vsh]")
+        vcur = "[vsh]"
+        for k, (idx, x, y, t0, t1) in enumerate(text_inputs):         # title and subtitles (output seconds)
+            when = f":enable='between(t,{t0:.3f},{t1:.3f})'" if t0 is not None else ""
+            chains.append(f"{vcur}[{idx}:v]overlay={x}:{y}:format=auto{when}[vtx{k}]")
+            vcur = f"[vtx{k}]"
+        post.append(f"fps={shorts.fps(info.fps):g}")
+        args += enc.video_args() + (["-c:a", "aac", "-b:a", "160k"] if sound else [])
     elif mode == "gif":
         # rgb24 before the fades: palettegen wants RGBA, and a fade on RGBA fades the alpha too – the fade-in came
         # out transparent, the fade-out froze on grey (paletteuse: alpha < 128 = "keep the previous picture")
@@ -1151,8 +1167,9 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
     if not parts:
         return False, "Ende vor Anfang"
     # the editor's drawings as they are now: the window keeps changing its own (colour, size, times, text)
-    edit = Edit(parts, edit.crop, copy.deepcopy(list(edit.shapes)), edit.fade_in, edit.fade_out)
-    if edit.simple() and mode != "gif":
+    edit = Edit(parts, edit.crop, copy.deepcopy(list(edit.shapes)), edit.fade_in, edit.fade_out,
+                edit.short.copy() if getattr(edit.short, "copy", None) else None)
+    if edit.simple() and mode not in ("gif", "shorts"):
         extra = {"censor": censor, "censor_style": censor_style} if censor else {}
         return cut(path, parts[0].start, parts[0].end, out, mode, ffmpeg, run=run, target_mb=target_mb, info=info,
                    retry=retry, mix=mix, encoding=encoding, **extra)
@@ -1162,6 +1179,11 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
         over = math.ceil(edit.seconds() * 10 - 1e-6) / 10     # rounded up: 60.06 s is no "60 s" over the limit
         return False, _("Ein GIF ist höchstens {limit} s lang, dieser Clip {seconds} s – kürzer schneiden oder als "
                         "Video speichern.", limit=f"{GIF_MAX_S:g}", seconds=f"{over:.1f}")
+    if mode == "shorts":
+        from . import shorts
+        if edit.seconds() > shorts.MAX_S + 0.05:
+            return False, _("Ein Short ist höchstens {limit} min lang, dieser Schnitt {seconds} s – kürzer schneiden.",
+                            limit=f"{shorts.MAX_S / 60:g}", seconds=f"{edit.seconds():.0f}")
     if mode == "copy":
         mode = "exact"
     if run is None:
@@ -1199,13 +1221,21 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
                     # read as one PNG – image2 would take a "%d" in %TEMP% for a numbered sequence and fail
                     args += ["-f", "png_pipe", "-i", png]
                     shape_inputs.append((len(inputs) + len(shape_inputs), shape.t0, shape.t1, box[0], box[1]))
+            text_inputs = []
+            if mode == "shorts":                                 # 1.20: title and subtitles, one PNG each
+                from . import shorts
+                for pic, x, y, t0, t1 in shorts.texts(edit.short):
+                    png = os.path.join(tmpdir, f"text{len(text_inputs)}.png")
+                    pic.save(png)
+                    args += ["-f", "png_pipe", "-i", png]
+                    text_inputs.append((len(inputs) + len(shape_inputs) + len(text_inputs), x, y, t0, t1))
             os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         except OSError as e:                                     # %TEMP% full or not writable, the drive gone
             return False, str(e)
 
         def graph(palette=None):
             return edit_graph(edit, info, mode, target_mb, censor, censor_style, mix, shape_inputs, gif_h, palette,
-                              encoding=encoding)
+                              encoding=encoding, text_inputs=text_inputs)
         if mode == "gif":
             pal = os.path.join(tmpdir, "palette.png")              # "-update 1": a file name, not a pattern
             rc, err = call(args + ["-filter_complex", graph()[0], "-map", "[vout]", "-frames:v", "1", "-update", "1",

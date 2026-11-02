@@ -62,7 +62,7 @@ def test_a_project_keeps_the_effects_and_old_projects_load_without():
                              Part(5, 5, hold=2.5)])
     content = project.content_dict(st, {"name": "fx"})
     d = project.to_dict2(content, "a" * 32, {}, {}, None)
-    assert d["version"] == project.CURRENT == 3
+    assert d["version"] == project.CURRENT >= 3
     back, _extra, _view, notes = project.validate(json.loads(json.dumps(d)), 60.0, [])
     assert notes == [] and back.parts == st.parts
     old = {"format": project.FORMAT, "version": 2, "parts": [[1, 5, 1.0]]}
