@@ -704,7 +704,10 @@ class StatsTab:
             else:
                 label.pack_forget()
         set_up = c.set_up
-        if rounds and not pairs:                  # 1.24.2: the tiles of the stats page left out – say why
+        # 1.24.2: the tiles of the stats page left out – say why; 1.24.5 (review): "linked" is any round with its
+        # match, custom games too (pairs leaves those out unless the role filter is "Custom")
+        linked = any(id(r) in c.off for r in rounds)
+        if rounds and not linked:
             self.stats_data_var.set(
                 _("In dieser Auswahl ist keine Runde einem Match der Stats-Seite zugeordnet – darum fehlen Kills, "
                   "Entkommen und Bloodpoints.") if set_up else

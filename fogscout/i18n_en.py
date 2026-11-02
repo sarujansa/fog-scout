@@ -948,7 +948,6 @@ EN = {
     "er automatisch erkannt.":
         "The name read belongs to an existing map (e.g. spelled differently)? Assign it once – after that it is "
         "recognised automatically.",
-    "✕": "✕",
     "Hinweis ausblenden.": "Hide this notice.",
     "Eigenes Bild für eine Map wählen: vorhandenes Bild ersetzen oder neue Map anlegen. Rand und Hintergrund "
     "werden automatisch entfernt.":
@@ -3182,7 +3181,9 @@ EN = {
     "1 Marke": "1 mark",
     "Keine Aufnahme passt zu den Filtern oben.": "No recording matches the filters above.",
     "Kein Clip passt zu den Filtern oben.": "No clip matches the filters above.",
-    "Keine Zeile passt zu Suche und Kategorien.": "No line matches the search and the categories.",
+    "Keine Zeilen – das Log ist leer, oder Suche und Kategorien blenden alles aus.":
+        "No lines – the log is empty, or the search and the categories hide everything.",
+    "OBS nicht verbunden": "OBS not connected",
     # 1.24.2 (phase 2): statistics – no tiles of "–", notes without ⚠/✓ in front
     "Keine Runden in dieser Auswahl – „Filter zurücksetzen“ zeigt wieder alle.":
         "No rounds in this selection – “Reset filters” shows them all again.",

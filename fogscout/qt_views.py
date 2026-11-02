@@ -469,8 +469,8 @@ class LogView(QPlainTextEdit):
     def __init__(self):
         super().__init__()
         self.setReadOnly(True)
-        # 1.24.3 (phase 2): every line hidden by the search or the categories – say so, not a blank field
-        self.setPlaceholderText(_("Keine Zeile passt zu Suche und Kategorien."))
+        # 1.24.3 (phase 2): no line – say why, not a blank field (1.24.5: "Leeren" empties it too, not only filters)
+        self.setPlaceholderText(_("Keine Zeilen – das Log ist leer, oder Suche und Kategorien blenden alles aus."))
         self.setMinimumHeight(360)
         self.setMaximumBlockCount(self.MAX_LINES)        # old lines drop off by themselves
         self._last = None                                # last entry shown
