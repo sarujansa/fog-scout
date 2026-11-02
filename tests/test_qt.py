@@ -1060,6 +1060,8 @@ def _check_theme(key, oled, custom=None):
                     assert _contrast(c[token], c[bg]) >= 3, (key, dark, token, bg)
             assert _contrast(c["on_select"], c["select"]) >= 4.5, (key, dark, "select")
             assert c["press"] != c["btn_hover"], (key, dark, "pressed looks like hover")
+            # 1.23.1 (review): the editor's media library marks the selected row with sel_bg – more than hover
+            assert _contrast(c["sel_bg"], c["panel"]) > _contrast(c["hover"], c["panel"]), (key, dark, "selection")
     finally:
         qt_theme.set_theme("gold")
 
@@ -2210,6 +2212,12 @@ def test_a_question_that_deletes_says_so_and_keeps_the_data_on_enter(qapp, keep)
     assert box.cancel.isDefault() and not box.ok.isDefault() and box.focusWidget() is box.cancel
     box.reject()
     assert posted.get_nowait() == ("answer", False)
+    win.show_question(None)
+    box.ok.setFocus()
+    win.show_question(("Clip löschen", "c.mp4 von der Platte löschen?", True, "Löschen", True), activate=False)
+    assert box.focusWidget() is box.cancel                  # 1.23.1: DBD in front – Enter later still cancels
+    box.reject()
+    posted.get_nowait()
     win.show_question(None)
     win.show_question(("Serverregionen anwenden", "…", True, "Anwenden", False))
     assert box.ok.text() == "Anwenden" and box.ok.objectName() == "primary" and box.focusWidget() is box.ok

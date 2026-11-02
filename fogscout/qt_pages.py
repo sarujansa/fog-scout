@@ -1616,9 +1616,9 @@ class MessageBox(QDialog):
         self.adjustSize()
         self.show()
         self.raise_()
+        (self.cancel if risky else self.ok).setFocus()   # 1.23.1: also unactivated – Enter later = this button
         if activate:
             self.activateWindow()
-            (self.cancel if risky else self.ok).setFocus()
 
     def withdraw(self):
         """The program took the question back: closed without an answer."""

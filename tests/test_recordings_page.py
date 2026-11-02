@@ -728,6 +728,7 @@ def test_a_click_is_handled_in_the_next_pass_of_the_event_loop(app_root):
     """1.22.4 (audit, prompt.md): a click waited for the next _poll (0–50 ms); now _qt_post asks for a pass at once
     – once, however many clicks come before it; posts from other threads keep the 50-ms beat."""
     import threading
+    import time
     from fogscout.app import App
     _settings(app_root)
     app = App(str(app_root), simulate=str(app_root / "sim"))
@@ -748,6 +749,15 @@ def test_a_click_is_handled_in_the_next_pass_of_the_event_loop(app_root):
         assert [ms for ms, _fn in timers] == [0]                          # another thread: no timer from there
         app._drain_events()
         assert [ev[2] for ev in seen] == [1, 2, 3]
+        # 1.23.1 (review): a slider or a drag posts on every mouse move – right after a refresh for a click, the
+        # next post waits for the beat (no refresh per mouse move); after SOON_GAP_S a click comes at once again
+        app._ui_refresh_t = time.monotonic()
+        app._qt_post("bench-click", 4)
+        assert [ms for ms, _fn in timers] == [0]
+        app._drain_events()
+        app._ui_refresh_t = time.monotonic() - 1.0
+        app._qt_post("bench-click", 5)
+        assert [ms for ms, _fn in timers] == [0, 0]
     finally:
         app.quit()
 
@@ -772,6 +782,10 @@ def test_a_double_click_plays_the_clip_and_two_marked_offer_a_montage(app_root, 
         app.clip_table.selection_set(["clip.mp4"])
         app._clip_buttons()
         assert not app.clip_montage_btn.winfo_manager()
+        app.clip_table.selection_set(["clip.mp4", "clip.gif"])           # 1.23.1 (review): within a marking …
+        ui_act(app.clip_table, ("open", "clip.gif"))
+        assert app.clip_table.selection() == ("clip.gif",)                # … that row, not the first marked one
+        assert [os.path.basename(p) for p in played] == ["clip.mp4", "clip.gif"]
     finally:
         app.quit()
 

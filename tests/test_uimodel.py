@@ -2978,6 +2978,9 @@ def test_the_server_page_says_when_the_ticks_are_not_applied(app_root):
         app.srv_state = {"regions": {c: ("frei" if c in app.srv_sel else "gesperrt") for c in codes}, "own": True}
         app._srv_render()
         assert app.srv_pending.get() == ""                                 # applied: the line goes
+        app.srv_sel = set()
+        app._srv_render()
+        assert app.srv_pending.get().startswith("Keine Region angehakt")    # 1.23.1: "Anwenden" would refuse
         from fogscout.app_qt import ui_layout
         reg = {}
         node = ui_layout(app.tab_server, reg)
