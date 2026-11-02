@@ -2218,3 +2218,31 @@ def test_the_play_button_of_an_overview_round_shows_only_with_a_recording(qapp, 
     rows[0].show_round(overview.RoundRow("Coal Tower", "Nurse", 10.0, "/r/b.mkv"))
     rows[0].play.click()
     assert posted == [("ov_round", 10.0), ("ov_recording", 10.0)]
+
+
+def test_a_long_hint_on_its_own_line_wraps_at_a_readable_width_and_shows_every_line(qapp, keep):
+    """1.17.1: a hint alone in a column wraps at about HINT_CHARS characters instead of running across the card, its
+    height is that of the capped width (the page's layouts ask with the full width – the last lines were cut);
+    beside a button in a row it still takes the room."""
+    from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+    from fogscout import qt_pages
+    text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 12
+    col = keep(QWidget())
+    v = QVBoxLayout(col)
+    alone = qt_pages.HintLabel()
+    alone.setText(text)
+    v.addWidget(alone)
+    row = QHBoxLayout()
+    v.addLayout(row)
+    row.addWidget(QPushButton("Ordner wählen …"))
+    beside = qt_pages.HintLabel()
+    beside.setText("/ein/langer/pfad/zum/aufnahmeordner")
+    row.addWidget(beside, 1)
+    col.resize(1800, 600)
+    col.show()
+    qapp.processEvents()
+    cap = alone.fontMetrics().averageCharWidth() * qt_pages.HINT_CHARS
+    assert alone.width() <= cap < 1800 and alone.maximumWidth() == cap
+    assert alone.heightForWidth(1800) == alone.heightForWidth(cap) > alone.fontMetrics().height() * 3
+    assert alone.height() >= alone.heightForWidth(cap)                  # every line has room
+    assert beside.maximumWidth() > 10000 and beside.width() > cap / 2   # in a row: no cap

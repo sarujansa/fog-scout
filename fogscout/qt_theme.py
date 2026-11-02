@@ -216,6 +216,7 @@ QLineEdit#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; }}
 QPushButton#navsearchbtn {{ background: transparent; border: none; margin-top: 10px; padding: 8px; }}
 QPushButton#navsearchbtn:hover {{ background: {c['hover']}; }}
 QLabel[class="dim"] {{ color: {c['dim']}; font-size: {px(12)}; }}
+QLabel[class="hint"] {{ color: {c['dim']}; font-size: {px(12)}; }}  /* 1.17.1: qt_pages.HintLabel – line length */
 QLabel[class="h1"] {{ font-size: {px(21)}; font-weight: 700; color: {c['head']}; }}
 QLabel[class="map"] {{ font-family: 'Fira Sans ExtraBold', 'Segoe UI'; font-size: {px(22)}; color: {c['head']}; }}
 QLabel[class="h2"] {{ font-size: {px(12)}; font-weight: 700; color: {c['fg']}; letter-spacing: 0.8px; }}  /* 1.17: the accent marks state, not every title */
