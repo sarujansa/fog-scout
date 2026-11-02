@@ -3095,4 +3095,40 @@ EN = {
         "{file}: {start} – {end} of the file, in the clip from {at}",
     "{n} Ton-Clip(s) auf A2.":
         "{n} audio clip(s) on A2.",
+    "Als Montage öffnen …":
+        "Open as montage …",
+    "Andere Grösse ({w}×{h}) – im Export mit schwarzen Rändern eingepasst.":
+        "Different size ({w}×{h}) – fitted with black borders in the export.",
+    "Aufnahme fehlt oder ist nicht lesbar: {file}":
+        "Recording missing or unreadable: {file}",
+    "Eine Montage übernimmt keinen Bereich aus der Vorschau.":
+        "A montage takes no range over from the preview.",
+    "Erst wenn das Projekt geladen ist.":
+        "Only once the project is loaded.",
+    "Für eine Montage mindestens zwei Videos markieren.":
+        "Select at least two videos for a montage.",
+    "Höchstens {n} Aufnahmen in einer Montage.":
+        "At most {n} recordings in a montage.",
+    "Jetzt eine Montage – sie wird unter Clips › Montagen gespeichert. Das Projekt der Runde bleibt, wie es zuletzt gespeichert war.":
+        "Now a montage – it is saved under Clips › Montagen. The round's project stays as it was last saved.",
+    "Montage":
+        "Montage",
+    "Montage aus {n} Aufnahmen":
+        "Montage of {n} recordings",
+    "Montage nicht zu öffnen – ihre erste Aufnahme fehlt: {file}":
+        "Cannot open the montage – its first recording is missing: {file}",
+    "Montage {date}":
+        "Montage {date}",
+    "Nicht gefunden: {files} – ihre Clips sind rot, Exportieren geht erst, wenn sie entfernt sind.":
+        "Not found: {files} – their clips are red; exporting works once they are removed.",
+    "Nur lesen":
+        "Read only",
+    "Trotzdem verwenden":
+        "Use anyway",
+    "Video nicht lesbar: {file}":
+        "Video unreadable: {file}",
+    "{file} ist nicht mehr dieselbe Aufnahme wie beim Speichern.":
+        "{file} is no longer the same recording as when it was saved.",
+    "{file}: {n} Clip(s) angehängt.":
+        "{file}: {n} clip(s) appended.",
 }

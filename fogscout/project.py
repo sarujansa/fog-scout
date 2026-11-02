@@ -20,6 +20,8 @@ EXT = ".fogscout-project.json"
 MAX_PARTS = 500
 MAX_SHAPES = 500
 MAX_BOXES = 50
+MAX_SOURCES = 50                  # 1.22: recordings of one montage
+MONTAGE_DIR = "Montagen"          # 1.22: montage projects – Clips/Montagen, bound to no single recording
 
 
 def project_path(clips_dir: str, source: str) -> str:
@@ -52,7 +54,8 @@ def to_dict(state: EditState, source: str, name: str, extra: dict | None = None)
             "fade_in": float(state.fade_in), "fade_out": float(state.fade_out),
             "censor": {"on": bool(state.censor_on), "style": str(state.censor_style or "pixel"),
                        "boxes": [[round(float(v), 5) for v in b] for b in state.boxes]},
-            "extra": dict(extra or {}), **_short_field(state), **_music_field(state)}
+            "extra": dict(extra or {}), **_short_field(state), **_music_field(state),
+            **_sources_field(state)}
 
 
 def _short_field(state) -> dict:
@@ -69,6 +72,13 @@ def _music_field(state) -> dict:
     return {"music": d} if d else {}
 
 
+def _sources_field(state) -> dict:
+    """1.22: {"sources": [paths]} only for a montage – the files Part.src / Shape.src point at (in the content: the
+    clips mean nothing without them); a single recording keeps the content (and hash) of 1.21."""
+    srcs = [str(s) for s in getattr(state, "sources", None) or []]
+    return {"sources": srcs} if srcs else {}
+
+
 def _part_row(p) -> list:
     """[start, end, speed] – 1.19: plus a dict of the clip's effects when it has any."""
     row = [round(float(p.start), 3), round(float(p.end), 3), float(p.speed)]
@@ -81,6 +91,8 @@ def _part_row(p) -> list:
         fx["reverse"] = True
     if getattr(p, "hold", 0.0) > 0:
         fx["hold"] = round(float(p.hold), 3)
+    if getattr(p, "src", 0):
+        fx["src"] = int(p.src)                     # 1.22: a montage clip from another recording
     return row + [fx] if fx else row
 
 
@@ -152,7 +164,8 @@ VERSION2 = 2
 VERSION3 = 3                      # 1.19: clips carry effects (colour, zoom, backwards, stills) – 1.18.1 opens these
 VERSION4 = 4                      # 1.20: the short (layout, title, subtitles) – 1.19 opens these read-only
 VERSION5 = 5                      # 1.21: the own audio track A2 (music, ducking, fades) – 1.20 opens these read-only
-CURRENT = VERSION5                # read-only ("aus neuerer Version") instead of saving the effects away
+VERSION6 = 6                      # 1.22: montages (clips of several recordings) – 1.21 opens these read-only
+CURRENT = VERSION6                # read-only ("aus neuerer Version") instead of saving the effects away
 ID_SHOWN = 10                     # hex digits of the project id in the file name
 STEM_MAX = 80
 QFP_BYTES = 1 << 20               # quick fingerprint: size + first and last MiB (preselection only, never proof)
@@ -182,6 +195,20 @@ def file_name2(source: str, pid: str) -> str:
     """``<recording>--<id10>.fogscout-project.json`` – two recordings of the same name never share a file."""
     stem = os.path.splitext(os.path.basename(source))[0]
     return f"{clean_stem(stem)}--{str(pid)[:ID_SHOWN]}{EXT}"
+
+
+def file_name_montage(name: str, pid: str) -> str:
+    """1.22: ``<montage name>--<id10>.fogscout-project.json`` in MONTAGE_DIR."""
+    return f"{clean_stem(name or 'Montage')}--{str(pid)[:ID_SHOWN]}{EXT}"
+
+
+def montage_sources(d) -> list:
+    """1.22: the recordings of a montage's data (paths; [] for a project of one recording)."""
+    raw = d.get("sources") if isinstance(d, dict) else None
+    if not isinstance(raw, list):
+        return []
+    out = [s for s in raw[:MAX_SOURCES] if isinstance(s, str) and s]
+    return out if len(out) == len(raw[:MAX_SOURCES]) else []
 
 
 def content_dict(state: EditState, extra: dict | None = None) -> dict:
@@ -243,16 +270,29 @@ def _speed(v) -> float:
     return min(SPEEDS, key=lambda s: abs(s - f))
 
 
-def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict | None, list] | None:
+def validate(d, duration: float, default_parts, durations=None) -> tuple[EditState, dict, dict | None, list] | None:
     """Fassung 6, 4.6: (state, extra, view, notes) from project data of format 1 or 2, field by field – a broken
     field never takes the rest with it and never leaves a reference that points nowhere. Clips outside the recording,
     empty, of unknown tempo or of the wrong type drop out; none left → ``default_parts`` (note "parts"). Drawing
     times are seconds of the recording: clamped, never dropped for lying outside a clip. None only for data that is
-    not a project of ours."""
+    not a project of ours. 1.22: a montage's clips and drawings point at its ``sources`` (``durations`` = the length
+    of each, 0 = unknown): each is held to its own recording, one pointing at no recording drops out."""
     if not isinstance(d, dict) or d.get("format") != FORMAT:
         return None
     notes = []
     dur = _finite(duration) or 0.0
+    sources = montage_sources(d)
+    lengths = [(_finite(x) or 0.0) for x in (durations or [])] if sources else []
+    lengths += [0.0] * (len(sources) - len(lengths))
+    if sources:
+        lengths[0] = lengths[0] or dur
+
+    def src_of(v) -> int | None:
+        if not sources:
+            return 0 if v in (None, 0) else None
+        if v is None:
+            return 0
+        return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < len(sources) else None
     parts = []
     raw_parts = d.get("parts") if isinstance(d.get("parts"), list) else []
     for raw in raw_parts[:MAX_PARTS]:
@@ -261,19 +301,23 @@ def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict |
         s, e = _finite(raw[0]), _finite(raw[1])
         if s is None or e is None:
             continue
-        s, e = max(0.0, s), (min(e, dur) if dur > 0 else e)
         fx = raw[3] if len(raw) > 3 and isinstance(raw[3], dict) else {}       # 1.19: the clip's effects
+        src = src_of(fx.get("src"))
+        if src is None:                                # 1.22: a clip of no recording of this montage
+            continue
+        pdur = lengths[src] if sources else dur
+        s, e = max(0.0, s), (min(e, pdur) if pdur > 0 else e)
         hold = _finite(fx.get("hold")) or 0.0
         color = clipedit.clean_color(fx.get("color")) if fx.get("color") is not None else None
         zoom = clipedit.clean_zoom(fx.get("zoom")) if fx.get("zoom") is not None else None
         if hold > 0:                                   # a still: its picture inside the recording
-            if dur > 0:
-                s = min(s, max(0.0, dur - clipedit.HOLD_READ_S))
+            if pdur > 0:
+                s = min(s, max(0.0, pdur - clipedit.HOLD_READ_S))
             hold = min(max(hold, 0.1), clipedit.HOLD_MAX_S)
-            parts.append(Part(s, s, 1.0, color=color, zoom=zoom, hold=hold))
+            parts.append(Part(s, s, 1.0, color=color, zoom=zoom, hold=hold, src=src))
         elif e - s >= 0.1 - 1e-9:
             parts.append(Part(s, e, _speed(raw[2]) if len(raw) > 2 else 1.0, color=color, zoom=zoom,
-                              reverse=fx.get("reverse") is True))
+                              reverse=fx.get("reverse") is True, src=src))
     if not parts:
         parts = [replace(p) for p in default_parts]
         notes.append("parts")
@@ -282,11 +326,16 @@ def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict |
         s = annotate.from_dict(raw) if isinstance(raw, dict) else None
         if s is None:
             continue
+        ssrc = src_of(s.src)
+        if ssrc is None:                               # 1.22: drawn on no recording of this montage
+            continue
+        s.src = ssrc
+        sdur = lengths[ssrc] if sources else dur
         t0, t1 = _finite(s.t0) if s.t0 is not None else None, _finite(s.t1) if s.t1 is not None else None
         if t0 is not None:
-            t0 = min(max(0.0, t0), dur) if dur > 0 else max(0.0, t0)
+            t0 = min(max(0.0, t0), sdur) if sdur > 0 else max(0.0, t0)
         if t1 is not None:
-            t1 = min(max(0.0, t1), dur) if dur > 0 else max(0.0, t1)
+            t1 = min(max(0.0, t1), sdur) if sdur > 0 else max(0.0, t1)
         if t0 is not None and t1 is not None and t0 > t1:
             t0 = t1 = None
         s.t0, s.t1 = t0, t1
@@ -305,7 +354,7 @@ def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict |
     state = EditState(parts, tuple(crop) if crop else None, str(d.get("crop_key") or ("free" if crop else "none")),
                       shapes, fades[0], fades[1], boxes, bool(censor.get("on")),
                       style if style in ("pixel", "blur", "black", "retouch") else "pixel",
-                      shorts.from_dict(d.get("short")), musictrack.from_dict(d.get("music")))
+                      shorts.from_dict(d.get("short")), musictrack.from_dict(d.get("music")), list(sources))
     extra = dict(d.get("extra")) if isinstance(d.get("extra"), dict) else {}
     extra.setdefault("name", str(d.get("name") or ""))
     view = None
@@ -313,7 +362,7 @@ def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict |
     if raw_view:
         pos, span, off = (_finite(raw_view.get(k)) for k in ("pos", "span", "offset"))
         if pos is not None and span is not None and off is not None and span > 0 \
-                and (dur <= 0 or span <= dur + VIEW_PAD_S):
+                and (dur <= 0 or span <= (max(dur, total) if sources else dur) + VIEW_PAD_S):
             view = {"pos": min(max(0.0, pos), total), "span": span, "offset": max(0.0, off)}
     return state, extra, view, notes
 

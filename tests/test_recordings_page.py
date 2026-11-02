@@ -644,3 +644,57 @@ def test_the_app_opens_the_new_editor_with_a_library_and_replaces_a_pristine_one
             w.close()
     finally:
         app.quit()
+
+
+def test_marked_rounds_open_as_one_montage_listed_in_the_library(app_root, tmp_path, monkeypatch):
+    """1.22 (user: „Mehrere Aufnahmen“ → Montage): two marked rounds → „Als Montage öffnen …“ makes one new montage,
+    oldest first, one clip around each F8 mark; it is saved under Clips/Montagen, the library lists it and opening
+    it there brings up the window open on it."""
+    import subprocess
+    import time
+    from fogscout import obsrec, project
+    from PySide6.QtWidgets import QApplication
+    FF = obsrec.ffmpeg_exe()
+    if FF is None:
+        pytest.skip("imageio-ffmpeg not installed")
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    folder = app.recorder.folder()
+    t = time.mktime((2026, 11, 2, 21, 0, 0, 0, 0, -1))
+    try:
+        recs = []
+        for k, name in enumerate(("2026-11-02 21-00 Coal Tower – Nurse.mkv", "2026-11-02 21-30 Ormond – Wraith.mkv")):
+            path = os.path.join(folder, name)
+            subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                            "testsrc=duration=40:size=320x180:rate=30", "-c:v", "libx264", "-preset", "ultrafast",
+                            "-pix_fmt", "yuv420p", path], check=True, timeout=120)
+            recs.append(obsrec.Recording(t=t + 1800 * k, file=name, label=name[17:-4], role="killer", end=t + 1800 * k + 40,
+                                         size=1000, marks=[25.0] if k == 0 else []))
+        obsrec.save_index(folder, recs)
+        app._rec_render(force=True)
+        rows = app.rec_table.get_children()
+        assert len(rows) == 2
+        app.rec_table.selection_set(rows)
+        items = app._rec_menu_items()
+        assert [i[0] for i in items if i] == ["montage"]
+        app._rec_menu_act("montage")
+        win = app._clip_windows[-1]
+        end = time.time() + 60
+        while time.time() < end and len(getattr(win, "parts", [])) < 2:
+            QApplication.instance().processEvents()
+            time.sleep(0.01)
+        assert win._montage and [os.path.basename(p) for p in win.sources] == [r.file for r in recs]
+        assert [(p.src, p.start, p.end) for p in win.parts] == [(0, 5.0, 35.0), (1, 0.0, pytest.approx(40.0, abs=0.2))]
+        mdir = os.path.join(folder, obsrec.CLIPS_DIR, project.MONTAGE_DIR)
+        while time.time() < end and not (os.path.isdir(mdir) and os.listdir(mdir)):
+            QApplication.instance().processEvents()
+            time.sleep(0.01)
+        lib = [it for it in app._media_items() if it.kind == "montage"]
+        assert len(lib) == 1 and lib[0].recordings == 2 and lib[0].seconds == pytest.approx(70.0, abs=0.5)
+        assert app._editor_for(win.path) is None                          # the round's own editor is another one
+        app._editor_open(lib[0])
+        assert app._clip_windows[-1] is win                               # open already: that window comes up
+        for w in list(app._clip_windows):
+            w._closing_asked = True
+            w.close()
+    finally:
+        app.quit()

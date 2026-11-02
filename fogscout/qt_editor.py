@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCh
 
 from . import annotate, clipedit, imageedit, medialib, obsrec, project, qt_icons, qt_theme, sequence
 from .i18n import N_, _
+from .editormontage import MontageMixin
 from .editormusic import MusicMixin
 from .editorproject import ProjectMixin
 from .qt_clip import (CENSOR_LABELS, CONTENT_LABEL, CROP_LABELS, DRAW_TOOLS, MARK_AFTER_S, MARK_BEFORE_S, SHOW_FOR,
@@ -251,7 +252,7 @@ class Section(QFrame):
         return r
 
 
-class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
+class EditorWindow(MontageMixin, MusicMixin, ProjectMixin, ClipBase):
     """The full editor – see the module's docstring. ``media`` = the App's list of MediaItems for the library
     (callable), ``on_open(item, window)`` = the App opens another recording (a new window; ``window`` = this one, to
     be replaced when nothing was edited here), ``cache_dir`` = where the library's pictures are kept,
@@ -260,8 +261,9 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
 
     def __init__(self, path: str, marks: list, clips_dir: str, mode: str = "copy", sound: bool = True, media=None,
                  on_open=None, cache_dir: str | None = None, layout: dict | None = None, registry=None,
-                 autosave: bool = True, round_t=None, **kw):
+                 autosave: bool = True, round_t=None, montage_file: str | None = None, montage_new=None, **kw):
         self._project_init(registry, autosave, round_t)
+        self._montage_init(path, montage_file, montage_new)  # 1.22: a montage of several recordings
         self.media, self.on_open, self.cache_dir = media, on_open, cache_dir
         self._layout = dict(layout or {})
         self.parts = []
@@ -460,7 +462,7 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
             rl.addWidget(b)
         rl.addStretch()
         self.still_btn = self._tool("camera", _("Standbild am Abspielkopf als PNG neben den Clips speichern."),
-                                    lambda: self.save_still(self._src_pos()))
+                                    lambda: self.save_still(self._src_pos(), self._part_now()))
         self.still_btn.setFixedSize(32, 32)
         rl.addWidget(self.still_btn)
         row.addWidget(rail)
@@ -473,6 +475,7 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         self.preview.shapes_changed.connect(self._shapes_changed)
         self.preview.shape_picked.connect(self._draw_picked)
         self.preview.new_times = self._times_from_here
+        self.preview.new_src = lambda: getattr(self._part_now(), "src", 0)   # 1.22: drawn on that recording
         row.addWidget(self.preview, 1)
         lay.addLayout(row, 1)
         lay.addWidget(self._build_transport(c))
@@ -708,7 +711,7 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         self.zoom_still.blockSignals(True)
         self.zoom_still.setChecked(bool(p.zoom) and p.zoom[0] == p.zoom[1])
         self.zoom_still.blockSignals(False)
-        limit = clipedit.reverse_max_s(self.info)
+        limit = clipedit.reverse_max_s(self._src_info(p))
         too_long = (p.end - p.start) > limit + 1e-6
         self.reverse_box.blockSignals(True)
         self.reverse_box.setChecked(p.reverse)
@@ -762,7 +765,7 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         i, p = self._fx_part()
         if p is None or p.hold > 0:
             return
-        if on and (p.end - p.start) > clipedit.reverse_max_s(self.info) + 1e-6:
+        if on and (p.end - p.start) > clipedit.reverse_max_s(self._src_info(p)) + 1e-6:
             self._fx_show()
             return
         self._fx_set(i, None, reverse=bool(on))
@@ -1068,9 +1071,8 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         self.mark_list.setObjectName("marks")
         self.mark_list.setMaximumHeight(120)
         self.mark_list.setFocusPolicy(Qt.NoFocus)           # the window keeps the keys (arrows seek, M = next mark)
-        for m in self.marks:
-            self.mark_list.addItem(f"⚑  {clipedit.fmt_pos(m)}")
-        self.mark_list.itemClicked.connect(lambda _it: self.goto_src(self._picked_mark()))
+        self._fill_marks()
+        self.mark_list.itemClicked.connect(lambda _it: self._goto_mark(self._picked_mark()))
         self.mark_list.itemDoubleClicked.connect(lambda _it: self.clip_around_mark())
         sec.body.addWidget(self.mark_list)
         row = FlowRow(spacing=6)
@@ -1082,6 +1084,24 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         self.mark_btn = self._btn(row, _("Zur Marke ▸"), self.next_mark, _("Springt zur nächsten F8-Marke (Taste M)."))
         self.mark_btn.setEnabled(bool(self.marks))
         sec.body.addLayout(row)
+
+    def _fill_marks(self):
+        """The marks list: the recording's F8 marks (1.22: a montage's of every recording, with its name)."""
+        self.mark_list.clear()
+        tl = getattr(self, "timeline", None)
+        for s, m in self._mark_rows():
+            name = tl.src_names.get(s, "") if self._montage and tl is not None else ""
+            self.mark_list.addItem(f"⚑  {name + ' · ' if name else ''}{clipedit.fmt_pos(m)}")
+        rows = bool(self._mark_rows())
+        for b in (getattr(self, "around_btn", None), getattr(self, "mark_btn", None)):
+            if b is not None:
+                b.setEnabled(rows)
+        if getattr(self, "around_btn", None) is not None and self._montage:
+            self.around_btn.setEnabled(False)               # it replaces every clip – not in a montage
+
+    def _goto_mark(self, row):
+        if row is not None:
+            self.goto_src(row[1], row[0] if self._montage else None)
 
     def _section_picture(self, sec, mode):
         self.crop_box = self._combo(None, [(k, _(v) if k in ("none", "free", "9:16") else v)
@@ -1396,13 +1416,15 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         self.on_open(item, self if pristine else None)
 
     def _dropped(self, path):
+        """1.22: a recording dropped on V1 joins the timeline (the window becomes a montage); opening one is a
+        double click in the library."""
         item = self.library.item_for(path)
         if item is None and os.path.isfile(path) and medialib.is_video(path):
             item = self.library.add_files([path])
-        if item is None:
+        if item is None or getattr(item, "kind", "") == "montage":
             self.status.setText(_("Keine Videodatei: {file}", file=os.path.basename(path)))
             return
-        self._open_media(item)
+        self._montage_add(item.path, list(getattr(item, "marks", None) or []))
 
     def _show_file(self, path):
         import subprocess
@@ -1453,7 +1475,8 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
                                   [replace(s, pts=list(s.pts)) for s in self.preview.shapes],
                                   float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
                                   [list(b) for b in self.preview.boxes], self._censor_on, self._censor_style,
-                                  self._short.copy() if self._short is not None else None, self._music_state())
+                                  self._short.copy() if self._short is not None else None, self._music_state(),
+                                  list(self.sources) if self._montage else [])
 
     def _apply(self, state: sequence.EditState):
         """Show ``state`` (undo/redo, a loaded project) without writing history."""
@@ -1549,7 +1572,7 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         secs["short"].setVisible(self.mode_box.currentData() == "shorts")     # 1.20
         if secs["short"].isVisibleTo(self):
             self._short_show()
-        secs["marks"].setVisible(bool(self.marks))
+        secs["marks"].setVisible(bool(self._mark_rows()))
         secs["draw"].setVisible(self.mode == "draw")
         secs["censor"].setVisible(self.mode == "censor")
         if sel is not None and sel < len(self.parts):
@@ -1572,7 +1595,8 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         self.tl_delete_btn.setEnabled(sel is not None)
         self.split_btn.setEnabled(bool(self.parts))
         self.tl_split_btn.setEnabled(bool(self.parts))
-        self.save_btn.setEnabled(bool(self.parts) and self.info.ok and not self._exporting())
+        self.save_btn.setEnabled(bool(self.parts) and self.info.ok and not self._exporting()
+                                 and not self._export_blocked())
         self.export_btn.setEnabled(self.save_btn.isEnabled())
 
     def _exporting(self) -> bool:
@@ -1616,6 +1640,11 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
     def _src_pos(self) -> float:
         return sequence.source_at(self.parts, self.pos)[1]
 
+    def _part_now(self):
+        """The clip under the playhead (None without clips)."""
+        i = sequence.source_at(self.parts, self.pos)[0]
+        return self.parts[i] if i is not None else None
+
     def goto(self, t: float):
         """The playhead to output second ``t``: stops a playback, asks for the picture of that moment."""
         if self.playing:
@@ -1625,9 +1654,10 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         self.timeline.set_playhead(self.pos)
         self.timeline.ensure_visible(self.pos)
         i, src = sequence.source_at(self.parts, self.pos)
-        self.preview.set_now(src)
+        part = self.parts[i] if i is not None else None
+        self.preview.set_now(src, getattr(part, "src", 0))
         self._show_pos()
-        self._scrub(src, vf=self._effects_vf(i, src))
+        self._scrub(src, vf=self._effects_vf(i, src), part=part)
 
     def _effects_vf(self, i, src) -> list:
         """1.19: the effects of clip ``i`` on the still at ``src`` – the zoom tool shows the whole picture (its boxes
@@ -1637,26 +1667,27 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         p = self.parts[i]
         if self._zoom_edit is not None:
             p = replace(p, zoom=None)
-        w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
+        w, h = clipedit.scaled(self._src_info(p), clipedit.PREVIEW_H)
         return clipedit.preview_filters(p, w, h, t0=src, still=True) + self._short_vf()
 
-    def goto_src(self, src):
+    def goto_src(self, src, source: int | None = None):
         """The playhead to the output moment at which source second ``src`` plays (the nearest one when the
-        moment is used more than once); a moment outside every clip only shows its picture."""
+        moment is used more than once); a moment outside every clip only shows its picture. 1.22: ``source`` = the
+        montage recording (None: the first one's moment in any)."""
         if src is None:
             return
-        where = sequence.occurrences(self.parts, src)
+        where = sequence.occurrences(self.parts, src, source=source)
         if where:
             self.goto(min(where, key=lambda t: abs(t - self.pos)))
         else:
             self.status.setText(_("{at} liegt in keinem Clip der Zeitleiste.", at=clipedit.fmt_pos(src)))
-            self.preview.set_now(src)
-            self._scrub(src)
+            self.preview.set_now(src, source or 0)
+            self._scrub(src, part=clipedit.Part(src, src, src=source or 0))
 
-    def _scrub_edge(self, src):
+    def _scrub_edge(self, src, source: int = 0):
         """A trimmed edge: show that picture (the playhead stays)."""
-        self.preview.set_now(src)
-        self._scrub(src, quick=True)
+        self.preview.set_now(src, source)
+        self._scrub(src, quick=True, part=clipedit.Part(src, src, src=source))
 
     def _apply_take_over(self, start: float, end: float, pos: float):
         """1.8.8: the compact editor hands over its range and position (source seconds). 1.18.1: called by
@@ -1773,7 +1804,7 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         i, src = self._clip_at_playhead()
         if i is None:
             return
-        self.parts = sequence.trim(self.parts, i, "start", src, self.info.duration)
+        self.parts = sequence.trim(self.parts, i, "start", src, self._src_info(self.parts[i]).duration)
         self.timeline.set_parts(self.parts)
         self._commit()
         self.goto(sequence.starts(self.parts)[i])
@@ -1782,7 +1813,7 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         i, src = self._clip_at_playhead()
         if i is None:
             return
-        self.parts = sequence.trim(self.parts, i, "end", src, self.info.duration)
+        self.parts = sequence.trim(self.parts, i, "end", src, self._src_info(self.parts[i]).duration)
         self.timeline.set_parts(self.parts)
         self._commit()
         self.goto(sequence.starts(self.parts)[i + 1])
@@ -1837,7 +1868,8 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
             self.timeline.set_parts(self.parts)
             self._commit()
         elif ident == "still":
-            self.save_still(sequence.source_at(self.parts, t)[1])
+            k, src = sequence.source_at(self.parts, t)
+            self.save_still(src, self.parts[k] if k is not None else None)
         elif ident == "hold":                                    # 1.19
             self.goto(t)
             self.insert_hold()
@@ -1846,24 +1878,37 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
 
     # ---- marks
     def _picked_mark(self):
-        if not self.marks:
+        """(recording, source second) of the mark picked in the list – else the nearest one of the recording under
+        the playhead."""
+        rows = self._mark_rows()
+        if not rows:
             return None
         row = self.mark_list.currentRow()
-        if 0 <= row < len(self.marks):
-            return self.marks[row]
-        src = self._src_pos()
-        return min(self.marks, key=lambda m: abs(m - src))
+        if 0 <= row < len(rows):
+            return rows[row]
+        src, cur = self._src_pos(), getattr(self._part_now(), "src", 0)
+        return min([r for r in rows if r[0] == cur] or rows, key=lambda r: abs(r[1] - src))
 
     def next_mark(self):
+        if self._montage:                               # 1.22: the next mark on the timeline, of any recording
+            rows = self._mark_rows()
+            times = sorted(t for s, m in rows for t in sequence.occurrences(self.parts, m, source=s))
+            if times:
+                later = [t for t in times if t > self.pos + 0.05]
+                self.goto(later[0] if later else times[0])
+            elif rows:
+                self.goto_src(rows[0][1], rows[0][0])
+            return
         src = self._src_pos()
         later = [m for m in self.marks if m > src + 0.05]
         if later or self.marks:
             self.goto_src(later[0] if later else self.marks[0])
 
     def clip_around_mark(self):
-        m = self._picked_mark()
-        if m is None:
+        row = self._picked_mark()
+        if row is None or self._montage:                # a montage keeps its clips
             return
+        m = row[1]
         self.parts = [clipedit.Part(max(0.0, m - MARK_BEFORE_S), min(self.info.duration, m + MARK_AFTER_S))]
         self.timeline.set_parts(self.parts)
         self._commit()
@@ -1877,7 +1922,8 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
         shapes = [replace(s, pts=list(s.pts)) for s in self.preview.shapes if s.kind != "text" or s.text.strip()]
         return clipedit.Edit([replace(p) for p in self.parts], crop, shapes,
                              float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
-                             self._short.copy() if self._short is not None else None, self._music_state())
+                             self._short.copy() if self._short is not None else None, self._music_state(),
+                             list(self.sources) if self._montage and len(self.sources) > 1 else [])
 
     def _saving(self, on: bool):
         self.busy.setVisible(on)
@@ -1986,7 +2032,8 @@ class EditorWindow(MusicMixin, ProjectMixin, ClipBase):
     def _times_from_here(self):
         dur = self.draw_when_box.currentData()
         t = self._src_pos()
-        return (None, None) if dur is None else (t, min(self.info.duration or t + dur, t + float(dur)))
+        sdur = self._src_info(self._part_now()).duration
+        return (None, None) if dur is None else (t, min(sdur or t + dur, t + float(dur)))
 
     def _draw_when(self, _i):
         sel = self.preview.selected_shape()

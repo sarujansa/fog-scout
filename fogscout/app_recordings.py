@@ -6,6 +6,7 @@ deleted only when they are named in it.
 Mixin of App (app.py) – uses App's attributes; never imports app.py."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
@@ -14,7 +15,8 @@ import threading
 import time
 from types import SimpleNamespace
 
-from . import encoders, history, obsrec, steamshots, uimodel as ui
+from . import encoders, history, obsrec, project, steamshots, uimodel as ui
+from .medialib import montage_items
 from .app_stats import STATS_PERIODS
 from .capture import IS_WIN
 from .i18n import N_, _
@@ -238,7 +240,8 @@ class RecordingsTab:
         cols = (("when", _("Wann"), 100, "w"), ("map", _("Map"), 130, "w"), ("role", _("Rolle/Killer"), 110, "w"),
                 ("res", _("Ergebnis"), 65, "w"), ("dur", _("Dauer"), 55, "e"), ("size", _("Grösse"), 65, "e"),
                 ("status", _("Status"), 70, "w"), ("file", _("Datei"), 110, "w"))
-        self.rec_table = ui.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=12, selectmode="browse")
+        self.rec_table = ui.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=12,
+                                     selectmode="extended")              # 1.22: several rows → „Als Montage öffnen“
         for key, title, width, anchor in cols:
             self.rec_table.heading(key, text=title, anchor=anchor)
             self.rec_table.column(key, width=width, anchor=anchor, stretch=key == "map")
@@ -334,7 +337,7 @@ class RecordingsTab:
                 ("kind", _("Art"), 85, "w"), ("dur", _("Länge"), 55, "e"), ("size", _("Grösse"), 65, "e"),
                 ("status", _("Status"), 60, "w"), ("file", _("Datei"), 140, "w"))
         self.clip_table = ui.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=12,
-                                      selectmode="browse")
+                                      selectmode="extended")             # 1.22: several rows → „Als Montage öffnen“
         for key, title, width, anchor in cols:
             self.clip_table.heading(key, text=title, anchor=anchor)
             self.clip_table.column(key, width=width, anchor=anchor, stretch=key == "map")
@@ -843,6 +846,8 @@ class RecordingsTab:
     def _clip_menu_items(self):
         if self._clip_selected() is None:
             return []
+        if len(self._clips_selected()) > 1:                                     # 1.22
+            return [("montage", _("Als Montage öffnen …"), True)]
         c = self._clip_selected()
         items = [("play", _("Abspielen"), True), ("edit", _("Im Editor öffnen …"), True),   # a still: picture editor
                  ("explorer", _("Im Explorer zeigen"), True), ("copy", _("Datei kopieren (zum Einfügen)"), True),
@@ -856,6 +861,7 @@ class RecordingsTab:
     def _clip_menu_act(self, ident):
         c = self._clip_selected()
         act = {"play": self._clip_play, "edit": self._clip_edit, "explorer": self._clip_explorer,
+               "montage": self._clips_montage,
                "copy": self._clip_copy, "round": self._clip_round_show, "delete": self._clip_delete,
                "youtube": self._clip_youtube,
                "yt_link": lambda: self._yt_copy_link(c.yt) if c is not None and c.yt else None,
@@ -1041,6 +1047,42 @@ class RecordingsTab:
         sel = self.rec_table.selection()
         return self._rec_rows.get(sel[0]) if sel else None
 
+    def _recs_selected(self) -> list:
+        """1.22: every marked recording."""
+        return [r for r in (self._rec_rows.get(k) for k in self.rec_table.selection()) if r is not None]
+
+    def _clips_selected(self) -> list:
+        return [c for c in (self._clip_rows.get(k) for k in self.clip_table.selection()) if c is not None]
+
+    def _recs_montage(self):
+        """1.22 (user: „Mehrere Aufnahmen“): the marked recordings as one new montage, oldest first – one clip
+        around each F8 mark, a recording without marks whole."""
+        files = []
+        for r in sorted(self._recs_selected(), key=lambda x: x.t):
+            path = self._rec_editable(r)
+            if path is not None:
+                files.append((path, list(r.marks or ()), r))
+        self._montage_new(files)
+
+    def _clips_montage(self):
+        recs = obsrec.load_index(self.recorder.folder()) if self.recorder.folder() else []
+        files = []
+        for c in sorted(self._clips_selected(), key=lambda x: x.t):
+            if c.kind == "still":
+                continue
+            path = self._clip_editable(c)
+            if path is not None:
+                files.append((path, [], clip_round(c, recs)))
+        self._montage_new(files)
+
+    def _montage_new(self, files):
+        if len(files) < 2:
+            self._log(_("Für eine Montage mindestens zwei Videos markieren."), "System")
+            return
+        path, _marks, r = files[0]
+        win = self._clip_window(r, path, montage_new=[(p, m) for p, m, _r in files[1:]])
+        self._editor_show(win)
+
     def _rec_buttons(self):
         r = self._rec_selected()
         state = "normal" if r is not None else "disabled"
@@ -1072,6 +1114,8 @@ class RecordingsTab:
         r = self._rec_selected()
         if r is None:
             return []
+        if len(self._recs_selected()) > 1:                                      # 1.22
+            return [("montage", _("Als Montage öffnen …"), True)]
         items = [("play", _("Abspielen"), True), ("clip", _("Clip bearbeiten …"), True),
                  ("explorer", _("Im Explorer zeigen"), True), ("copy", _("Datei kopieren (zum Einfügen)"), True), None,
                  ("keep", _("Behalten"), True, bool(r.keep)), ("farming", _("Farming-Runde"), True, bool(r.farming)),
@@ -1085,6 +1129,7 @@ class RecordingsTab:
     def _rec_menu_act(self, ident):
         r = self._rec_selected()
         act = {"play": self._rec_play, "clip": self._rec_clip, "explorer": self._rec_explorer,
+               "montage": self._recs_montage,
                "copy": self._rec_copy, "keep": self._rec_keep, "farming": self._rec_farming,
                "delete": self._rec_delete, "youtube": self._rec_youtube,
                "yt_link": lambda: self._yt_copy_link(r.yt) if r is not None and r.yt else None,
@@ -1258,8 +1303,23 @@ class RecordingsTab:
         self._clip_windows_prune()
         for w in self._clip_windows:
             try:
-                if not getattr(w, "compact", True) and not w._closed \
+                if not getattr(w, "compact", True) and not w._closed and not getattr(w, "_montage", False) \
                         and os.path.normcase(os.path.abspath(w.path)) == key:
+                    return w
+            except RuntimeError:
+                continue
+        return None
+
+    def _montage_window(self, project_file):
+        """1.22: the montage window already open on ``project_file``."""
+        key = os.path.normcase(os.path.abspath(project_file))
+        self._clip_windows_prune()
+        for w in self._clip_windows:
+            try:
+                slot = getattr(w, "_slot", None)
+                mine = getattr(w, "_montage_file", None) or (slot.path if slot is not None else "")
+                if getattr(w, "_montage", False) and not w._closed and mine \
+                        and os.path.normcase(os.path.abspath(mine)) == key:
                     return w
             except RuntimeError:
                 continue
@@ -1311,6 +1371,7 @@ class RecordingsTab:
                 continue
             out.append(MediaItem(os.path.join(cdir, c.file), os.path.splitext(c.file)[0], "clip", c.t, c.seconds,
                                  c.size, [], None, c.label, c.role, c.killer, c.source))
+        out += montage_items(os.path.join(cdir, project.MONTAGE_DIR))       # 1.22
         return out
 
     def _editor_open(self, item, replacing=None):
@@ -1325,6 +1386,9 @@ class RecordingsTab:
             c = next((x for x in obsrec.list_clips(obsrec.clips_dir(folder), recs) if
                       os.path.normcase(os.path.join(obsrec.clips_dir(folder), x.file)) == os.path.normcase(item.path)), None)
             r = clip_round(c, recs) if c is not None else None
+        if item.kind == "montage":                                 # 1.22: a montage project
+            self._montage_open(item.path, replacing)
+            return
         if r is None:                                              # an imported file: no round behind it
             r = SimpleNamespace(t=0.0, marks=list(item.marks or ()), extra={}, map_id="", label=item.name, role="",
                                 killer="", farming=False)
@@ -1338,6 +1402,27 @@ class RecordingsTab:
             self._editor_show(found)
             return
         win = self._clip_window(r, item.path)
+        self._editor_show(win, replacing)
+
+    def _montage_open(self, project_file, replacing=None):
+        found = self._montage_window(project_file)
+        if found is not None:
+            if replacing is not None and replacing is not found:
+                replacing.close()
+            self._editor_show(found)
+            return
+        try:
+            with open(project_file, encoding="utf-8") as fh:
+                srcs = project.montage_sources(json.load(fh))
+        except (OSError, ValueError):
+            srcs = []
+        if not srcs or not os.path.exists(srcs[0]) or obsrec.ffmpeg_exe() is None:
+            self._log(_("Montage nicht zu öffnen – ihre erste Aufnahme fehlt: {file}",
+                        file=os.path.basename(srcs[0]) if srcs else os.path.basename(project_file)), "Fehler")
+            return
+        r = SimpleNamespace(t=0.0, marks=[], extra={}, map_id="", label=os.path.basename(project_file), role="",
+                            killer="", farming=False)
+        win = self._clip_window(r, srcs[0], montage_file=project_file)
         self._editor_show(win, replacing)
 
     def _rec_editable(self, r, quiet=False):

@@ -117,7 +117,8 @@ class _Bridge:
              "wave",         # 1.16: the loudness along the recording (clipedit.waveform) for the audio track
              "project",      # 1.18.1: the recording's identity and the project files found (editorproject)
              "hash",         # 1.18.1: the full SHA-256 of the recording (filehash.Hasher: done/progress/…)
-             "music")        # 1.21: a file for the own audio track measured (path, output second or None, seconds)
+             "music",        # 1.21: a file for the own audio track measured (path, output second or None, seconds)
+             "montage")      # 1.22: a montage's recordings (kind, …): added, opened, thumb, wave, hash
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
 
@@ -471,6 +472,8 @@ class PreviewView(QWidget):
                     "text": ""}
         self.now = None                   # seconds of the recording on display: drawings of other times hide
         self.new_times = lambda: (None, None)   # (t0, t1) a new drawing gets (the clip editor: from the playhead)
+        self.new_src = lambda: 0                # 1.22: the montage recording a new drawing belongs to
+        self.now_src = 0                        # 1.22: the recording shown (drawings of others stay hidden)
         self._layer = None                # (key, QImage) of the drawings at the drawn size
         self.source_size = None           # (w, h) of the real picture when the frame is a smaller copy of it
         self.plain = False                # 1.16: the editor's viewer – a flat dark area instead of the card frame
@@ -610,9 +613,9 @@ class PreviewView(QWidget):
         self.setCursor(Qt.CrossCursor if kind else Qt.ArrowCursor)
         self.update()
 
-    def set_now(self, t):
-        if t != self.now:
-            self.now = t
+    def set_now(self, t, src: int = 0):
+        if t != self.now or src != self.now_src:
+            self.now, self.now_src = t, src
             self.update()
 
     def selected_shape(self):
@@ -643,7 +646,7 @@ class PreviewView(QWidget):
                 and self.shape_sel is not None and 0 <= self.shape_sel < len(shapes):
             shapes = list(shapes)                             # 1.18: the drawing as it is being moved
             shapes[self.shape_sel] = self._drag[3]
-        shown = [s for s in shapes if self.now is None or s.shown_at(self.now)]
+        shown = [s for s in shapes if (self.now is None or s.shown_at(self.now)) and s.src == self.now_src]
         drawing = getattr(self, "_preview_new", None)
         return shown + [drawing] if drawing is not None else shown
 
@@ -917,6 +920,7 @@ class PreviewView(QWidget):
     def _new_shape(self, shape):
         if shape.t0 is None and shape.t1 is None:
             shape.t0, shape.t1 = self.new_times()
+        shape.src = self.new_src()
         self.shapes.append(shape)
         self.shape_sel = len(self.shapes) - 1
         self._layer = None
@@ -1607,10 +1611,19 @@ class ClipBase(QWidget):
     def _extra_threads(self):
         """A subclass starts what else it needs (the editor: the waveform)."""
 
-    def _scrub(self, t: float, quick: bool | None = None, vf=None):
-        """Ask the scrub thread for the picture at source second ``t`` (1.19: ``vf`` = the clip's effects)."""
+    def _src_path(self, part=None) -> str:
+        """1.22: the recording ``part`` comes from (a montage has several; here always the one)."""
+        return self.path
+
+    def _src_info(self, part=None):
+        return self.info
+
+    def _scrub(self, t: float, quick: bool | None = None, vf=None, part=None):
+        """Ask the scrub thread for the picture at source second ``t`` (1.19: ``vf`` = the clip's effects; 1.22:
+        of ``part``'s recording)."""
         with self._scrub_lock:
-            self._want = (t, self._first_look if quick is None else quick, tuple(vf or ()), self._play_size())
+            self._want = (t, self._first_look if quick is None else quick, tuple(vf or ()), self._play_size(),
+                          self._src_path(part), self._src_info(part))
             self._first_look = False
             self._scrub_lock.notify()
 
@@ -1622,16 +1635,16 @@ class ClipBase(QWidget):
                 want, self._want = self._want, None
             if want is None:
                 continue
-            t, quick, vf, size = want
+            t, quick, vf, size, path, info = want
             if quick:                                   # 1.8.3: the key frame at once (~40 ms), the exact frame after
-                img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, keyframe=True, vf=vf,
+                img = clipedit.frame_at(path, t, clipedit.PREVIEW_H, info, self.ffmpeg, keyframe=True, vf=vf,
                                         size=size)
                 if img is not None and not self._closed:
                     self.bridge.frame.emit(t, img)
                 with self._scrub_lock:
                     if self._want is not None:          # a newer wish meanwhile: that one, not this exact frame
                         continue
-            img = clipedit.frame_at(self.path, t, clipedit.PREVIEW_H, self.info, self.ffmpeg, vf=vf, size=size)
+            img = clipedit.frame_at(path, t, clipedit.PREVIEW_H, info, self.ffmpeg, vf=vf, size=size)
             if img is not None and not self._closed:
                 self.bridge.frame.emit(t, img)
 
@@ -1714,7 +1727,8 @@ class ClipBase(QWidget):
     def _show_played(self, t, img):
         if self.playing:
             self._played_at(t)
-            self.preview.set_now(self._seg_source(t))
+            part = seg_part(self._seg) if self._seg is not None else None
+            self.preview.set_now(self._seg_source(t), getattr(part, "src", 0))
             self._show_pos()
             self._paint(img)
 
@@ -1751,9 +1765,10 @@ class ClipBase(QWidget):
             return
         back = bool(part is not None and part.reverse)
         if self._sound_wanted():
-            mix, n, vol, music = self.mix(), self.info.audio_tracks, self._volume, self._play_music(seg)
+            mix, n, vol, music = self.mix(), self._src_info(part).audio_tracks, self._volume, self._play_music(seg)
+            path = self._src_path(part)
             threading.Thread(target=lambda: self.bridge.sound.emit(
-                clipedit.sound_wav(self.path, start, end, self.ffmpeg, mix=mix, n_tracks=n, speed=speed, volume=vol,
+                clipedit.sound_wav(path, start, end, self.ffmpeg, mix=mix, n_tracks=n, speed=speed, volume=vol,
                                    reverse=back, music=music), start), name="clip-sound", daemon=True).start()
         else:
             self._run_player(seg)
@@ -1763,7 +1778,7 @@ class ClipBase(QWidget):
         editor adds the short's canvas)."""
         if part is None:
             return []
-        w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
+        w, h = clipedit.scaled(self._src_info(part), clipedit.PREVIEW_H)
         return clipedit.preview_filters(part, w, h, t0=t0, still=still)
 
     def _play_size(self):
@@ -1793,7 +1808,8 @@ class ClipBase(QWidget):
         holder = _Hold(self, left)
         self.player = holder
         vf = self._play_vf(part, start, still=True)
-        path, info, ffmpeg, b, size = self.path, self.info, self.ffmpeg, self.bridge, self._play_size()
+        path, info, ffmpeg, b, size = self._src_path(part), self._src_info(part), self.ffmpeg, self.bridge, \
+            self._play_size()
 
         def still():
             img = clipedit.frame_at(path, start, clipedit.PREVIEW_H, info, ffmpeg, vf=vf, size=size)
@@ -1821,7 +1837,8 @@ class ClipBase(QWidget):
         start, end, speed, _out = seg[:4]
         part = seg_part(seg)
         vf = self._play_vf(part, start)
-        self.player = clipedit.FramePlayer(self.path, start, self.info, lambda t, img: b.played.emit(t, img),
+        self.player = clipedit.FramePlayer(self._src_path(part), start, self._src_info(part),
+                                           lambda t, img: b.played.emit(t, img),
                                            lambda: b.ended.emit(self.player), end=end, ffmpeg=self.ffmpeg,
                                            speed=speed, vf=vf, reverse=bool(part is not None and part.reverse),
                                            size=self._play_size())
@@ -1998,21 +2015,23 @@ class ClipBase(QWidget):
     def _saving(self, on: bool):
         """A save started / ended: the subclass may show it (the editor's top bar)."""
 
-    def save_still(self, t):
+    def save_still(self, t, part=None):
         """1.8.10: the picture at source second ``t`` in full size as PNG next to the clips (Clips/<round> – Bild
-        m:ss.png). 1.12.7: cut like the clip when a crop is chosen – "Ohne schwarze Ränder" kept the borders."""
+        m:ss.png). 1.12.7: cut like the clip when a crop is chosen – "Ohne schwarze Ränder" kept the borders. 1.22:
+        of ``part``'s recording (a montage)."""
         if not self.info.ok or not self.ffmpeg:
             return
         crop = self.edit_plan().crop
         name = clipedit.NAME_CHARS.sub("", "{} – {} {}".format(
-            os.path.splitext(os.path.basename(self.path))[0], _("Bild"), clipedit.fmt_pos(t).replace(":", "-")))
+            os.path.splitext(os.path.basename(self._src_path(part)))[0], _("Bild"),
+            clipedit.fmt_pos(t).replace(":", "-")))
         try:
             os.makedirs(self.clips_dir, exist_ok=True)
         except OSError as e:
             self.status.setText(_("Clips-Ordner nicht anlegbar: {error}", error=e))
             return
         out = clipedit.unique_path(self.clips_dir, name, ".png")
-        path, info, ffmpeg, b = self.path, self.info, self.ffmpeg, self.bridge
+        path, info, ffmpeg, b = self._src_path(part), self._src_info(part), self.ffmpeg, self.bridge
         job = _SaveJob(self, out)
 
         def work():
