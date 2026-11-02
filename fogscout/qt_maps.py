@@ -218,10 +218,31 @@ class MapsPage(QWidget):
         steady_scroll(grid_page)
         inner = QWidget()
         inner.setObjectName("page")
-        self.grid_lay = QVBoxLayout(inner)
-        self.grid_lay.setContentsMargins(0, 0, 4, 0)
+        wrap = QVBoxLayout(inner)
+        wrap.setContentsMargins(0, 0, 4, 0)
+        wrap.setSpacing(0)
+        # 1.24.1 (phase 2): a search without a hit says so and offers the way back – not an empty grid
+        self.no_hits = QWidget()
+        nh = QVBoxLayout(self.no_hits)
+        nh.setContentsMargins(0, 8, 0, 8)
+        nh.setSpacing(8)
+        self.no_hits_text = _label("", wrap=True)
+        nh.addWidget(self.no_hits_text)
+        nh_row = QHBoxLayout()
+        self.no_hits_clear = QPushButton(_("Suche leeren"))
+        set_glyph(self.no_hits_clear, "close")
+        self.no_hits_clear.setToolTip(_tip("Suche leeren"))
+        self.no_hits_clear.clicked.connect(self.clear_search)
+        nh_row.addWidget(self.no_hits_clear)
+        nh_row.addStretch()
+        nh.addLayout(nh_row)
+        self.no_hits.setVisible(False)
+        wrap.addWidget(self.no_hits)
+        self.grid_lay = QVBoxLayout()
+        self.grid_lay.setContentsMargins(0, 0, 0, 0)
         self.grid_lay.setSpacing(10)
         self.grid_lay.addStretch()
+        wrap.addLayout(self.grid_lay, 1)
         grid_page.setWidget(inner)
         self.grid_scroll = grid_page
         self.stack.addWidget(grid_page)
@@ -294,6 +315,11 @@ class MapsPage(QWidget):
     # ------------------------------------------------------------------ list of realms
     def _searched(self, text):
         self._post("search", text)
+
+    def clear_search(self):
+        """1.24.1: "Suche leeren" – the same as the field's own clear button (textChanged posts the search)."""
+        self.search.clear()
+        self.search.setFocus(Qt.OtherFocusReason)
 
     def _fill_realms(self):
         counts = {}
@@ -455,6 +481,12 @@ class MapsPage(QWidget):
             or (self._recent_flow is not None and self._recent_head.isHidden() == recent_mode)
         if changes:                                   # a refresh that changes nothing costs nothing
             self._grid_batch(apply)
+        empty = found is not None and bool(self._tiles) and not (found & self._tiles.keys())
+        if empty:
+            _set(self.no_hits_text, _("Keine Map passt zu „{text}“. Gesucht wird in Map- und Realm-Namen aller "
+                                      "Spielsprachen und in Abkürzungen.", text=self.search.text().strip()))
+        if self.no_hits.isHidden() == empty:
+            self.no_hits.setVisible(empty)
         self._mark_current()
         self._request_pictures()
 

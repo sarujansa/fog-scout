@@ -853,8 +853,7 @@ EN = {
     "Starte Erkennung …": "Starting the detection …",
     "Öffne Fenster …": "Opening the window …",
     "Fog Scout ist bereit.": "Fog Scout is ready.",
-    # ------------------------------------------------------------------ 1.14: overview card "Schnell ein/aus"
-    "Schnell ein/aus": "Quick on/off",
+    # ------------------------------------------------------------------ 1.14: overview card "Schnell ein/aus" (1.24.1: "Funktionen")
     "Automatische Erkennung": "Automatic detection",
     "Aufnahmen mit OBS": "Recordings with OBS",
     "Lobby-Meldung": "Lobby notification",
@@ -1253,7 +1252,6 @@ EN = {
     "letzte Runde": "last round",
     "startet": "starting",
     "4K: {n} von {total}": "4K: {n} of {total}",
-    "noch keine Stats-Daten": "no stats page data yet",
     "{n} Survivor-Runden": "{n} survivor rounds",
     "{n} normal": "{n} normal",
     "{n} Farming-Runden · Ø {bp} BP": "{n} farming rounds · avg. {bp} BP",
@@ -1581,7 +1579,6 @@ EN = {
         'The list shows the newest 100 rounds of the selection; every click appends 100 older ones.',
     'Server-Tab öffnen': 'Open the server tab',
     'Match-Daten einrichten …': 'Set up match data …',
-    'Stats-Seite nicht eingerichtet': 'Stats page not set up',          # 1.8.75
     'Noch keine Runden heute': 'No rounds yet today',
     'Stats-Seite': 'Stats page',
     'nicht eingerichtet': 'not set up',
@@ -3170,5 +3167,26 @@ EN = {
     "Was das Programm gemacht hat – zum Nachlesen und für die Fehlersuche":
         "What the program did – to read up on and for troubleshooting",
     "Übersicht öffnen": "Open the overview",
+    # 1.24.1 (phase 2): the overview's card "Funktionen" – what each feature does now
+    "Funktionen": "Features",
+    "aktiv": "active",
+    "wartet auf DBD": "waiting for DBD",
+    "nimmt auf": "recording",
+    "verbunden": "connected",
+    "verbindet …": "connecting …",
+    "startet …": "starting …",
+    "Fehler – Details im Log": "Error – details in the log",
+    "nur unter Windows": "Windows only",
+    "HWiNFO fehlt": "HWiNFO missing",
+    "Mediensteuerung nicht verfügbar": "Media control not available",
+    "Discord nicht erreichbar": "Discord not reachable",
+    "Anmeldung nötig": "Sign-in needed",
+    "keine Client-ID": "no client ID",
+    # 1.24.1: the maps page – a search without a hit
+    "Suche leeren": "Clear search",
+    "Runden · BP/h erst mit Match-Daten": "rounds · BP/h needs the match data",
+    "Keine Map passt zu „{text}“. Gesucht wird in Map- und Realm-Namen aller Spielsprachen und in Abkürzungen.":
+        "No map matches “{text}”. The search looks at map and realm names in every game language and at abbreviations.",
+    "Leert das Suchfeld und zeigt wieder alle Maps.": "Clears the search field and shows all maps again.",
 
 }
