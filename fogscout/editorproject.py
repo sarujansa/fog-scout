@@ -648,9 +648,15 @@ class ProjectMixin:
                 self._manual_seq = None                           # Strg+S is through: say where it went
                 self.status.setText(_("Projekt gespeichert: {file}", file=os.path.basename(slot.path)))
                 self.log(_("Projekt gespeichert: {file}", file=slot.path), "System")
+            elif self._manual_seq and slot.status not in ("saved",) and slot.rescued_seq >= self._manual_seq:
+                self._manual_seq = None                           # Strg+S reached only the local copy
+                self.status.setText(_("⚠ Nicht im Projekt gespeichert – lokal gesichert"))
             word = projectsave.status_of(slot, dirty=self._pdirty, gesture=self._gesture_active())
-            if not self._autosave and word in ("saving",):
-                word = "changed"
+            if not self._autosave and word in ("saving", "saved", "new"):
+                content = project.content_dict(self._state(), self._project_extra())
+                kept = slot.disk_content_hash if slot.has_file else slot.baseline_hash
+                if project.content_hash(content) != kept:
+                    word = "changed"                              # only Strg+S puts it into the project
             text = {
                 "readonly": _("Projekt aus neuerer Version – wird nicht überschrieben"),
                 "ambiguous": _("⚠ Mehrere Projektdateien – Auswahl nötig"),

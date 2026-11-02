@@ -391,12 +391,13 @@ def test_quitting_waits_until_the_editor_states_are_safe_and_never_ends_with_one
         app.quit()
         assert not app._quitting and timers == []                     # phase 1: no watchdog, no os._exit yet
         assert reg.unsecured() and win._closing_asked
-        app._secure_since -= app_mod.__dict__.get("SECURE_ASK_S", 10.0) + 60   # as if it hung for long
         from fogscout import app_recordings
-        app._secure_since = time.monotonic() - app_recordings.SECURE_ASK_S - 1
-        _pump(qapp, lambda: getattr(app, "_qt_question", None) is not None, 10)
+        app._secure_since = time.monotonic() - app_recordings.SECURE_ASK_S - 1     # as if it hung for long
+        assert _pump(qapp, lambda: app.qt.message.isVisible(), 10)
         assert app._qt_question[0] == "Editor-Projekte nicht gesichert" and not app._quitting
-        app._qt_question = None                                       # Cancel: the program runs on
+        app.qt.message.cancel.click()                                 # Cancel: the program runs on
+        assert _pump(qapp, lambda: app._qt_question is None) and not app._quitting
+        assert not app.qt.message.isVisible()
         gate.set()                                                    # the disk is back
         app.quit()                                                    # quitting again: secured, then it ends
         assert _pump(qapp, lambda: app._quitting) and len(timers) == 1
@@ -420,10 +421,9 @@ def test_going_on_without_saving_is_the_users_choice(app_root, clip, tmp_path, m
         _cut(win)
         app.quit()
         app._secure_since = time.monotonic() - app_recordings.SECURE_ASK_S - 1
-        assert _pump(qapp, lambda: getattr(app, "_qt_question", None) is not None, 10)
-        app._confirmed = True                                         # OK: end without those states
-        app._secure_give_up()
-        assert app._quitting
+        assert _pump(qapp, lambda: app.qt.message.isVisible(), 10)
+        app.qt.message.ok.click()                                     # OK: end without those states
+        assert _pump(qapp, lambda: app._quitting) and not app.qt.message.isVisible()
     finally:
         gate.set()
         app.quit()
