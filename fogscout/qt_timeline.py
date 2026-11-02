@@ -63,6 +63,7 @@ class SequenceTimeline(QWidget):
         self.duration = 1.0           # seconds of the recording (the strip's thumbnails span it)
         self.fps = 30.0
         self.marks = []
+        self.subs = []                    # 1.20: (from, to) of the short's subtitles, output seconds
         self.thumbs = {}
         self.n_thumbs = clipedit.THUMBS
         self.view = None              # the game part of each thumbnail (x, y, w, h), None = all of it
@@ -97,6 +98,13 @@ class SequenceTimeline(QWidget):
         self.duration = max(0.1, float(d))
         self.fps = fps or 30.0
         self.update()
+
+    def set_subs(self, subs):
+        """1.20: the short's subtitles as thin bars under the ruler (where they show in the finished clip)."""
+        subs = [(float(a), float(b)) for a, b in subs]
+        if subs != self.subs:
+            self.subs = subs
+            self.update()
 
     def set_marks(self, marks):
         self.marks = sorted(float(m) for m in marks)
@@ -251,7 +259,7 @@ class SequenceTimeline(QWidget):
     # ---- painting
     def _layer_key(self) -> tuple:
         return (self.width(), self.height(), round(self.scale, 6), round(self.offset, 6),
-                tuple(repr(p) for p in self.parts), self.selection, self.hover, len(self.thumbs),
+                tuple(repr(p) for p in self.parts), tuple(self.subs), self.selection, self.hover, len(self.thumbs),
                 len(self.wave), self.view, tuple(self.marks), self.dark, self.devicePixelRatioF(),
                 tuple(sorted(qt_theme.colours(self.dark).items())))   # post-review: a theme change redraws
 
@@ -355,6 +363,13 @@ class SequenceTimeline(QWidget):
                 x = self._x(t)
                 p.drawPolygon(QPolygonF([QPointF(x - 4, RULER_H - 14), QPointF(x + 4, RULER_H - 14),
                                          QPointF(x, RULER_H - 7)]))
+        if self.subs:                                                 # 1.20: the short's subtitles
+            sub = QColor(c["accent"])
+            sub.setAlpha(170)
+            p.setBrush(sub)
+            for a, b in self.subs:
+                xa, xb = self._x(a), self._x(b)
+                p.drawRoundedRect(QRectF(xa, RULER_H - 5, max(2.0, xb - xa), 4), 2, 2)
 
     def _paint_clip(self, p, c, cc, i, part, vrect, arect, faded=False):
         sel = i == self.selection
