@@ -7,8 +7,9 @@ from __future__ import annotations
 import json
 import os
 import time
+from dataclasses import replace
 
-from . import annotate
+from . import annotate, clipedit
 from .clipedit import Part, SPEEDS
 from .sequence import EditState
 
@@ -44,7 +45,7 @@ def to_dict(state: EditState, source: str, name: str, extra: dict | None = None)
     return {"format": FORMAT, "version": VERSION, "saved": time.time(),
             "source": {"file": os.path.basename(source), "size": size},
             "name": str(name or ""),
-            "parts": [[round(float(p.start), 3), round(float(p.end), 3), float(p.speed)] for p in state.parts],
+            "parts": [_part_row(p) for p in state.parts],
             "crop": [round(float(v), 5) for v in state.crop] if state.crop else None,
             "crop_key": str(state.crop_key or "none"),
             "shapes": [annotate.to_dict(s) for s in state.shapes],
@@ -52,6 +53,21 @@ def to_dict(state: EditState, source: str, name: str, extra: dict | None = None)
             "censor": {"on": bool(state.censor_on), "style": str(state.censor_style or "pixel"),
                        "boxes": [[round(float(v), 5) for v in b] for b in state.boxes]},
             "extra": dict(extra or {})}
+
+
+def _part_row(p) -> list:
+    """[start, end, speed] – 1.19: plus a dict of the clip's effects when it has any."""
+    row = [round(float(p.start), 3), round(float(p.end), 3), float(p.speed)]
+    fx = {}
+    if getattr(p, "color", None):
+        fx["color"] = [float(v) for v in p.color]
+    if getattr(p, "zoom", None):
+        fx["zoom"] = [[float(v) for v in b] for b in p.zoom]
+    if getattr(p, "reverse", False):
+        fx["reverse"] = True
+    if getattr(p, "hold", 0.0) > 0:
+        fx["hold"] = round(float(p.hold), 3)
+    return row + [fx] if fx else row
 
 
 def _box(v) -> list | None:
@@ -119,6 +135,8 @@ def load(path: str) -> dict | None:
 # ---- 1.18.1: format 2 (Implementierungsplan Fassung 6, chapter 2 and 4.6) – added beside format 1; the editor keeps
 # saving format 1 until projectsave is wired in. Nothing below writes a file: projectsave does, through fsops.
 VERSION2 = 2
+VERSION3 = 3                      # 1.19: clips carry effects (colour, zoom, backwards, stills) – 1.18.1 opens these
+CURRENT = VERSION3                # read-only ("aus neuerer Version") instead of saving the effects away
 ID_SHOWN = 10                     # hex digits of the project id in the file name
 STEM_MAX = 80
 QFP_BYTES = 1 << 20               # quick fingerprint: size + first and last MiB (preselection only, never proof)
@@ -170,7 +188,7 @@ def content_hash(content: dict) -> str:
 
 def to_dict2(content: dict, pid: str, source: dict, rev: dict, view: dict | None) -> dict:
     """The file's data: the content (``content_dict``) plus id, source identity, revision and view."""
-    d = {"format": FORMAT, "version": VERSION2, "id": str(pid), "saved": time.time(), "rev": dict(rev or {}),
+    d = {"format": FORMAT, "version": CURRENT, "id": str(pid), "saved": time.time(), "rev": dict(rev or {}),
          "source": dict(source or {}), "view": dict(view) if view else None}
     d.update(content)
     return d
@@ -228,10 +246,20 @@ def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict |
         if s is None or e is None:
             continue
         s, e = max(0.0, s), (min(e, dur) if dur > 0 else e)
-        if e - s >= 0.1 - 1e-9:
-            parts.append(Part(s, e, _speed(raw[2]) if len(raw) > 2 else 1.0))
+        fx = raw[3] if len(raw) > 3 and isinstance(raw[3], dict) else {}       # 1.19: the clip's effects
+        hold = _finite(fx.get("hold")) or 0.0
+        color = clipedit.clean_color(fx.get("color")) if fx.get("color") is not None else None
+        zoom = clipedit.clean_zoom(fx.get("zoom")) if fx.get("zoom") is not None else None
+        if hold > 0:                                   # a still: its picture inside the recording
+            if dur > 0:
+                s = min(s, max(0.0, dur - clipedit.HOLD_READ_S))
+            hold = min(max(hold, 0.1), clipedit.HOLD_MAX_S)
+            parts.append(Part(s, s, 1.0, color=color, zoom=zoom, hold=hold))
+        elif e - s >= 0.1 - 1e-9:
+            parts.append(Part(s, e, _speed(raw[2]) if len(raw) > 2 else 1.0, color=color, zoom=zoom,
+                              reverse=fx.get("reverse") is True))
     if not parts:
-        parts = [Part(p.start, p.end, p.speed) for p in default_parts]
+        parts = [replace(p) for p in default_parts]
         notes.append("parts")
     shapes = []
     for raw in list(d.get("shapes") or [])[:MAX_SHAPES] if isinstance(d.get("shapes"), list) else []:
@@ -252,7 +280,7 @@ def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict |
         if isinstance(censor.get("boxes"), list) else []
     style = str(censor.get("style") or "pixel")
     crop = _box(d.get("crop")) if d.get("crop") else None
-    total = sum((p.end - p.start) / p.speed for p in parts)
+    total = sum(clipedit.part_seconds(p) for p in parts)
     fades = []
     for key in ("fade_in", "fade_out"):
         f = _finite(d.get(key)) or 0.0

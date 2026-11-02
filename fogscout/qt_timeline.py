@@ -37,6 +37,15 @@ def _qimage(img) -> QImage:
     return QImage(img.tobytes(), w, h, w * 3, QImage.Format_RGB888).copy()
 
 
+def clip_label(i: int, part) -> str:
+    """The text on a clip's strip: number, where it comes from, tempo – 1.19: a still, backwards, effects."""
+    if part.hold > 0:
+        return _("{n}  Standbild {length} s", n=i + 1, length=f"{part.hold:g}")
+    tempo = "" if abs(part.speed - 1.0) < 1e-6 else f"   ×{part.speed:g}"
+    marks = ("  ◀" if part.reverse else "") + ("  fx" if part.color or part.zoom else "")
+    return f"{i + 1}  {clipedit.fmt_pos(part.start)} – {clipedit.fmt_pos(part.end)}{tempo}{marks}"
+
+
 class SequenceTimeline(QWidget):
     seek = Signal(float)              # the playhead wanted at this output time
     scrubbed = Signal(float)          # show this source second (a trimmed edge) without moving the playhead
@@ -242,7 +251,7 @@ class SequenceTimeline(QWidget):
     # ---- painting
     def _layer_key(self) -> tuple:
         return (self.width(), self.height(), round(self.scale, 6), round(self.offset, 6),
-                tuple((p.start, p.end, p.speed) for p in self.parts), self.selection, self.hover, len(self.thumbs),
+                tuple(repr(p) for p in self.parts), self.selection, self.hover, len(self.thumbs),
                 len(self.wave), self.view, tuple(self.marks), self.dark, self.devicePixelRatioF(),
                 tuple(sorted(qt_theme.colours(self.dark).items())))   # post-review: a theme change redraws
 
@@ -359,7 +368,18 @@ class SequenceTimeline(QWidget):
             p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
         if not faded:
             self._paint_thumbs(p, vrect, part)
-            self._paint_wave(p, arect, part, audio)
+            if part.hold <= 0:                                        # 1.19: a still is silent
+                self._paint_wave(p, arect, part, audio)
+        if part.hold > 0:                                             # 1.19: a still – stripes over its picture
+            p.save()
+            p.setClipRect(vrect.adjusted(0.5, 16, -0.5, -0.5), Qt.IntersectClip)
+            p.setPen(QPen(QColor(255, 255, 255, 55), 3))
+            step = 12.0
+            x = vrect.left() - vrect.height()
+            while x < vrect.right():
+                p.drawLine(QPointF(x, vrect.bottom()), QPointF(x + vrect.height(), vrect.top()))
+                x += step
+            p.restore()
         # the label strip: number and tempo
         font = QFont(self.font())
         font.setPixelSize(11)
@@ -369,9 +389,7 @@ class SequenceTimeline(QWidget):
         p.setClipRect(vrect.adjusted(0, 0, -0.5, 0), Qt.IntersectClip)
         p.fillRect(label, cc["label"])
         p.setPen(QColor(cc["text"]))
-        tempo = "" if abs(part.speed - 1.0) < 1e-6 else f"   ×{part.speed:g}"
-        p.drawText(label.adjusted(6, 0, -4, 0), Qt.AlignLeft | Qt.AlignVCenter,
-                   f"{i + 1}  {clipedit.fmt_pos(part.start)} – {clipedit.fmt_pos(part.end)}{tempo}")
+        p.drawText(label.adjusted(6, 0, -4, 0), Qt.AlignLeft | Qt.AlignVCenter, clip_label(i, part))
         p.setClipRect(QRectF(HEAD_W, 0, self._track_width(), self.height()))
         pen = QPen(QColor(c["accent"]) if sel else QColor(0, 0, 0, 120), 2 if sel else 1)
         p.setPen(pen)
@@ -391,14 +409,14 @@ class SequenceTimeline(QWidget):
         vx, vy, vw, vh = self.view or (0.0, 0.0, 1.0, 1.0)
         tile_h = r.height() - 16                                      # below the label strip
         tile_w = max(8.0, tile_h * img.width() * vw / max(1.0, img.height() * vh))
-        src_per_tile = tile_w / self.scale * part.speed
+        src_per_tile = 0.0 if part.hold > 0 else tile_w / self.scale * part.speed   # 1.19: a still: one picture
         p.setClipRect(QRectF(r.left() + 0.5, r.top() + 16, r.width() - 1, tile_h), Qt.IntersectClip)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         left = max(r.left(), HEAD_W)
         j = int((left - r.left()) // tile_w)
         x = r.left() + j * tile_w
         while x < min(r.right(), self.width()) and x < r.right():
-            src = part.start + (j + 0.5) * src_per_tile
+            src = (part.end - (j + 0.5) * src_per_tile) if part.reverse else part.start + (j + 0.5) * src_per_tile
             idx = min(self.n_thumbs - 1, max(0, int(src / self.duration * self.n_thumbs)))
             im = self.thumbs.get(idx)
             if im is not None:
@@ -420,7 +438,8 @@ class SequenceTimeline(QWidget):
         per_px = part.speed / self.scale                              # source seconds under one pixel
         n = len(self.wave)
         for x in range(left, right):
-            s0 = part.start + (x - r.left()) * per_px
+            off = (x - r.left()) * per_px
+            s0 = part.end - off - per_px if part.reverse else part.start + off     # 1.19: backwards
             b0 = int(s0 * self.wave_per_s)
             b1 = max(b0 + 1, int((s0 + per_px) * self.wave_per_s))
             if b0 >= n:
@@ -525,16 +544,24 @@ class SequenceTimeline(QWidget):
         """The edge of clip ``i`` under the mouse, snapped to the playhead or a mark when close."""
         part = self.parts[i]
         st = sequence.starts(self.parts)
-        if kind == "trim_start":
-            out = self._t(x)
-            src = part.start + (out - st[i]) * part.speed               # the clip's left edge in source seconds
+        out = self._t(x)
+        if part.hold > 0:                                   # 1.19: a still: its edges set its length
+            length = (st[i + 1] - out) if kind == "trim_start" else (out - st[i])
+            new = sequence.set_hold(self.parts, i, round(max(0.1, length) * 10) / 10)
+            self._drag = (kind, i, new)
+            self.scrubbed.emit(part.start)
+            self.update()
+            return
+        if part.reverse:                                    # 1.19: backwards, the left edge is the source's end
+            src = part.end - (out - st[i]) * part.speed
+            edge_name = "end" if kind == "trim_start" else "start"
         else:
-            out = self._t(x)
-            src = part.start + (out - st[i]) * part.speed
+            src = part.start + (out - st[i]) * part.speed   # the clip's edge in source seconds
+            edge_name = "start" if kind == "trim_start" else "end"
         src = self._snap(src, part, kind)
-        new = sequence.trim(self.parts, i, "start" if kind == "trim_start" else "end", src, self.duration)
+        new = sequence.trim(self.parts, i, edge_name, src, self.duration)
         self._drag = (kind, i, new)
-        edge = new[i].start if kind == "trim_start" else new[i].end
+        edge = new[i].start if edge_name == "start" else new[i].end
         self.scrubbed.emit(edge)
         self.update()
 
@@ -604,12 +631,18 @@ class SequenceTimeline(QWidget):
             menu.addAction(_("Hier teilen")).triggered.connect(lambda _c=False: self.picked.emit("split", t, i))
             menu.addAction(_("Clip beginnt hier")).triggered.connect(lambda _c=False: self.picked.emit("start", t, i))
             menu.addAction(_("Clip endet hier")).triggered.connect(lambda _c=False: self.picked.emit("end", t, i))
-            tempo = menu.addMenu(_("Tempo"))
-            for speed in clipedit.SPEEDS:
-                act = tempo.addAction(_("normal") if speed == 1.0 else f"×{speed:g}")
-                act.setCheckable(True)
-                act.setChecked(abs(self.parts[i].speed - speed) < 1e-6)
-                act.triggered.connect(lambda _c=False, s=speed: self.picked.emit("speed", s, i))
+            if self.parts[i].hold <= 0:
+                tempo = menu.addMenu(_("Tempo"))
+                for speed in clipedit.SPEEDS:
+                    act = tempo.addAction(_("normal") if speed == 1.0 else f"×{speed:g}")
+                    act.setCheckable(True)
+                    act.setChecked(abs(self.parts[i].speed - speed) < 1e-6)
+                    act.triggered.connect(lambda _c=False, s=speed: self.picked.emit("speed", s, i))
+            menu.addAction(_("Standbild hier einfügen")).triggered.connect(        # 1.19
+                lambda _c=False: self.picked.emit("hold", t, i))
+            if clipedit.has_effects(self.parts[i]) and self.parts[i].hold <= 0:
+                menu.addAction(_("Effekte entfernen")).triggered.connect(
+                    lambda _c=False: self.picked.emit("fx_clear", t, i))
             menu.addAction(_("Clip löschen")).triggered.connect(lambda _c=False: self.picked.emit("delete", t, i))
             menu.addSeparator()
         menu.addAction(_("Abspielkopf hierher")).triggered.connect(lambda _c=False: self.picked.emit("seek", t, i))
