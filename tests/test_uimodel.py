@@ -991,6 +991,47 @@ def test_the_match_start_and_f8_reach_the_recorder(app_root):
         app.quit()
 
 
+def test_the_statistics_say_once_what_the_stats_page_would_add_instead_of_tiles_of_nothing(app_root):
+    """1.24.2 (phase 2 audit: four of eight tiles said "–" without match data): the dashboard leaves those tiles out,
+    one line says why – with "Match-Daten einrichten …" while never set up, without it once set up – and a round
+    linked to a match brings the tiles back; a round not counted is a yellow note (Note), no ⚠ in front."""
+    import json
+    from fogscout import history, official
+    from fogscout.app import App
+    t0 = time.time() - 3 * 3600
+    path = str(app_root / history.FILE)
+    history.append(path, history.Round(t=t0, seconds=600, map_id="coal-tower", map="Coal Tower", role="killer",
+                                       killer="The Oni"))
+    history.append_lost(path, t0 + 900, "The Game", "next banner")
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._stats_render()
+        titles = [t.title for t in app.stats_dash.data.tiles]
+        assert "Ø Kills" not in titles and "Entkommen" not in titles and "Ø Bloodpoints" not in titles
+        assert titles[0] == "Runden" and "Ø Rundendauer" in titles
+        assert app.stats_data_row.winfo_manager() and app.stats_data_btn.winfo_manager()
+        assert app.stats_data_var.get().startswith("Kills, Entkommen und Bloodpoints kommen von der Stats-Seite")
+        assert app.stats_data_btn._dbdms_tip()
+        assert app.stats_lost_var.get().startswith("Nicht gezählt: 1 × Rundenende") and "⚠" not in app.stats_lost_var.get()
+        assert app.stats_lost_label.winfo_manager() and app.stats_lost_label.cget("style") == "Note.TLabel"
+        assert not app.stats_saved_label.winfo_manager()
+        with open(app_root / official.FILE, "a", encoding="utf-8") as f:        # set up, the round not linked
+            f.write(json.dumps({"t": t0 - 5 * 3600, "map": "The Game", "role": "killer", "character": "The Oni",
+                                "seconds": 600, "bp": 20000}) + "\n")
+        app._stats_render()
+        assert app.stats_data_row.winfo_manager() and not app.stats_data_btn.winfo_manager()
+        assert app.stats_data_var.get().startswith("In dieser Auswahl ist keine Runde einem Match")
+        with open(app_root / official.FILE, "a", encoding="utf-8") as f:        # now the round has its match
+            f.write(json.dumps({"t": t0 - 38, "map": "Coal Tower", "role": "killer", "character": "The Oni",
+                                "seconds": 600, "bp": 30000}) + "\n")
+        app._stats_render()
+        assert not app.stats_data_row.winfo_manager()
+        assert "Ø Bloodpoints" in [t.title for t in app.stats_dash.data.tiles]
+    finally:
+        app.quit()
+
+
 def test_custom_rounds_that_were_public_matches_are_offered_as_farming(app_root):
     """1.6.1: rounds saved as custom games, which the stats page lists as public matches (instant lobbies with
     cross-play off before 1.5.5), are shown with a button: all become farming rounds (custom dropped); "Ignorieren"

@@ -176,10 +176,6 @@ EN = {
     "Regionen": "Regions",
     "Markierte Runde:": "Selected round:",
     "Benachrichtigungen": "Notifications",
-    "⚠ Nicht gezählt: {n} × Rundenende nicht erkannt (die nächste Map kam, bevor das Ende erkannt wurde). "
-    "Zuletzt: {map}, {when}.":
-        "⚠ Not counted: {n} × end of round not detected (the next map came before the end was detected). "
-        "Last: {map}, {when}.",
     "Runde auf {map} nicht gezählt: ihr Ende wurde nicht erkannt.":
         "Round on {map} not counted: its end was not detected.",
     "Sicherung": "Backup",
@@ -501,7 +497,6 @@ EN = {
     "Anteil": "Share",
     "Region nur bekannt, wenn im Tab Server „Verbundener Spielserver“ an war.":
         "Region only known if “Connected game server” was on in the Server tab.",
-    "Keine Runden in dieser Auswahl.": "No rounds in this selection.",
     "Wann": "When",
     "Dauer": "Length",
     "Alle Runden löschen …": "Delete all rounds …",
@@ -536,10 +531,6 @@ EN = {
     "Runde {what} aus der Statistik löschen?": "Delete round {what} from the statistics?",
     "Runde konnte nicht gelöscht werden: {error}": "Could not delete the round: {error}",
     "Runde gelöscht: {map} ({when}).": "Round deleted: {map} ({when}).",
-    "✓ {n} × Map mitten im Match falsch erkannt (laut Stats-Seite lief da schon ein Match) – nicht gezählt. "
-    "Zuletzt: {map}, {when}.":
-        "✓ {n} × map read wrongly in the middle of a match (the stats page already had a match running) – not "
-        "counted. Last: {map}, {when}.",
     "Noch keine Runden gespeichert.": "No rounds saved yet.",
     "Alle Runden löschen": "Delete all rounds",
     "Alle gespeicherten Runden löschen? Vorher wird eine Kopie in {folder}/ angelegt.":
@@ -3185,6 +3176,19 @@ EN = {
     # 1.24.1: the maps page – a search without a hit
     "Suche leeren": "Clear search",
     "Runden · BP/h erst mit Match-Daten": "rounds · BP/h needs the match data",
+    # 1.24.2 (phase 2): statistics – no tiles of "–", notes without ⚠/✓ in front
+    "Keine Runden in dieser Auswahl – „Filter zurücksetzen“ zeigt wieder alle.":
+        "No rounds in this selection – “Reset filters” shows them all again.",
+    "In dieser Auswahl ist keine Runde einem Match der Stats-Seite zugeordnet – darum fehlen Kills, Entkommen und Bloodpoints.":
+        "No round of this selection is linked to a match of the stats page – that is why kills, escapes and bloodpoints are missing.",
+    "Kills, Entkommen und Bloodpoints kommen von der Stats-Seite – dafür einmal die Match-Daten einrichten.":
+        "Kills, escapes and bloodpoints come from the stats page – set up the match data once for them.",
+    "Nicht gezählt: {n} × Rundenende nicht erkannt (die nächste Map kam, bevor das Ende erkannt wurde). Zuletzt: {map}, {when}.":
+        "Not counted: {n} × end of round not detected (the next map came before the end was detected). Last: {map}, {when}.",
+    "{n} × Rundenende nicht erkannt, aber mit der Dauer laut Stats-Seite gezählt.":
+        "{n} × end of round not detected, but counted with the length from the stats page.",
+    "{n} × Map mitten im Match falsch erkannt (laut Stats-Seite lief da schon ein Match) – nicht gezählt. Zuletzt: {map}, {when}.":
+        "{n} × map read wrongly in the middle of a match (the stats page already had a match running) – not counted. Last: {map}, {when}.",
     "Keine Map passt zu „{text}“. Gesucht wird in Map- und Realm-Namen aller Spielsprachen und in Abkürzungen.":
         "No map matches “{text}”. The search looks at map and realm names in every game language and at abbreviations.",
     "Leert das Suchfeld und zeigt wieder alle Maps.": "Clears the search field and shows all maps again.",
