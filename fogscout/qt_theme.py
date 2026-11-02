@@ -58,6 +58,12 @@ THEMES = {
 }
 # The palette below the theme list (1.63, user's wish): one click = this colour as own accent (theme "custom").
 # Base colours; derive_accent makes each one readable in dark, light and OLED.
+# 1.23 (audit, prompt.md, Phase 3 design system): the window's sizes in one place, px at 100 % – TYPE scales with
+# the text zoom (ui_zoom), RADIUS and PAD_CARD do not. stylesheet(), qt_editor.editor_qss() and the cards take them
+# from here; a radius of half an element's own height (round handles, swatches) stays where the element is styled.
+TYPE = {"label": 11, "small": 12, "body": 13, "nav": 14, "big": 16, "h1": 21, "display": 22}
+RADIUS = {"xs": 2, "bar": 3, "s": 4, "m": 6, "l": 8, "xl": 10}
+PAD_CARD = (14, 12, 14, 12)               # a card's content: left, top, right, bottom
 SWATCHES = ("#c9a227", "#e08a1e", "#e8692a", "#d93a32", "#b0203a", "#e0508f", "#c040c0", "#8a5cf0",
             "#4f5fe0", "#2f8fe0", "#1fb5c9", "#17a38a", "#3cae4f", "#8cbf26")
 CUSTOM_DEFAULT = "#2f8fe0"
@@ -266,14 +272,14 @@ def stylesheet(dark: bool, zoom: float = 1.0) -> str:
         return f"{max(8, round(size * zoom))}px"
 
     return f"""
-* {{ font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', sans-serif; font-size: {px(13)}; color: {c['fg']}; }}
+* {{ font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', sans-serif; font-size: {px(TYPE['body'])}; color: {c['fg']}; }}
 QMainWindow, QWidget#page, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {{ background: {c['bg']}; }}
-QListWidget#nav {{ background: {c['nav']}; border: none; padding: 10px 6px; outline: 0; font-size: {px(14)}; }}
-QListWidget#nav::item {{ padding: 8px 12px; border-radius: 6px; margin: 1px 0; color: {c['dim']};
+QListWidget#nav {{ background: {c['nav']}; border: none; padding: 10px 6px; outline: 0; font-size: {px(TYPE['nav'])}; }}
+QListWidget#nav::item {{ padding: 8px 12px; border-radius: {RADIUS['m']}px; margin: 1px 0; color: {c['dim']};
     border-left: 3px solid transparent; }}  /* same place selected or not */
 QListWidget#nav::item:selected {{ background: {c['nav_sel']}; color: {c['accent']}; border-left: 3px solid {c['accent']}; }}
 QListWidget#nav::item:hover:!selected {{ background: {c['hover']}; color: {c['fg']}; }}
-QFrame[class="card"] {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: 10px; }}
+QFrame[class="card"] {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: {RADIUS['xl']}px; }}
 QFrame[class="card"] QLabel {{ background: transparent; }}
 QFrame[class="card"][dragging="true"], QFrame[class="card"][found="true"] {{ border: 1px solid {c['accent']}; }}
 QWidget#navside {{ background: {c['nav']}; }}
@@ -281,15 +287,15 @@ QLineEdit#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; }}
 QPushButton#navsearchbtn {{ background: transparent; border: none; margin-top: 10px; padding: 8px; }}
 QPushButton#navsearchbtn:hover {{ background: {c['hover']}; }}
 QPushButton#navsearchbtn:focus {{ border: 1px solid {c['accent']}; }}
-QLabel[class="dim"] {{ color: {c['dim']}; font-size: {px(12)}; }}
-QLabel[class="hint"] {{ color: {c['dim']}; font-size: {px(12)}; }}  /* 1.17.1: qt_pages.HintLabel – line length */
-QLabel[class="h1"] {{ font-size: {px(21)}; font-weight: 700; color: {c['head']}; }}
-QLabel[class="map"] {{ font-family: 'Fira Sans ExtraBold', 'Segoe UI'; font-size: {px(22)}; color: {c['head']}; }}
-QLabel[class="h2"] {{ font-size: {px(12)}; font-weight: 700; color: {c['fg']}; letter-spacing: 0.8px; }}  /* 1.17: the accent marks state, not every title */
-QLabel[class="big"] {{ font-size: {px(16)}; font-weight: 700; color: {c['head']}; }}
+QLabel[class="dim"] {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; }}
+QLabel[class="hint"] {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; }}  /* 1.17.1: qt_pages.HintLabel – line length */
+QLabel[class="h1"] {{ font-size: {px(TYPE['h1'])}; font-weight: 700; color: {c['head']}; }}
+QLabel[class="map"] {{ font-family: 'Fira Sans ExtraBold', 'Segoe UI'; font-size: {px(TYPE['display'])}; color: {c['head']}; }}
+QLabel[class="h2"] {{ font-size: {px(TYPE['small'])}; font-weight: 700; color: {c['fg']}; letter-spacing: 0.8px; }}  /* 1.17: the accent marks state, not every title */
+QLabel[class="big"] {{ font-size: {px(TYPE['big'])}; font-weight: 700; color: {c['head']}; }}
 QDialog#message {{ background: {c['bg']}; }}  /* 1.8.44: App._ask/_inform */
-QTabWidget::pane {{ border: 1px solid {c['border']}; border-radius: 8px; top: -1px; }}
-QTabWidget#formtabs::pane {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: 10px; top: -1px;
+QTabWidget::pane {{ border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; top: -1px; }}
+QTabWidget#formtabs::pane {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: {RADIUS['xl']}px; top: -1px;
     border-top-left-radius: 0; }}
 QTabWidget#formtabs[found="true"]::pane {{ border: 1px solid {c['accent']}; }}
 QTabWidget#formtabs QWidget#page {{ background: {c['card']}; }}
@@ -299,34 +305,34 @@ QTabBar[dense="true"]::tab {{ padding: 7px 9px; }}  /* 1.8.46/1.8.48: rows with 
 QTabBar::tab:selected {{ color: {c['accent']}; border-bottom: 2px solid {c['accent']}; }}
 QTabBar::tab:hover:!selected {{ color: {c['fg']}; }}
 QTabWidget#segments::pane {{ border: none; top: 0; }}  /* 1.11.14: the statistics' groups as a segment switch */
-QTabBar#segbar::tab {{ background: transparent; color: {c['dim']}; border: 1px solid transparent; border-radius: 6px;
+QTabBar#segbar::tab {{ background: transparent; color: {c['dim']}; border: 1px solid transparent; border-radius: {RADIUS['m']}px;
     padding: 5px 14px; margin: 0 4px 6px 0; }}
 QTabBar#segbar::tab:selected {{ background: {c['btn_hover']}; color: {c['head']}; border: 1px solid {c['border']};
     font-weight: 600; }}  /* 1.17: a raised segment instead of a gold slab */
 QTabBar#segbar::tab:hover:!selected {{ background: {c['hover']}; color: {c['fg']}; }}
-QLabel[class="kpi"] {{ font-size: {px(22)}; font-weight: 700; color: {c['head']}; }}
-QLabel[class="sub"] {{ color: {c['dim']}; font-size: {px(11)}; font-weight: 700; letter-spacing: 1px; padding-top: 6px; }}
+QLabel[class="kpi"] {{ font-size: {px(TYPE['display'])}; font-weight: 700; color: {c['head']}; }}
+QLabel[class="sub"] {{ color: {c['dim']}; font-size: {px(TYPE['label'])}; font-weight: 700; letter-spacing: 1px; padding-top: 6px; }}
 QLabel[class="note"] {{ color: {c['warn']}; }}
-QLabel#thumb {{ background: {c['media_bg']}; border-radius: 8px; }}  /* map pictures need a dark backdrop */
-QFrame[class="tile"] {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: 8px; }}
+QLabel#thumb {{ background: {c['media_bg']}; border-radius: {RADIUS['l']}px; }}  /* map pictures need a dark backdrop */
+QFrame[class="tile"] {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; }}
 QFrame[class="tile"]:hover {{ background: {c['hover']}; }}
 QFrame[class="tile"]:focus {{ background: {c['hover']}; border: 1px solid {c['accent']}; }}  /* 1.8.72: arrows walk the tiles */
 QFrame[class="tile"][current="true"] {{ border: 2px solid {c['accent']}; }}
 QFrame[class="tile"] QLabel {{ background: transparent; border: none; }}
-QFrame[class="tile"] QLabel#tilepic {{ background: {c['media_bg']}; border-radius: 6px; }}
-QLabel[class="tile"] {{ font-size: {px(12)}; font-weight: 600; color: {c['head']}; }}
-QLabel[class="tileinfo"] {{ font-size: {px(11)}; color: {c['dim']}; }}
-QListWidget#realms {{ border: 1px solid {c['border']}; border-radius: 8px; padding: 4px; outline: 0; }}
-QListWidget#realms::item {{ padding: 7px 0; border-radius: 6px; }}
+QFrame[class="tile"] QLabel#tilepic {{ background: {c['media_bg']}; border-radius: {RADIUS['m']}px; }}
+QLabel[class="tile"] {{ font-size: {px(TYPE['small'])}; font-weight: 600; color: {c['head']}; }}
+QLabel[class="tileinfo"] {{ font-size: {px(TYPE['label'])}; color: {c['dim']}; }}
+QListWidget#realms {{ border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; padding: 4px; outline: 0; }}
+QListWidget#realms::item {{ padding: 7px 0; border-radius: {RADIUS['m']}px; }}
 QListWidget#realms::item:selected {{ background: {c['nav_sel']}; }}
 QListWidget#realms::item:hover:!selected {{ background: {c['hover']}; }}
-QFrame#roundrow {{ border-radius: 6px; }}  /* 1.17.1: overview "Letzte Runden" – a row opens the round */
+QFrame#roundrow {{ border-radius: {RADIUS['m']}px; }}  /* 1.17.1: overview "Letzte Runden" – a row opens the round */
 QFrame#roundrow:hover {{ background: {c['hover']}; }}
 QPushButton#rowplay {{ background: transparent; border: 1px solid transparent; padding: 0 6px; color: {c['dim']}; }}
 QPushButton#rowplay:hover {{ color: {c['accent']}; border-color: {c['border']}; }}
 QPushButton#rowplay:focus {{ border-color: {c['accent']}; }}  /* 1.22.3: the ID rule hid the keyboard focus */
-QLabel#pill {{ border-radius: 10px; padding: 3px 12px; font-size: {px(12)}; font-weight: 600; }}
-QPushButton {{ background: {c['btn']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 6px 14px; }}
+QLabel#pill {{ border-radius: {RADIUS['xl']}px; padding: 3px 12px; font-size: {px(TYPE['small'])}; font-weight: 600; }}
+QPushButton {{ background: {c['btn']}; border: 1px solid {c['border']}; border-radius: {RADIUS['m']}px; padding: 6px 14px; }}
 QPushButton:hover {{ background: {c['btn_hover']}; }}
 QPushButton:pressed {{ background: {c['press']}; }}
 QPushButton:disabled {{ background: transparent; color: {c['fg_dis']}; border-color: {c['border']}; }}  /* keeps its shape */
@@ -345,30 +351,30 @@ QPushButton[class="seg"]:hover {{ background: {c['hover']}; color: {c['fg']}; }}
 QPushButton[class="seg"]:checked {{ background: {c['btn_hover']}; color: {c['head']}; border-color: {c['border']}; font-weight: 600; }}
 QPushButton[class="seg"]:focus {{ border-color: {c['accent']}; }}  /* 1.22.3: the transparent border hid the focus */
 QPushButton[class="seg"]:disabled {{ color: {c['fg_dis']}; }}
-QProgressBar {{ background: {c['bar']}; border: none; border-radius: 3px; max-height: 6px; min-height: 6px; }}
-QProgressBar::chunk {{ background: {c['accent']}; border-radius: 3px; }}
-QProgressBar#factbar {{ max-height: 4px; min-height: 4px; border-radius: 2px; }}
-QProgressBar#factbar::chunk {{ background: {c['dim']}; border-radius: 2px; }}  /* 1.17: ratio, not state */
+QProgressBar {{ background: {c['bar']}; border: none; border-radius: {RADIUS['bar']}px; max-height: 6px; min-height: 6px; }}
+QProgressBar::chunk {{ background: {c['accent']}; border-radius: {RADIUS['bar']}px; }}
+QProgressBar#factbar {{ max-height: 4px; min-height: 4px; border-radius: {RADIUS['xs']}px; }}
+QProgressBar#factbar::chunk {{ background: {c['dim']}; border-radius: {RADIUS['xs']}px; }}  /* 1.17: ratio, not state */
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: {c['hover']}; border-radius: 4px; min-height: 30px; }}
+QScrollBar::handle:vertical {{ background: {c['hover']}; border-radius: {RADIUS['s']}px; min-height: 30px; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar[idle="true"]::handle:vertical {{ background: transparent; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}  /* 1.17: like the vertical one */
-QScrollBar::handle:horizontal {{ background: {c['hover']}; border-radius: 4px; min-width: 30px; }}
+QScrollBar::handle:horizontal {{ background: {c['hover']}; border-radius: {RADIUS['s']}px; min-width: 30px; }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
-QTreeWidget {{ border: 1px solid {c['border']}; border-radius: 8px; padding: 4px; }}
+QTreeWidget {{ border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; padding: 4px; }}
 QTreeWidget::item {{ padding: 3px 6px; }}
 QHeaderView::section {{ padding: 3px 6px; }}
 QTreeWidget::item:selected {{ background: {c['select']}; color: {c['on_select']}; }}
-QTreeView::indicator {{ width: 16px; height: 16px; border: 1px solid {c['dim']}; border-radius: 4px;
+QTreeView::indicator {{ width: 16px; height: 16px; border: 1px solid {c['dim']}; border-radius: {RADIUS['s']}px;
     background: {c['field']}; }}  /* 1.8.75: the server regions' tick boxes like the page's (were Fusion's glyphs) */
 QTreeView::indicator:hover {{ border-color: {c['accent']}; }}
 QTreeView::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']};
     image: url("{ui_icon('check', c['on_accent'])}"); }}
 QTreeView::indicator:indeterminate {{ border-color: {c['accent']}; image: url("{ui_icon('dash', c['accent'])}"); }}
-QLineEdit {{ border: 1px solid {c['border']}; border-radius: 6px; padding: 5px 8px; }}
+QLineEdit {{ border: 1px solid {c['border']}; border-radius: {RADIUS['m']}px; padding: 5px 8px; }}
 QLineEdit:focus {{ border-color: {c['accent']}; }}
-QComboBox {{ background: {c['btn']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 5px 28px 5px 10px; }}
+QComboBox {{ background: {c['btn']}; border: 1px solid {c['border']}; border-radius: {RADIUS['m']}px; padding: 5px 28px 5px 10px; }}
 QComboBox:hover {{ background: {c['btn_hover']}; }}
 QComboBox:focus, QComboBox:on {{ border-color: {c['accent']}; }}
 QComboBox:disabled {{ background: transparent; color: {c['fg_dis']}; }}
@@ -378,7 +384,7 @@ QComboBox::down-arrow {{ image: url("{ui_icon('arrow', c['dim'])}"); width: 12px
 QComboBox QAbstractItemView {{ background: {c['panel']}; border: 1px solid {c['border']}; padding: 4px; outline: 0;
     selection-background-color: {c['select']}; selection-color: {c['on_select']}; }}
 QCheckBox {{ spacing: 8px; }}
-QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid {c['dim']}; border-radius: 4px;
+QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid {c['dim']}; border-radius: {RADIUS['s']}px;
     background: {c['field']}; }}
 QCheckBox::indicator:hover, QCheckBox::indicator:focus {{ border-color: {c['accent']}; }}
 QCheckBox::indicator:checked {{ background: {c['accent']}; border-color: {c['accent']};
@@ -402,7 +408,7 @@ def palette_roles(dark: bool) -> dict:
 
 def bar_style(colour) -> str:
     """Style of one value bar in the colour of its value (temperature, ping)."""
-    return f"QProgressBar::chunk {{ background: {hex_colour(colour)}; border-radius: 3px; }}"
+    return f"QProgressBar::chunk {{ background: {hex_colour(colour)}; border-radius: {RADIUS['bar']}px; }}"
 
 
 def pill_style(style: str, dark: bool | None = None) -> str:

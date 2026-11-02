@@ -1064,6 +1064,26 @@ def _check_theme(key, oled, custom=None):
         qt_theme.set_theme("gold")
 
 
+def test_the_style_sheets_take_sizes_from_the_scales():
+    """1.23 (audit, prompt.md, Phase 3): font sizes, radii and card margins come from qt_theme.TYPE / RADIUS /
+    PAD_CARD – a new rule with a size of its own shows up here. Exceptions: a radius of half an element's own size
+    (the editor's round play button 36 px, slider handle 14 px, colour swatch 22 px)."""
+    import os
+    import re
+    from fogscout import qt_editor
+    for zoom in (1.0, 1.25):
+        for css in (qt_theme.stylesheet(True, zoom), qt_editor.editor_qss(qt_theme.colours(True), zoom)):
+            sizes = {int(v) for v in re.findall(r"font-size: (\d+)px", css)}
+            assert sizes <= {max(8, round(t * zoom)) for t in qt_theme.TYPE.values()}, (zoom, sizes)
+            radii = {int(v) for v in re.findall(r"border-radius: (\d+)px", css)}
+            assert radii <= set(qt_theme.RADIUS.values()) | {18, 7, 11}, radii
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fogscout")
+    for name in os.listdir(root):
+        if name.endswith(".py"):
+            with open(os.path.join(root, name), encoding="utf-8") as fh:
+                assert "setContentsMargins(14, 12, 14, 12)" not in fh.read(), name     # qt_theme.PAD_CARD
+
+
 def test_a_colour_is_made_readable_on_the_card_of_the_mode_shown():
     """1.22.3: the facts' value colours – a DOT status colour becomes the mode's own, a pastel overlay colour
     (ping, temperature) keeps its hue and gets dark enough on a light card."""

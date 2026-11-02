@@ -121,7 +121,7 @@ class ImageWindow(QWidget):
         page = QFrame()
         page.setProperty("class", "card")
         lay = QVBoxLayout(page)
-        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setContentsMargins(*qt_theme.PAD_CARD)
         lay.setSpacing(8)
         return page, lay
 
