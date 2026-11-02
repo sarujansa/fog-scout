@@ -530,7 +530,7 @@ class CapSlider(QSlider):
         handle = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
         span = max(1, groove.width() - handle.width())
         x = groove.x() + handle.width() / 2 + QStyle.sliderPositionFromValue(lo, hi, round(self.cap), span)
-        colour = QColor(qt_theme.DOT["warn"])
+        colour = QColor(qt_theme.dot_colour("warn"))
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         tint = QColor(colour)

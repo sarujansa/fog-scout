@@ -1476,6 +1476,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
 
     def _apply_theme(self):
         """Dark/light: the Qt window's colours, the server table's ping colours and the charts."""
+        from .qt_theme import STATE
         from .theme import LOG_COLORS
         dark = bool(self.dark_var.get()) if hasattr(self, "dark_var") else bool(self.settings.get("dark_mode", True))
         colors = LOG_COLORS[dark]
@@ -1483,7 +1484,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self.swatches.dark = dark
         for tag, key in (("p_good", "Erkennung"), ("p_bad", "Fehler"), ("p_na", "ts")):
             self.srv_tree.tag_configure(tag, foreground=colors[key])
-        self.srv_tree.tag_configure("p_mid", foreground="#d29922" if dark else "#9a6700")
+        self.srv_tree.tag_configure("p_mid", foreground=STATE[dark]["warn"])          # 1.22.3: the theme's
         self.srv_tree.tag_configure("group", foreground=colors["text"])
         for chart in (getattr(self, "trend", None), getattr(self, "sys_trend", None)):
             if chart is not None:

@@ -60,7 +60,7 @@ class FactBox(QWidget):
             _set(self.link, f.action_label if action else "")
             self.link.setToolTip(_tip(f.action_label) if action else "")
             self.link.setVisible(bool(action))
-        colour = qt_theme.hex_colour(f.colour) if f.colour is not None else None
+        colour = qt_theme.readable(f.colour) if f.colour is not None else None    # 1.22.3: readable on light
         if colour != self._colour:
             self._colour = colour
             self.value.setStyleSheet(f"color: {colour};" if colour else "")

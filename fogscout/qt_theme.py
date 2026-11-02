@@ -17,14 +17,25 @@ ZOOMS = (0.9, 1.0, 1.1, 1.25, 1.5)        # setting ui_zoom: text size of the wi
 
 PALETTE = {
     True: dict(DARK, card=DARK["panel"], nav=DARK["panel"], nav_sel=DARK["bg"], btn=DARK["hover"],
-               btn_hover=DARK["press"], btn_dis="#2b2d31", fg_dis="#6a6e75", on_accent="#1a1406", bar=DARK["field"],
-               head="#ffffff", accent_hover="#d8b43a", danger="#ff9a94"),
+               btn_hover=DARK["press"], press="#2f3136", btn_dis="#2b2d31", fg_dis="#6a6e75", on_accent="#1a1406",
+               bar=DARK["field"], head="#ffffff", accent_hover="#d8b43a", danger="#ff9a94"),
     False: {"bg": "#f3f3f4", "panel": "#ffffff", "field": "#ffffff", "border": "#d6d7da", "fg": "#1b1c1e",
             "dim": "#5f636a", "accent": "#8a6a12", "select": "#7a1f1f", "hover": "#e9eaec", "press": "#dcdde0",
             "card": "#ffffff", "nav": "#e9eaec", "nav_sel": "#f3f3f4", "btn": "#ffffff", "btn_hover": "#e9eaec",
             "btn_dis": "#f3f3f4", "fg_dis": "#a2a5aa", "on_accent": "#ffffff", "bar": "#e4e5e8", "head": "#000000",
-            "accent_hover": "#9c7a1a", "danger": "#b42a22"},
+            "accent_hover": "#76590f", "danger": "#b42a22"},
 }
+# 1.22.3 (audit prompt.md, contrast measured with contrast()): colours of state and of the editor's media, per
+# mode – until then the dark values (theme.DOT, white playhead, orange marks) were used on light pages too (white
+# on white 1.0:1, warnings 2.5:1). Text colours >= 4.5:1 on card/bg/field/panel and on their own 12 % pill tint.
+STATE = {
+    True: {"ok": "#56d364", "warn": "#e3b341", "err": "#ff7b72", "info": "#79c0ff", "idle": DOT["idle"],
+           "playhead": "#ffffff", "mark": "#e8a33d", "media_bg": DARK["field"], "on_select": "#ffffff"},
+    False: {"ok": "#116329", "warn": "#7d4e00", "err": "#a40e26", "info": "#0550ae", "idle": "#5f636a",
+            "playhead": "#1b1c1e", "mark": "#a15c00", "media_bg": DARK["field"], "on_select": "#ffffff"},
+}
+STATE_KINDS = ("ok", "warn", "err", "info")
+PILL_TINT = 0.12
 
 
 # Colour themes (since 1.62, user's wish): the accent (and for OLED the dark greys) over the palette above. Every
@@ -39,7 +50,7 @@ THEMES = {
         False: {"accent": "#1d5fa6", "accent_hover": "#2a70bd", "on_accent": "#ffffff", "select": "#1d4f80"}}),
     "green": (N_("Giftgrün"), {
         True: {"accent": "#52c48a", "accent_hover": "#72d4a2", "on_accent": "#04140b", "select": "#1b5e3c"},
-        False: {"accent": "#1c7a48", "accent_hover": "#258c55", "on_accent": "#ffffff", "select": "#1b5e3c"}}),
+        False: {"accent": "#1c7a48", "accent_hover": "#176a3e", "on_accent": "#ffffff", "select": "#1b5e3c"}}),
     "violet": (N_("Lila"), {
         True: {"accent": "#b48cf0", "accent_hover": "#c3a2f4", "on_accent": "#12081f", "select": "#4e2f86"},
         False: {"accent": "#6b3fb3", "accent_hover": "#7c50c4", "on_accent": "#ffffff", "select": "#4e2f86"}}),
@@ -54,9 +65,9 @@ MIN_CONTRAST = 4.5
 # OLED black (1.62.1, user: "mit OLED mehr Farbkombis"): a switch of its own, true black instead of the dark greys
 # – with every accent; the light mode stays as it is
 OLED = {"bg": "#000000", "panel": "#0d0d0f", "field": "#0a0a0b", "card": "#0d0d0f", "nav": "#0d0d0f",
-        "nav_sel": "#000000", "btn": "#1a1b1e", "btn_hover": "#26282c", "hover": "#1a1b1e", "press": "#26282c",
+        "nav_sel": "#000000", "btn": "#1a1b1e", "btn_hover": "#26282c", "hover": "#1a1b1e", "press": "#33363b",
         "border": "#26282a", "bar": "#141416", "btn_dis": "#0d0d0f"}
-_theme, _oled, _custom = "gold", False, CUSTOM_DEFAULT
+_theme, _oled, _custom, _dark, _zoom = "gold", False, CUSTOM_DEFAULT, True, 1.0
 
 
 def set_theme(key: str, oled: bool = False, custom: str | None = None):
@@ -68,9 +79,29 @@ def set_theme(key: str, oled: bool = False, custom: str | None = None):
     _custom = norm_hex(custom) or CUSTOM_DEFAULT
 
 
+def set_dark(dark: bool, zoom: float | None = None):
+    """1.22.3: the mode (and text zoom) the window shows now (MainWindow.apply_theme) – for what is coloured or
+    sized without a page at hand (status pill, value colours of the facts, the overlay preview's note, the clip
+    editor's own style sheet)."""
+    global _dark, _zoom
+    _dark = bool(dark)
+    if zoom is not None:
+        _zoom = float(zoom)
+
+
+def current_dark() -> bool:
+    return _dark
+
+
+def current_zoom() -> float:
+    return _zoom
+
+
 def colours(dark: bool) -> dict:
-    """The palette of the current theme: PALETTE with the theme's accent over it, OLED black when dark."""
+    """The palette of the current theme: PALETTE with the theme's accent over it, OLED black when dark; the state
+    and media colours of STATE."""
     c = dict(PALETTE[bool(dark)])
+    c.update(STATE[bool(dark)])
     if dark and _oled:
         c.update(OLED)
     if _theme == "custom":
@@ -150,15 +181,49 @@ def hex_colour(c) -> str:
     return "#{:02x}{:02x}{:02x}".format(*c[:3])
 
 
+def blend(colour: str, over: str, alpha: float) -> str:
+    """'#rrggbb' of ``colour`` at ``alpha`` over ``over`` (what a tint looks like on a card)."""
+    a, b = hex_colour(colour).lstrip("#"), hex_colour(over).lstrip("#")
+    return "#" + "".join(f"{round(int(b[i:i + 2], 16) + (int(a[i:i + 2], 16) - int(b[i:i + 2], 16)) * alpha):02x}"
+                         for i in (0, 2, 4))
+
+
 def rgba(colour: str, alpha: float) -> str:
     c = hex_colour(colour).lstrip("#")
     r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
     return f"rgba({r}, {g}, {b}, {round(alpha * 255)})"
 
 
-def dot_colour(style: str) -> str:
-    """Colour of a status kind as used by status.DOT_STYLE ('ok', 'warn', 'err', 'info', 'idle')."""
-    return DOT.get(style, DOT["idle"])
+def dot_colour(style: str, dark: bool | None = None) -> str:
+    """Colour of a status kind as used by status.DOT_STYLE ('ok', 'warn', 'err', 'info', 'idle') – 1.22.3: the
+    one of the mode shown (STATE), readable on light pages too."""
+    c = colours(_dark if dark is None else dark)
+    return c[style] if style in STATE_KINDS else c["idle"]
+
+
+def readable(colour, dark: bool | None = None, bg: str | None = None) -> str:
+    """1.22.3: ``colour`` as text on a card of the mode shown: a status colour of theme.DOT becomes the mode's own
+    (STATE); any other one keeps its hue and gets just as much lighter (dark) or darker (light) as it takes for
+    >= MIN_CONTRAST – the overlay's pastel ping/temperature colours were 1.4–2.8:1 on white."""
+    dark = _dark if dark is None else bool(dark)
+    c = colours(dark)
+    hx = hex_colour(colour).lower()
+    for kind in STATE_KINDS:
+        if hx == DOT[kind]:
+            return c[kind]
+    bg = bg or c["card"]
+    if contrast(hx, bg) >= MIN_CONTRAST:
+        return hx
+    r, g, b = (int(hx[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    h, lum, s = colorsys.rgb_to_hls(r, g, b)
+    step = 0.01 if dark else -0.01
+    out = hx
+    for _n in range(101):
+        lum = min(1.0, max(0.0, lum + step))
+        out = _hls_hex(h, lum, s)
+        if contrast(out, bg) >= MIN_CONTRAST:
+            break
+    return out
 
 
 ICON_DIR = os.path.join(tempfile.gettempdir(), "fogscout-ui")
@@ -215,6 +280,7 @@ QWidget#navside {{ background: {c['nav']}; }}
 QLineEdit#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; }}
 QPushButton#navsearchbtn {{ background: transparent; border: none; margin-top: 10px; padding: 8px; }}
 QPushButton#navsearchbtn:hover {{ background: {c['hover']}; }}
+QPushButton#navsearchbtn:focus {{ border: 1px solid {c['accent']}; }}
 QLabel[class="dim"] {{ color: {c['dim']}; font-size: {px(12)}; }}
 QLabel[class="hint"] {{ color: {c['dim']}; font-size: {px(12)}; }}  /* 1.17.1: qt_pages.HintLabel – line length */
 QLabel[class="h1"] {{ font-size: {px(21)}; font-weight: 700; color: {c['head']}; }}
@@ -240,14 +306,14 @@ QTabBar#segbar::tab:selected {{ background: {c['btn_hover']}; color: {c['head']}
 QTabBar#segbar::tab:hover:!selected {{ background: {c['hover']}; color: {c['fg']}; }}
 QLabel[class="kpi"] {{ font-size: {px(22)}; font-weight: 700; color: {c['head']}; }}
 QLabel[class="sub"] {{ color: {c['dim']}; font-size: {px(11)}; font-weight: 700; letter-spacing: 1px; padding-top: 6px; }}
-QLabel[class="note"] {{ color: {DOT['warn']}; }}
-QLabel#thumb {{ background: {DARK['field']}; border-radius: 8px; }}  /* map pictures need a dark backdrop */
+QLabel[class="note"] {{ color: {c['warn']}; }}
+QLabel#thumb {{ background: {c['media_bg']}; border-radius: 8px; }}  /* map pictures need a dark backdrop */
 QFrame[class="tile"] {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: 8px; }}
 QFrame[class="tile"]:hover {{ background: {c['hover']}; }}
 QFrame[class="tile"]:focus {{ background: {c['hover']}; border: 1px solid {c['accent']}; }}  /* 1.8.72: arrows walk the tiles */
 QFrame[class="tile"][current="true"] {{ border: 2px solid {c['accent']}; }}
 QFrame[class="tile"] QLabel {{ background: transparent; border: none; }}
-QFrame[class="tile"] QLabel#tilepic {{ background: {DARK['field']}; border-radius: 6px; }}
+QFrame[class="tile"] QLabel#tilepic {{ background: {c['media_bg']}; border-radius: 6px; }}
 QLabel[class="tile"] {{ font-size: {px(12)}; font-weight: 600; color: {c['head']}; }}
 QLabel[class="tileinfo"] {{ font-size: {px(11)}; color: {c['dim']}; }}
 QListWidget#realms {{ border: 1px solid {c['border']}; border-radius: 8px; padding: 4px; outline: 0; }}
@@ -258,6 +324,7 @@ QFrame#roundrow {{ border-radius: 6px; }}  /* 1.17.1: overview "Letzte Runden" �
 QFrame#roundrow:hover {{ background: {c['hover']}; }}
 QPushButton#rowplay {{ background: transparent; border: 1px solid transparent; padding: 0 6px; color: {c['dim']}; }}
 QPushButton#rowplay:hover {{ color: {c['accent']}; border-color: {c['border']}; }}
+QPushButton#rowplay:focus {{ border-color: {c['accent']}; }}  /* 1.22.3: the ID rule hid the keyboard focus */
 QLabel#pill {{ border-radius: 10px; padding: 3px 12px; font-size: {px(12)}; font-weight: 600; }}
 QPushButton {{ background: {c['btn']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 6px 14px; }}
 QPushButton:hover {{ background: {c['btn_hover']}; }}
@@ -266,13 +333,18 @@ QPushButton:disabled {{ background: transparent; color: {c['fg_dis']}; border-co
 QPushButton:focus {{ border-color: {c['accent']}; }}  /* 1.8.72: the keyboard focus is visible (was: like unfocused) */
 QPushButton#primary {{ background: {c['accent']}; color: {c['on_accent']}; border: 1px solid {c['accent']}; font-weight: 700; }}
 QPushButton#primary:hover {{ background: {c['accent_hover']}; }}
+QPushButton#primary:pressed {{ background: {c['accent']}; border-color: {c['head']}; }}
 QPushButton#primary:focus {{ border-color: {c['head']}; }}
+QPushButton#primary:disabled {{ background: transparent; color: {c['fg_dis']}; border-color: {c['border']};
+    font-weight: 600; }}  /* 1.22.3: the ID rule outranked :disabled – a disabled primary looked active */
 QPushButton#danger {{ color: {c['danger']}; }}  /* 1.12.3: deletes or resets data (uimodel.danger) */
 QPushButton#danger:hover {{ border-color: {c['danger']}; }}
 QPushButton#danger:disabled {{ color: {c['fg_dis']}; border-color: {c['border']}; }}
 QPushButton[class="seg"] {{ background: transparent; color: {c['dim']}; border-color: transparent; }}  /* 1.17 */
 QPushButton[class="seg"]:hover {{ background: {c['hover']}; color: {c['fg']}; }}
 QPushButton[class="seg"]:checked {{ background: {c['btn_hover']}; color: {c['head']}; border-color: {c['border']}; font-weight: 600; }}
+QPushButton[class="seg"]:focus {{ border-color: {c['accent']}; }}  /* 1.22.3: the transparent border hid the focus */
+QPushButton[class="seg"]:disabled {{ color: {c['fg_dis']}; }}
 QProgressBar {{ background: {c['bar']}; border: none; border-radius: 3px; max-height: 6px; min-height: 6px; }}
 QProgressBar::chunk {{ background: {c['accent']}; border-radius: 3px; }}
 QProgressBar#factbar {{ max-height: 4px; min-height: 4px; border-radius: 2px; }}
@@ -287,7 +359,7 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QTreeWidget {{ border: 1px solid {c['border']}; border-radius: 8px; padding: 4px; }}
 QTreeWidget::item {{ padding: 3px 6px; }}
 QHeaderView::section {{ padding: 3px 6px; }}
-QTreeWidget::item:selected {{ background: {c['select']}; color: #ffffff; }}
+QTreeWidget::item:selected {{ background: {c['select']}; color: {c['on_select']}; }}
 QTreeView::indicator {{ width: 16px; height: 16px; border: 1px solid {c['dim']}; border-radius: 4px;
     background: {c['field']}; }}  /* 1.8.75: the server regions' tick boxes like the page's (were Fusion's glyphs) */
 QTreeView::indicator:hover {{ border-color: {c['accent']}; }}
@@ -304,7 +376,7 @@ QComboBox:editable {{ background: {c['field']}; }}
 QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 24px; border: none; }}
 QComboBox::down-arrow {{ image: url("{ui_icon('arrow', c['dim'])}"); width: 12px; height: 12px; }}
 QComboBox QAbstractItemView {{ background: {c['panel']}; border: 1px solid {c['border']}; padding: 4px; outline: 0;
-    selection-background-color: {c['select']}; selection-color: #ffffff; }}
+    selection-background-color: {c['select']}; selection-color: {c['on_select']}; }}
 QCheckBox {{ spacing: 8px; }}
 QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid {c['dim']}; border-radius: 4px;
     background: {c['field']}; }}
@@ -333,6 +405,6 @@ def bar_style(colour) -> str:
     return f"QProgressBar::chunk {{ background: {hex_colour(colour)}; border-radius: 3px; }}"
 
 
-def pill_style(style: str) -> str:
-    col = dot_colour(style)
-    return f"background: {rgba(col, 0.16)}; color: {col};"
+def pill_style(style: str, dark: bool | None = None) -> str:
+    col = dot_colour(style, dark)
+    return f"background: {rgba(col, PILL_TINT)}; color: {col};"
