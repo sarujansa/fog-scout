@@ -1611,6 +1611,9 @@ class MessageBox(QDialog):
             self.ok.style().polish(self.ok)
         self.ok.setDefault(not risky)
         self.cancel.setDefault(risky)
+        # 1.23.1 (CI Windows): unactivated (DBD in front) the focus may stay on the red button – a focused
+        # autoDefault button takes Enter; without autoDefault Enter goes to the default, Cancel
+        self.ok.setAutoDefault(not risky)
         self._open = True
         self.setAttribute(Qt.WA_ShowWithoutActivating, not activate)
         self.adjustSize()
