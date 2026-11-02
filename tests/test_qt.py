@@ -694,6 +694,19 @@ def test_dashboard_model():
     assert dashboard.play_time(7200) == "2.0 h" and ":" in dashboard.play_time(600)
 
 
+def test_the_dashboard_has_no_tile_that_would_only_say_nothing():
+    """1.24.2 (phase 2 audit): without match data the tiles Ø Kills, Entkommen, Ø Bloodpoints and Bloodpoints pro
+    Stunde are left out (they said "–"), no waiting time no "Ø Wartezeit"; only killer rounds: no "Entkommen"."""
+    from fogscout import dashboard
+    rs, pairs = _dash_data()
+    assert [t.title for t in dashboard.tiles(rs, [])] == ["Runden", "Ø Rundendauer"]
+    assert all(t.value != "–" for t in dashboard.tiles(rs, []))
+    killers = [(r, m) for r, m in pairs if r.role == "killer"]
+    titles = [t.title for t in dashboard.tiles([r for r, _m in killers], killers)]
+    assert "Ø Kills" in titles and "Entkommen" not in titles and "Ø Bloodpoints" in titles
+    assert "Filter zurücksetzen" in dashboard.build([], []).empty
+
+
 def test_dashboard_view_draws_tiles_bars_and_heatmap(qapp, keep):
     from fogscout import dashboard, qt_window
     rs, pairs = _dash_data()
@@ -1625,16 +1638,19 @@ def test_the_overlay_preview_and_its_tools_sit_side_by_side_on_a_wide_page(qapp,
     split.arrange(qt_pages.SPLIT_FROM + 200)
     side.arrange((qt_pages.SPLIT_FROM + 200) // 2)
     assert split.beside() and not side.beside()                    # tabs beside, preview above the tools
-    split.arrange(950)
-    side.arrange(950)
+    split.arrange(qt_pages.SPLIT_FROM - 20)
+    side.arrange(qt_pages.SPLIT_FROM - 20)
     assert not split.beside() and side.beside()                    # as before 1.11.14
     split.arrange(600)
     side.arrange(600)
     assert not split.beside() and not side.beside()
-    page.show()                  # and in a real window, as wide as fits a Windows runner's screen (1100 did before)
+    # 1.24.2 (phase 2: at 1280 px the tabs sat below the fold): SPLIT_FROM 1080 → 940 – a 1280 window's page
+    # (~1036 px) shows preview + tools | tabs; a 1100 window's (~860 px) keeps preview | tools above the tabs
+    assert 860 < qt_pages.SPLIT_FROM <= 1000
+    page.show()                  # and in a real window, as wide as fits a Windows runner's screen
     page.resize(1100, 700)
     qapp.processEvents()
-    assert not split.beside() and side.beside() and side.cards[0].x() < side.cards[1].x()
+    assert split.beside() and not side.beside() and side.cards[0].y() < side.cards[1].y()
     page.resize(600, 700)
     qapp.processEvents()
     assert not split.beside() and not side.beside() and side.cards[0].y() < side.cards[1].y()
