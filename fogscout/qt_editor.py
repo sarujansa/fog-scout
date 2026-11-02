@@ -17,7 +17,7 @@ from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QFrame, QGridLayout,
                                QHBoxLayout, QLabel, QLineEdit, QListWidget, QProgressBar, QPushButton, QScrollArea, QScrollBar, QSizePolicy, QSlider, QSplitter,
-                               QToolButton, QVBoxLayout)
+                               QToolButton, QVBoxLayout, QWidget)
 
 from . import annotate, clipedit, imageedit, medialib, obsrec, project, qt_icons, qt_theme, sequence
 from .i18n import N_, _
@@ -63,6 +63,7 @@ SHORTCUTS = (
         (N_("S oder Strg+B"), N_("Clip am Abspielkopf teilen"),
          ((Qt.Key_S, 0, "split_at_playhead"), ("Ctrl+B", "split_at_playhead"))),
         (N_("Entf"), N_("Markierten Clip löschen"), ((Qt.Key_Delete, 0, "delete_selected"),)),
+        ("P", N_("Standbild am Abspielkopf einfügen"), ((Qt.Key_P, 0, "insert_hold"),)),
         ("+ / −", N_("Hinein- / herauszoomen"), ((Qt.Key_Plus, 0, "tl:zoom_in"), (Qt.Key_Minus, 0, "tl:zoom_out"))),
         (N_("Strg+0"), N_("Ganze Zeitleiste zeigen"), (("Ctrl+0", "tl:zoom_fit"),)))),
     (N_("Werkzeuge"), (
@@ -82,7 +83,8 @@ SHORTCUTS = (
 
 
 # 1.18.1: keys that change the cut – ignored while the recording is checked against a saved project
-EDIT_KEYS = frozenset((Qt.Key_I, Qt.Key_O, Qt.Key_S, Qt.Key_Delete, Qt.Key_Backspace, Qt.Key_C, Qt.Key_D, Qt.Key_X))
+EDIT_KEYS = frozenset((Qt.Key_I, Qt.Key_O, Qt.Key_S, Qt.Key_Delete, Qt.Key_Backspace, Qt.Key_C, Qt.Key_D, Qt.Key_X,
+                       Qt.Key_P))
 
 
 class KeyHelp(QFrame):
@@ -271,6 +273,8 @@ class EditorWindow(ProjectMixin, ClipBase):
         self._fullscreen = None             # what to restore when leaving the full screen
         self._layout_timer = None
         self._applying = False
+        self._zoom_edit = None              # 1.19: (clip index, 0 start / 1 end) while the zoom frame is edited
+        self._crop_saved = (None, None, False)
         super().__init__(path, marks, clips_dir, mode, sound, flags=Qt.Window, **kw)
         self.resize(1480, 900)
         self.setMinimumSize(MIN_W, MIN_H)
@@ -561,7 +565,8 @@ class EditorWindow(ProjectMixin, ClipBase):
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(0)
         self.sections = {}
-        for key, title, build in (("clip", _("Clip"), self._section_clip), ("marks", _("Marken (F8)"), self._section_marks),
+        for key, title, build in (("clip", _("Clip"), self._section_clip), ("fx", _("Effekte"), self._section_fx),
+                                  ("marks", _("Marken (F8)"), self._section_marks),
                                   ("draw", _("Zeichnen"), self._section_draw), ("censor", _("Zensieren"), self._section_censor),
                                   ("picture", _("Bild"), self._section_picture), ("sound", _("Ton"), self._section_sound),
                                   ("export", _("Export"), self._section_export)):
@@ -598,6 +603,266 @@ class EditorWindow(ProjectMixin, ClipBase):
                                     _("Entfernt den markierten Clip von der Zeitleiste (Entf) – die Aufnahme bleibt."))
         self.delete_btn.setObjectName("danger")
         sec.body.addLayout(row)
+
+    # ---- 1.19: effects of the marked clip
+    FX_SLIDERS = (("brightness", N_("Helligkeit"), -50, 50, 0), ("contrast", N_("Kontrast"), 50, 200, 100),
+                  ("saturation", N_("Sättigung"), 0, 200, 100))
+
+    def _section_fx(self, sec, mode):
+        self.fx_sliders, self.fx_values = {}, {}
+        tips = {"brightness": _("Heller oder dunkler – nur dieser Clip."),
+                "contrast": _("Mehr oder weniger Kontrast – nur dieser Clip."),
+                "saturation": _("Kräftigere oder blassere Farben, ganz links schwarz-weiss – nur dieser Clip.")}
+        for key, label, lo, hi, zero in self.FX_SLIDERS:
+            sl = guard_wheel(QSlider(Qt.Horizontal))
+            sl.setRange(lo, hi)
+            sl.setValue(zero)
+            sl.setToolTip(tips[key])
+            sl.setFocusPolicy(Qt.NoFocus)
+            val = QLabel("")
+            val.setProperty("class", "dim")
+            val.setMinimumWidth(38)
+            box = QHBoxLayout()
+            box.setSpacing(6)
+            box.addWidget(sl, 1)
+            box.addWidget(val)
+            holder = QWidget()
+            holder.setLayout(box)
+            box.setContentsMargins(0, 0, 0, 0)
+            sec.row(_(label), holder)
+            sl.valueChanged.connect(self._color_changed)
+            self.fx_sliders[key], self.fx_values[key] = sl, val
+        row = FlowRow(spacing=6)
+        self.fx_reset_btn = self._btn(row, _("Farbe zurücksetzen"), self._color_reset,
+                                      _("Helligkeit, Kontrast und Sättigung dieses Clips wieder wie aufgenommen."))
+        self.fx_all_btn = self._btn(row, _("Auf alle Clips"), self._color_to_all,
+                                    _("Übernimmt Helligkeit, Kontrast und Sättigung dieses Clips für alle Clips auf der "
+                                      "Zeitleiste (ein Schritt, Strg+Z macht ihn rückgängig)."))
+        sec.body.addLayout(row)
+        zl = QLabel(_("Zoom"))
+        zl.setProperty("class", "label")
+        sec.body.addWidget(zl)
+        row = FlowRow(spacing=6)
+        self.zoom_btns = {}
+        for which, text, tip in ((0, _("Start-Ausschnitt"), _("Den Ausschnitt am Anfang des Clips in der Vorschau "
+                                                              "ziehen – dazwischen fährt die Kamera gleichmässig.")),
+                                 (1, _("End-Ausschnitt"), _("Den Ausschnitt am Ende des Clips in der Vorschau ziehen."))):
+            b = self._btn(row, text, lambda _c=False, w=which: self._zoom_tool(w), tip)
+            b.setCheckable(True)
+            b.setProperty("class", "seg")
+            self.zoom_btns[which] = b
+        self.zoom_clear_btn = self._btn(row, _("Zoom entfernen"), self._zoom_clear,
+                                        _("Der Clip zeigt wieder das ganze Bild."))
+        sec.body.addLayout(row)
+        self.zoom_still = QCheckBox(_("Ohne Bewegung"))
+        self.zoom_still.setToolTip(_("Ein fester Ausschnitt: Start und Ende gleich – der End-Ausschnitt folgt dem Start."))
+        self.zoom_still.toggled.connect(self._zoom_still_toggled)
+        sec.body.addWidget(self.zoom_still)
+        self.reverse_box = QCheckBox(_("Rückwärts"))
+        self.reverse_box.toggled.connect(self._reverse_toggled)
+        sec.body.addWidget(self.reverse_box)
+        self.reverse_hint = QLabel("")
+        self.reverse_hint.setProperty("class", "dim")
+        self.reverse_hint.setWordWrap(True)
+        sec.body.addWidget(self.reverse_hint)
+        holds = [(v, f"{v:g} s") for v in clipedit.HOLDS]
+        self.hold_box = self._combo(None, holds, 2.0, _("Wie lange ein Standbild steht – für ein neues, oder für das "
+                                                        "markierte Standbild."), self._hold_picked)
+        sec.row(_("Standbild"), self.hold_box, stretch=False)
+        row = FlowRow(spacing=6)
+        self.hold_btn = self._btn(row, _("Standbild einfügen"), self.insert_hold,
+                                  _("Hält das Bild am Abspielkopf so lange an wie eingestellt (Taste P) – ohne Ton."))
+        sec.body.addLayout(row)
+
+    def _fx_part(self):
+        """(index, clip) of the marked clip, else (None, None)."""
+        i = self.timeline.selection
+        if i is None or not 0 <= i < len(self.parts):
+            return None, None
+        return i, self.parts[i]
+
+    def _fx_show(self):
+        """The section shows the marked clip's effects (without firing their handlers)."""
+        i, p = self._fx_part()
+        color = (p.color if p is not None and p.color else clipedit.COLOR_NONE)
+        for (key, _label, _lo, _hi, _zero), v in zip(self.FX_SLIDERS, color):
+            sl = self.fx_sliders[key]
+            sl.blockSignals(True)
+            sl.setValue(int(round(v * 100)))
+            sl.blockSignals(False)
+            self.fx_values[key].setText(f"{int(round(v * 100)):+d}" if key == "brightness" else f"{int(round(v * 100))} %")
+        if p is None:
+            return
+        still = p.hold > 0
+        for w in (*self.fx_sliders.values(), self.fx_reset_btn, self.fx_all_btn):
+            w.setEnabled(True)
+        self.fx_reset_btn.setEnabled(bool(p.color))
+        for b in (*self.zoom_btns.values(), self.zoom_still):
+            b.setEnabled(True)
+        self.zoom_clear_btn.setEnabled(bool(p.zoom))
+        self.zoom_still.blockSignals(True)
+        self.zoom_still.setChecked(bool(p.zoom) and p.zoom[0] == p.zoom[1])
+        self.zoom_still.blockSignals(False)
+        limit = clipedit.reverse_max_s(self.info)
+        too_long = (p.end - p.start) > limit + 1e-6
+        self.reverse_box.blockSignals(True)
+        self.reverse_box.setChecked(p.reverse)
+        self.reverse_box.blockSignals(False)
+        self.reverse_box.setEnabled(not still and (p.reverse or not too_long))
+        self.reverse_box.setToolTip(_("Spielt den Clip rückwärts ab, auch den Ton. Bei dieser Aufnahme höchstens "
+                                      "{n} s je Clip (sonst braucht ffmpeg zu viel Arbeitsspeicher).", n=f"{limit:g}"))
+        self.reverse_hint.setText(_("Rückwärts geht bis {n} s je Clip – diesen Clip vorher teilen.", n=f"{limit:g}")
+                                  if too_long and not still and not p.reverse else "")
+        self.reverse_hint.setVisible(bool(self.reverse_hint.text()))
+        self.hold_box.blockSignals(True)
+        if still:
+            idx = self.hold_box.findData(p.hold)
+            if idx < 0:
+                self.hold_box.addItem(f"{p.hold:g} s", p.hold)
+                idx = self.hold_box.count() - 1
+            self.hold_box.setCurrentIndex(idx)
+        self.hold_box.blockSignals(False)
+        self.hold_btn.setEnabled(bool(self.parts))
+
+    def _fx_set(self, i, key, **fields):
+        """Change clip ``i`` and commit (``key`` merges a slider's drag into one undo step)."""
+        self.parts = sequence.with_effects(self.parts, i, **fields)
+        self.timeline.set_parts(self.parts)
+        self._commit(key)
+        self.goto(self.pos)
+
+    def _color_changed(self, _v=None):
+        i, p = self._fx_part()
+        if p is None:
+            return
+        vals = [self.fx_sliders[k].value() / 100 for k, *_r in self.FX_SLIDERS]
+        self._fx_set(i, ("color", i), color=clipedit.clean_color(vals))
+
+    def _color_reset(self):
+        i, p = self._fx_part()
+        if p is not None and p.color:
+            self._fx_set(i, None, color=None)
+
+    def _color_to_all(self):
+        _i, p = self._fx_part()
+        if p is None:
+            return
+        self.parts = [replace(q, color=p.color) for q in self.parts]
+        self.timeline.set_parts(self.parts)
+        self._commit()
+        self.goto(self.pos)
+        self.status.setText(_("Farbe auf alle {n} Clips übernommen.", n=len(self.parts)))
+
+    def _reverse_toggled(self, on):
+        i, p = self._fx_part()
+        if p is None or p.hold > 0:
+            return
+        if on and (p.end - p.start) > clipedit.reverse_max_s(self.info) + 1e-6:
+            self._fx_show()
+            return
+        self._fx_set(i, None, reverse=bool(on))
+
+    def _hold_picked(self, _i=None):
+        i, p = self._fx_part()
+        if p is not None and p.hold > 0:
+            self.parts = sequence.set_hold(self.parts, i, float(self.hold_box.currentData() or 2.0))
+            self.timeline.set_parts(self.parts)
+            self._commit()
+            self._refresh()
+
+    def insert_hold(self):
+        """1.19 (P): a still of the picture at the playhead, as long as the box says."""
+        if not self.parts:
+            return
+        seconds = float(self.hold_box.currentData() or 2.0)
+        parts, j = sequence.insert_hold(self.parts, self.pos, seconds)
+        if j is None:
+            return
+        self.parts = parts
+        self.timeline.set_parts(self.parts)
+        self.timeline.select(j)
+        self._commit()
+        self.goto(sequence.starts(self.parts)[j])
+        self.status.setText(_("Standbild eingefügt: {n} s ohne Ton.", n=f"{seconds:g}"))
+
+    def _fx_clear(self, i):
+        if 0 <= i < len(self.parts) and clipedit.has_effects(self.parts[i]):
+            self._zoom_leave()
+            self._fx_set(i, None, color=None, zoom=None, reverse=False)
+
+    # ---- 1.19: the zoom tool (the crop frame of the preview, borrowed for the clip's start/end box)
+    def _zoom_tool(self, which):
+        i, p = self._fx_part()
+        if p is None:
+            return
+        if self._zoom_edit == (i, which):
+            self._zoom_leave()
+            return
+        self._zoom_leave()
+        if self.mode != "select":
+            self.mode_btns["select"].setChecked(True)
+        pv = self.preview
+        self._crop_saved = (pv.crop, pv.crop_ratio, pv.zoom_crop)
+        self._zoom_edit = (i, which)
+        for k, b in self.zoom_btns.items():
+            b.setChecked(k == which)
+        box = p.zoom[which] if p.zoom else (0.0, 0.0, 1.0, 1.0)
+        pv.set_zoom_crop(False)
+        pv.set_crop(box, (self.info.width or 16) / max(1, self.info.height or 9))
+        pv.set_crop_edit(True)
+        st = sequence.starts(self.parts)
+        self.goto(st[i] if which == 0 else max(st[i], st[i + 1] - 0.05))
+        self.status.setText(_("Zoom: Ausschnitt in der Vorschau ziehen oder an den Ecken grösser/kleiner ziehen – "
+                              "Esc beendet."))
+
+    def _zoom_leave(self) -> bool:
+        """End the zoom tool: the preview's crop frame is the clip crop again. False when it was not on."""
+        if getattr(self, "_zoom_edit", None) is None:
+            return False
+        self._zoom_edit = None
+        crop, ratio, zc = self._crop_saved
+        pv = self.preview
+        pv.set_crop_edit(False)
+        pv.set_crop(crop, ratio)
+        pv.set_zoom_crop(zc)
+        for b in self.zoom_btns.values():
+            b.setChecked(False)
+        if self.status.text().startswith(_("Zoom")):
+            self.status.setText("")
+        if not self._closed:
+            self.goto(self.pos)
+        return True
+
+    def _zoom_moved(self):
+        """The zoom frame was drawn or moved: the clip's start/end box (both with "Ohne Bewegung")."""
+        i, which = self._zoom_edit
+        if not 0 <= i < len(self.parts):
+            self._zoom_leave()
+            return
+        p = self.parts[i]
+        box = clipedit.clean_box(self.preview.crop)
+        full = (0.0, 0.0, 1.0, 1.0)
+        z = list(p.zoom) if p.zoom else [full, full]
+        z[which] = box
+        if self.zoom_still.isChecked():
+            z = [box, box]
+        self.parts = sequence.with_effects(self.parts, i, zoom=clipedit.clean_zoom(z))
+        self.timeline.set_parts(self.parts)
+        self._commit(("zoom", i, which))
+        self._fx_show()
+
+    def _zoom_still_toggled(self, on):
+        i, p = self._fx_part()
+        if p is None or not p.zoom:
+            return
+        if on:
+            self._fx_set(i, None, zoom=clipedit.clean_zoom((p.zoom[0], p.zoom[0])))
+
+    def _zoom_clear(self):
+        i, p = self._fx_part()
+        if p is not None and p.zoom:
+            self._zoom_leave()
+            self._fx_set(i, None, zoom=None)
 
     def _section_marks(self, sec, mode):
         self.mark_list = QListWidget()
@@ -980,8 +1245,9 @@ class EditorWindow(ProjectMixin, ClipBase):
 
     # ---- the state, undo and redo
     def _state(self) -> sequence.EditState:
-        return sequence.EditState([clipedit.Part(p.start, p.end, p.speed) for p in self.parts],
-                                  tuple(self.preview.crop) if self.preview.crop and self.crop_box.currentData() != "none" else None,
+        crop = self.preview.crop if self._zoom_edit is None else self._crop_saved[0]   # 1.19: the zoom tool borrows it
+        return sequence.EditState([replace(p) for p in self.parts],
+                                  tuple(crop) if crop and self.crop_box.currentData() != "none" else None,
                                   str(self.crop_box.currentData() or "none"),
                                   [replace(s, pts=list(s.pts)) for s in self.preview.shapes],
                                   float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
@@ -989,9 +1255,10 @@ class EditorWindow(ProjectMixin, ClipBase):
 
     def _apply(self, state: sequence.EditState):
         """Show ``state`` (undo/redo, a loaded project) without writing history."""
+        self._zoom_leave()
         self._applying = True
         try:
-            self.parts = [clipedit.Part(p.start, p.end, p.speed) for p in state.parts]
+            self.parts = [replace(p) for p in state.parts]
             self.timeline.set_parts(self.parts)
             key = state.crop_key if state.crop else "none"
             if key == "content" and self.crop_box.findData("content") < 0:
@@ -1074,6 +1341,7 @@ class EditorWindow(ProjectMixin, ClipBase):
         sel = self.timeline.selection
         secs = self.sections
         secs["clip"].setVisible(sel is not None)
+        secs["fx"].setVisible(sel is not None)
         secs["marks"].setVisible(bool(self.marks))
         secs["draw"].setVisible(self.mode == "draw")
         secs["censor"].setVisible(self.mode == "censor")
@@ -1085,6 +1353,12 @@ class EditorWindow(ProjectMixin, ClipBase):
                                       start=clipedit.fmt_pos(p.start), end=clipedit.fmt_pos(p.end),
                                       at=clipedit.fmt_pos(st[sel]), length=f"{sequence.length(p):.1f}"))
             self._select_speed(p.speed)
+            self.speed_box.setEnabled(p.hold <= 0)              # 1.19: a still has no tempo
+            if p.hold > 0:
+                self.clip_title.setText(_("Standbild – Clip {n} von {total}", n=sel + 1, total=len(self.parts)))
+                self.clip_facts.setText(_("Bild bei {at} der Aufnahme · {length} s ohne Ton",
+                                          at=clipedit.fmt_pos(p.start), length=f"{p.hold:g}"))
+            self._fx_show()
         self.insp_title.setText({"select": _("Inspector"), "crop": _("Ausschnitt"), "draw": _("Zeichnen"),
                                  "censor": _("Zensieren")}[self.mode])
         self.delete_btn.setEnabled(sel is not None)
@@ -1102,6 +1376,8 @@ class EditorWindow(ProjectMixin, ClipBase):
     def _set_mode(self, mode: str):
         if mode not in MODES:
             return
+        if mode != "select":
+            self._zoom_leave()
         self.mode = mode
         btn = self.mode_btns[mode]
         if not btn.isChecked():
@@ -1139,10 +1415,21 @@ class EditorWindow(ProjectMixin, ClipBase):
         self.pos = min(max(0.0, float(t)), total)
         self.timeline.set_playhead(self.pos)
         self.timeline.ensure_visible(self.pos)
-        _i, src = sequence.source_at(self.parts, self.pos)
+        i, src = sequence.source_at(self.parts, self.pos)
         self.preview.set_now(src)
         self._show_pos()
-        self._scrub(src)
+        self._scrub(src, vf=self._effects_vf(i, src))
+
+    def _effects_vf(self, i, src) -> list:
+        """1.19: the effects of clip ``i`` on the still at ``src`` – the zoom tool shows the whole picture (its boxes
+        are drawn over it)."""
+        if i is None or not 0 <= i < len(self.parts):
+            return []
+        p = self.parts[i]
+        if self._zoom_edit is not None:
+            p = replace(p, zoom=None)
+        w, h = clipedit.scaled(self.info, clipedit.PREVIEW_H)
+        return clipedit.preview_filters(p, w, h, t0=src, still=True)
 
     def goto_src(self, src):
         """The playhead to the output moment at which source second ``src`` plays (the nearest one when the
@@ -1186,18 +1473,28 @@ class EditorWindow(ProjectMixin, ClipBase):
         if i is None:
             return []
         st = sequence.starts(self.parts)
-        if src >= self.parts[i].end - 0.05 and i == len(self.parts) - 1:   # at the very end: from the start
+        if i == len(self.parts) - 1 and self.pos >= st[-1] - 0.05:       # at the very end: from the start
             self.pos = 0.0
-            i, src = 0, self.parts[0].start
-        p = self.parts[i]
-        segs = [(src, p.end, p.speed, st[i] + (src - p.start) / max(0.01, p.speed))]
-        segs += [(q.start, q.end, q.speed, st[k]) for k, q in enumerate(self.parts) if k > i]
+            i = 0
+        segs = [self._segment(i, st[i], self.pos)]
+        segs += [self._segment(k, st[k], st[k]) for k in range(i + 1, len(self.parts))]
         return segs
+
+    def _segment(self, i, start_out, at):
+        """1.19: the playback stretch of clip ``i`` from output time ``at`` on – (source from, source to, tempo,
+        output time at its start, the clip[, seconds a still has left])."""
+        p = self.parts[i]
+        if p.hold > 0:
+            return (p.start, p.start, 1.0, at, p, max(0.0, p.hold - (at - start_out)))
+        _k, src = sequence.source_at(self.parts, at) if at > start_out else (i, p.end if p.reverse else p.start)
+        if p.reverse:                                   # backwards: the source up to here, played from its end
+            return (p.start, src, p.speed, at, p)
+        return (src, p.end, p.speed, at, p)
 
     def _played_at(self, t):
         if self._seg is None:
             return
-        start, _end, speed, out0 = self._seg
+        start, _end, speed, out0 = self._seg[:4]
         self.pos = out0 + max(0.0, t - start) / max(0.01, speed)
         self.timeline.set_playhead(self.pos)
         self.timeline.ensure_visible(self.pos)
@@ -1305,6 +1602,8 @@ class EditorWindow(ProjectMixin, ClipBase):
         self.goto(self.pos)
 
     def _clip_selected(self, i):
+        if self._zoom_edit is not None and self._zoom_edit[0] != i:
+            self._zoom_leave()                          # 1.19: the zoom frame belongs to the clip it was opened on
         self._inspector_refresh()
 
     def _timeline_pick(self, ident, t, i):
@@ -1326,6 +1625,11 @@ class EditorWindow(ProjectMixin, ClipBase):
             self._commit()
         elif ident == "still":
             self.save_still(sequence.source_at(self.parts, t)[1])
+        elif ident == "hold":                                    # 1.19
+            self.goto(t)
+            self.insert_hold()
+        elif ident == "fx_clear" and i is not None:
+            self._fx_clear(i)
 
     # ---- marks
     def _picked_mark(self):
@@ -1357,7 +1661,7 @@ class EditorWindow(ProjectMixin, ClipBase):
         """What will be saved: the clips in play order, crop, drawings (copies), fades."""
         crop = self.preview.crop if self.crop_box.currentData() != "none" else None
         shapes = [replace(s, pts=list(s.pts)) for s in self.preview.shapes if s.kind != "text" or s.text.strip()]
-        return clipedit.Edit([clipedit.Part(p.start, p.end, p.speed) for p in self.parts], crop, shapes,
+        return clipedit.Edit([replace(p) for p in self.parts], crop, shapes,
                              float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0))
 
     def _saving(self, on: bool):
@@ -1421,6 +1725,9 @@ class EditorWindow(ProjectMixin, ClipBase):
 
     def _crop_moved(self):
         """The crop frame was drawn or moved by hand: „Ohne schwarze Ränder“ becomes „Frei“."""
+        if self._zoom_edit is not None:                  # 1.19: the frame is the clip's zoom box just now
+            self._zoom_moved()
+            return
         if self.crop_box.currentData() == "content":
             self.crop_box.blockSignals(True)
             self.crop_box.setCurrentIndex(self.crop_box.findData("free"))
@@ -1614,6 +1921,8 @@ class EditorWindow(ProjectMixin, ClipBase):
             self.next_mark()
         elif k == Qt.Key_S and not frame:
             self.split_at_playhead()
+        elif k == Qt.Key_P and not frame:                         # 1.19: a still at the playhead
+            self.insert_hold()
         elif k == Qt.Key_Home:
             self.goto(0.0)
         elif k == Qt.Key_End:
@@ -1659,6 +1968,8 @@ class EditorWindow(ProjectMixin, ClipBase):
         if self.timeline.cancel_gesture():
             self.goto(self.pos)                                  # a trim showed its edge: back to the playhead
             self.status.setText(_("Abgebrochen."))
+            return
+        if self._zoom_leave():                                   # 1.19: the zoom frame counts as a tool
             return
         if self.mode != "select":
             self.mode_btns["select"].setChecked(True)
