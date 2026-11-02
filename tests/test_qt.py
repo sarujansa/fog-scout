@@ -2202,6 +2202,8 @@ def test_a_question_that_deletes_says_so_and_keeps_the_data_on_enter(qapp, keep)
     """1.23 (audit, prompt.md): the questions said "OK" and OK was the default, also before deleting – the button
     names the action now, and when data goes it is red and Cancel takes Enter and the focus (Qt makes the focused
     button of a dialog its default – autoDefault – so the focus is what Enter presses)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
     from fogscout import qt_window
     posted = queue.Queue()
     win = keep(qt_window.MainWindow(lambda a, arg=None: posted.put((a, arg))))
@@ -2215,12 +2217,15 @@ def test_a_question_that_deletes_says_so_and_keeps_the_data_on_enter(qapp, keep)
     win.show_question(None)
     box.ok.setFocus()
     win.show_question(("Clip löschen", "c.mp4 von der Platte löschen?", True, "Löschen", True), activate=False)
-    assert box.focusWidget() is box.cancel                  # 1.23.1: DBD in front – Enter later still cancels
-    box.reject()
-    posted.get_nowait()
+    QTest.keyClick(box.ok, Qt.Key_Return)                   # 1.23.1: DBD in front, focus still on the red button
+    assert posted.get_nowait() == ("answer", False)         # … Enter cancels all the same (no autoDefault)
     win.show_question(None)
     win.show_question(("Serverregionen anwenden", "…", True, "Anwenden", False))
     assert box.ok.text() == "Anwenden" and box.ok.objectName() == "primary" and box.focusWidget() is box.ok
+    QTest.keyClick(box.ok, Qt.Key_Return)                   # no data goes: Enter = the action
+    assert posted.get_nowait() == ("answer", True)
+    win.show_question(None)
+    win.show_question(("Serverregionen anwenden", "…", True, "Anwenden", False))
     win.show_question(None)
     win.show_question(("Hinweis", "Nur zur Info", False))        # a note: "OK", whatever came before
     assert box.ok.text() == "OK" and box.focusWidget() is box.ok

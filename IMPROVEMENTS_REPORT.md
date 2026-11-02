@@ -213,6 +213,11 @@ Die unabhängige Prüfung des Gesamt-Diffs hat sechs Befunde gemeldet; alle sind
   - Lokal mit Inter fiel das nicht auf. Lokal nachgestellt: 46 von 104 Schrift/Grössen-Kombinationen sind betroffen.
   - Behoben in 1.23.1 (`ELIDE_SLACK`). Der Test prüft die CI-Schrift jetzt ausdrücklich: mit dem alten Code rot, mit dem neuen grün.
   - Der Fehler wirkte sich auch für Nutzer aus: Kachel-Knöpfe wären unnötig gekürzt worden.
+- **Danach war der Windows-Job rot:** `test_a_question_that_deletes_says_so_and_keeps_the_data_on_enter`.
+  - Unter Windows setzt eine Rückfrage, die ohne Aktivierung erscheint (DBD vorne), den Fokus nicht auf „Abbrechen“.
+  - Folge: Enter auf dem fokussierten roten Knopf hätte gelöscht.
+  - Behoben: Bei `danger` ist der rote Knopf nicht mehr „autoDefault“, Enter drückt immer „Abbrechen“.
+  - Der Test drückt jetzt Enter auf dem roten Knopf: mit dem alten Code löscht er, mit dem neuen bricht er ab.
 - Im selben Log stand eine harmlose Fehlermeldung „Internal C++ object already deleted“. Ursache war ein Timer zum Hervorheben eines Suchtreffers, der nach dem Schliessen des Fensters feuerte (vorhandener Code). Er ist jetzt an sein Widget gebunden.
 
 **Übersprungen:** 37 Tests, nur unter Windows ausführbar.
@@ -352,7 +357,8 @@ Ohne Windows-Rechner und Spiel nicht geprüft – bitte am PC durchgehen:
 | `f6aba5d` | Design-Tokens |
 | `8ba6ccc` | 1.23.1: Audit-Korrekturen und dieser Bericht |
 | `8f3c31a` | 1.23.1: Kachel-Knopf bei CI-Schrift, Timer an Widget |
-| letzter Commit | diese Tabelle |
+| `007525b` | Bericht: Commit-Tabelle |
+| letzter Commit | Enter bei Lösch-Rückfragen immer „Abbrechen“ (CI Windows) |
 
 **Push:** Alle Commits sind nach `origin/claude/funny-feynman-gt5t6n` gepusht. Pull Request sarujansa/fog-scout#298 ist offen, **nicht gemergt** – Saru merged.
 
