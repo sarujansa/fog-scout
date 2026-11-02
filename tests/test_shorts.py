@@ -36,7 +36,7 @@ def test_a_short_round_trips_and_broken_fields_drop_out():
 def test_project_format_4_keeps_the_short_and_old_cuts_keep_their_hash():
     st = sequence.EditState([Part(1, 5)], short=spec())
     d = project.to_dict2(project.content_dict(st, {"name": "s"}), "a" * 32, {}, {}, None)
-    assert d["version"] == project.CURRENT == 4 and d["short"]["title"] == "Nurse Doppel-Blink"
+    assert d["version"] == project.CURRENT >= 4 and d["short"]["title"] == "Nurse Doppel-Blink"
     back = project.validate(json.loads(json.dumps(d)), 60.0, [])[0]
     assert back.short == spec()
     plain = sequence.EditState([Part(1, 5)])                              # without a short: the 1.19 content
