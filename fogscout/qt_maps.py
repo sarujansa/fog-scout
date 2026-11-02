@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QFrame, QHBoxLayout, 
                                QPlainTextEdit, QPushButton, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QScrollArea,
                                QSizePolicy, QStackedWidget, QVBoxLayout, QWidget)
 
-from . import thumbs
+from . import qt_theme, thumbs
 from .qt_layouts import FlowRow
 from .i18n import N_, _
 from .mapnotes import MAX_CHARS as NOTE_CHARS
@@ -228,7 +228,7 @@ class MapsPage(QWidget):
         # one map big
         big = _card()
         cl = QVBoxLayout(big)
-        cl.setContentsMargins(14, 12, 14, 12)
+        cl.setContentsMargins(*qt_theme.PAD_CARD)
         cl.setSpacing(6)
         top = QHBoxLayout()
         self.p_back = QPushButton("← " + _("Zurück"))
