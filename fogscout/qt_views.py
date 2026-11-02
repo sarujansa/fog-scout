@@ -17,6 +17,9 @@ from .i18n import _
 from .qt_common import _label, _card, _set, _tip
 
 
+ELIDE_SLACK = 2                          # px: ElideButton keeps its whole text this close to its width
+
+
 class ElideButton(QPushButton):
     """1.23 (audit, prompt.md, seen at 1280 px): a button whose text ends in "…" when its room is narrower than
     the text – a tile's "Match-Daten einrichten …" was cut on both sides ("atch-Daten einrichten"). It asks for its
@@ -52,8 +55,16 @@ class ElideButton(QPushButton):
         self._elide()
 
     def _elide(self):
+        # 1.23.1 (CI, other fonts): at exactly its size hint elidedText cut the last character – its measure differs
+        # from horizontalAdvance by a fraction of a pixel; the whole text stays while it fits within ELIDE_SLACK
+        fm = self.fontMetrics()
         room = max(0, self.width() - self._pad())
-        text = self.fontMetrics().elidedText(self._full, Qt.ElideRight, room) if self._full else ""
+        if not self._full:
+            text = ""
+        elif fm.horizontalAdvance(self._full) <= room + ELIDE_SLACK:
+            text = self._full
+        else:
+            text = fm.elidedText(self._full, Qt.ElideRight, room)
         if text != self.text():
             super().setText(text)
 

@@ -863,8 +863,9 @@ class MainWindow(QMainWindow):
                 target.setProperty("found", False)
                 target.style().unpolish(target)
                 target.style().polish(target)
-            QTimer.singleShot(FOUND_MS, done)
-        QTimer.singleShot(delay, scroll)
+            # 1.23.1: bound to the widget – Qt drops the timer with it (a closed window raised "already deleted")
+            QTimer.singleShot(FOUND_MS, target, done)
+        QTimer.singleShot(delay, self, scroll)
 
     def show_states(self, page, states):
         if page == "setup":
