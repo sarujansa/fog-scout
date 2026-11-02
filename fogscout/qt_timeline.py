@@ -117,6 +117,20 @@ class SequenceTimeline(QWidget):
             self.update()
             self.selected.emit(i)
 
+    def gesture_active(self) -> bool:
+        """1.18: a press-drag (seek, trim, move) is under way."""
+        return self._drag is not None
+
+    def cancel_gesture(self) -> bool:
+        """1.18 (Esc): the drag under way ends without its result – trimming and moving draw from ``_drag`` and
+        change ``parts`` only on release, so dropping it is all; False when there was none."""
+        if self._drag is None:
+            return False
+        self._drag = None
+        self.setCursor(Qt.ArrowCursor)
+        self.update()
+        return True
+
     # ---- zoom and scrolling
     def _track_width(self) -> float:
         return max(1.0, self.width() - HEAD_W - 8)
