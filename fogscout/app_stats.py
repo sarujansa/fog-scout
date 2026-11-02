@@ -180,7 +180,18 @@ class StatsTab:
         self.stats_dash = ui.Dashboard(box_d, command=self._dash_clicked)   # 1.58: key figures, maps, killer × map
         self.stats_dash.pack(fill="x")
         self.stats_lost_var = ui.StringVar(value="")
-        self.stats_lost_label = ui.Label(box_d, textvariable=self.stats_lost_var, wraplength=540)  # only when needed
+        # 1.24.2 (phase 2): what was not counted in yellow (Note), what was saved in plain words – no ⚠/✓ signs
+        self.stats_lost_label = ui.Label(box_d, textvariable=self.stats_lost_var, style="Note.TLabel",
+                                         wraplength=540)                                   # only when needed
+        self.stats_saved_var = ui.StringVar(value="")
+        self.stats_saved_label = ui.Label(box_d, textvariable=self.stats_saved_var, wraplength=540)
+        # 1.24.2: no tile of "–" any more – once a line what is missing and, never set up, the way there
+        self.stats_data_row = ui.Frame(box_d)
+        self.stats_data_var = ui.StringVar(value="")
+        ui.Label(self.stats_data_row, textvariable=self.stats_data_var, wraplength=540).pack(anchor="w")
+        self.stats_data_btn = ui.Button(self.stats_data_row, text=_("Match-Daten einrichten …"),
+                                        command=self._reveal_official)
+        self.stats_data_btn.pack(anchor="w", pady=(4, 0))
         self.stats_farm_row = ui.Frame(box_d)        # 1.6.1: old farming rounds saved as custom games
         self.stats_farm_var = ui.StringVar(value="")
         ui.Label(self.stats_farm_row, textvariable=self.stats_farm_var, wraplength=540).pack(anchor="w")
@@ -643,23 +654,25 @@ class StatsTab:
         saved = {r.t for r in rescued}
         lost = [x for x in history.load_lost(self._hist_path()) if (since is None or x[0] >= since)
                 and x[0] not in saved]
-        notes = [_("⚠ Nicht gezählt: {n} × Rundenende nicht erkannt (die nächste Map kam, bevor das Ende "
-                   "erkannt wurde). Zuletzt: {map}, {when}.", n=len(lost), map=lost[-1][1],
-                   when=time.strftime("%d.%m.%y %H:%M", time.localtime(lost[-1][0])))] if lost else []
+        # 1.24.2: (warnings, fixed) – the first in yellow, the second plain (before: one label with ⚠/✓ in front)
+        notes = ([_("Nicht gezählt: {n} × Rundenende nicht erkannt (die nächste Map kam, bevor das Ende "
+                    "erkannt wurde). Zuletzt: {map}, {when}.", n=len(lost), map=lost[-1][1],
+                    when=time.strftime("%d.%m.%y %H:%M", time.localtime(lost[-1][0])))] if lost else [], [])
         n_saved = sum(1 for r in rescued if id(r) in ids)
         if n_saved:
-            notes.append(_("✓ {n} × Rundenende nicht erkannt, aber mit der Dauer laut Stats-Seite gezählt.",
-                           n=n_saved))
+            notes[1].append(_("{n} × Rundenende nicht erkannt, aber mit der Dauer laut Stats-Seite gezählt.",
+                              n=n_saved))
         ghosts = [r for r in j.phantoms if since is None or r.t >= since]
         if ghosts:
-            notes.append(_("✓ {n} × Map mitten im Match falsch erkannt (laut Stats-Seite lief da schon ein Match) – "
-                           "nicht gezählt. Zuletzt: {map}, {when}.", n=len(ghosts), map=ghosts[-1].map,
-                           when=time.strftime("%d.%m.%y %H:%M", time.localtime(ghosts[-1].t))))
+            notes[1].append(_("{n} × Map mitten im Match falsch erkannt (laut Stats-Seite lief da schon ein Match) – "
+                              "nicht gezählt. Zuletzt: {map}, {when}.", n=len(ghosts), map=ghosts[-1].map,
+                              when=time.strftime("%d.%m.%y %H:%M", time.localtime(ghosts[-1].t))))
         pairs = [(r, off[id(r)]) for r in rounds if id(r) in off and (role == "custom" or not r.custom)]
         # 1.3.5: only the sub-tab on display is drawn now, the others when they are opened – with 5000 rounds all
         # of them together took 360 ms per filter click (system and trend alone 170 ms)
         self._stats_ctx = SimpleNamespace(rounds=rounds, pairs=pairs, off=off, period=period, notes=notes,
-                                          all_rounds=all_rounds, farm=farm, role=role, hide=hide)
+                                          all_rounds=all_rounds, farm=farm, role=role, hide=hide,
+                                          set_up=bool(j.matches))
         self._stats_dirty = set(self._stats_parts)
         self._stats_filters_shown(sum((wanted is not None, killer is not None, wmap is not None, wmode is not None,
                                        hide)), period != "all" or role != "all")
@@ -680,11 +693,30 @@ class StatsTab:
 
     def _stats_part_dash(self, c):
         rounds, pairs, notes, all_rounds = c.rounds, c.pairs, c.notes, c.all_rounds
-        self.stats_lost_var.set("\n".join(notes))
-        if self.stats_lost_var.get():
-            self.stats_lost_label.pack(anchor="w", after=self.stats_dash, pady=(6, 0))
+        warn, fixed = notes
+        after = self.stats_dash
+        for var, label, lines in ((self.stats_lost_var, self.stats_lost_label, warn),
+                                  (self.stats_saved_var, self.stats_saved_label, fixed)):
+            var.set("\n".join(lines))
+            if lines:
+                label.pack(anchor="w", after=after, pady=(6, 0))
+                after = label
+            else:
+                label.pack_forget()
+        set_up = c.set_up
+        if rounds and not pairs:                  # 1.24.2: the tiles of the stats page left out – say why
+            self.stats_data_var.set(
+                _("In dieser Auswahl ist keine Runde einem Match der Stats-Seite zugeordnet – darum fehlen Kills, "
+                  "Entkommen und Bloodpoints.") if set_up else
+                _("Kills, Entkommen und Bloodpoints kommen von der Stats-Seite – dafür einmal die Match-Daten "
+                  "einrichten."))
+            self.stats_data_row.pack(anchor="w", fill="x", after=after, pady=(6, 0))
+            if set_up and self.stats_data_btn.winfo_manager():
+                self.stats_data_btn.pack_forget()
+            elif not set_up and not self.stats_data_btn.winfo_manager():
+                self.stats_data_btn.pack(anchor="w", pady=(4, 0))
         else:
-            self.stats_lost_label.pack_forget()
+            self.stats_data_row.pack_forget()
         found = self._stats_farm_candidates()
         if found:
             self.stats_farm_var.set(_("{n} Runden sehen nach Farming aus: {reasons}. Zuletzt: {map}, {when}.",
