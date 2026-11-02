@@ -115,7 +115,7 @@ def actions(app) -> dict:
     out = {"scan": (True, _("Scannen")),
            "choose": None if has_map else (True, _("Map wählen …")),
            "rotate": (True, _("Drehen ↻")) if app.current is not None else None,
-           "toggle": (True, _("Overlay ausblenden") if on else _("Overlay einblenden")) if has_map else None,
+           "toggle": (True, _("Karte ausblenden") if on else _("Karte einblenden")) if has_map else None,
            "reject": (True, _("Falsch erkannt")) if app.current is not None and app.source == "auto"
            and not app.hidden_after_match else None,
            "confirm": None, "layout": None, "floor": None,

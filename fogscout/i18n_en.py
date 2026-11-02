@@ -27,7 +27,7 @@ EN = {
     "unten links": "bottom left",
     "unten rechts": "bottom right",
     "eigene Position": "custom position",
-    "Overlay ein/aus": "Overlay on/off",
+    "Karte ein/aus": "Map on/off",
     "Layout-Variante": "Layout variant",
     "Bildschirm scannen": "Scan screen",
     "Vorherige Map": "Previous map",
@@ -38,8 +38,8 @@ EN = {
 
     # ------------------------------------------------------------------ main window
     "Noch keine Map": "No map yet",
-    "Overlay ausblenden": "Hide overlay",
-    "Overlay einblenden": "Show overlay",
+    "Karte ausblenden": "Hide map",
+    "Karte einblenden": "Show map",
     "Scannen": "Scan",
     "Overlay testen": "Test overlay",
     "Test beenden": "End test",
@@ -73,7 +73,6 @@ EN = {
 
     # ------------------------------------------------------------------ tab overlay
     "Position": "Position",
-    "Vorgabe": "Preset",
     "Zurücksetzen": "Reset",
     "Horizontal": "Horizontal",
     "Vertikal": "Vertical",
@@ -505,7 +504,7 @@ EN = {
     "Keine Runden in dieser Auswahl.": "No rounds in this selection.",
     "Wann": "When",
     "Dauer": "Length",
-    "Verlauf löschen": "Delete history",
+    "Alle Runden löschen …": "Delete all rounds …",
     "Runde löschen": "Delete round",
     "Ø {kills} Kills · {n} Runden": "Avg. {kills} kills · {n} rounds",
     "Killer: Ø {kills} Kills, {four}× 4K ({n})": "Killer: avg. {kills} kills, {four}× 4K ({n})",
@@ -542,9 +541,25 @@ EN = {
         "✓ {n} × map read wrongly in the middle of a match (the stats page already had a match running) – not "
         "counted. Last: {map}, {when}.",
     "Noch keine Runden gespeichert.": "No rounds saved yet.",
-    "Alle gespeicherten Runden löschen?": "Delete all saved rounds?",
+    "Alle Runden löschen": "Delete all rounds",
+    "Alle gespeicherten Runden löschen? Vorher wird eine Kopie in {folder}/ angelegt.":
+        "Delete all saved rounds? A copy goes to {folder}/ first.",
+    "Es sind keine Runden gespeichert.": "No rounds are saved.",
+    "Nicht angewendet – 1 Änderung. „Auswahl anwenden“ übernimmt sie, danach DBD neu starten.":
+        "Not applied – 1 change. \"Apply selection\" takes it over; restart DBD afterwards.",
+    "Nicht angewendet – {n} Änderungen. „Auswahl anwenden“ übernimmt sie, danach DBD neu starten.":
+        "Not applied – {n} changes. \"Apply selection\" takes them over; restart DBD afterwards.",
+    "Öffnet die markierten Runden bzw. Clips nacheinander im grossen Editor – als eine Montage (mehrere markieren: Strg- oder Umschalt-Klick).":
+        "Opens the marked rounds or clips one after another in the big editor – as one montage (mark several: Ctrl- or Shift-click).",
+    "Ursache: {cause}": "Cause: {cause}",
+    "Anwenden": "Apply",
+    "Freigeben": "Unblock",
+    "Importieren": "Import",
+    "Markieren": "Mark",
+    "Trotzdem beenden": "Quit anyway",
     "Rundenverlauf gelöscht.": "Round history deleted.",
-    "Löscht alle gespeicherten Runden (Datei rounds.jsonl).": "Deletes all saved rounds (file rounds.jsonl).",
+    "Löscht alle gespeicherten Runden (Datei rounds.jsonl) – nach einer Rückfrage, vorher kommt eine Kopie in den Ordner backup.":
+        "Deletes all saved rounds (file rounds.jsonl) – after asking; a copy goes to the backup folder first.",
 
     # ------------------------------------------------------------------ tab log
     "Anzeigen:": "Show:",
@@ -1127,8 +1142,8 @@ EN = {
         "Backup: {files} copied to {folder}/ (the last {n} copies are kept).",
     "{n} Dateien, zuletzt {day}": "{n} files, latest {day}",
     "noch keine": "none yet",
-    "Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die letzten {n} Stände je Datei; vor „Verlauf löschen“ eine zusätzliche): {state}":
-        "Daily copy of rounds.jsonl and official.jsonl to {folder}/ (only on changes, the last {n} copies per file; one more before \"Clear history\"): {state}",
+    "Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die letzten {n} Stände je Datei; vor „Alle Runden löschen“ eine zusätzliche): {state}":
+        "Daily copy of rounds.jsonl and official.jsonl to {folder}/ (only on changes, the last {n} copies per file; one more before \"Delete all rounds\"): {state}",
     "Verstanden": "Got it",
     "Aus HISTORY.md (Deutsch), die neuesten zuerst.": "From HISTORY.md (German), newest first.",
     "Blendet die Karte „Neu seit …“ aus, bis die nächste neue Version kommt.":
