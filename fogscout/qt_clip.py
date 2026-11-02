@@ -116,7 +116,8 @@ class _Bridge:
              "encoders",     # 1.15: {ffmpeg encoder: works} once the self-tests are through
              "wave",         # 1.16: the loudness along the recording (clipedit.waveform) for the audio track
              "project",      # 1.18.1: the recording's identity and the project files found (editorproject)
-             "hash")         # 1.18.1: the full SHA-256 of the recording (filehash.Hasher: done/progress/…)
+             "hash",         # 1.18.1: the full SHA-256 of the recording (filehash.Hasher: done/progress/…)
+             "music")        # 1.21: a file for the own audio track measured (path, output second or None, seconds)
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
 
@@ -1750,10 +1751,10 @@ class ClipBase(QWidget):
             return
         back = bool(part is not None and part.reverse)
         if self._sound_wanted():
-            mix, n, vol = self.mix(), self.info.audio_tracks, self._volume
+            mix, n, vol, music = self.mix(), self.info.audio_tracks, self._volume, self._play_music(seg)
             threading.Thread(target=lambda: self.bridge.sound.emit(
                 clipedit.sound_wav(self.path, start, end, self.ffmpeg, mix=mix, n_tracks=n, speed=speed, volume=vol,
-                                   reverse=back), start), name="clip-sound", daemon=True).start()
+                                   reverse=back, music=music), start), name="clip-sound", daemon=True).start()
         else:
             self._run_player(seg)
 
@@ -1767,6 +1768,10 @@ class ClipBase(QWidget):
 
     def _play_size(self):
         """1.20: the size of the preview picture when its filters change it (the big editor's short), else None."""
+        return None
+
+    def _play_music(self, seg):
+        """1.21: the own audio track under a stretch's sound (the big editor's A2), else None."""
         return None
 
     def _seg_source(self, t):
