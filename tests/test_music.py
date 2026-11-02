@@ -240,3 +240,34 @@ def test_the_music_menu_and_a_drop_on_a2(win, tmp_path):
     assert len(win._music.clips) == 1 and "Keine Ton" in win.status.text()
     tl.picked.emit("m_remove", 0.0, 0)
     assert win._music is None
+
+
+def test_the_newest_sound_files_of_the_download_folder(tmp_path):
+    """1.22.1 (user: YouTube-Ton → gewählt: Audiomediathek): sound files only, newest first, the last 30 days."""
+    now = 1_800_000_000.0
+    for name, age_days in (("alt.mp3", 40), ("neu.mp3", 0.1), ("mitte.wav", 2), ("video.mp4", 0), ("text.txt", 0)):
+        p = tmp_path / name
+        p.write_bytes(b"x")
+        os.utime(p, (now - age_days * 86400, now - age_days * 86400))
+    (tmp_path / "ordner.mp3").mkdir()
+    got = musictrack.recent_files(str(tmp_path), now=now)
+    assert [os.path.basename(p) for p in got] == ["neu.mp3", "mitte.wav"]
+    assert musictrack.recent_files(str(tmp_path / "fehlt")) == []
+    assert musictrack.AUDIO_LIBRARY_URL.startswith("https://www.youtube.com/")
+
+
+def test_a_download_shows_up_in_the_sound_section_and_one_click_lays_it_on_a2(win, tmp_path, monkeypatch):
+    from fogscout import official
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    monkeypatch.setattr(official, "downloads_dir", lambda: str(downloads))
+    win._music_recent_fill()
+    assert not win.music_recent_btns and not win.music_recent_label.isVisibleTo(win)
+    os.replace(win.song, str(downloads / "Epic Chase.wav"))                # "downloaded from the audio library"
+    win._music_recent_fill()
+    assert [b.property("path") for b in win.music_recent_btns] == [str(downloads / "Epic Chase.wav")]
+    assert win.music_recent_label.isVisibleTo(win)
+    win.goto(1.0)
+    win.music_recent_btns[0].click()
+    assert _pump(win.app, lambda: win._music is not None)
+    assert win._music.clips[0].path == str(downloads / "Epic Chase.wav") and win._music.clips[0].at == 1.0
