@@ -205,19 +205,28 @@ class StatsTab:
         rr = ui.Frame(box2)
         rr.pack(fill="x", pady=(6, 0))
         self._stats_last_rr = rr
-        ui.Label(rr, text=_("Markierte Runde:")).pack(side="left")
+        ui.Button(rr, text=_("Exportieren …"), command=self._export_open).pack(side="right", anchor="n")   # 1.8.91
+        # 1.17.1: the buttons for marked rounds only once one is marked (as on the page Aufnahmen since 1.11.14) –
+        # seven greyed-out controls were noise; until then a line says what marking offers; right click unchanged
+        self.stats_sel_hint = ui.Label(rr, text=_("Runde markieren: Rolle, Farming oder Killer korrigieren, löschen "
+                                                  "– oder Rechtsklick."), style="Dim.TLabel")
+        self.stats_sel_hint.pack(side="left")
+        self.stats_sel = sel = ui.Frame(rr)
+        r1 = ui.Frame(sel)
+        r1.pack(fill="x")
+        ui.Label(r1, text=_("Markierte Runde:")).pack(side="left")
         self.stats_role_btns = []
         for role, label in (("killer", N_("Killer")), ("survivor", N_("Survivor")), ("custom", N_("Custom Game"))):
-            b = ui.Button(rr, text=_(label), command=lambda r=role: self._stats_set_role(r), state="disabled")
+            b = ui.Button(r1, text=_(label), command=lambda r=role: self._stats_set_role(r), state="disabled")
             b.pack(side="left", padx=(6, 0))
             self.stats_role_btns.append(b)
-        b = ui.Button(rr, text=_("Farming an/aus"), command=self._stats_toggle_farming, state="disabled")   # 1.2.20
+        b = ui.Button(r1, text=_("Farming an/aus"), command=self._stats_toggle_farming, state="disabled")   # 1.2.20
         b.pack(side="left", padx=(6, 0))
         self.stats_role_btns.append(b)
-        self.stats_delete_btn = ui.danger(ui.Button(rr, text=_("Runde löschen"), command=self._stats_delete_round,
+        self.stats_delete_btn = ui.danger(ui.Button(r1, text=_("Runde löschen"), command=self._stats_delete_round,
                                                      state="disabled"))
         self.stats_delete_btn.pack(side="left", padx=(6, 0))
-        kr = ui.Frame(box2)                                 # 1.8.2: two tidy rows (the delete button stood alone)
+        kr = ui.Frame(sel)                                  # 1.8.2: two tidy rows (the delete button stood alone)
         kr.pack(fill="x", pady=(6, 0))
         ui.Label(kr, text=_("Killer der Runde:")).pack(side="left")
         self.stats_round_killer_var = ui.StringVar(value="")
@@ -227,7 +236,6 @@ class StatsTab:
         self.stats_round_killer_btn = ui.Button(kr, text=_("Killer setzen"), command=self._stats_set_killer,
                                                  state="disabled")
         self.stats_round_killer_btn.pack(side="left", padx=(6, 0))
-        ui.Button(kr, text=_("Exportieren …"), command=self._export_open).pack(side="right")   # 1.8.91: dialog
         box = self._stats_page(_("Maps"), "maps", "_stats_part_maps")
         self.stats_maps = self._stats_tree(box, (("map", _("Map"), 130, "w"), ("n", _("Runden"), 62, "e"),
                                                  ("k", _("Killer"), 58, "e"), ("kills", _("Ø Kills"), 62, "e"),
@@ -1076,6 +1084,21 @@ class StatsTab:
         if hasattr(self, "_rec_render"):
             self._rec_render(force=True)
 
+    def _show_round(self, t: float) -> bool:
+        """1.17.1: Statistik › Letzte Runden with the round that started at ``t`` marked and in view. False when the
+        filters of the page hide it (the page opens all the same – the user's filters are not changed)."""
+        self.qt.show_page("stats")
+        self._stats_select(_("Letzte Runden"))
+        self._stats_render()
+        self._stats_render_tab()
+        iid = repr(t)
+        if not self.stats_last.exists(iid):
+            return False
+        self.stats_last.selection_set(iid)
+        self.stats_last.see(iid)
+        self._stats_role_buttons()
+        return True
+
     def _stats_role_buttons(self):
         sel = self.stats_last.selection()
         rescued = getattr(self, "_off_rescued", ())
@@ -1085,6 +1108,13 @@ class StatsTab:
         self.stats_round_killer_cb.configure(state="readonly" if state == "normal" else "disabled")
         self.stats_round_killer_btn.configure(state=state)
         self.stats_delete_btn.configure(state=state)
+        marked, sel_row, hint = bool(sel), self.stats_sel, self.stats_sel_hint     # 1.17.1: bar only when marked
+        if marked and not sel_row.winfo_manager():
+            hint.pack_forget()
+            sel_row.pack(side="left", fill="x")
+        elif not marked and sel_row.winfo_manager():
+            sel_row.pack_forget()
+            hint.pack(side="left")
 
     def _stats_alias_buttons(self):
         sel = self.stats_kill.selection()

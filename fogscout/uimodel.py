@@ -546,8 +546,10 @@ class Treeview(Widget):
         self._focus = str(iid)
         return None
 
-    def see(self, _iid):
-        pass
+    def see(self, iid):
+        """1.17.1: scroll row ``iid`` into view once (a jump from the overview); a counter makes the same row again
+        count as a new wish."""
+        self._see = (str(iid), getattr(self, "_see", (None, 0))[1] + 1)
 
     def tag_configure(self, tag, option=None, **kw):
         t = self._tags.setdefault(tag, {})

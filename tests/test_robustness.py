@@ -272,3 +272,42 @@ def test_the_tray_opens_the_window_on_a_page(app):
     assert app.qt.current_key() == "recordings"
     app._dispatch(("tray", "nonsense"))
     assert app.qt.current_key() == "recordings"
+
+
+def test_a_round_of_the_overview_opens_in_the_statistics_and_its_recording(tmp_path):
+    """1.17.1: rows of the overview's "Letzte Runden" – a click opens Statistik › Letzte Runden with the round
+    marked; ▶ shows only with a recording of it (same start time, file there) and opens it on Aufnahmen. A round
+    without a recording, a recording whose file is gone and a broken index line raise nothing."""
+    from fogscout import history, obsrec, overview
+    now = time.time()
+    t_rec, t_gone, t_none = now - 7200, now - 5400, now - 3600
+    rounds = b"".join(json.dumps({"t": t, "seconds": 600, "map_id": "coal-tower", "map": "Coal Tower", "role": "killer",
+                                  "source": "auto"}).encode() + b"\n" for t in (t_rec, t_gone, t_none))
+    folder = tmp_path / "rec"
+    folder.mkdir()
+    (folder / "a.mkv").write_bytes(b"\0" * 100)
+    a = _start(tmp_path, {"welcome_seen": True, "rec_folder": str(folder)}, rounds=rounds)
+    try:
+        a.recorder.folder = lambda: str(folder)
+        obsrec.save_index(str(folder), [obsrec.Recording(t=t_rec, file="a.mkv", label="Coal Tower", end=t_rec + 600),
+                                        obsrec.Recording(t=t_gone, file="gone.mkv", label="Coal Tower",
+                                                         end=t_gone + 600)])
+        with open(folder / obsrec.INDEX, "a", encoding="utf-8") as fh:
+            fh.write("{broken\n")
+        _pump_app(a, 0.3)
+        rows = {r.t: r for r in overview.last_rounds(a)}
+        assert rows[t_rec].recording == str(folder / "a.mkv")
+        assert rows[t_gone].recording is None and rows[t_none].recording is None
+        a._qt_event("ov_round", t_none)
+        assert a.qt.current_key() == "stats" and a.stats_last.selection() == (repr(t_none),)
+        assert a.stats_sel.winfo_manager() and not a.stats_sel_hint.winfo_manager()      # bar for the marked round
+        a.stats_last.selection_set()
+        a._stats_role_buttons()
+        assert not a.stats_sel.winfo_manager() and a.stats_sel_hint.winfo_manager()      # nothing marked: the hint
+        assert a._stats_last_menu_items() == []                                          # right click as before
+        a._qt_event("ov_recording", t_rec)
+        assert a.qt.current_key() == "recordings" and a.rec_table.selection() == (repr(t_rec),)
+        assert a._show_round_recording(t_none) is False                                  # none: nothing marked
+        assert history.load(a._hist_path())                                              # nothing written
+    finally:
+        a.quit()
