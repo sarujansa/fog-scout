@@ -581,13 +581,16 @@ def discord_plan(seconds: float, target_mb: float, info: Info | None = None) -> 
 
 
 def sound_wav(path: str, start: float, end: float, ffmpeg: str | None = None, mix=None,
-              n_tracks: int = 0, speed: float = 1.0, volume: float = 1.0, reverse: bool = False) -> str | None:
+              n_tracks: int = 0, speed: float = 1.0, volume: float = 1.0, reverse: bool = False,
+              music=None) -> str | None:
     """The sound of ``start``..``end`` as a temporary WAV (for winsound while the preview plays); None on failure
     or when the ``mix`` (1.8.6, as in cut(); ``n_tracks`` = the file's audio tracks) leaves no sound. 1.16:
     ``speed`` = the part's tempo (atempo, as the saved clip has it), ``volume`` = the preview's own level (0–1)."""
     ffmpeg = ffmpeg or ffmpeg_exe()
     if not ffmpeg or end <= start:
         return None
+    if music is not None:                                    # 1.21: the stretch with the user's own track under it
+        return _sound_with_music(path, start, end, ffmpeg, mix, n_tracks, speed, volume, reverse, music)
     flt, amap = audio_graph(n_tracks, mix)
     if amap is None or volume <= 0:
         return None
@@ -608,6 +611,46 @@ def sound_wav(path: str, start: float, end: float, ffmpeg: str | None = None, mi
     try:
         p = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-to",
                             f"{end:.3f}", "-i", path, *pick, "-vn", "-ac", "2", "-ar", "44100", "-acodec", "pcm_s16le", tmp],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120,
+                           creationflags=_flags())
+        if p.returncode == 0 and os.path.getsize(tmp) > 44:
+            return tmp
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
+    return None
+
+
+def _sound_with_music(path, start, end, ffmpeg, mix, n_tracks, speed, volume, reverse, music):
+    """sound_wav for a stretch whose output window ``music`` = (MusicSpec, window start, window length, total)
+    has the user's track: the game sound of start..end (mix, backwards, tempo) and musictrack.chain over it."""
+    from . import musictrack
+    spec, w0, wl, total = music
+    if volume <= 0:
+        return None
+    flt, amap = audio_graph(n_tracks, mix)
+    parts = [flt] if flt else []
+    game = None
+    if amap is not None and n_tracks > 0:
+        label = amap if amap.startswith("[") else "[0:a:0]" if amap == "0:a?" else f"[{amap}]"
+        post = [f for f in ("areverse" if reverse else "", atempo(speed) if abs(speed - 1.0) > 1e-6 else "") if f]
+        parts.append(f"{label}{','.join(post) or 'anull'}[gpre]")
+        game = "[gpre]"
+    mflt, mlabel = musictrack.chain(spec, w0, wl, total, 1, game, tag="p")
+    if not mflt:
+        return sound_wav(path, start, end, ffmpeg, mix, n_tracks, speed, volume, reverse)
+    parts.append(mflt)
+    parts.append(f"{mlabel}volume={volume:.3f}[aout]")
+    fd, tmp = tempfile.mkstemp(prefix="dbdms-clip-", suffix=".wav")
+    os.close(fd)
+    try:
+        p = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-to",
+                            f"{end:.3f}", "-i", path, *musictrack.input_args(spec, w0, wl),
+                            "-filter_complex", ";".join(parts), "-map", "[aout]", "-vn", "-ac", "2", "-ar", "44100",
+                            "-acodec", "pcm_s16le", tmp],
                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120,
                            creationflags=_flags())
         if p.returncode == 0 and os.path.getsize(tmp) > 44:
@@ -886,11 +929,13 @@ class Edit:
     fade_in: float = 0.0
     fade_out: float = 0.0
     short: object = None         # 1.20: shorts.ShortSpec (layout, title, subtitles) for the mode "shorts"
+    music: object = None         # 1.21: musictrack.MusicSpec – the user's own track A2 under the game sound
 
     def simple(self) -> bool:
         """One part at normal tempo and nothing else – cut() alone does it (stream copy possible)."""
         return (len(self.parts) == 1 and abs(self.parts[0].speed - 1.0) < 1e-6 and not self.crop
-                and not self.shapes and self.fade_in <= 0 and self.fade_out <= 0 and not has_effects(self.parts[0]))
+                and not self.shapes and self.fade_in <= 0 and self.fade_out <= 0 and not has_effects(self.parts[0])
+                and self.music is None)
 
     def seconds(self) -> float:
         """Length of the finished clip."""
@@ -978,7 +1023,8 @@ def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -
 
 def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB, censor=None,
                censor_style: str = "pixel", mix=None, shape_inputs=(), gif_h: int = DEFAULT_GIF_H,
-               palette: int | None = None, encoding: Encoding | None = None, text_inputs=()):
+               palette: int | None = None, encoding: Encoding | None = None, text_inputs=(),
+               music_input: int | None = None):
     """The filter graph of ``edit`` (graph, video label, audio label or None, encoder arguments). The first inputs
     are the recording as part_inputs reads it (each seeked to its first part); an input that holds several parts is
     split and cut (trim) per part – the gaps are dropped right there, censor, drawings and crop work on the part
@@ -1082,12 +1128,21 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
     else:
         vcur, acur = "[v0]", "[a0]" if sound else None
     total = edit.seconds()
+    # 1.21: the user's own track (A2) under the game sound – ducked, faded, mixed (musictrack.chain)
+    music = getattr(edit, "music", None) if mode != "gif" else None
+    if music is not None and music_input is not None:
+        from . import musictrack
+        flt, mlabel = musictrack.chain(music, 0.0, total, total, music_input, acur if sound else None, tag="x")
+        if flt:
+            chains.append(flt)
+            acur = mlabel
+    sound_out = acur is not None and (sound or music is not None)
     post = []
     args = []
     if mode == "discord":
         kbps, dh, fps = discord_plan(total, target_mb, Info(total, out_w, out_h, info.fps, info.audio_tracks))
         post += [f"scale=-2:{dh}", f"fps={fps:g}"]
-        args += enc.video_args(kbps) + (["-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"] if sound else [])
+        args += enc.video_args(kbps) + (["-c:a", "aac", "-b:a", f"{AUDIO_KBPS}k"] if sound_out else [])
     elif mode == "shorts":                                         # 1.20: the cut on a 1080×1920 canvas
         from . import shorts
         layout = getattr(edit.short, "layout", "blur") or "blur"
@@ -1098,7 +1153,7 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
             chains.append(f"{vcur}[{idx}:v]overlay={x}:{y}:format=auto{when}[vtx{k}]")
             vcur = f"[vtx{k}]"
         post.append(f"fps={shorts.fps(info.fps):g}")
-        args += enc.video_args() + (["-c:a", "aac", "-b:a", "160k"] if sound else [])
+        args += enc.video_args() + (["-c:a", "aac", "-b:a", "160k"] if sound_out else [])
     elif mode == "gif":
         # rgb24 before the fades: palettegen wants RGBA, and a fade on RGBA fades the alpha too – the fade-in came
         # out transparent, the fade-out froze on grey (paletteuse: alpha < 128 = "keep the previous picture")
@@ -1106,7 +1161,7 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
     else:
         # the file's own frame rate: setpts leaves the rate unknown, and ffmpeg then made 25 fps of a 60-fps round
         post.append(f"fps={info.fps:g}")
-        args += enc.video_args() + (["-c:a", "aac", "-b:a", "160k"] if sound else [])
+        args += enc.video_args() + (["-c:a", "aac", "-b:a", "160k"] if sound_out else [])
         th = enc.target_height(out_h)
         if th:
             post.append(f"scale=-2:{th}")                          # even width and height for 4:2:0
@@ -1123,14 +1178,14 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
         chains.append(f"{vcur}{','.join(post)}[vg];[vg][{palette}:v]paletteuse=dither=bayer:bayer_scale=4[vout]")
     else:
         chains.append(f"{vcur}{','.join(post) or 'null'}[vout]")
-    if sound:
+    if sound_out:
         apost = []
         if fi > 0:
             apost.append(f"afade=t=in:st=0:d={min(fi, total):.3f}")
         if fo > 0:
             apost.append(f"afade=t=out:st={max(0.0, total - fo):.3f}:d={min(fo, total):.3f}")
         chains.append(f"{acur}{','.join(apost) or 'anull'}[aend]")
-    return ";".join(chains), "[vout]", "[aend]" if sound else None, args
+    return ";".join(chains), "[vout]", "[aend]" if sound_out else None, args
 
 
 def _drop_dir(path: str):
@@ -1168,7 +1223,8 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
         return False, "Ende vor Anfang"
     # the editor's drawings as they are now: the window keeps changing its own (colour, size, times, text)
     edit = Edit(parts, edit.crop, copy.deepcopy(list(edit.shapes)), edit.fade_in, edit.fade_out,
-                edit.short.copy() if getattr(edit.short, "copy", None) else None)
+                edit.short.copy() if getattr(edit.short, "copy", None) else None,
+                edit.music.copy() if getattr(edit.music, "copy", None) else None)
     if edit.simple() and mode not in ("gif", "shorts"):
         extra = {"censor": censor, "censor_style": censor_style} if censor else {}
         return cut(path, parts[0].start, parts[0].end, out, mode, ffmpeg, run=run, target_mb=target_mb, info=info,
@@ -1229,13 +1285,18 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
                     pic.save(png)
                     args += ["-f", "png_pipe", "-i", png]
                     text_inputs.append((len(inputs) + len(shape_inputs) + len(text_inputs), x, y, t0, t1))
+            music_input = None
+            if edit.music is not None and mode != "gif":         # 1.21: only the part of each file it plays
+                from . import musictrack
+                music_input = len(inputs) + len(shape_inputs) + len(text_inputs)
+                args += musictrack.input_args(edit.music, 0.0, edit.seconds())
             os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         except OSError as e:                                     # %TEMP% full or not writable, the drive gone
             return False, str(e)
 
         def graph(palette=None):
             return edit_graph(edit, info, mode, target_mb, censor, censor_style, mix, shape_inputs, gif_h, palette,
-                              encoding=encoding, text_inputs=text_inputs)
+                              encoding=encoding, text_inputs=text_inputs, music_input=music_input)
         if mode == "gif":
             pal = os.path.join(tmpdir, "palette.png")              # "-update 1": a file name, not a pattern
             rc, err = call(args + ["-filter_complex", graph()[0], "-map", "[vout]", "-frames:v", "1", "-update", "1",

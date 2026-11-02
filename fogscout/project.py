@@ -52,7 +52,7 @@ def to_dict(state: EditState, source: str, name: str, extra: dict | None = None)
             "fade_in": float(state.fade_in), "fade_out": float(state.fade_out),
             "censor": {"on": bool(state.censor_on), "style": str(state.censor_style or "pixel"),
                        "boxes": [[round(float(v), 5) for v in b] for b in state.boxes]},
-            "extra": dict(extra or {}), **_short_field(state)}
+            "extra": dict(extra or {}), **_short_field(state), **_music_field(state)}
 
 
 def _short_field(state) -> dict:
@@ -60,6 +60,13 @@ def _short_field(state) -> dict:
     from . import shorts
     d = shorts.to_dict(getattr(state, "short", None))
     return {"short": d} if d else {}
+
+
+def _music_field(state) -> dict:
+    """1.21: {"music": …} only when the state has a track A2 – without it the content (and hash) of 1.20."""
+    from . import musictrack
+    d = musictrack.to_dict(getattr(state, "music", None))
+    return {"music": d} if d else {}
 
 
 def _part_row(p) -> list:
@@ -144,7 +151,8 @@ def load(path: str) -> dict | None:
 VERSION2 = 2
 VERSION3 = 3                      # 1.19: clips carry effects (colour, zoom, backwards, stills) – 1.18.1 opens these
 VERSION4 = 4                      # 1.20: the short (layout, title, subtitles) – 1.19 opens these read-only
-CURRENT = VERSION4                # read-only ("aus neuerer Version") instead of saving the effects away
+VERSION5 = 5                      # 1.21: the own audio track A2 (music, ducking, fades) – 1.20 opens these read-only
+CURRENT = VERSION5                # read-only ("aus neuerer Version") instead of saving the effects away
 ID_SHOWN = 10                     # hex digits of the project id in the file name
 STEM_MAX = 80
 QFP_BYTES = 1 << 20               # quick fingerprint: size + first and last MiB (preselection only, never proof)
@@ -293,11 +301,11 @@ def validate(d, duration: float, default_parts) -> tuple[EditState, dict, dict |
     for key in ("fade_in", "fade_out"):
         f = _finite(d.get(key)) or 0.0
         fades.append(min(max(0.0, f), total / 2))
-    from . import shorts
+    from . import musictrack, shorts
     state = EditState(parts, tuple(crop) if crop else None, str(d.get("crop_key") or ("free" if crop else "none")),
                       shapes, fades[0], fades[1], boxes, bool(censor.get("on")),
                       style if style in ("pixel", "blur", "black", "retouch") else "pixel",
-                      shorts.from_dict(d.get("short")))
+                      shorts.from_dict(d.get("short")), musictrack.from_dict(d.get("music")))
     extra = dict(d.get("extra")) if isinstance(d.get("extra"), dict) else {}
     extra.setdefault("name", str(d.get("name") or ""))
     view = None
