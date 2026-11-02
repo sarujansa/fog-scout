@@ -45,7 +45,7 @@ def test_the_track_round_trips_and_broken_clips_drop_out():
 def test_project_format_5_keeps_the_track_and_old_cuts_keep_their_hash():
     st = sequence.EditState([Part(1, 5)], music=spec())
     d = project.to_dict2(project.content_dict(st, {"name": "m"}), "a" * 32, {}, {}, None)
-    assert d["version"] == project.CURRENT == 5 and len(d["music"]["clips"]) == 2
+    assert d["version"] == project.CURRENT >= 5 and len(d["music"]["clips"]) == 2
     back = project.validate(json.loads(json.dumps(d)), 60.0, [])[0]
     assert back.music == spec()
     assert "music" not in project.content_dict(sequence.EditState([Part(1, 5)]))

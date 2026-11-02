@@ -7,12 +7,12 @@ import os
 import time
 from dataclasses import dataclass, field
 
-from .i18n import N_
+from .i18n import N_, _
 from .textnorm import fmt_duration, fold
 
 VIDEO_EXTS = (".mp4", ".mkv", ".mov", ".webm", ".flv", ".ts", ".m4v", ".avi")
-KINDS = ("round", "clip", "file")
-KIND_LABELS = {"round": N_("Runde"), "clip": N_("Clip"), "file": N_("Datei")}
+KINDS = ("round", "clip", "file", "montage")      # 1.22: a montage = a project file in Clips/Montagen
+KIND_LABELS = {"round": N_("Runde"), "clip": N_("Clip"), "file": N_("Datei"), "montage": N_("Montage")}
 SORTS = (("new", N_("Neueste zuerst")), ("old", N_("Älteste zuerst")), ("name", N_("Name A–Z")),
          ("long", N_("Längste zuerst")), ("short", N_("Kürzeste zuerst")))
 
@@ -32,6 +32,7 @@ class MediaItem:
     killer: str = ""
     round_t: float = 0.0                       # the round's key (recordings) – the editor's saves join it
     project: bool = False                      # a saved project exists for it
+    recordings: int = 0                        # 1.22: a montage's number of recordings
 
     @property
     def key(self) -> str:
@@ -50,6 +51,46 @@ def from_file(path: str) -> MediaItem:
     except OSError:
         when, size = 0.0, 0
     return MediaItem(path, os.path.splitext(os.path.basename(path))[0], "file", when, 0.0, size)
+
+
+def montage_items(folder: str) -> list:
+    """1.22: the montage projects in ``folder`` (Clips/Montagen) as library rows – name, saved at, length of the cut,
+    number of recordings; files that are no montage of ours are left out."""
+    import json
+    from . import project
+    out = []
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(project.EXT))
+    except OSError:
+        return out
+    for n in names:
+        path = os.path.join(folder, n)
+        try:
+            st = os.stat(path)
+            if st.st_size > 4 << 20:
+                continue
+            with open(path, encoding="utf-8") as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        srcs = project.montage_sources(d)
+        if not isinstance(d, dict) or d.get("format") != project.FORMAT or not srcs:
+            continue
+        seconds = 0.0
+        for row in d.get("parts") or []:
+            try:
+                fx = row[3] if len(row) > 3 and isinstance(row[3], dict) else {}
+                hold = float(fx.get("hold") or 0)
+                seconds += hold if hold > 0 else max(0.0, float(row[1]) - float(row[0])) / max(0.01, float(row[2]))
+            except (TypeError, ValueError, IndexError):
+                continue
+        name = str(d.get("name") or n[:-len(project.EXT)].split("--")[0])
+        try:
+            when = float(d.get("saved") or st.st_mtime)
+        except (TypeError, ValueError):
+            when = st.st_mtime
+        out.append(MediaItem(path, name, "montage", when, round(seconds, 1), st.st_size, recordings=len(srcs)))
+    return out
 
 
 def filter_items(items, text: str) -> list:
@@ -108,4 +149,6 @@ def fmt_size(size: int) -> str:
 def facts(item: MediaItem) -> str:
     """The second line of a library row: length · date · size."""
     bits = [fmt_len(item.seconds), fmt_when(item.when), fmt_size(item.size)]
+    if item.kind == "montage":                     # 1.22: a project, not a video – say so instead of its size
+        bits = [fmt_len(item.seconds), _("Montage aus {n} Aufnahmen", n=item.recordings), fmt_when(item.when)]
     return " · ".join(b for b in bits if b and b != "–") or "–"
