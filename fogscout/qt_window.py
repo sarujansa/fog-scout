@@ -255,6 +255,7 @@ SPECS = {
                     ("row", (("label", "st.more.rec_clip_src.label"), ("check", "st.more.rec_clip_dbd"),
                              ("check", "st.more.rec_clip_discord"), ("check", "st.more.rec_clip_mic"),
                              ("check", "st.more.rec_clip_other"), ("stretch",))),
+                    ("check", "st.more.rec_autosave"),                                   # 1.18.1
                     ("sub", N_("Aufräumen")), ("check", "st.more.rec_farming"),
                     ("row", (("label", "st.more.rec_farming_days.label"),           # 1.8.23
                              ("combo", "st.more.rec_farming_days"), ("stretch",))),

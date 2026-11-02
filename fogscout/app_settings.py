@@ -363,6 +363,10 @@ class SettingsTab:
         self._reg("st.more.rec_clip_discord", clip_box("discord", _("Discord"))).pack(side="left", padx=(0, 10))
         self._reg("st.more.rec_clip_mic", clip_box("mic", _("Mikrofon"))).pack(side="left", padx=(0, 10))
         self._reg("st.more.rec_clip_other", clip_box("other", _("Hintergrund"))).pack(side="left")      # 1.8.19
+        self.editor_autosave_var = ui.BooleanVar(value=bool(self.settings.get("editor_autosave", True)))   # 1.18.1
+        self._reg("st.more.rec_autosave", ui.Checkbutton(rc, text=_("Editor-Projekte automatisch speichern"),
+                                                          variable=self.editor_autosave_var,
+                                                          command=self._editor_autosave_changed)).pack(anchor="w")
         self.rec_farming_var = ui.BooleanVar(value=bool(self.settings.get("rec_farming_dir", True)))   # 1.5.3
         self._reg("st.more.rec_farming", ui.Checkbutton(rc, text=_("Farming-Runden im Unterordner „Farming“ ablegen"),
                                                          variable=self.rec_farming_var, command=self._rec_setting)).pack(anchor="w")
@@ -1036,6 +1040,19 @@ class SettingsTab:
         if mod is not None:
             mod.stop_saves()
 
+    def _editor_autosave_changed(self):
+        """1.18.1: Autosave of the big editor – takes effect in the open editors at once (off: Strg+S writes the
+        project, the editor keeps a local recovery state in between)."""
+        on = bool(self.editor_autosave_var.get())
+        self.settings.set("editor_autosave", on)
+        for w in self._editors():
+            try:
+                w.set_autosave(on)
+            except RuntimeError:
+                pass
+        self._log(_("Editor: automatisches Speichern an.") if on else _("Editor: automatisches Speichern aus – "
+                                                                       "Strg+S speichert das Projekt."), "System")
+
     def apply_update(self):
         # 1.8.63 (user: "mach eine Sperre rein, dass wenn es in einer Runde ist, kein Update stattfinden kann"): the
         # update restarts the program (start.bat installs it) – that would end the round's record and recording
@@ -1048,6 +1065,9 @@ class SettingsTab:
                     "starten“ klicken.")
             self.upd_status.set(msg)
             self._log(msg, "System")
+            return
+        if not self._quit_phase1(self.apply_update):          # 1.18.1: editor states first – the update follows
+            self.upd_status.set(_("Update wartet: Editor-Projekte werden gesichert …"))
             return
         from . import restart
         try:
