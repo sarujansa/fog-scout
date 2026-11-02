@@ -799,6 +799,7 @@ class Part:
     zoom: tuple | None = None    # 1.19: (box at the clip's first moment, box at its last) – fractions (x, y, w, h)
     reverse: bool = False        # 1.19: played backwards
     hold: float = 0.0            # 1.19: > 0 = a still of the picture at ``start`` for this many seconds (end = start)
+    src: int = 0                 # 1.22: which recording of a montage (Edit.sources) – 0 = the first / only one
 
 
 def part_seconds(p) -> float:
@@ -930,24 +931,32 @@ class Edit:
     fade_out: float = 0.0
     short: object = None         # 1.20: shorts.ShortSpec (layout, title, subtitles) for the mode "shorts"
     music: object = None         # 1.21: musictrack.MusicSpec – the user's own track A2 under the game sound
+    sources: list = field(default_factory=list)   # 1.22: a montage's recordings (paths; [] = the one recording)
 
     def simple(self) -> bool:
         """One part at normal tempo and nothing else – cut() alone does it (stream copy possible)."""
         return (len(self.parts) == 1 and abs(self.parts[0].speed - 1.0) < 1e-6 and not self.crop
                 and not self.shapes and self.fade_in <= 0 and self.fade_out <= 0 and not has_effects(self.parts[0])
-                and self.music is None)
+                and self.music is None and not self.parts[0].src)
+
+    def montage(self) -> bool:
+        """1.22: parts from another recording than the first – each is fitted to the first one's picture."""
+        return any(getattr(p, "src", 0) for p in self.parts)
 
     def seconds(self) -> float:
         """Length of the finished clip."""
         return sum(part_seconds(p) for p in self.parts)
 
 
-def clean_parts(parts, duration: float = 0.0) -> list:
+def clean_parts(parts, duration: float = 0.0, durations=None) -> list:
     """Parts inside the recording, at least 0.1 s long, tempo within SPEEDS' range – in the order given (1.16:
-    the order on the editor's timeline is the play order; until 1.15 they were sorted by their start)."""
+    the order on the editor's timeline is the play order; until 1.15 they were sorted by their start). 1.22:
+    ``durations`` = the length of each montage source (a part is held to its own recording's)."""
     lo, hi = SPEEDS[0], SPEEDS[-1]
     out = []
     for p in parts:
+        if durations:
+            duration = durations[p.src] if 0 <= p.src < len(durations) else 0.0
         start, end = max(0.0, float(p.start)), float(p.end)
         if duration > 0:
             end = min(end, duration)
@@ -1021,10 +1030,32 @@ def part_inputs(parts, join_gap: float | None = None, most: int | None = None) -
     return [(rng[g[0]][0], max(rng[i][1] for i in g), g) for g in groups]
 
 
+def source_inputs(parts, join_gap: float | None = None, most: int | None = None) -> list:
+    """1.22: part_inputs per montage source – [(source, start, end, part indices)]; parts of different recordings
+    never share an input. One recording: exactly part_inputs' inputs in its order."""
+    out = []
+    for s in sorted({getattr(p, "src", 0) for p in parts}):
+        idx = [i for i, p in enumerate(parts) if getattr(p, "src", 0) == s]
+        for start, end, members in part_inputs([parts[i] for i in idx], join_gap, most):
+            out.append((s, start, end, [idx[m] for m in members]))
+    out.sort(key=lambda g: g[3][0])
+    return out
+
+
+def fit_filter(w: int, h: int, fps: float) -> str:
+    """1.22: another recording's picture fitted into the first one's w×h (black borders), its frame rate and pixel
+    format – so concat takes the parts of a montage."""
+    return (f"scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
+            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps:g},format=yuv420p")
+
+
+AUDIO_FIT = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
+
+
 def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB, censor=None,
                censor_style: str = "pixel", mix=None, shape_inputs=(), gif_h: int = DEFAULT_GIF_H,
                palette: int | None = None, encoding: Encoding | None = None, text_inputs=(),
-               music_input: int | None = None):
+               music_input: int | None = None, infos=None):
     """The filter graph of ``edit`` (graph, video label, audio label or None, encoder arguments). The first inputs
     are the recording as part_inputs reads it (each seeked to its first part); an input that holds several parts is
     split and cut (trim) per part – the gaps are dropped right there, censor, drawings and crop work on the part
@@ -1032,29 +1063,42 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
     drawing and laid at x, y – see export; without x, y at the top left), laid over each part they show in. A GIF
     takes two runs: ``palette`` None = the first, ending in the palette (palettegen), else the input index of that
     palette for the second (paletteuse) – in one run ffmpeg kept every frame until the palette came at the end
-    (~32 MB per second of GIF). ``encoding`` (1.15) as in cut(). Pure – tested without ffmpeg."""
+    (~32 MB per second of GIF). ``encoding`` (1.15) as in cut(). 1.22: ``infos`` = Info of each montage source
+    (``info`` = the first, the finished clip's size and rate); censor, drawings and zoom work on each part's own
+    picture, then ``fit_filter`` makes it the first one's – a single recording keeps exactly the old graph. Pure –
+    tested without ffmpeg."""
     w, h = info.width, info.height
+    infos = list(infos) if infos else [info]
+    multi = edit.montage() if hasattr(edit, "montage") else False
+
+    def src_info(s):
+        return infos[s] if 0 <= s < len(infos) else info
     enc = encoding or Encoding()
     if mode == "discord" and enc.codec == "hevc":
         enc = replace(enc, codec="h264")                  # as in cut(): Discord shows H.264 only
     parts = edit.parts
     n = len(parts)
-    sound = mode != "gif" and audio_graph(info.audio_tracks, mix)[1] is not None and info.audio_tracks > 0
+    def has_sound(i):
+        return audio_graph(i.audio_tracks, mix)[1] is not None and i.audio_tracks > 0
+    sound = mode != "gif" and any(has_sound(src_info(getattr(p, "src", 0))) for p in parts)
     chains = []
     out_w, out_h = w, h
     where, vsrc, asrc = {}, {}, {}                   # part → (input, its start, shared); its picture / sound
-    for k, (start, _end, members) in enumerate(part_inputs(parts)):
+    for k, (s, start, _end, members) in enumerate(source_inputs(parts)):
         shared = len(members) > 1
         for i in members:
             where[i] = (k, start, shared)
         if shared:
             chains.append(f"[{k}:v]split={len(members)}" + "".join(f"[sv{i}]" for i in members))
         vsrc.update({i: f"[sv{i}]" if shared else f"[{k}:v]" for i in members})
-        if sound:
-            flt, amap = audio_graph(info.audio_tracks, mix, inp=k, tag=f"_i{k}")   # (censor_graph has "_{part}")
+        if sound and has_sound(src_info(s)):              # 1.22: a montage recording without sound gets silence
+            flt, amap = audio_graph(src_info(s).audio_tracks, mix, inp=k, tag=f"_i{k}")   # (censor_graph: "_{part}")
             if flt:
                 chains.append(flt)
             a = amap if flt else (f"[{amap}]" if amap != f"{k}:a?" else f"[{k}:a:0]")
+            if multi:                                    # one rate and layout for concat
+                chains.append(f"{a}{AUDIO_FIT}[an{k}]")
+                a = f"[an{k}]"
             if shared:
                 chains.append(f"{a}asplit={len(members)}" + "".join(f"[sa{i}]" for i in members))
             asrc.update({i: f"[sa{i}]" if shared else a for i in members})
@@ -1071,12 +1115,15 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
             chains.append(f"{cur}trim=end_frame=1,loop=loop={frames - 1}:size=1:start=0,"
                           f"setpts=N/({fps:g})/TB[vh{i}]")
             cur = f"[vh{i}]"
+        pw, ph = (src_info(p.src).width, src_info(p.src).height) if multi else (w, h)   # this part's own picture
         if censor:                                               # on the recording's own picture
-            chains.append(censor_graph(censor, censor_style, w, h, src=cur, out=f"[vc{i}]", tag=f"_{i}"))
+            chains.append(censor_graph(censor, censor_style, pw, ph, src=cur, out=f"[vc{i}]", tag=f"_{i}"))
             cur = f"[vc{i}]"
         for j, inp in enumerate(shape_inputs):
             idx, t0, t1 = inp[:3]
             x, y = inp[3:5] if len(inp) >= 5 else (0, 0)
+            if (inp[5] if len(inp) > 5 else 0) != getattr(p, "src", 0):
+                continue                                         # 1.22: a drawing belongs to its own recording
             if p.hold > 0:                                       # a still shows what is drawn at its moment
                 if (t1 is not None and t1 < p.start) or (t0 is not None and t0 > p.start):
                     continue
@@ -1093,12 +1140,15 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
             cur = f"[vs{i}_{j}]"
         if p.zoom:                                       # 1.19: on the whole picture, before the clip's crop
             if p.hold > 0:
-                zf = zoom_filters(p.zoom, w, h, off=0.0, dur=p.hold)
+                zf = zoom_filters(p.zoom, pw, ph, off=0.0, dur=p.hold)
             else:
                 zoom = (p.zoom[1], p.zoom[0]) if p.reverse else p.zoom
-                zf = zoom_filters(zoom, w, h, off=p.start - base, dur=p.end - p.start)
+                zf = zoom_filters(zoom, pw, ph, off=p.start - base, dur=p.end - p.start)
             chains.append(f"{cur}{','.join(zf)}[vz{i}]")
             cur = f"[vz{i}]"
+        if multi:                                        # 1.22: the first recording's size and rate
+            chains.append(f"{cur}{fit_filter(w, h, fps)}[vn{i}]")
+            cur = f"[vn{i}]"
         if edit.crop:
             cw, ch, cx, cy = crop_px(edit.crop, w, h)
             chains.append(f"{cur}crop={cw}:{ch}:{cx}:{cy}[vcr{i}]")
@@ -1113,7 +1163,9 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
         else:
             effects.append(f"setpts=(PTS-STARTPTS)/{p.speed:.4g}")
         chains.append(f"{cur}{','.join(effects)}[v{i}]")
-        if sound:
+        if sound and i not in asrc:                              # 1.22: a recording without sound in a montage
+            chains.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={part_seconds(p):.3f}[a{i}]")
+        elif sound:
             trim = f"atrim=start={r0 - base:.3f}:end={r1 - base:.3f}," if shared else ""
             if p.hold > 0:                                       # silence as long as the still (the part's own
                 chains.append(f"{asrc[i]}{trim}asetpts=PTS-STARTPTS,volume=0,"   # format, so concat takes it)
@@ -1218,13 +1270,22 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
         return False, "ffmpeg fehlt"
     if info is None or not info.ok:
         info = probe(path, ffmpeg)
-    parts = clean_parts(edit.parts, info.duration if info.ok else 0.0)
+    paths = list(getattr(edit, "sources", None) or []) or [path]   # 1.22: a montage reads several recordings
+    infos = [info] + [probe(p, ffmpeg) for p in paths[1:]]
+    if edit.montage():
+        for s in sorted({p.src for p in edit.parts}):
+            if s >= len(paths) or not infos[s].ok:
+                name = os.path.basename(paths[s]) if s < len(paths) else f"#{s + 1}"
+                return False, _("Aufnahme fehlt oder ist nicht lesbar: {file}", file=name)
+        parts = clean_parts(edit.parts, durations=[i.duration if i.ok else 0.0 for i in infos])
+    else:
+        parts = clean_parts(edit.parts, info.duration if info.ok else 0.0)
     if not parts:
         return False, "Ende vor Anfang"
     # the editor's drawings as they are now: the window keeps changing its own (colour, size, times, text)
     edit = Edit(parts, edit.crop, copy.deepcopy(list(edit.shapes)), edit.fade_in, edit.fade_out,
                 edit.short.copy() if getattr(edit.short, "copy", None) else None,
-                edit.music.copy() if getattr(edit.music, "copy", None) else None)
+                edit.music.copy() if getattr(edit.music, "copy", None) else None, list(paths) if len(paths) > 1 else [])
     if edit.simple() and mode not in ("gif", "shorts"):
         extra = {"censor": censor, "censor_style": censor_style} if censor else {}
         return cut(path, parts[0].start, parts[0].end, out, mode, ffmpeg, run=run, target_mb=target_mb, info=info,
@@ -1261,14 +1322,15 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
         try:
             tmpdir = tempfile.mkdtemp(prefix="dbdms-edit-")
             args = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
-            inputs = part_inputs(parts)
-            for start, end, _members in inputs:
-                args += ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", path]
+            inputs = source_inputs(parts)
+            for s, start, end, _members in inputs:
+                args += ["-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", paths[s]]
             shape_inputs = []
             if edit.shapes:
                 from . import annotate
                 for shape in edit.shapes:
-                    pic = annotate.layer(info.width, info.height, [shape])
+                    si = infos[shape.src] if 0 <= shape.src < len(infos) and infos[shape.src].ok else info
+                    pic = annotate.layer(si.width, si.height, [shape])   # 1.22: on its own recording's picture
                     box = pic.getbbox()
                     if box is None:                              # nothing to see (an empty text)
                         continue
@@ -1276,7 +1338,8 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
                     pic.crop(box).save(png)
                     # read as one PNG – image2 would take a "%d" in %TEMP% for a numbered sequence and fail
                     args += ["-f", "png_pipe", "-i", png]
-                    shape_inputs.append((len(inputs) + len(shape_inputs), shape.t0, shape.t1, box[0], box[1]))
+                    shape_inputs.append((len(inputs) + len(shape_inputs), shape.t0, shape.t1, box[0], box[1],
+                                         shape.src))
             text_inputs = []
             if mode == "shorts":                                 # 1.20: title and subtitles, one PNG each
                 from . import shorts
@@ -1296,7 +1359,7 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
 
         def graph(palette=None):
             return edit_graph(edit, info, mode, target_mb, censor, censor_style, mix, shape_inputs, gif_h, palette,
-                              encoding=encoding, text_inputs=text_inputs, music_input=music_input)
+                              encoding=encoding, text_inputs=text_inputs, music_input=music_input, infos=infos)
         if mode == "gif":
             pal = os.path.join(tmpdir, "palette.png")              # "-update 1": a file name, not a pattern
             rc, err = call(args + ["-filter_complex", graph()[0], "-map", "[vout]", "-frames:v", "1", "-update", "1",

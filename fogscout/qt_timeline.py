@@ -42,18 +42,20 @@ def _qimage(img) -> QImage:
     return QImage(img.tobytes(), w, h, w * 3, QImage.Format_RGB888).copy()
 
 
-def clip_label(i: int, part) -> str:
-    """The text on a clip's strip: number, where it comes from, tempo – 1.19: a still, backwards, effects."""
+def clip_label(i: int, part, name: str = "") -> str:
+    """The text on a clip's strip: number, where it comes from, tempo – 1.19: a still, backwards, effects; 1.22: in
+    a montage the recording's name first."""
     if part.hold > 0:
-        return _("{n}  Standbild {length} s", n=i + 1, length=f"{part.hold:g}")
+        return _("{n}  Standbild {length} s", n=i + 1, length=f"{part.hold:g}") + (f"  · {name}" if name else "")
     tempo = "" if abs(part.speed - 1.0) < 1e-6 else f"   ×{part.speed:g}"
     marks = ("  ◀" if part.reverse else "") + ("  fx" if part.color or part.zoom else "")
-    return f"{i + 1}  {clipedit.fmt_pos(part.start)} – {clipedit.fmt_pos(part.end)}{tempo}{marks}"
+    where = f"{name}  " if name else ""
+    return f"{i + 1}  {where}{clipedit.fmt_pos(part.start)} – {clipedit.fmt_pos(part.end)}{tempo}{marks}"
 
 
 class SequenceTimeline(QWidget):
     seek = Signal(float)              # the playhead wanted at this output time
-    scrubbed = Signal(float)          # show this source second (a trimmed edge) without moving the playhead
+    scrubbed = Signal(float, int)     # show this source second (a trimmed edge) of that recording (1.22)
     selected = Signal(object)         # a clip index or None
     edited = Signal(str, object)      # (what, new parts): "trim" / "move" / "split" / "delete" / "speed"
     picked = Signal(str, float, object)   # right-click menu: (ident, output time, clip index or None)
@@ -81,6 +83,10 @@ class SequenceTimeline(QWidget):
         self.view = None              # the game part of each thumbnail (x, y, w, h), None = all of it
         self.wave = []
         self.wave_per_s = clipedit.WAVE_PER_S
+        # 1.22: a montage's other recordings (index ≥ 1; 0 is the fields above): length, strip pictures, loudness,
+        # F8 marks, short names on the clips, and the ones whose file is missing
+        self.src_duration, self.src_thumbs, self.src_wave, self.src_marks, self.src_names = {}, {}, {}, {}, {}
+        self.missing = set()
         self.scale = 10.0             # px per output second
         self.offset = 0.0             # output second at the left edge of the tracks
         self.auto_fit = True          # keep the whole sequence in view until the user zooms
@@ -138,6 +144,35 @@ class SequenceTimeline(QWidget):
     def set_marks(self, marks):
         self.marks = sorted(float(m) for m in marks)
         self.update()
+
+    def set_source(self, src: int, duration=None, wave=None, marks=None, name=None):
+        """1.22: what the timeline knows of montage recording ``src`` (≥ 1; 0 is set_duration/set_wave/…)."""
+        if duration is not None:
+            self.src_duration[src] = max(0.1, float(duration))
+        if wave is not None:
+            self.src_wave[src] = list(wave)
+        if marks is not None:
+            self.src_marks[src] = sorted(float(m) for m in marks)
+        if name is not None:
+            self.src_names[src] = name
+        self.update()
+
+    def set_src_thumb(self, src: int, i: int, img):
+        if src == 0:
+            self.set_thumb(i, img)
+            return
+        self.src_thumbs.setdefault(src, {})[i] = _qimage(img)
+        self.update()
+
+    def set_missing(self, sources):
+        self.missing = set(sources)
+        self.update()
+
+    def source_duration(self, src: int) -> float:
+        return self.duration if src == 0 else self.src_duration.get(src, 0.0)
+
+    def marks_of(self, src: int) -> list:
+        return self.marks if src == 0 else self.src_marks.get(src, [])
 
     def set_playhead(self, t: float):
         self.pos = max(0.0, float(t))
@@ -318,6 +353,8 @@ class SequenceTimeline(QWidget):
                 tuple(repr(p) for p in self.parts), tuple(self.subs), self.selection, self.hover, len(self.thumbs),
                 tuple(repr(m) for m in self.music), self.music_sel,
                 len(self.wave), self.view, tuple(self.marks), self.dark, self.devicePixelRatioF(),
+                tuple((s, len(t)) for s, t in sorted(self.src_thumbs.items())), tuple(sorted(self.src_wave)),
+                repr(sorted(self.src_marks.items())), repr(sorted(self.src_names.items())), tuple(sorted(self.missing)),
                 tuple(sorted(qt_theme.colours(self.dark).items())))   # post-review: a theme change redraws
 
     def paintEvent(self, e):
@@ -467,8 +504,9 @@ class SequenceTimeline(QWidget):
         mark = QColor(MARK_COLOUR)
         p.setPen(Qt.NoPen)
         p.setBrush(mark)
-        for m in self.marks:                                          # F8 marks wherever their moment plays
-            for t in sequence.occurrences(self.parts, m):
+        marks = [(0, m) for m in self.marks] + [(s, m) for s, ms in self.src_marks.items() for m in ms]
+        for s, m in marks:                                            # F8 marks wherever their moment plays
+            for t in sequence.occurrences(self.parts, m, source=s):
                 x = self._x(t)
                 p.drawPolygon(QPolygonF([QPointF(x - 4, RULER_H - 14), QPointF(x + 4, RULER_H - 14),
                                          QPointF(x, RULER_H - 7)]))
@@ -513,7 +551,10 @@ class SequenceTimeline(QWidget):
         p.setClipRect(vrect.adjusted(0, 0, -0.5, 0), Qt.IntersectClip)
         p.fillRect(label, cc["label"])
         p.setPen(QColor(cc["text"]))
-        p.drawText(label.adjusted(6, 0, -4, 0), Qt.AlignLeft | Qt.AlignVCenter, clip_label(i, part))
+        if part.src in self.missing:                                  # 1.22: its recording is gone – red, no export
+            p.fillRect(vrect.adjusted(0.5, 0.5, -0.5, -0.5), QColor(200, 40, 40, 120))
+        p.drawText(label.adjusted(6, 0, -4, 0), Qt.AlignLeft | Qt.AlignVCenter,
+                   clip_label(i, part, self.src_names.get(part.src, "") if self.src_names else ""))
         p.setClipRect(QRectF(HEAD_W, 0, self._track_width(), self.height()))
         pen = QPen(QColor(c["accent"]) if sel else QColor(0, 0, 0, 120), 2 if sel else 1)
         p.setPen(pen)
@@ -527,7 +568,9 @@ class SequenceTimeline(QWidget):
                 p.drawRoundedRect(QRectF(x, vrect.top() + 18, 3, vrect.height() - 22), 1.5, 1.5)
 
     def _paint_thumbs(self, p, r, part):
-        img = next(iter(self.thumbs.values()), None)
+        thumbs = self.thumbs if part.src == 0 else self.src_thumbs.get(part.src, {})   # 1.22: its own recording's
+        duration = self.source_duration(part.src) or self.duration
+        img = next(iter(thumbs.values()), None)
         if img is None or r.width() < 4:
             return
         vx, vy, vw, vh = self.view or (0.0, 0.0, 1.0, 1.0)
@@ -541,8 +584,8 @@ class SequenceTimeline(QWidget):
         x = r.left() + j * tile_w
         while x < min(r.right(), self.width()) and x < r.right():
             src = (part.end - (j + 0.5) * src_per_tile) if part.reverse else part.start + (j + 0.5) * src_per_tile
-            idx = min(self.n_thumbs - 1, max(0, int(src / self.duration * self.n_thumbs)))
-            im = self.thumbs.get(idx)
+            idx = min(self.n_thumbs - 1, max(0, int(src / duration * self.n_thumbs)))
+            im = thumbs.get(idx)
             if im is not None:
                 p.drawImage(QRectF(x, r.top() + 16, tile_w, tile_h),
                             im, QRectF(im.width() * vx, im.height() * vy, im.width() * vw, im.height() * vh))
@@ -551,7 +594,8 @@ class SequenceTimeline(QWidget):
         p.setClipRect(QRectF(HEAD_W, 0, self._track_width(), self.height()))
 
     def _paint_wave(self, p, r, part, fill):
-        if not self.wave or r.width() < 2:
+        wave = self.wave if part.src == 0 else self.src_wave.get(part.src, [])   # 1.22: its own recording's
+        if not wave or r.width() < 2:
             return
         mid = r.center().y()
         half = r.height() / 2 - 3
@@ -560,7 +604,7 @@ class SequenceTimeline(QWidget):
         p.setPen(QPen(col, 1))
         left, right = max(int(r.left()) + 1, HEAD_W), min(int(r.right()), self.width())
         per_px = part.speed / self.scale                              # source seconds under one pixel
-        n = len(self.wave)
+        n = len(wave)
         for x in range(left, right):
             off = (x - r.left()) * per_px
             s0 = part.end - off - per_px if part.reverse else part.start + off     # 1.19: backwards
@@ -568,7 +612,7 @@ class SequenceTimeline(QWidget):
             b1 = max(b0 + 1, int((s0 + per_px) * self.wave_per_s))
             if b0 >= n:
                 break
-            v = max(self.wave[b0:min(n, b1)], default=0.0)
+            v = max(wave[b0:min(n, b1)], default=0.0)
             h = max(1.0, v * half)
             p.drawLine(QPointF(x + 0.5, mid - h), QPointF(x + 0.5, mid + h))
 
@@ -738,7 +782,7 @@ class SequenceTimeline(QWidget):
             length = (st[i + 1] - out) if kind == "trim_start" else (out - st[i])
             new = sequence.set_hold(self.parts, i, round(max(0.1, length) * 10) / 10)
             self._drag = (kind, i, new)
-            self.scrubbed.emit(part.start)
+            self.scrubbed.emit(part.start, part.src)
             self.update()
             return
         if part.reverse:                                    # 1.19: backwards, the left edge is the source's end
@@ -748,18 +792,18 @@ class SequenceTimeline(QWidget):
             src = part.start + (out - st[i]) * part.speed   # the clip's edge in source seconds
             edge_name = "start" if kind == "trim_start" else "end"
         src = self._snap(src, part, kind)
-        new = sequence.trim(self.parts, i, edge_name, src, self.duration)
+        new = sequence.trim(self.parts, i, edge_name, src, self.source_duration(part.src))
         self._drag = (kind, i, new)
         edge = new[i].start if edge_name == "start" else new[i].end
-        self.scrubbed.emit(edge)
+        self.scrubbed.emit(edge, part.src)
         self.update()
 
     def _snap(self, src, part, kind) -> float:
         """Source second ``src`` pulled onto the playhead's source moment or an F8 mark within SNAP_PX."""
         tol = SNAP_PX / self.scale * part.speed
-        targets = list(self.marks)
+        targets = list(self.marks_of(part.src))                       # 1.22: the marks of its own recording
         pi, psrc = sequence.source_at(self.parts, self.pos)
-        if pi is not None:
+        if pi is not None and self.parts[pi].src == part.src:
             targets.append(psrc)
         for t in targets:
             if abs(t - src) <= tol:

@@ -176,9 +176,16 @@ class Hasher(threading.Thread):
         self._stopping = False
 
     def request(self, path, on_done, on_progress=None, allow_placeholder=False):
+        """1.22: a file already waiting keeps its place and gains the new answer – a second window asking for the
+        same recording (a montage and the round's own editor) never takes the first one's answer away."""
         with self._cv:
-            self._jobs = [j for j in self._jobs if j[0] != path]
-            self._jobs.append((path, on_done, on_progress, allow_placeholder))
+            for k, (p, dones, progs, allow) in enumerate(self._jobs):
+                if p == path:
+                    self._jobs[k] = (p, dones + [on_done], progs + ([on_progress] if on_progress else []),
+                                     allow or allow_placeholder)
+                    break
+            else:
+                self._jobs.append((path, [on_done], [on_progress] if on_progress else [], allow_placeholder))
             self._cv.notify()
 
     def cancel(self, path):
@@ -204,19 +211,24 @@ class Hasher(threading.Thread):
                     self._cv.wait()
                 if self._stopping:
                     return
-                path, on_done, on_progress, allow = self._jobs.pop(0)
+                path, dones, progs, allow = self._jobs.pop(0)
                 self._current = path
                 self._cancel.clear()
+
+            def progress(*a, _progs=progs):
+                for fn in _progs:
+                    fn(*a)
             try:
-                result = self.hash_now(path, on_progress, allow)
+                result = self.hash_now(path, progress if progs else None, allow)
             except Exception as e:                            # never let a bad file end the thread
                 result = {"kind": "error", "error": str(e)}
             with self._cv:
                 self._current = None
-            try:
-                on_done(result)
-            except Exception:
-                pass
+            for on_done in dones:
+                try:
+                    on_done(result)
+                except Exception:
+                    pass
 
     def hash_now(self, path, on_progress=None, allow_placeholder=False) -> dict:
         """The work of one job, also callable directly (tests)."""

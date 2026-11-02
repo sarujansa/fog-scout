@@ -44,6 +44,7 @@ class Shape:
     text: str = ""
     t0: float | None = None                     # video only: shown from/to (seconds of the recording), None = always
     t1: float | None = None
+    src: int = 0                                # 1.22: the montage source whose picture/times it belongs to
 
     def moved(self, dx: float, dy: float) -> "Shape":
         return replace(self, pts=[(x + dx, y + dy) for x, y in self.pts])
@@ -257,7 +258,7 @@ def layer(width: int, height: int, shapes, t: float | None = None) -> Image.Imag
 
 def to_dict(shape: Shape) -> dict:
     return {"kind": shape.kind, "pts": [list(p) for p in shape.pts], "colour": shape.colour, "size": shape.size,
-            "text": shape.text, "t0": shape.t0, "t1": shape.t1}
+            "text": shape.text, "t0": shape.t0, "t1": shape.t1, **({"src": shape.src} if shape.src else {})}
 
 
 _COLOUR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -287,6 +288,8 @@ def from_dict(d: dict) -> Shape | None:
         t1 = None if t1 is None else float(t1)
         if (t0 is not None and not math.isfinite(t0)) or (t1 is not None and not math.isfinite(t1)):
             t0 = t1 = None
-        return Shape(kind, pts, colour, size, str(d.get("text") or "")[:500], t0, t1)
+        src = d.get("src", 0)
+        src = src if isinstance(src, int) and not isinstance(src, bool) and 0 <= src < 1000 else 0
+        return Shape(kind, pts, colour, size, str(d.get("text") or "")[:500], t0, t1, src)
     except (TypeError, ValueError, IndexError, AttributeError):
         return None

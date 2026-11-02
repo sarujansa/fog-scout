@@ -289,7 +289,7 @@ class ProjectMixin:
 
     def _apply_data(self, data) -> dict | None:
         """Show project ``data`` (format 1 or 2, field by field – project.validate); its view, or None."""
-        got = project.validate(data, float(self.info.duration or 0), self.parts or [])
+        got = project.validate(data, float(self.info.duration or 0), self.parts or [], durations=self._durations())
         if got is None:
             return None
         state, extra, view, notes = got
@@ -371,9 +371,23 @@ class ProjectMixin:
             slot.keys.discard((self._rec or {}).get("sha256"))
         self._reg.release(slot, self._token)
 
+    def _durations(self):
+        """1.22: the length of each montage recording (project.validate) – None for a single recording."""
+        return None
+
+    def _bind_keys(self, pid) -> list:
+        return [pid, self._src_key(), (self._rec or {}).get("sha256")]
+
+    def _new_file_name(self, pid) -> str:
+        return project.file_name2(self.path, pid)
+
+    def _local_source_path(self) -> str:
+        """What names this window's local copies before it has a project id (the recording; a montage: its own)."""
+        return self.path
+
     def _bind(self, pid, path, base):
         self._unbind()
-        keys = [pid, self._src_key(), (self._rec or {}).get("sha256")]
+        keys = self._bind_keys(pid)
         slot, memory = self._reg.claim(keys, self._token, path, pid, base=base)
         if memory is False:                                       # another window holds this project
             self._slot = None
@@ -419,7 +433,7 @@ class ProjectMixin:
         newer state of this project), copies of a deleted project and unsaved states are offered."""
         folder = self._reg.local_folder()
         pid = self._slot.pid if self._slot is not None else None
-        key = projectsave.local_key(pid, self.path)
+        key = projectsave.local_key(pid, self._local_source_path())
         cands = projectsave.local_candidates(folder, key)
         if not cands:
             return
@@ -590,7 +604,7 @@ class ProjectMixin:
                 self._pdirty = False
                 return
             pid = project.new_id()
-            path = os.path.join(self._project_folder(), project.file_name2(self.path, pid))
+            path = os.path.join(self._project_folder(), self._new_file_name(pid))
             self._reg.set_identity(slot, pid, path)
         view = self._view()
         if chash == self._last_submitted and not project.view_differs(view, self._last_view) \
