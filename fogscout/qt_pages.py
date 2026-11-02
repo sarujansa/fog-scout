@@ -155,10 +155,12 @@ class OverviewPage(QWidget):
         swl = QVBoxLayout(self.switch_card)
         swl.setContentsMargins(*qt_theme.PAD_CARD)
         swl.setSpacing(8)
-        swl.addWidget(_label(_("Schnell ein/aus").upper(), "h2"))
-        self.switch_row = FlowRow(spacing=18)
+        # 1.24 (phase 2): "Funktionen" – each box with what it does now below it (overview.switch_state)
+        swl.addWidget(_label(_("Funktionen").upper(), "h2"))
+        self.switch_row = FlowRow(spacing=22)
         swl.addLayout(self.switch_row)
         self.switches = []
+        self.switch_states = []                   # the words under each box (QLabel, property "state")
         self.switch_card.setVisible(False)
         page.addWidget(self.switch_card)
 
@@ -325,18 +327,42 @@ class OverviewPage(QWidget):
         does not emit clicked, so only the user's click posts ("switch", (key, on))."""
         from .tooltip import tip_for_label
         while len(self.switches) < len(switches):
+            item = QWidget()
+            col = QVBoxLayout(item)
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(0)
             w = WrapCheck()
             w.key = ""
             w.clicked.connect(lambda on, w=w: self._post("switch", (w.key, bool(on))))
-            self.switch_row.addWidget(w)
+            state = _label(cls="dim")
+            state.setContentsMargins(27, 0, 0, 0)              # under the box's text, not under the box
+            pol = state.sizePolicy()                           # a box with nothing to say keeps the line: the
+            pol.setRetainSizeWhenHidden(True)                  # row's boxes stay on one height
+            state.setSizePolicy(pol)
+            col.addWidget(w)
+            col.addWidget(state)
+            self.switch_row.addWidget(item)
             self.switches.append(w)
+            self.switch_states.append(state)
         for i, w in enumerate(self.switches):
             shown = i < len(switches)
-            if w.isHidden() == shown:
+            item = w.parentWidget()
+            if item.isHidden() == shown:
+                item.setVisible(shown)
+            if w.isHidden() == shown:                 # the box too: callers ask the box (isHidden)
                 w.setVisible(shown)
             if not shown:
                 continue
             sw = switches[i]
+            label = self.switch_states[i]
+            level = getattr(sw, "level", "")
+            if label.property("state") != level:
+                label.setProperty("state", level)
+                label.style().unpolish(label)
+                label.style().polish(label)
+            _set(label, getattr(sw, "state", ""))
+            if label.isHidden() == bool(getattr(sw, "state", "")):
+                label.setVisible(bool(getattr(sw, "state", "")))
             w.key = sw.key
             if w.text() != sw.label:
                 w.setText(sw.label)

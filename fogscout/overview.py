@@ -14,7 +14,7 @@ from .connwatch import UNKNOWN, region_name
 from .i18n import N_, _
 from .lobby import killer_label
 from .overlay_win32 import ping_colour
-from .status import DOT_STYLE, user_state
+from .status import DOT_STYLE, is_problem, user_state
 from .textnorm import fmt_duration, roman
 
 LAST_ROUNDS = 5
@@ -43,6 +43,8 @@ class Switch:
     label: str
     on: bool
     enabled: bool = True
+    level: str = ""                           # 1.24: ok | warn | err | off – "" = nothing to say (switch_state)
+    state: str = ""                           # 1.24: the words under the box ("OBS nicht erreichbar")
 
 
 @dataclass
@@ -150,7 +152,69 @@ def primary_action(app, acts: dict) -> str | None:
     return None
 
 
-def switches(app) -> list:
+_LINK_STATES = {"linked": ("ok", N_("verbunden")), "login_needed": ("warn", N_("Anmeldung nötig")),
+                "error": ("err", N_("Fehler – Details im Log")), "linking": ("off", N_("verbindet …")),
+                "no_id": ("warn", N_("keine Client-ID"))}
+
+
+def switch_state(app, key: str, on: bool, is_win: bool = True) -> tuple[str, str]:
+    """1.24 (phase 2, prompt_phase2.md): (level, words) under a box of „Funktionen“ – whether the feature works now
+    and, if not, what is missing. Only values the program has anyway (worker status, recorder, connection watch,
+    links); ("", "") = nothing to say. Off is just "aus" – the box says the rest."""
+    if not on:
+        return "off", _("aus")
+    if key == "detect":
+        if is_problem(getattr(app, "_worker_status", "")):
+            return "err", _("Fehler – Details im Log")
+        if getattr(app, "game", None) is None and not getattr(app, "simulate", False):
+            return "off", _("wartet auf DBD")
+        return "ok", _("aktiv")
+    if key == "rec":
+        rec = getattr(app, "recorder", None)
+        if rec is None:
+            return "", ""
+        if getattr(rec, "recording", False):
+            return "ok", _("nimmt auf")
+        sp = getattr(rec, "space", None)
+        if sp is not None and sp.t and not sp.folder:
+            return "warn", (_("Platte nicht angeschlossen") if app.settings.get("rec_folder") else _("kein Ordner gewählt"))
+        obs = getattr(app, "_obs_state", None)                  # known once the recordings page asked OBS
+        if obs is not None and not obs.get("connected"):
+            return "warn", _("OBS nicht erreichbar")
+        return "ok", _("bereit")
+    if key == "conn":
+        c = getattr(app, "conn", None)
+        if c is None:
+            return "", ""
+        if getattr(c, "error", ""):
+            return "err", _("Fehler – Details im Log")
+        if getattr(app, "_conn_busy", False):
+            return "off", _("startet …")
+        if getattr(c, "server", None):
+            return "ok", _("verbunden")
+        return ("ok", _("aktiv")) if getattr(c, "running", False) else ("off", _("wartet auf DBD"))
+    if key == "sysinfo":
+        if not is_win:
+            return "off", _("nur unter Windows")
+        mon = getattr(app, "sysmon", None)
+        if mon is None or not getattr(mon, "active", False):
+            return "off", _("wartet auf DBD")
+        return ("ok", _("aktiv")) if getattr(mon, "hwinfo_seen", False) else ("warn", _("HWiNFO fehlt"))
+    if key == "media":
+        err = getattr(getattr(app, "media", None), "error", "")
+        return ("warn", _("Mediensteuerung nicht verfügbar")) if err else ("", "")
+    if key == "discord":
+        p = getattr(app, "presence", None)
+        if p is None:
+            return "", ""
+        return ("ok", _("verbunden")) if getattr(p, "connected", False) else ("warn", _("Discord nicht erreichbar"))
+    if key in ("spotify", "youtube"):
+        level, words = _LINK_STATES.get(getattr(getattr(app, key, None), "state", ""), ("", ""))
+        return level, _(words) if words else ""
+    return "", ""
+
+
+def switches(app, is_win: bool = True) -> list:
     """1.14 (user: "in der Übersicht Knöpfe … wo man schnell Sachen ausschalten kann (OBS-Aufnahmen etc.)"): the
     card "Schnell ein/aus". Every entry is the same setting as its box on the settings/overlay/server page
     (App.quick_switch flips that box); a connection shows up only once it is set up (client id), recordings once
@@ -172,6 +236,8 @@ def switches(app) -> list:
         out.append(Switch("spotify", _("Spotify „Als nächstes“"), bool(st.get("spotify_on", False))))
     if st.get("youtube_client_id"):
         out.append(Switch("youtube", _("YouTube-Upload"), bool(st.get("youtube_on", False))))
+    for sw in out:                                             # 1.24: does it work now – and if not, why
+        sw.level, sw.state = switch_state(app, sw.key, sw.on, is_win)
     return out
 
 
@@ -193,27 +259,32 @@ def today(app, now: float) -> tuple[list, str]:
     farm = None
     if d["farming"]:                           # 1.8.56: farming rounds apart; 1.8.87: bloodpoints per hour
         b = dashboard.bp_rate([(r, j.off[id(r)]) for r in mine if r.farming and not r.custom])
-        farm = Fact(_("Farming"), dashboard._bp(b.per_hour) + "/h" if b.per_hour else "–",
-                    _("{n} Farming-Runden · Ø {bp} BP", n=d["farming"],
-                      bp=dashboard._bp(b.per_round) if b.rounds else "–"))
+        if b.per_hour:
+            farm = Fact(_("Farming"), dashboard._bp(b.per_hour) + "/h",
+                        _("{n} Farming-Runden · Ø {bp} BP", n=d["farming"],
+                          bp=dashboard._bp(b.per_round) if b.rounds else "–"))
+        else:                                  # 1.24.1: no "–" as the big value – the count, and why no BP/h
+            farm = Fact(_("Farming"), str(d["farming"]), _("Runden · BP/h erst mit Match-Daten"))
     if s["killer"]:
         kills = Fact(_("Ø Kills"), _num(s["kills"]), _("4K: {n} von {total}", n=s["four"], total=s["killer"]),
                      frac=s["kills"] / 4)
     elif getattr(j, "matches", None):
-        kills = Fact(_("Ø Kills"), sub=_("noch keine Stats-Daten"))
-    else:                                      # 1.2.15: never set up – say where (it hides under "Mehr")
-        kills = Fact(_("Ø Kills"), sub=_("Stats-Seite nicht eingerichtet"),
-                     action="official_setup", action_label=_("Match-Daten einrichten …"))
+        kills = None                           # 1.24 (phase 2): set up, nothing for today yet – no tile of "–"
+    else:                                      # 1.2.15: never set up – say where; 1.24.1: the same tile as
+        kills = Fact(_("Stats-Seite"), "–", _("nicht eingerichtet"), action="official_setup",   # without rounds
+                     action_label=_("Match-Daten einrichten …"))
     if s["survivor"]:
         esc = Fact(_("Entkommen"), f"{s['escaped']:.0%}",
                    _("{n} Survivor-Runden", n=s["survivor"]) + " · " + _("{n} normal", n=d["normal"]),
                    frac=s["escaped"])
     else:
-        esc = Fact(_("Entkommen"), sub=_("noch keine Stats-Daten"))
+        esc = None                             # 1.24: no tile that only says "–"
     wait = Fact(_("Ø Wartezeit"), fmt_duration(d["wait"]) if d["wait"] is not None else "–",
                 _("Ping {ms} ms", ms=f"{d['ping']:.0f}") if d["ping"] is not None else "")
+    if d["wait"] is None and d["ping"] is None:
+        wait = None
     note = _("Spielzeit heute: {time}", time=fmt_duration(d["total"]))
-    tiles = [rounds, kills, esc] + ([farm] if farm else []) + [wait] + ([rec] if rec else [])
+    tiles = [t for t in (rounds, kills, esc, farm, wait, rec) if t is not None]
     return tiles + ([ask] if ask else []), note
 
 
@@ -264,12 +335,15 @@ def week(app, now: float) -> tuple[list, str]:
     if not this["count"] and not last["count"]:
         return [], ""
     pct = lambda v: f"{v:.0%}"
-    tiles = [_week_fact(_("Runden"), this["count"], last["count"], str, delta_fmt=lambda d: f"{d:.0f}"),
-             _week_fact(_("Ø Kills"), this["kills"], last["kills"], _num),
-             _week_fact(_("Entkommen"), this["escaped"], last["escaped"], pct,
-                        delta_fmt=lambda d: _("{n} Pkt.", n=f"{d:.0f}"), scale=100.0),
-             _week_fact(_("Ø Wartezeit"), this["wait"], last["wait"], fmt_duration),
-             _week_fact(_("Bloodpoints"), this["bp"], last["bp"], dashboard._bp)]
+    tiles = [_week_fact(_("Runden"), this["count"], last["count"], str, delta_fmt=lambda d: f"{d:.0f}")]
+    # 1.24 (phase 2): a value neither week has (no match data, no waiting time) gets no tile of "– / Vorwoche –"
+    for title, key, fmt, kw in ((_("Ø Kills"), "kills", _num, {}),
+                                (_("Entkommen"), "escaped", pct,
+                                 {"delta_fmt": lambda d: _("{n} Pkt.", n=f"{d:.0f}"), "scale": 100.0}),
+                                (_("Ø Wartezeit"), "wait", fmt_duration, {}),
+                                (_("Bloodpoints"), "bp", dashboard._bp, {})):
+        if this[key] is not None or last[key] is not None:
+            tiles.append(_week_fact(title, this[key], last[key], fmt, **kw))
     return tiles, _("Montag bis jetzt gegenüber der Vorwoche (Mo–So); Custom und Farming zählen nicht.")
 
 
@@ -428,7 +502,7 @@ def overview_model(app, now: float, is_win: bool) -> Overview:
     o.facts = map_facts(app, now)
     o.actions = actions(app)
     o.primary = primary_action(app, o.actions)
-    o.switches = switches(app)
+    o.switches = switches(app, is_win)
     u = app._unsure
     if u and u.get("shown"):
         o.note = _("Unsicher erkannt: {map} (gelesen „{name}“)", map=u["label"], name=u["name"])
