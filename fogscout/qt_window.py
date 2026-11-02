@@ -490,20 +490,34 @@ class NavStatus(QFrame):
         h.setSpacing(8)
         self.dot = QLabel()
         self.text = QLabel()
-        self.text.setObjectName("navstatustext")
-        self.text.setWordWrap(True)
+        self.text.setObjectName("navstatustext")         # 1.24.5: lines made by _two_lines, no wrapping
         h.addWidget(self.dot, 0, Qt.AlignTop)
         h.addWidget(self.text, 1)
         self._shown = None
 
-    def show_state(self, colour: str, text: str, compact: bool, ratio: float = 1.0):
-        if (colour, text, compact, ratio) == self._shown:      # ratio: another screen draws the dot anew
+    def show_state(self, colour: str, text: str, compact: bool, ratio: float = 1.0, sign: str = "record"):
+        """``sign``: "warning" for a problem – the shape says it too, not only the colour (narrow: no words)."""
+        if (colour, text, compact, ratio, sign) == self._shown:  # ratio: another screen draws the dot anew
             return
-        self._shown = (colour, text, compact, ratio)
-        self.dot.setPixmap(qt_icons.pixmap("record", colour, qt_theme.ICON["s"], ratio))
-        _set(self.text, "" if compact else text)
+        self._shown = (colour, text, compact, ratio, sign)
+        self.dot.setPixmap(qt_icons.pixmap(sign, colour, qt_theme.ICON["s"], ratio))
+        _set(self.text, "" if compact else self._two_lines(text))
         self.text.setVisible(not compact)
         self.setAccessibleName(text)
+
+    def _two_lines(self, text: str) -> str:
+        """1.24.5 (review): two lines at most – a long error must not push the navigation away; the whole text is
+        the tooltip. Words to the first line as long as they fit, the rest on the second, cut with "…"."""
+        self.text.ensurePolished()
+        fm = self.text.fontMetrics()
+        width = NAV_W - 46                       # margins 14 + 10, the sign 14, the gap 8
+        words, first = text.split(), ""
+        for i, word in enumerate(words):
+            t = f"{first} {word}" if first else word
+            if first and fm.horizontalAdvance(t) > width:
+                return first + "\n" + fm.elidedText(" ".join(words[i:]), Qt.ElideRight, width)
+            first = t
+        return first
 
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.LeftButton and self.rect().contains(e.position().toPoint()):
@@ -1097,8 +1111,7 @@ class MainWindow(QMainWindow):
         self._style_lazily(qt_theme.stylesheet(dark, zoom))
         self._dark = bool(dark)
         self._nav_icons()
-        self._brand_paint()                                        # 1.24: compass and state dot in the theme
-        self._status_paint()
+        self._signs_paint()                                        # 1.24: compass, state dot, drawn signs
         try:
             hints = QApplication.styleHints()
             hints.setColorScheme(Qt.ColorScheme.Dark if dark else Qt.ColorScheme.Light)   # title bar (Qt 6.8+)
@@ -1187,6 +1200,21 @@ class MainWindow(QMainWindow):
             e.ignore()
             self._post("quit")
 
+    def event(self, e):
+        # 1.24.5 (review): another screen scale – the drawn signs again in its pixel ratio (they are pixmaps)
+        if e.type() == QEvent.DevicePixelRatioChange:
+            QTimer.singleShot(0, self._signs_paint)
+        return super().event(e)
+
+    def _signs_paint(self):
+        """1.24.5: everything drawn as a picture in the theme's colours at the screen's pixel ratio – the compass,
+        the state's sign and the signs set once on the hand-made pages (qt_common.refresh_glyphs)."""
+        from .qt_common import refresh_glyphs
+        self._brand_paint()
+        self.status_btn._shown = None                    # drawn again even if state and colour stayed
+        self._status_paint()
+        refresh_glyphs(self)
+
     def changeEvent(self, e):
         if e.type() == QEvent.WindowStateChange:
             minimised = bool(self.windowState() & Qt.WindowMinimized)
@@ -1238,7 +1266,8 @@ class MainWindow(QMainWindow):
             return
         kind, text = self._status
         colour = qt_theme.dot_colour(DOT_STYLE.get(kind, "idle"), self._dark)
-        self.status_btn.show_state(colour, text, self._nav_compact, self.devicePixelRatioF() or 1.0)
+        self.status_btn.show_state(colour, text, self._nav_compact, self.devicePixelRatioF() or 1.0,
+                                   "warning" if kind == "err" else "record")
         self.status_btn.setToolTip(text + " · " + _("Übersicht öffnen"))
 
     def _compact_nav(self, on: bool, keep: bool = False):
@@ -1262,6 +1291,7 @@ class MainWindow(QMainWindow):
         self.brand_name.setVisible(not on)
         self.status_btn.setFixedWidth(NAV_COMPACT_W if on else NAV_W)
         self._status_paint()
+        self.overview.show_status_line(on)        # 1.24.5: narrow – the overview says the state in words again
         self._nav_texts()
 
     def _nav_texts(self):

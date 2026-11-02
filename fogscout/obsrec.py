@@ -1391,14 +1391,24 @@ class Recorder(threading.Thread):
                 elif cmd == "clip_delete":
                     self._delete_clip(arg)
             except ObsError as e:
-                self._say(str(e), False)
+                self._say(str(e), False, err=True)
             except Exception as e:                     # never let the thread die
                 log.exception("OBS-Aufnahme")
-                self._say(_("Fehler: {error}", error=e), False)
+                self._say(_("Fehler: {error}", error=e), False, err=True)
 
-    def _say(self, text, ok):
+    def _say(self, text, ok, err=False):
+        """``err`` (1.24.5): a failure (OBS away, password, protocol) – red in the settings, not a hint in amber;
+        the event carries it only when set (the hints' events stay as they were)."""
         self.status = text
-        self._post("status", text=text, ok=ok)
+        self._post("status", text=text, ok=ok, **({"err": True} if err else {}))
+
+    @property
+    def obs_ready(self) -> bool | None:
+        """1.24.5 (review): OBS set up for the running DBD (True), not (yet) – unreachable or still connecting
+        (False); None while DBD does not run (the recorder talks to OBS only then). Read by the overview."""
+        if not self._game:
+            return None
+        return bool(self._ready)
 
     def _buffer_state(self, c):
         """True/False = OBS's replay buffer runs or not; None = not enabled in OBS's settings (1.8.32)."""

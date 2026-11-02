@@ -1032,6 +1032,29 @@ def test_the_statistics_say_once_what_the_stats_page_would_add_instead_of_tiles_
         app.quit()
 
 
+def test_linked_custom_games_are_not_called_unlinked(app_root):
+    """1.24.5 (review): the line "keine Runde … zugeordnet" looked at the pairs for the kill figures, which leave
+    custom games out unless the role filter is "Custom" – a selection of linked custom games was called unlinked."""
+    import json
+    from fogscout import history, official
+    from fogscout.app import App
+    t0 = time.time() - 3 * 3600
+    history.append(str(app_root / history.FILE), history.Round(t=t0, seconds=600, map_id="coal-tower",
+                                                               map="Coal Tower", role="survivor", custom=True))
+    with open(app_root / official.FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"t": t0 - 38, "map": "Coal Tower", "custom": True, "role": "survivor", "seconds": 600,
+                            "status": "ESCAPED"}) + "\n")
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._stats_render()
+        c = app._stats_ctx
+        assert c.rounds and not c.pairs and any(id(r) in c.off for r in c.rounds)   # linked, no kill pair
+        assert not app.stats_data_row.winfo_manager()
+    finally:
+        app.quit()
+
+
 def test_custom_rounds_that_were_public_matches_are_offered_as_farming(app_root):
     """1.6.1: rounds saved as custom games, which the stats page lists as public matches (instant lobbies with
     cross-play off before 1.5.5), are shown with a button: all become farming rounds (custom dropped); "Ignorieren"
@@ -3026,6 +3049,9 @@ def test_an_unreadable_hosts_file_is_an_error_and_locks_apply_and_release(app_ro
         assert app.srv_status.get() == "hosts-Datei nicht lesbar: Zugriff verweigert"
         assert app.srv_status_label._dbdms_level == "err"
         assert [b.instate(["disabled"]) for b in app.srv_btns] == [False, True, True]
+        app._srv_ping_done({"_error": "x"})                      # 1.24.5 (review): a failed ping kept no lock
+        assert [b.instate(["disabled"]) for b in app.srv_btns] == [False, True, True]
+        assert app.srv_status_label._dbdms_level == "err"
         monkeypatch.setattr(regions, "current_state",
                             lambda text=None: {"regions": {c: "frei" for c in codes}, "own": False, "myc": False,
                                                "foreign": 0})
@@ -3046,6 +3072,9 @@ def test_the_obs_line_in_the_settings_is_coloured_by_what_it_says():
                             False) == "err"
     assert rec_status_level("Fehler: x", False) == "err"
     assert rec_status_level("Aufnahme-Laufwerk nicht angeschlossen – nichts gestartet", False) == "warn"
+    # 1.24.5 (review): every failure the recorder marks (ObsError: wrong password, no obs-websocket …) is red
+    assert rec_status_level("OBS hat die Anmeldung abgelehnt – Passwort falsch?", False, err=True) == "err"
+    assert rec_status_level("OBS hat die Anmeldung abgelehnt – Passwort falsch?", False) == "warn"   # unmarked
 
 
 def test_the_server_page_says_when_the_ticks_are_not_applied(app_root):
@@ -3118,9 +3147,9 @@ def test_the_state_reaches_the_foot_of_the_navigation_on_every_page(app_root):
     try:
         app.qt.show_page("log")
         app._qt_refresh(force=True)
-        assert app.qt.status_btn.text.text() == "Simulation – wartet auf das Map-Banner"
+        assert app.qt.status_btn.text.text().replace("\n", " ") == "Simulation – wartet auf das Map-Banner"
         app.show_map("coal-tower", 1, source="manual")
         app._qt_refresh(force=True)
-        assert app.qt.status_btn.text.text().startswith("Im Match: Coal Tower")
+        assert app.qt.status_btn.text.text().replace("\n", " ").startswith("Im Match: Coal Tower")
     finally:
         app.quit()

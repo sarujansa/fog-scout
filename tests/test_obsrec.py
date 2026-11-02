@@ -336,6 +336,19 @@ def _recorder(obs, folder, **kw):
     return r, posted
 
 
+def test_the_recorder_says_whether_obs_is_ready_for_the_running_game(obs, tmp_path):
+    """1.24.5 (review: the overview said "bereit" without knowing): obs_ready = None while DBD does not run (the
+    recorder talks to OBS only then), False until OBS is set up for it, True after; OBS closed again → False."""
+    r, _posted = _recorder(obs, str(tmp_path), pre=False)
+    assert r.obs_ready is None
+    r._game = True
+    assert r.obs_ready is False
+    r._ready = True
+    assert r.obs_ready is True
+    r._game = False
+    assert r.obs_ready is None
+
+
 def test_a_round_is_recorded_named_and_indexed(obs, tmp_path):
     folder = str(tmp_path)
     r, posted = _recorder(obs, folder, pre=False)
@@ -577,10 +590,12 @@ def test_the_recorder_thread_survives_errors(obs, tmp_path):
     r.test()
     kind, d = posted.get(timeout=3)
     assert kind == "status" and not d["ok"] and "nicht erreichbar" in d["text"]
+    assert d.get("err") is True                               # 1.24.5: a failure, marked (red in the settings)
     r.cfg.port = obs.port
     r.test()
     kind, d = posted.get(timeout=3)
     assert kind == "status" and d["ok"] and "OBS 31.0.0" in d["text"] and "bereit" in d["text"]
+    assert "err" not in d
     r.quit()
     r.join(timeout=3)
     assert not r.is_alive()

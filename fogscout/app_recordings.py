@@ -129,13 +129,15 @@ def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: fl
     return state, " · ".join(vals), " ".join(warn)
 
 
-def rec_card_level(d: dict | None, on: bool) -> str:
+def rec_card_level(d: dict | None, on: bool, rec_on: bool = True) -> str:
     """1.24.3 (phase 2, pure): the colour of the card's first line (ui.level) – the words say the same: off = "aus",
-    err = OBS not reachable, ok = recording, warn = ready, but F8 has no buffer; "" = plain (waiting, ready)."""
+    err = OBS not reachable, ok = recording, warn = ready, but F8 has no buffer; "" = plain (waiting, ready).
+    1.24.5 (review): recordings switched off on purpose (``rec_on`` False, a folder still set – the card still asks
+    OBS): OBS away is no error then."""
     if d is None:
         return "" if on else "off"
     if not d.get("connected"):
-        return "err"
+        return "err" if rec_on else ""
     if d.get("recording"):
         return "warn" if d.get("paused") else "ok"
     return "warn" if d.get("buffer", False) is None else ""
@@ -652,14 +654,15 @@ class RecordingsTab:
         for var, text in ((self.rec_state_var, state), (self.rec_live_var, live), (self.rec_warn_var, warn)):
             if var.get() != text:
                 var.set(text)
-        ui.level(self.rec_state_label, rec_card_level(d, on))
+        rec_on = bool(self.settings.get("rec_on", False))
+        ui.level(self.rec_state_label, rec_card_level(d, on, rec_on))
         # 1.24.3: recordings off and OBS never asked – the summary above says so; the card would say it again
         card = d is not None or on
         if card and not self.rec_card.winfo_manager():
             self.rec_card.pack(fill="x", pady=(8, 0), after=self.rec_hint_label)
         elif not card and self.rec_card.winfo_manager():
             self.rec_card.pack_forget()
-        away = d is not None and not d.get("connected")
+        away = d is not None and not d.get("connected") and rec_on      # 1.24.5: no "Verbindung prüfen" when off
         if away and not self.rec_obs_btn.winfo_manager():
             self.rec_obs_btn.pack(side="left", padx=(6, 0))
         elif not away and self.rec_obs_btn.winfo_manager():

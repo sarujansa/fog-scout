@@ -92,6 +92,11 @@ class OverviewPage(QWidget):
         # 1.24 (phase 2): title and purpose like every page – the state went to the foot of the navigation
         # (MainWindow.show_status), where every page shows it; the pill here showed it on the overview only
         page.addLayout(page_head(_("Übersicht"), "overview"))
+        # 1.24.5 (review): narrow window – the navigation shows only the state's sign; here the words again
+        self.status_line = _label(cls="dim", wrap=True)
+        self.status_line.setVisible(False)
+        self._status_now = ("idle", "")
+        page.addWidget(self.status_line)
 
         # the map on display: picture, name, values, actions
         card = _card()
@@ -261,7 +266,27 @@ class OverviewPage(QWidget):
         page.addStretch()
 
     # ------------------------------------------------------------- update
+    def show_status_line(self, on: bool):
+        """1.24.5: the state in words under the title while the navigation is narrow (MainWindow._compact_nav)."""
+        if self.status_line.isHidden() == bool(on):
+            self.status_line.setVisible(bool(on))
+        if on:
+            self._status_paint()
+
+    def _status_paint(self):
+        kind, text = self._status_now
+        level = {"ok": "ok", "warn": "warn", "err": "err"}.get(kind, "")
+        if self.status_line.__dict__.get("_level") != level:
+            self.status_line._level = level
+            self.status_line.setProperty("state", level)
+            self.status_line.style().unpolish(self.status_line)
+            self.status_line.style().polish(self.status_line)
+        _set(self.status_line, text)
+
     def update_page(self, o, thumb=None, tips=None):
+        self._status_now = (o.status_kind, o.status_text)
+        if not self.status_line.isHidden():
+            self._status_paint()
         _set(self.map_name, o.map_label or _("Noch keine Map"))
         _set(self.map_line, o.map_line)
         _set(self.queue, o.queue)
@@ -356,7 +381,8 @@ class OverviewPage(QWidget):
             sw = switches[i]
             label = self.switch_states[i]
             level = getattr(sw, "level", "")
-            if label.property("state") != level:
+            if label.__dict__.get("_level") != level:            # 1.24.5: a Python attribute, not a property read
+                label._level = level
                 label.setProperty("state", level)
                 label.style().unpolish(label)
                 label.style().polish(label)
@@ -455,7 +481,7 @@ class RoundRowView(QFrame):
         lay.addWidget(self.left, 1)
         lay.addWidget(self.right)
         self.play = QPushButton()
-        set_glyph(self.play, "play")              # 1.24: a drawn sign, not "▶"
+        set_glyph(self.play, "play", tone="dim")  # 1.24: a drawn sign, not "▶"; 1.24.5: quiet like #rowplay was
         self.play.setAccessibleName(_("Aufnahme dieser Runde öffnen"))
         self.play.setObjectName("rowplay")
         self.play.setCursor(Qt.PointingHandCursor)
@@ -676,9 +702,12 @@ def show_control(kind, w, extra, st):
         w.setObjectName("primary")
         w.style().unpolish(w)
         w.style().polish(w)
-    if "glyph" in st or getattr(w, "_glyph_key", None):
+    # 1.24.5 (measured): the caches are read from the widget's own __dict__ – getattr() of a name a PySide widget
+    # lacks searches Qt's meta data first (3.7 µs, every control on every refresh), a dict lookup costs 0.17 µs
+    if "glyph" in st or w.__dict__.get("_glyph_key"):
         set_glyph(w, st.get("glyph"), primary=bool(st.get("primary")))
-    if "level" in st and (w.property("state") or "") != st["level"]:     # 1.24.3: ui.level – state colour
+    if "level" in st and w.__dict__.get("_level", "") != st["level"]:   # 1.24.3: ui.level – state colour
+        w._level = st["level"]                            # 1.24.5: compared in Python, not via a Qt property read
         w.setProperty("state", st["level"])
         w.style().unpolish(w)
         w.style().polish(w)

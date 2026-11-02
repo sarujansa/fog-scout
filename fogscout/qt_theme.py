@@ -104,6 +104,13 @@ def current_zoom() -> float:
     return _zoom
 
 
+def look_key() -> tuple:
+    """1.24.5 (phase 2, measured): what colours(current_dark()) depends on – a cheap key for callers that only need
+    to know whether the colours changed (qt_common.set_glyph runs on every refresh; building the palette there cost
+    ~30 µs a call)."""
+    return _dark, _theme, _oled, _custom
+
+
 def colours(dark: bool) -> dict:
     """The palette of the current theme: PALETTE with the theme's accent over it, OLED black when dark; the state
     and media colours of STATE."""
