@@ -204,10 +204,11 @@ def test_a_project_is_saved_and_comes_back_when_the_recording_opens_again(qapp, 
         again.close()
 
 
-def test_the_library_lists_media_and_a_drop_on_the_timeline_opens_it(qapp, clip, tmp_path):
-    """The library shows the App's items with search and sort, a row carries its path when dragged, a drop on the
-    timeline asks the App to open it – in place of this window while nothing was cut here, else beside it; an
-    unknown video file dropped from outside joins the library first."""
+def test_the_library_lists_media_and_opens_a_row(qapp, clip, tmp_path):
+    """The library shows the App's items with search and sort, a row carries its path when dragged, opening a row
+    (double click) asks the App to open it – in place of this window while nothing was cut here, else beside it;
+    an unknown video file dropped from outside joins the library first. 1.22: a drop on V1 joins the timeline
+    (montage – tests/test_montage.py)."""
     from PySide6.QtCore import QMimeData
     from fogscout import medialib, qt_timeline
     other = str(tmp_path / "other.mkv")
@@ -228,19 +229,20 @@ def test_the_library_lists_media_and_a_drop_on_the_timeline_opens_it(qapp, clip,
         assert [it.path for it in lib.model.items] == [other, clip]
         mime = lib.model.mimeData([lib.model.index(0, 0)])
         assert qt_timeline.SequenceTimeline.mime_path(mime) == other
-        win.timeline.dropped.emit(other)                                      # pristine: replaces this window
+        win._open_media(lib.item_for(other))                                 # pristine: replaces this window
         assert opened == [(other, win)]
-        win.timeline.dropped.emit(clip)                                       # the one open already: nothing
+        win._open_media(lib.item_for(clip))                                  # the one open already: nothing
         assert len(opened) == 1 and "schon auf der Zeitleiste" in win.status.text()
         win.goto(4.0)
         win.split_at_playhead()                                               # cut here: a window of its own
-        win.timeline.dropped.emit(other)
+        win._open_media(lib.item_for(other))
         assert opened[-1] == (other, None)
         new = str(tmp_path / "fresh.mp4")
         with open(new, "wb") as f:
             f.write(b"\0" * 100)
-        win.timeline.dropped.emit(new)
-        assert opened[-1][0] == new and lib.item_for(new) is not None and lib.item_for(new).kind == "file"
+        win.timeline.dropped.emit(new)                                        # 1.22: joins the library and is read
+        assert lib.item_for(new) is not None and lib.item_for(new).kind == "file" and len(opened) == 2
+        assert _pump(qapp, lambda: "nicht lesbar" in win.status.text(), 20) and not win._montage
         win.timeline.dropped.emit(str(tmp_path / "notes.txt"))
         assert "Keine Videodatei" in win.status.text()
         mm = QMimeData()
