@@ -625,6 +625,43 @@ class RecordingsTab:
             if str(b.cget("state")) != st:
                 b.configure(state=st)
 
+    def _show_round_recording(self, t: float) -> bool:
+        """1.17.1: the page Aufnahmen › Runden with the recording of the round at ``t`` marked (the compact editor
+        follows the marking as for a click). False when there is none or the filters hide it."""
+        self.qt.show_page("recordings")
+        self.rec_nb.select(self.rec_nb.tabs()[0])
+        self._rec_render(force=True)
+        iid = repr(t)
+        if not self.rec_table.exists(iid):
+            return False
+        self.rec_table.selection_set(iid)
+        self.rec_table.see(iid)
+        self._rec_buttons()
+        return True
+
+    def _recording_for(self, t: float):
+        """1.17.1: the path of the recording of the round that started at ``t`` – the index entry with the same start
+        time (as the recordings page pairs them) whose file is there; None without one. The index is read again only
+        when its file changed (os.stat per call, a few rounds at a time)."""
+        folder = self.recorder.folder() if self.settings.get("rec_on", False) or self.settings.get("rec_folder") else None
+        if not folder:
+            return None
+        try:
+            st = os.stat(os.path.join(folder, obsrec.INDEX))
+            stamp = (folder, st.st_mtime_ns, st.st_size)
+        except OSError:
+            return None
+        cached = self.__dict__.get("_rec_by_t")
+        if cached is None or cached[0] != stamp:
+            try:
+                recs = obsrec.load_index(folder)
+            except (OSError, ValueError):
+                recs = []
+            cached = self._rec_by_t = (stamp, {r.t: r for r in recs})
+        rec = cached[1].get(t)
+        p = obsrec.rel_path(folder, rec.file) if rec is not None else None
+        return p if p and os.path.isfile(p) else None
+
     def _rec_render(self, force=False):
         self._rec_dirty, self._rec_rendered = False, time.time()
         folder = self.recorder.folder() if self.settings.get("rec_on", False) or self.settings.get("rec_folder") else None

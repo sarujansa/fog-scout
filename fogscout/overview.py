@@ -6,6 +6,7 @@ matches from the files – comes from App._joined(), which is cached by file tim
 from __future__ import annotations
 
 import time
+from collections import namedtuple
 from dataclasses import dataclass, field
 
 from . import dashboard, history, obsrec, official, sysinfo, theme
@@ -61,7 +62,7 @@ class Overview:
     today_note: str = ""
     system: list = field(default_factory=list)         # [(label, text, frac | None, colour | None)]
     system_note: str = ""
-    rounds: list = field(default_factory=list)         # [(map, right-hand text)]
+    rounds: list = field(default_factory=list)         # [RoundRow(map, right-hand text, t, recording path)]
     log_alert: bool = False
     news: list = field(default_factory=list)           # 1.8.79: [(version, title, detail)] since the version last run
     week: list = field(default_factory=list)           # 1.8.83: this week against the last one (Facts); [] = no rounds
@@ -372,8 +373,13 @@ def days(app, now: float) -> dict:
                        "last": str(counts[-1][0]) if counts[-1][0] else "", "empty": ""}}
 
 
+RoundRow = namedtuple("RoundRow", "map text t recording")   # 1.17.1: a row of "Letzte Runden" – click → statistics,
+                                                                # ▶ → its recording (None: none or the file is gone)
+
+
 def last_rounds(app, n: int = LAST_ROUNDS) -> list:
     j = app._joined()
+    find = getattr(app, "_recording_for", None)        # same start time = the round's recording (obsrec index)
     out = []
     for r in sorted(j.rounds, key=lambda r: r.t, reverse=True)[:n]:
         if r.custom:
@@ -386,7 +392,7 @@ def last_rounds(app, n: int = LAST_ROUNDS) -> list:
             who = (who + " · " if who else "") + _("Farming")
         res = app._official_result(j.off.get(id(r)))
         parts = [p for p in (who, res if res != "–" else "", fmt_duration(r.seconds)) if p]
-        out.append((r.map, " · ".join(parts)))
+        out.append(RoundRow(r.map, " · ".join(parts), r.t, find(r.t) if find else None))
     return out
 
 
