@@ -67,7 +67,19 @@ class MusicMixin:
         self.music_add_btn = self._btn(row, _("Musik hinzufügen …"), lambda: self._music_add_dialog(),
                                        _("Eine eigene Ton- oder Videodatei (Musik, Kommentar) am Abspielkopf auf die "
                                          "Spur A2 legen – oder die Datei direkt auf A2 ziehen."))
+        self.music_lib_btn = self._btn(row, _("Audiomediathek"), self._music_library,
+                                       _("Öffnet YouTubes Audiomediathek im Browser: kostenlose Musik und Effekte, "
+                                         "für Videos freigegeben (keine Content-ID-Ansprüche). Heruntergeladene "
+                                         "MP3s erscheinen hier darunter."))
         sec.body.addLayout(row)
+        self.music_recent_label = QLabel(_("Neu im Download-Ordner – Klick legt sie am Abspielkopf auf A2:"))
+        self.music_recent_label.setProperty("class", "dim")
+        self.music_recent_label.setWordWrap(True)
+        sec.body.addWidget(self.music_recent_label)
+        self.music_recent_row = FlowRow(spacing=6)
+        sec.body.addLayout(self.music_recent_row)
+        self.music_recent_btns = []
+        self._music_recent_fill()
         tip_game = _("Lautstärke des Spieltons im fertigen Clip.")
         self.game_vol, holder = self._slider(0, round(musictrack.VOL_MAX * 100), 100, tip_game, self._music_levels)
         sec.row(_("Spielton"), holder)
@@ -113,6 +125,33 @@ class MusicMixin:
         tl.music_selected.connect(lambda _k: self._music_show())
         tl.music_dropped.connect(self._music_add)
         self._music_show()
+
+    # ---- 1.22.1: YouTube's audio library and the newest sound files of the download folder
+    def _music_library(self):
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl(musictrack.AUDIO_LIBRARY_URL))
+        self.status.setText(_("Audiomediathek im Browser geöffnet – heruntergeladene Titel erscheinen im Abschnitt "
+                              "Ton, sobald du zurück im Editor bist."))
+
+    def _music_recent_fill(self):
+        """The newest sound files of the download folder as buttons (called on building and when the window comes
+        to the front again – after a download in the browser)."""
+        from . import official
+        files = musictrack.recent_files(official.downloads_dir())
+        self.music_recent_label.setVisible(bool(files))
+        if [b.property("path") for b in self.music_recent_btns] == files:
+            return
+        for b in self.music_recent_btns:
+            self.music_recent_row.removeWidget(b)
+            b.deleteLater()
+        self.music_recent_btns = []
+        for path in files:
+            name = os.path.basename(path)
+            b = self._btn(self.music_recent_row, "♪ " + (name if len(name) <= 32 else name[:31] + "…"),
+                          lambda _c=False, p=path: self._music_add(p, self.pos), path)
+            b.setProperty("path", path)
+            self.music_recent_btns.append(b)
 
     # ---- the state
     def _music_spec(self) -> musictrack.MusicSpec:
