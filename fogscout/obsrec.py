@@ -1602,16 +1602,16 @@ class Recorder(threading.Thread):
         """The recordings folder now (find_folder). 1.22.4 (audit, prompt.md): on Windows find_folder asks all 26
         drive letters for their volume – the recordings page asked twice per render, the recorder thread on each
         of its steps. The answer is kept FOLDER_TTL_S for the same settings; a kept folder that is gone (drive
-        unplugged, letter changed) is looked up again at once, a missing drive is asked again after FOLDER_TTL_S.
-        Called from the GUI and the recorder thread: the cache is one tuple, replaced whole."""
+        unplugged, letter changed) is looked up again at once. 1.23.1 (review): a missing drive is not kept – a
+        round right after plugging it in must record (it was None for up to FOLDER_TTL_S). Called from the GUI and
+        the recorder thread: the cache is one tuple, replaced whole."""
         key = (self.cfg.volume, self.cfg.rel, self.cfg.folder)
         now = time.monotonic()
         hit = self._folder_hit
-        if hit is not None and hit[0] == key and now - hit[1] < FOLDER_TTL_S \
-                and (hit[2] is None or os.path.isdir(hit[2])):
+        if hit is not None and hit[0] == key and now - hit[1] < FOLDER_TTL_S and os.path.isdir(hit[2]):
             return hit[2]
         path = find_folder(*key)
-        self._folder_hit = (key, now, path)
+        self._folder_hit = (key, now, path) if path else None
         return path
 
     def _test(self):

@@ -552,6 +552,8 @@ EN = {
     "Öffnet die markierten Runden bzw. Clips nacheinander im grossen Editor – als eine Montage (mehrere markieren: Strg- oder Umschalt-Klick).":
         "Opens the marked rounds or clips one after another in the big editor – as one montage (mark several: Ctrl- or Shift-click).",
     "Ursache: {cause}": "Cause: {cause}",
+    "Keine Region angehakt – für „Auswahl anwenden“ mindestens eine anhaken.":
+        "No region ticked – tick at least one for \"Apply selection\".",
     "Anwenden": "Apply",
     "Freigeben": "Unblock",
     "Importieren": "Import",

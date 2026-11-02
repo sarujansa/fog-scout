@@ -193,6 +193,8 @@ class ServerTab:
         if not rs or st.get("error") or self._srv_busy:
             return ""
         codes = [c for c, _, _ in regions.REGIONS]
+        if not set(self.srv_sel) & set(codes):          # 1.23.1: srv_apply refuses an empty choice
+            return _("Keine Region angehakt – für „Auswahl anwenden“ mindestens eine anhaken.")
         free = {c for c in codes if rs.get(c) == "frei"}
         n = len(free ^ (set(self.srv_sel) & set(codes)))
         if not n:
