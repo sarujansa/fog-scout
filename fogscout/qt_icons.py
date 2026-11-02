@@ -457,7 +457,71 @@ def _speed(p, c):
     p.drawEllipse(QPointF(12, 13), 1.6, 1.6)
 
 
+# ---- 1.24 (phase 2, prompt_phase2.md): glyphs of the main window – they replace the Unicode signs ↻ ▸ ▾ ✕ ★ ⚑ ⚠ ●
+def _star(p, c):
+    import math
+    pts = []
+    for i in range(10):
+        r = 8.5 if i % 2 == 0 else 3.6
+        a = math.radians(-90 + i * 36)
+        pts.append((12 + r * math.cos(a), 12.6 + r * math.sin(a)))
+    _tri(p, pts)
+
+
+def _warning(p, c):
+    p.setBrush(Qt.NoBrush)
+    path = QPainterPath()
+    path.moveTo(12, 4)
+    path.lineTo(20.5, 19)
+    path.lineTo(3.5, 19)
+    path.closeSubpath()
+    p.drawPath(path)
+    p.drawLine(QPointF(12, 9.5), QPointF(12, 13.8))
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(c))
+    p.drawEllipse(QPointF(12, 16.4), 1.2, 1.2)
+
+
+def _chevron_right(p, c):
+    _lines(p, [(9.5, 6), (15.5, 12), (9.5, 18)])
+
+
+def _chevron_down(p, c):
+    _lines(p, [(6, 9.5), (12, 15.5), (18, 9.5)])
+
+
+def _chevron_up(p, c):
+    _lines(p, [(6, 14.5), (12, 8.5), (18, 14.5)])
+
+
+def _rotate(p, c):
+    p.setBrush(Qt.NoBrush)
+    p.drawArc(QRectF(5, 5, 14, 14), 100 * 16, 290 * 16)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(c))
+    _tri(p, [(9.2, 2.6), (12.8, 5.8), (8.6, 8.4)])
+
+
+def _record(p, c):
+    p.setPen(Qt.NoPen)
+    p.drawEllipse(QPointF(12, 12), 5.5, 5.5)
+
+
+def _back(p, c):
+    p.drawLine(QPointF(19, 12), QPointF(5.5, 12))
+    _lines(p, [(11, 6.5), (5.5, 12), (11, 17.5)])
+
+
+def _external(p, c):
+    p.setBrush(Qt.NoBrush)
+    _lines(p, [(18, 13.5), (18, 19), (5, 19), (5, 6), (10.5, 6)])
+    p.drawLine(QPointF(11.5, 12.5), QPointF(19, 5))
+    _lines(p, [(13.5, 5), (19, 5), (19, 10.5)])
+
+
 GLYPHS = {
+    "star": _star, "warning": _warning, "chevron_right": _chevron_right, "chevron_down": _chevron_down,
+    "chevron_up": _chevron_up, "rotate": _rotate, "record": _record, "back": _back, "external": _external,
     "play": _play, "pause": _pause, "to_start": _to_start, "to_end": _to_end, "rewind": _rewind, "forward": _forward,
     "frame_prev": _frame_prev, "frame_next": _frame_next, "mark_in": _mark_in, "mark_out": _mark_out,
     "volume": _volume, "mute": _mute, "fullscreen": _fullscreen, "fullscreen_exit": _fullscreen_exit,

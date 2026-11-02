@@ -55,6 +55,7 @@ class Overview:
     thumb_rev: int = 0
     facts: list = field(default_factory=list)          # round time, server, ping, role
     actions: dict = field(default_factory=dict)        # name -> (enabled, label) / None = not shown
+    primary: str | None = None                # 1.24: the action drawn as the main one (primary_action) – or none
     switches: list = field(default_factory=list)       # 1.14: Switch per feature the overview can flip
     note: str = ""                            # doubtful detection
     unknown: str = ""                         # banner without a known map
@@ -114,7 +115,7 @@ def actions(app) -> dict:
     # 1.66.3: a button that can do nothing now is not shown (it was greyed out); without a map: "Map wählen"
     out = {"scan": (True, _("Scannen")),
            "choose": None if has_map else (True, _("Map wählen …")),
-           "rotate": (True, _("Drehen ↻")) if app.current is not None else None,
+           "rotate": (True, _("Drehen")) if app.current is not None else None,     # 1.24: sign drawn (qt_icons)
            "toggle": (True, _("Karte ausblenden") if on else _("Karte einblenden")) if has_map else None,
            "reject": (True, _("Falsch erkannt")) if app.current is not None and app.source == "auto"
            and not app.hidden_after_match else None,
@@ -128,14 +129,25 @@ def actions(app) -> dict:
         out["confirm"] = (True, _("Stimmt"))
     vs = app._layouts()
     if len(vs) >= 2:
-        out["layout"] = (True, _("Layout {n} von {total}", n=roman(app.current[1]), total=roman(vs[-1])) + " ▸"
+        out["layout"] = (True, _("Layout {n} von {total}", n=roman(app.current[1]), total=roman(vs[-1]))
                          + (" " + _("(unsicher)") if app._layout_unsure else ""))
     floors = app.overlay.floors() if app.current else []
     if floors:
         f = app._floor
         out["floor"] = (True, (_("Etage {n} von {total}", n=f + 1, total=len(floors)) if f is not None
-                               else _("Beide Etagen")) + " ▸")
+                               else _("Beide Etagen")))
     return out
+
+
+def primary_action(app, acts: dict) -> str | None:
+    """1.24 (phase 2): the one button drawn as the main action – only when the player has to do something: confirm
+    a doubtful map ("Stimmt"), or pick one while the automatic detection is off. Otherwise none: the map comes by
+    itself, and "Scannen" is a fallback, not the next step (it was always the accent button before)."""
+    if acts.get("confirm"):
+        return "confirm"
+    if acts.get("choose") and not app.settings.get("auto_detect", True):
+        return "choose"
+    return None
 
 
 def switches(app) -> list:
@@ -415,6 +427,7 @@ def overview_model(app, now: float, is_win: bool) -> Overview:
     o.thumb_rev = getattr(app, "_thumb_rev", 0)
     o.facts = map_facts(app, now)
     o.actions = actions(app)
+    o.primary = primary_action(app, o.actions)
     o.switches = switches(app)
     u = app._unsure
     if u and u.get("shown"):
