@@ -15,7 +15,7 @@ from dataclasses import replace
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
                                QProgressBar, QPushButton, QScrollArea, QScrollBar, QSizePolicy, QSlider, QSplitter,
                                QToolButton, QVBoxLayout)
 
@@ -38,9 +38,104 @@ MODE_TIPS = {"select": N_("Clips auf der Zeitleiste wählen, verschieben und tri
              "crop": N_("Bildausschnitt – den Rahmen in der Vorschau ziehen (C)."),
              "draw": N_("Pfeile, Rahmen, Freihand und Text ins Bild zeichnen (D)."),
              "censor": N_("Bereiche unkenntlich machen – Namen, Chat, Freundesliste (X).")}
-KEY_HINT = N_("Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg oder ,/. 1 Bild · I/O Clip beginnt/endet hier · S Teilen · "
+KEY_HINT = N_("? alle Tastenkürzel · Leertaste Abspielen · ←/→ 1 s · Shift 5 s · Strg oder ,/. 1 Bild · I/O Clip beginnt/endet hier · S Teilen · "
               "Entf Löschen · Strg+Z/Y Rückgängig/Wiederholen · F Vollbild · Strg+S Projekt · Strg+E Export")
 LAYOUT_SAVE_MS = 600
+_SH, _CT = Qt.ShiftModifier, Qt.ControlModifier
+# 1.17.1: the key help (?) – (group, rows): (keys as shown, what they do, checks). A check is (Qt key, modifiers,
+# target) for keyPressEvent or (key sequence, target) for a QShortcut; target = a method of the window, "tl:<name>"
+# of the timeline, "mode:<tool>" or "help". tests/test_editor.py presses every check and expects the target to run –
+# a key listed here works, the help is made from this table only.
+SHORTCUTS = (
+    (N_("Wiedergabe"), (
+        (N_("Leertaste"), N_("Abspielen / Anhalten"), ((Qt.Key_Space, 0, "toggle_play"),)),
+        ("← / →", N_("1 Sekunde zurück / vor"), ((Qt.Key_Left, 0, "step"), (Qt.Key_Right, 0, "step"))),
+        (N_("Shift+← / →"), N_("5 Sekunden zurück / vor"), ((Qt.Key_Left, _SH, "step"), (Qt.Key_Right, _SH, "step"))),
+        (N_("Strg+← / →  ·  , / ."), N_("1 Bild zurück / vor"),
+         ((Qt.Key_Left, _CT, "step_frame"), (Qt.Key_Right, _CT, "step_frame"), (Qt.Key_Comma, 0, "step_frame"),
+          (Qt.Key_Period, 0, "step_frame"))),
+        (N_("Pos1 / Ende"), N_("Zum Anfang / zum Schluss"), ((Qt.Key_Home, 0, "goto"), (Qt.Key_End, 0, "goto"))),
+        ("M", N_("Zur nächsten Marke"), ((Qt.Key_M, 0, "next_mark"),)),
+        ("F", N_("Vollbild an / aus"), ((Qt.Key_F, 0, "toggle_fullscreen"),)))),
+    (N_("Zeitleiste"), (
+        ("I / O", N_("Clip beginnt / endet am Abspielkopf"), ((Qt.Key_I, 0, "set_start"), (Qt.Key_O, 0, "set_end"))),
+        (N_("S oder Strg+B"), N_("Clip am Abspielkopf teilen"),
+         ((Qt.Key_S, 0, "split_at_playhead"), ("Ctrl+B", "split_at_playhead"))),
+        (N_("Entf"), N_("Markierten Clip löschen"), ((Qt.Key_Delete, 0, "delete_selected"),)),
+        ("+ / −", N_("Hinein- / herauszoomen"), ((Qt.Key_Plus, 0, "tl:zoom_in"), (Qt.Key_Minus, 0, "tl:zoom_out"))),
+        (N_("Strg+0"), N_("Ganze Zeitleiste zeigen"), (("Ctrl+0", "tl:zoom_fit"),)))),
+    (N_("Werkzeuge"), (
+        ("V", N_("Auswählen"), ((Qt.Key_V, 0, "mode:select"),)),
+        ("C", N_("Bildausschnitt"), ((Qt.Key_C, 0, "mode:crop"),)),
+        ("D", N_("Zeichnen"), ((Qt.Key_D, 0, "mode:draw"),)),
+        ("X", N_("Zensieren"), ((Qt.Key_X, 0, "mode:censor"),)),
+        ("Esc", N_("Vollbild verlassen, sonst zurück zu Auswählen, sonst schliessen"),
+         ((Qt.Key_Escape, 0, "mode:select"),)))),
+    (N_("Projekt"), (
+        (N_("Strg+Z / Strg+Y"), N_("Rückgängig / Wiederholen"), (("Ctrl+Z", "undo"), ("Ctrl+Y", "redo"))),
+        (N_("Strg+S"), N_("Projekt speichern"), (("Ctrl+S", "save_project"),)),
+        (N_("Strg+E"), N_("Exportieren"), (("Ctrl+E", "save"),)),
+        ("?", N_("Diese Übersicht ein / aus"), ((Qt.Key_Question, 0, "help"),)))),
+)
+
+
+class KeyHelp(QFrame):
+    """1.17.1: the editor's key help – a compact panel over the window (no dialog), made from SHORTCUTS only; ?,
+    Esc or its × close it."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setObjectName("keyhelp")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(18, 12, 12, 16)
+        outer.setSpacing(8)
+        top = QHBoxLayout()
+        title = QLabel(_("Tastenkürzel"))
+        title.setObjectName("keyhelptitle")
+        top.addWidget(title)
+        top.addStretch()
+        close = QToolButton()
+        close.setObjectName("quietbtn")
+        close.setText("×")
+        close.setToolTip(_("Schliessen (? oder Esc)"))
+        close.clicked.connect(self.hide)
+        top.addWidget(close)
+        outer.addLayout(top)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(28)
+        grid.setVerticalSpacing(14)
+        for n, (group, rows) in enumerate(SHORTCUTS):
+            box = QGridLayout()                           # keys and texts in two aligned columns per group
+            box.setHorizontalSpacing(10)
+            box.setVerticalSpacing(4)
+            head = QLabel(_(group).upper())
+            head.setObjectName("keyhelphead")
+            box.addWidget(head, 0, 0, 1, 2)
+            for i, (keys, what, _checks) in enumerate(rows, start=1):
+                k = QLabel(_(keys))
+                k.setObjectName("kbd")
+                box.addWidget(k, i, 0, Qt.AlignLeft | Qt.AlignVCenter)
+                box.addWidget(QLabel(_(what)), i, 1)
+            box.setColumnStretch(1, 1)
+            box.setRowStretch(len(rows) + 1, 1)
+            grid.addLayout(box, n // 2, n % 2)
+        outer.addLayout(grid)
+        self.hide()
+
+    def toggle(self):
+        if self.isHidden():
+            self.place()
+            self.show()
+            self.raise_()
+        else:
+            self.hide()
+
+    def place(self):
+        p = self.parentWidget()
+        self.adjustSize()
+        w, h = min(self.sizeHint().width(), p.width() - 40), min(self.sizeHint().height(), p.height() - 40)
+        self.setGeometry((p.width() - w) // 2, (p.height() - h) // 2, w, h)
 
 
 def editor_qss(c: dict, zoom: float = 1.0) -> str:
@@ -81,6 +176,11 @@ QSplitter::handle {{ background: {c['border']}; }}
 QSplitter::handle:horizontal {{ width: 1px; }}
 QSplitter::handle:vertical {{ height: 1px; }}
 QSplitter::handle:hover {{ background: {c['accent']}; }}
+QFrame#keyhelp {{ background: {c['panel']}; border: 1px solid {c['border']}; border-radius: 10px; }}
+QLabel#keyhelptitle {{ font-weight: 700; color: {c['head']}; }}
+QLabel#keyhelphead {{ font-size: {px(11)}; font-weight: 700; color: {c['dim']}; letter-spacing: 1px; padding-bottom: 2px; }}
+QLabel#kbd {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: 4px; padding: 1px 6px;
+    color: {c['head']}; }}
 QFrame#inspector QPushButton, QFrame#panel QPushButton {{ padding: 4px 10px; }}
 QFrame#inspector QComboBox {{ padding: 3px 26px 3px 8px; }}
 QFrame#inspector QLineEdit {{ padding: 4px 8px; }}
@@ -715,6 +815,8 @@ class EditorWindow(ClipBase):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         QTimer.singleShot(0, self._hint_fit)
+        if getattr(self, "key_help", None) is not None and not self.key_help.isHidden():
+            self.key_help.place()
 
     def _shortcuts(self):
         for std, extra, slot in ((QKeySequence.Undo, (), self.undo), (QKeySequence.Redo, ("Ctrl+Y",), self.redo),
@@ -1482,10 +1584,21 @@ class EditorWindow(ClipBase):
         self._mix_fill()
 
     # ---- keys and closing
+    def toggle_help(self):
+        """1.17.1: ? – the key help over the window (KeyHelp, made from SHORTCUTS)."""
+        if getattr(self, "key_help", None) is None:
+            self.key_help = KeyHelp(self)
+        self.key_help.toggle()
+
     def keyPressEvent(self, e):
         k, mods = e.key(), e.modifiers()
         big, frame = bool(mods & Qt.ShiftModifier), bool(mods & Qt.ControlModifier)
-        if k == Qt.Key_Space:
+        help_on = getattr(self, "key_help", None) is not None and not self.key_help.isHidden()
+        if k == Qt.Key_Question or e.text() == "?":
+            self.toggle_help()
+        elif k == Qt.Key_Escape and help_on:
+            self.key_help.hide()
+        elif k == Qt.Key_Space:
             self.toggle_play()
         elif k == Qt.Key_Left:
             self.step_frame(-1) if frame else self.step(-(STEP_BIG if big else STEP_SMALL))

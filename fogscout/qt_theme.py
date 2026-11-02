@@ -216,6 +216,7 @@ QLineEdit#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; }}
 QPushButton#navsearchbtn {{ background: transparent; border: none; margin-top: 10px; padding: 8px; }}
 QPushButton#navsearchbtn:hover {{ background: {c['hover']}; }}
 QLabel[class="dim"] {{ color: {c['dim']}; font-size: {px(12)}; }}
+QLabel[class="hint"] {{ color: {c['dim']}; font-size: {px(12)}; }}  /* 1.17.1: qt_pages.HintLabel – line length */
 QLabel[class="h1"] {{ font-size: {px(21)}; font-weight: 700; color: {c['head']}; }}
 QLabel[class="map"] {{ font-family: 'Fira Sans ExtraBold', 'Segoe UI'; font-size: {px(22)}; color: {c['head']}; }}
 QLabel[class="h2"] {{ font-size: {px(12)}; font-weight: 700; color: {c['fg']}; letter-spacing: 0.8px; }}  /* 1.17: the accent marks state, not every title */
@@ -253,6 +254,10 @@ QListWidget#realms {{ border: 1px solid {c['border']}; border-radius: 8px; paddi
 QListWidget#realms::item {{ padding: 7px 0; border-radius: 6px; }}
 QListWidget#realms::item:selected {{ background: {c['nav_sel']}; }}
 QListWidget#realms::item:hover:!selected {{ background: {c['hover']}; }}
+QFrame#roundrow {{ border-radius: 6px; }}  /* 1.17.1: overview "Letzte Runden" – a row opens the round */
+QFrame#roundrow:hover {{ background: {c['hover']}; }}
+QPushButton#rowplay {{ background: transparent; border: 1px solid transparent; padding: 0 6px; color: {c['dim']}; }}
+QPushButton#rowplay:hover {{ color: {c['accent']}; border-color: {c['border']}; }}
 QLabel#pill {{ border-radius: 10px; padding: 3px 12px; font-size: {px(12)}; font-weight: 600; }}
 QPushButton {{ background: {c['btn']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 6px 14px; }}
 QPushButton:hover {{ background: {c['btn_hover']}; }}

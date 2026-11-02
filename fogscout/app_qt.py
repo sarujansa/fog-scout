@@ -156,7 +156,8 @@ def ui_state(w) -> dict:
                   widths=widths, hide=list(getattr(w, "_dbdms_hide", ())),
                   selectable=str(w.cget("selectmode")) != "none" or hasattr(w, "_dbdms_click"),
                   multi=str(w.cget("selectmode")) == "extended",          # 1.5.4: several rows at once
-                  menu=hasattr(w, "_dbdms_menu"))                         # 1.8.10: right-click actions
+                  menu=hasattr(w, "_dbdms_menu"),                         # 1.8.10: right-click actions
+                  see=getattr(w, "_see", None))                           # 1.17.1: scroll a row into view
         return st
     if isinstance(w, ui.Scale):
         value = w.get()
@@ -527,6 +528,10 @@ class QtShell:
             self.qt.show_page("stats")
             self._stats_select("Übersicht")
             self._stats_render()
+        elif action == "ov_round":                   # 1.17.1: a row of the overview's "Letzte Runden"
+            self._show_round(arg)
+        elif action == "ov_recording":               # … its ▶: the round on the page Aufnahmen
+            self._show_round_recording(arg)
         elif action == "rec_setup":                  # 1.4.2: tile "Aufnahmen" without a folder/drive
             self._reveal_rec()
         elif action == "switch":                     # 1.14: a tick box of the card "Schnell ein/aus"

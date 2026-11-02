@@ -402,22 +402,108 @@ class OverviewPage(QWidget):
 
     def _show_rounds(self, rounds):
         while len(self.last_rows) < len(rounds):
-            r = QHBoxLayout()
-            left, right = _label(), _label(cls="dim")
-            left.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)      # long names must not widen it
-            r.addWidget(left, 1)
-            r.addWidget(right)
-            self.last_lay.insertLayout(1 + len(self.last_rows), r)
-            self.last_rows.append((left, right))
-        for i, (left, right) in enumerate(self.last_rows):
+            row = RoundRowView(self._post)
+            self.last_lay.insertWidget(1 + len(self.last_rows), row)
+            self.last_rows.append(row)
+        for i, row in enumerate(self.last_rows):
             shown = i < len(rounds)
-            left.setVisible(shown)
-            right.setVisible(shown)
+            row.setVisible(shown)
             if shown:
-                _set(left, rounds[i][0])
-                _set(right, rounds[i][1])
+                row.show_round(rounds[i])
         self.last_empty.setVisible(not rounds)
 
+
+class RoundRowView(QFrame):
+    """1.17.1: one row of the overview's "Letzte Runden" – a click opens the round in Statistik › Letzte Runden,
+    ▶ (only with a recording of it) opens it on the page Aufnahmen. Rows are made once and refilled."""
+
+    def __init__(self, post):
+        super().__init__()
+        self._post, self._t = post, None
+        self.setObjectName("roundrow")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(_("In der Statistik zeigen"))
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(4, 1, 2, 1)
+        lay.setSpacing(6)
+        self.left, self.right = _label(), _label(cls="dim")
+        self.left.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)   # long names must not widen it
+        lay.addWidget(self.left, 1)
+        lay.addWidget(self.right)
+        self.play = QPushButton("▶")
+        self.play.setObjectName("rowplay")
+        self.play.setCursor(Qt.PointingHandCursor)
+        self.play.setFocusPolicy(Qt.TabFocus)
+        self.play.setToolTip(_("Aufnahme dieser Runde öffnen"))
+        self.play.clicked.connect(lambda: self._t is not None and self._post("ov_recording", self._t))
+        lay.addWidget(self.play)
+
+    def show_round(self, r):
+        _set(self.left, r[0])
+        _set(self.right, r[1])
+        self._t = r[2] if len(r) > 2 else None
+        has = len(r) > 3 and bool(r[3])
+        if self.play.isHidden() == has:              # its own flag – isVisible() is False before the window shows
+            self.play.setVisible(has)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and self._t is not None:
+            self._post("ov_round", self._t)
+            e.accept()
+            return
+        super().mousePressEvent(e)
+
+
+class HintLabel(QLabel):
+    """1.17.1: a hint text. Standing on a line of its own (in a vertical layout) it wraps at about HINT_CHARS
+    characters instead of running across a 1400-px card; beside controls (a row) it takes the room as before. The
+    cap is part of heightForWidth – the page's own layouts ask with the full width and would cut the last lines."""
+
+    def __init__(self, cls="hint"):
+        super().__init__("")
+        self.setProperty("class", cls)
+        self.setWordWrap(True)
+        self._capped = None                       # None = not decided yet (first show), then True/False
+
+    def _cap(self) -> int:
+        return self.fontMetrics().averageCharWidth() * HINT_CHARS
+
+    def _decide(self):
+        p = self.parentWidget()
+        holder = _holder(p.layout(), self) if p is not None and p.layout() is not None else None
+        self._capped = isinstance(holder, QBoxLayout) and holder.direction() in (QBoxLayout.TopToBottom,
+                                                                                QBoxLayout.BottomToTop)
+        self.setMaximumWidth(self._cap() if self._capped else 16777215)
+        self.updateGeometry()
+
+    def showEvent(self, e):
+        if self._capped is None:
+            self._decide()
+        super().showEvent(e)
+
+    def changeEvent(self, e):
+        super().changeEvent(e)
+        if self._capped and e.type() in (QEvent.FontChange, QEvent.StyleChange):
+            self.setMaximumWidth(self._cap())          # zoom: the cap follows the font
+
+    def heightForWidth(self, w: int) -> int:
+        return super().heightForWidth(min(w, self._cap()) if self._capped else w)
+
+
+def _holder(layout, w):
+    """The layout (nested ones included) that holds widget ``w``, or None."""
+    for i in range(layout.count()):
+        it = layout.itemAt(i)
+        if it.widget() is w:
+            return layout
+        if it.layout() is not None:
+            found = _holder(it.layout(), w)
+            if found is not None:
+                return found
+    return None
+
+
+HINT_CHARS = 100                            # 1.17.1: a hint line wraps at about this many characters
 
 NOTE_KEYS = {"ov.size_cap"}                 # 1.8.24: hints that warn (amber) instead of explaining (grey)
 
@@ -520,8 +606,10 @@ def make_control(kind, key, post):
         w.setMinimumSize(200, 120)
     elif kind == "hotkey":
         w = HotkeyButton(key, post)
-    elif kind in ("hint", "plain"):
-        w = _label(cls="note" if key in NOTE_KEYS else "dim", wrap=True)
+    elif kind == "hint":                     # 1.17.1: a hint on a line of its own keeps a readable line length
+        w = HintLabel(cls="note" if key in NOTE_KEYS else "hint")
+    elif kind == "plain":
+        w = _label(cls="dim", wrap=True)
     elif kind == "big":
         w = _label(cls="big", wrap=True)
     elif kind == "value":

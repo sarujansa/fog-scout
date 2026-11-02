@@ -402,3 +402,113 @@ def test_comma_and_period_step_one_frame(qapp, clip, tmp_path):
         assert abs(win.pos - (5.0 - frame)) < 1e-6
     finally:
         win.close()
+
+
+def test_every_key_in_the_help_does_what_it_says(qapp, clip, tmp_path, monkeypatch):
+    """1.17.1: the help (?) is made from qt_editor.SHORTCUTS only, and each row names the key presses behind it –
+    every one is pressed here and must reach the action it documents (method of the window, of the timeline, a tool,
+    or the help itself). A key that does not work cannot be in the help."""
+    from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut
+    from fogscout import qt_editor, qt_timeline
+    calls = []
+    quiet = {"save", "toggle_play", "toggle_fullscreen", "save_project"}       # would export / play / go full screen
+
+    def spy(cls, name):
+        orig = getattr(cls, name)
+
+        def wrapped(self, *a, **k):
+            calls.append(name)
+            return None if name in quiet else orig(self, *a, **k)
+        monkeypatch.setattr(cls, name, wrapped)
+
+    targets = {chk[-1] for _g, rows in qt_editor.SHORTCUTS for _k, _w, checks in rows for chk in checks}
+    for t in targets:
+        if t.startswith("tl:"):
+            spy(qt_timeline.SequenceTimeline, t[3:])
+        elif not t.startswith("mode:") and t != "help":
+            spy(qt_editor.EditorWindow, t)
+    win = _window(qapp, clip, tmp_path, marks=[3.0, 8.0])
+    try:
+        shortcuts = win.findChildren(QShortcut)
+        for group, rows in qt_editor.SHORTCUTS:
+            assert rows, group
+            for keys, what, checks in rows:
+                assert checks, (keys, what)                    # every row is backed by at least one check
+                for chk in checks:
+                    target = chk[-1]
+                    if target == "mode:select":
+                        win.mode_btns["crop"].setChecked(True)
+                    calls.clear()
+                    if len(chk) == 2:                          # a QShortcut
+                        seq = QKeySequence(chk[0])
+                        sc = next((s for s in shortcuts if seq in s.keys()), None)
+                        assert sc is not None, chk
+                        sc.activated.emit()
+                    else:
+                        key, mods = chk[0], chk[1]
+                        text = {qt_editor.Qt.Key_Question: "?", qt_editor.Qt.Key_Comma: ",",
+                                qt_editor.Qt.Key_Period: ".", qt_editor.Qt.Key_Plus: "+",
+                                qt_editor.Qt.Key_Minus: "-", qt_editor.Qt.Key_Space: " "}.get(key, "")
+                        win.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, key, qt_editor.Qt.KeyboardModifier(mods),
+                                                    text))
+                    if target.startswith("mode:"):
+                        assert win.mode == target[5:], (chk, win.mode)
+                    elif target == "help":
+                        assert win.key_help is not None and not win.key_help.isHidden()
+                        win.toggle_help()
+                        assert win.key_help.isHidden()
+                    else:
+                        name = target[3:] if target.startswith("tl:") else target
+                        assert name in calls, (keys, chk, calls)
+        assert win.isVisible()                                 # Esc went back to select, it did not close
+    finally:
+        win.close()
+
+
+def test_the_help_opens_with_question_mark_and_closes_with_esc_and_typing_stays_in_text_fields(qapp, clip, tmp_path):
+    """1.17.1: ? opens the help panel over the window, ? or Esc closes it (Esc then does not close the window);
+    while the project name field has the focus , . and ? are typed into it – no frame step, no help."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.activateWindow()
+        win.setFocus()
+        QTest.keyClick(win, Qt.Key_Question, Qt.ShiftModifier, 10)
+        assert not win.key_help.isHidden()
+        assert win.key_help.width() <= win.width() and win.key_help.height() <= win.height()
+        QTest.keyClick(win, Qt.Key_Escape)
+        assert win.key_help.isHidden() and win.isVisible()
+        win.toggle_help()
+        QTest.keyClick(win, Qt.Key_Question, Qt.ShiftModifier)
+        assert win.key_help.isHidden()
+        win.goto(5.0)
+        before = win.pos
+        win.name_edit.setFocus()
+        win.name_edit.setText("Clip")
+        win.name_edit.setCursorPosition(4)
+        for ch in ",.?":
+            QTest.keyClick(win.name_edit, ch)
+        qapp.processEvents()
+        assert win.name_edit.text() == "Clip,.?" and win.pos == before and win.key_help.isHidden()
+    finally:
+        win.close()
+
+
+def test_no_key_is_bound_twice_in_the_editor(qapp, clip, tmp_path):
+    """1.17.1: every QShortcut key of the editor once; the keys the help lists for keyPressEvent are not taken by a
+    QShortcut (it would win and the documented action would never run)."""
+    from PySide6.QtGui import QKeySequence, QShortcut
+    from fogscout import qt_editor
+    win = _window(qapp, clip, tmp_path)
+    try:
+        keys = [k.toString() for s in win.findChildren(QShortcut) for k in s.keys()]
+        assert len(keys) == len(set(keys)), sorted(k for k in keys if keys.count(k) > 1)
+        for _g, rows in qt_editor.SHORTCUTS:
+            for _k, _w, checks in rows:
+                for chk in checks:
+                    if len(chk) == 3:
+                        seq = QKeySequence(qt_editor.Qt.KeyboardModifier(chk[1]).value | chk[0]).toString()
+                        assert seq not in keys, seq
+    finally:
+        win.close()
