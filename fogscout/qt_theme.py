@@ -297,11 +297,6 @@ QLabel#navstatustext {{ color: {c['fg']}; font-size: {px(TYPE['small'])}; backgr
 QLabel[class="subtitle"] {{ color: {c['dim']}; font-size: {px(TYPE['body'])}; }}  /* 1.24: a page's purpose */
 QLabel[class="dim"] {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; }}
 QLabel[class="hint"] {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; }}  /* 1.17.1: qt_pages.HintLabel – line length */
-QLabel[state="ok"] {{ color: {c['ok']}; }}  /* 1.24: state words – always beside a sign, never colour alone; after the classes,
-   so a dim/hint label keeps its size and takes the state's colour */
-QLabel[state="warn"] {{ color: {c['warn']}; }}
-QLabel[state="err"] {{ color: {c['err']}; }}
-QLabel[state="off"] {{ color: {c['dim']}; }}
 QLabel[class="h1"] {{ font-size: {px(TYPE['h1'])}; font-weight: 700; color: {c['head']}; }}
 QLabel[class="map"] {{ font-family: 'Fira Sans ExtraBold', 'Segoe UI'; font-size: {px(TYPE['display'])}; color: {c['head']}; }}
 QLabel[class="h2"] {{ font-size: {px(TYPE['small'])}; font-weight: 700; color: {c['fg']}; letter-spacing: 0.8px; }}  /* 1.17: the accent marks state, not every title */
@@ -335,6 +330,11 @@ QFrame[class="tile"] QLabel {{ background: transparent; border: none; }}
 QFrame[class="tile"] QLabel#tilepic {{ background: {c['media_bg']}; border-radius: {RADIUS['m']}px; }}
 QLabel[class="tile"] {{ font-size: {px(TYPE['small'])}; font-weight: 600; color: {c['head']}; }}
 QLabel[class="tileinfo"] {{ font-size: {px(TYPE['label'])}; color: {c['dim']}; }}
+QLabel[state="ok"] {{ color: {c['ok']}; }}  /* 1.24: state words – always beside a sign, never colour alone; after every QLabel class
+   rule, so a dim/hint/big label keeps its size and takes the state's colour */
+QLabel[state="warn"] {{ color: {c['warn']}; }}
+QLabel[state="err"] {{ color: {c['err']}; }}
+QLabel[state="off"] {{ color: {c['dim']}; }}
 QListWidget#realms {{ border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; padding: 4px; outline: 0; }}
 QListWidget#realms::item {{ padding: 7px 0; border-radius: {RADIUS['m']}px; }}
 QListWidget#realms::item:selected {{ background: {c['nav_sel']}; }}

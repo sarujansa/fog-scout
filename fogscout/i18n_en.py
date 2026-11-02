@@ -1758,7 +1758,6 @@ EN = {
     'Alle Aufnahmen': 'All recordings',
     'Aufnahme fehlt: {file}': 'Recording missing: {file}',
     'Aufnahme gelöscht: {file}': 'Recording deleted: {file}',
-    'Aufnahme ist aus.': 'Recording is off.',
     'Aufnahme löschen': 'Delete recording',
     'Aufnahme nicht gelöscht ({error}): {file}': 'Recording not deleted ({error}): {file}',
     'Aufnahme wird behalten: {file}': 'Recording is kept: {file}',
@@ -2632,7 +2631,6 @@ EN = {
         'What encodes the clip: the graphics card (NVENC, AMF, Quick Sync – only when ffmpeg can really use it here) hardly loads the processor; “Automatic” takes the first one that works.',
     'letzter Clip {file} (vor {age})': 'last clip {file} ({age} ago)',
     'Fortsetzen': 'Resume',
-    '⚑ {n} Marken': '⚑ {n} marks',
     'von Hand gestartet': 'started by hand',
     'von OBS selbst gestartet': 'started in OBS itself',
     'Beendet die laufende Aufnahme jetzt (bei einer Runde ohne Nachlauf) und legt sie in den Aufnahmeordner.':
@@ -3176,6 +3174,15 @@ EN = {
     # 1.24.1: the maps page – a search without a hit
     "Suche leeren": "Clear search",
     "Runden · BP/h erst mit Match-Daten": "rounds · BP/h needs the match data",
+    # 1.24.3 (phase 2): recordings, server, settings, log – states in words and colour, the next step
+    "Verbindung prüfen …": "Check connection …",
+    "Öffnet Einstellungen → Aufnahmen: OBS-Verbindung (Port, Passwort) und „Verbindung testen“.":
+        "Opens Settings → Recordings: the OBS connection (port, password) and “Test connection”.",
+    "{n} Marken": "{n} marks",
+    "1 Marke": "1 mark",
+    "Keine Aufnahme passt zu den Filtern oben.": "No recording matches the filters above.",
+    "Kein Clip passt zu den Filtern oben.": "No clip matches the filters above.",
+    "Keine Zeile passt zu Suche und Kategorien.": "No line matches the search and the categories.",
     # 1.24.2 (phase 2): statistics – no tiles of "–", notes without ⚠/✓ in front
     "Keine Runden in dieser Auswahl – „Filter zurücksetzen“ zeigt wieder alle.":
         "No rounds in this selection – “Reset filters” shows them all again.",

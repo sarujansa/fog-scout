@@ -286,6 +286,13 @@ def glyph(w, name: str):
     return w
 
 
+def level(w, value: str = ""):
+    """1.24.3 (phase 2): a label's state – "ok" | "warn" | "err" | "off" | "" (none) – drawn in the theme's state
+    colour (Qt property "state"). Only beside words that say the state too: colour is never the only sign."""
+    w._dbdms_level = value or ""
+    return w
+
+
 class Button(Widget):
     def invoke(self):
         cmd = self._opts.get("command")

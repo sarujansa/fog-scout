@@ -519,6 +519,24 @@ def test_log_view_colours_and_escapes(qapp, keep):
 
 
 
+def test_an_empty_table_and_an_empty_log_say_why(qapp, keep):
+    """1.24.3 (phase 2): a table whose filters hide every row draws the model's words (``empty``) instead of a
+    blank box, a table with rows does not; the log names search and categories when no line is left."""
+    from fogscout import qt_window
+    t = keep(qt_window.Table("t", lambda a, arg=None: None))
+    t.resize(400, 200)
+    cols = [("a", "A", "w")]
+    t.show_state({"columns": cols, "rows": [], "empty": "Nichts passt."})
+    t.show()
+    qapp.processEvents()
+    assert t._empty == "Nichts passt." and not t.grab().toImage().isNull()
+    t.show_state({"columns": cols, "rows": [("r1", 0, "", ["x"], [], False)], "empty": ""})
+    assert t._empty == "" and t.topLevelItemCount() == 1
+    log = keep(qt_window.LogView())
+    log.show_state({"lines": [], "dark": True, "rev": 1})
+    assert log.document().isEmpty() and log.placeholderText() == "Keine Zeile passt zu Suche und Kategorien."
+
+
 def test_log_view_appends_new_lines_and_rebuilds_only_when_needed(qapp, keep):
     from fogscout import qt_window
     log = keep(qt_window.LogView())

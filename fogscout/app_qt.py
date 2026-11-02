@@ -162,7 +162,8 @@ def ui_state(w) -> dict:
                   multi=str(w.cget("selectmode")) == "extended",          # 1.5.4: several rows at once
                   menu=hasattr(w, "_dbdms_menu"),                         # 1.8.10: right-click actions
                   open=hasattr(w, "_dbdms_open"),                         # 1.23: double-click / Enter
-                  see=getattr(w, "_see", None))                           # 1.17.1: scroll a row into view
+                  see=getattr(w, "_see", None),                           # 1.17.1: scroll a row into view
+                  empty=getattr(w, "_dbdms_empty", ""))                   # 1.24.3: words when no row is shown
         return st
     if isinstance(w, ui.Scale):
         value = w.get()
@@ -184,6 +185,8 @@ def ui_state(w) -> dict:
         st["primary"] = True
     if getattr(w, "_dbdms_glyph", None):         # 1.24: a drawn sign before the text (ui.glyph)
         st["glyph"] = w._dbdms_glyph
+    if hasattr(w, "_dbdms_level"):               # 1.24.3: a label's state colour (ui.level)
+        st["level"] = w._dbdms_level
     if isinstance(w, (ui.Button, ui.Checkbutton, ui.Radiobutton, ui.Combobox, ui.Entry)):
         st["enabled"] = not w.instate(["disabled"])
         tip = getattr(w, "_dbdms_tip", None)

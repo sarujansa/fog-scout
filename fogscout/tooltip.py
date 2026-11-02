@@ -249,6 +249,7 @@ TIPS = {
                                                       "aus: Am PC des Nutzers lief der Rundenteil der zusammengefügten "
                                                       "Datei zu schnell. Klappt es nicht, bleiben beide Dateien liegen.",
     "Aufnahmen einrichten …": "Öffnet die Einstellungen für die Aufnahmen mit OBS (Ordner, Verbindung).",
+    "Verbindung prüfen …": "Öffnet Einstellungen → Aufnahmen: OBS-Verbindung (Port, Passwort) und „Verbindung testen“.",
     "Farming-Runden im Unterordner „Farming“ ablegen": "Runden, die das Programm als Farming erkennt (Crossplay aus "
                                                         "oder die Farming-Region), landen im Unterordner „Farming“ "
                                                         "des Aufnahmeordners statt zwischen den normalen Runden. "
