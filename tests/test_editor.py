@@ -493,3 +493,22 @@ def test_the_help_opens_with_question_mark_and_closes_with_esc_and_typing_stays_
         assert win.name_edit.text() == "Clip,.?" and win.pos == before and win.key_help.isHidden()
     finally:
         win.close()
+
+
+def test_no_key_is_bound_twice_in_the_editor(qapp, clip, tmp_path):
+    """1.17.1: every QShortcut key of the editor once; the keys the help lists for keyPressEvent are not taken by a
+    QShortcut (it would win and the documented action would never run)."""
+    from PySide6.QtGui import QKeySequence, QShortcut
+    from fogscout import qt_editor
+    win = _window(qapp, clip, tmp_path)
+    try:
+        keys = [k.toString() for s in win.findChildren(QShortcut) for k in s.keys()]
+        assert len(keys) == len(set(keys)), sorted(k for k in keys if keys.count(k) > 1)
+        for _g, rows in qt_editor.SHORTCUTS:
+            for _k, _w, checks in rows:
+                for chk in checks:
+                    if len(chk) == 3:
+                        seq = QKeySequence(qt_editor.Qt.KeyboardModifier(chk[1]).value | chk[0]).toString()
+                        assert seq not in keys, seq
+    finally:
+        win.close()
