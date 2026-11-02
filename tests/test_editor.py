@@ -718,3 +718,35 @@ def test_no_key_but_ctrl_w_closes_the_editor(qapp, clip, tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         win.close()
+
+
+def test_editor_sliders_draw_a_thin_track_not_a_grey_box(qapp):
+    """1.22.2 (user: „warum ist bei den Scrollbars der Hintergrund grau?“ – the sound sliders of the inspector): the
+    rule ``QSlider:disabled::sub-page`` (pseudo-state before the sub-control) made Qt ignore the groove's 4 px and
+    paint it over the slider's whole height – 15 of 15 rows in the border colour beside the handle. Right: a thin
+    track, in dark and light, enabled and not; a disabled slider's filled part stays grey."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QFrame, QHBoxLayout, QSlider
+    from fogscout import qt_theme
+    from fogscout.qt_editor import editor_qss
+    for dark in (True, False):
+        c = qt_theme.colours(dark)
+        for enabled in (True, False):
+            frame = QFrame()
+            frame.setObjectName("panel")
+            lay = QHBoxLayout(frame)
+            s = QSlider(Qt.Horizontal)
+            s.setRange(0, 200)
+            s.setValue(120)
+            s.setEnabled(enabled)
+            lay.addWidget(s)
+            frame.setStyleSheet(qt_theme.stylesheet(dark) + editor_qss(c))
+            frame.resize(300, 40)
+            frame.show()
+            qapp.processEvents()
+            img = s.grab().toImage()
+            track = sum(1 for y in range(img.height()) if img.pixelColor(img.width() - 12, y).name() == c["border"])
+            filled = {img.pixelColor(10, y).name() for y in range(img.height())}
+            frame.close()
+            assert 0 < track <= 6 < img.height(), (dark, enabled, track, img.height())
+            assert (c["accent"] if enabled else c["border"]) in filled
