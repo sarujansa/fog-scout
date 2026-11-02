@@ -717,10 +717,12 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         """(picture path, variant shown) – in a map style the converted picture from the cache; own pictures
         (user_maps/) always as they are. 1.8.21 (user: the maps page was very slow when clicking between the
         buttons – a floor style took ~2 s per picture in the window thread): never made here; until it is there
-        the original, and with ``request`` a background job makes it (``_style_ready`` loads it then)."""
+        the original, and with ``request`` a background job makes it (``_style_ready`` loads it then). 1.22.1
+        (user: „wenn ich eine Map hinzufüge, direkt die verschiedenen Varianten“): own pictures take the style too –
+        one that is not of the community maps' kind stays as it is (``mapstyle.restyle``)."""
         path, shown = self.catalog.image_path(map_id, variant)
         style = self.settings["overlay"].get("map_style", "classic")
-        if path and style in mapstyle.STYLES and not self.catalog.is_own(map_id, variant):    # 1.8.16: + floors
+        if path and style in mapstyle.STYLES:                                                  # 1.8.16: + floors
             styled = mapstyle.styled_path(path, os.path.join(self.root_dir, STYLE_CACHE), False, style)
             if styled == path and request:
                 self._style_request(path, style)
@@ -741,6 +743,21 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 self.events.put(("call", self._style_ready, (path,)))
         threading.Thread(target=run, daemon=True, name="mapstyle-one").start()
 
+    def _style_all(self, path):
+        """1.22.1: a picture just added – every map style made at once in a thread (~1–2 s each), so switching the
+        style later shows it straight away; ``_style_ready`` once per style made. The style chosen now comes first;
+        a style asked for meanwhile (``_style_request``) is not made a second time."""
+        cache = os.path.join(self.root_dir, STYLE_CACHE)
+        now = self.settings["overlay"].get("map_style", "classic")
+        styles = sorted(mapstyle.STYLES, key=lambda s: s != now)
+        self.__dict__.setdefault("_style_asked", set()).update((path, s) for s in styles)
+
+        def run():
+            for style in styles:
+                if mapstyle.styled_path(path, cache, True, style) != path:
+                    self.events.put(("call", self._style_ready, (path,)))
+        threading.Thread(target=run, daemon=True, name="mapstyle-all").start()
+
     def _style_ready(self, path):
         """A styled picture is there now: the previews take it, the map on display is loaded again."""
         self._preview_drop()
@@ -754,8 +771,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         style = self.settings["overlay"].get("map_style", "classic")
         if style not in mapstyle.STYLES:
             return
-        paths = sorted({p for m in self.catalog.maps.values() for v in m.variants
-                        if not self.catalog.is_own(m.id, v) for p in [self.catalog.image_path(m.id, v)[0]] if p})
+        paths = sorted({p for m in self.catalog.maps.values() for v in m.variants   # 1.22.1: own pictures too
+                        for p in [self.catalog.image_path(m.id, v)[0]] if p})
         cache = os.path.join(self.root_dir, STYLE_CACHE)
         stop = lambda: self.settings["overlay"].get("map_style", "classic") != style   # noqa: E731
 
@@ -1402,6 +1419,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
 
     def picture_saved(self, path: str, map_id, variant: int):
         self._reload_catalog()
+        self._style_all(path)                    # 1.22.1: all map styles of the new picture at once
         if map_id is None:                       # new map: the catalog made it from the file
             map_id = next((m.id for m in self.catalog.maps.values()
                            if m.custom and self.catalog.image_path(m.id)[0]
