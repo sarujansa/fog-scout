@@ -252,6 +252,11 @@ TIPS = {
                                                         "oder die Farming-Region), landen im Unterordner „Farming“ "
                                                         "des Aufnahmeordners statt zwischen den normalen Runden. "
                                                         "Clips gehen immer in den Ordner „Clips“.",
+    "Editor-Projekte automatisch speichern": "Der grosse Editor speichert sein Projekt von selbst (1,5 s nach einer "
+                                              "Änderung, nie während du ziehst) – mit Sicherungen und einer lokalen "
+                                              "Kopie, falls die Projektdatei nicht schreibbar ist. Aus: nur Strg+S "
+                                              "schreibt das Projekt; dazwischen hält der Editor einen lokalen "
+                                              "Wiederherstellungsstand.",   # 1.18.1
     "Abspielen": "Spielt die markierte Aufnahme im Standard-Videoplayer ab.",
     "Im Explorer zeigen": "Öffnet den Explorer mit der markierten Datei.",
     "Behalten": "Eine behaltene Aufnahme wird nie fürs Aufräumen gelöscht, wenn die Platte Platz braucht. Nochmal "

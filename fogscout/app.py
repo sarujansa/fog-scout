@@ -1036,7 +1036,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
     # the tick's steps: (name for errors and the lag list, methods) – each in its own try
     TICK_STEPS = (("overlay", ("_tick_unsure", "_tick_timer", "_place_overlay")), ("layout", ("_layout_size_tick",)),
                   ("verbindung", ("_conn_tick",)), ("offizielle Daten", ("_official_tick",)), ("show", ("_show_tick",)),
-                  ("hotkeys", ("_hotkeys_tick",)), ("tray", ("_tray_tick", "_rec_tick")),
+                  ("hotkeys", ("_hotkeys_tick",)), ("tray", ("_tray_tick", "_rec_tick", "_hasher_tick")),
                   ("discord", ("_discord_tick",)), ("youtube", ("_youtube_tick",)),
                   ("eigene Last", ("_selfload_tick",)), ("Qt", ("_qt_refresh",)))
 
@@ -1547,6 +1547,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
     # ================================================================ quit
     def quit(self):
         if self._quitting:                       # e.g. tray "Beenden" and the window's X in the same poll
+            return
+        if not self._quit_phase1(self.quit):     # 1.18.1: the editors' states are safe first (the watchdog after)
             return
         self._quitting = True
         if getattr(self, "exit_watchdog", False):  # 1.65.1: a step below that hangs must not keep the process
