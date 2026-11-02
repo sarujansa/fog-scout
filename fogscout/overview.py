@@ -18,6 +18,7 @@ from .status import DOT_STYLE, is_problem, user_state
 from .textnorm import fmt_duration, roman
 
 LAST_ROUNDS = 5
+OBS_STATE_FRESH_S = 60.0     # 1.24.3: OBS's state from the recordings page counts this long (only that page asks)
 DAYS = 14                 # 1.11.14: the overview's chart "Runden pro Tag" covers this many days, today the last
 WEEKDAYS = (N_("Montag"), N_("Dienstag"), N_("Mittwoch"), N_("Donnerstag"), N_("Freitag"), N_("Samstag"),
             N_("Sonntag"))
@@ -178,8 +179,9 @@ def switch_state(app, key: str, on: bool, is_win: bool = True) -> tuple[str, str
         sp = getattr(rec, "space", None)
         if sp is not None and sp.t and not sp.folder:
             return "warn", (_("Platte nicht angeschlossen") if app.settings.get("rec_folder") else _("kein Ordner gewählt"))
-        obs = getattr(app, "_obs_state", None)                  # known once the recordings page asked OBS
-        if obs is not None and not obs.get("connected"):
+        obs = getattr(app, "_obs_state", None)                  # known once the recordings page asked OBS –
+        fresh = time.time() - float(getattr(app, "_obs_state_t", 0.0) or 0.0) <= OBS_STATE_FRESH_S   # only then
+        if obs is not None and fresh and not obs.get("connected"):     # (OBS started later: no stale warning)
             return "warn", _("OBS nicht erreichbar")
         return "ok", _("bereit")
     if key == "conn":
