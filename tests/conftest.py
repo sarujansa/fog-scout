@@ -18,6 +18,23 @@ only_linux_hosts = pytest.mark.skipif(WIN, reason="would write the real hosts fi
 
 
 @pytest.fixture(autouse=True)
+def _never_the_real_data_folder(monkeypatch, tmp_path_factory):
+    """1.18.1: the per-user data folder (rescue copies, hash cache, installation id, backup key) is a temp folder in
+    every test; a test that would still reach the real one fails."""
+    folder = tmp_path_factory.mktemp("fogscout-data")
+    monkeypatch.setenv("DBDMS_DATA_DIR", str(folder))
+    from fogscout import paths
+    real = paths._qt_location
+
+    def guarded():
+        if not os.environ.get(paths.ENV):
+            pytest.fail("test reached the real per-user data folder")
+        return real()
+    monkeypatch.setattr(paths, "_qt_location", guarded)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _never_the_real_hosts_file(monkeypatch):
     if WIN:
         from fogscout import hostsedit
