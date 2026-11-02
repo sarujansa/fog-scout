@@ -17,10 +17,10 @@ ZOOMS = (0.9, 1.0, 1.1, 1.25, 1.5)        # setting ui_zoom: text size of the wi
 
 PALETTE = {
     True: dict(DARK, card=DARK["panel"], nav=DARK["panel"], nav_sel=DARK["bg"], btn=DARK["hover"],
-               btn_hover=DARK["press"], press="#2f3136", btn_dis="#2b2d31", fg_dis="#6a6e75", on_accent="#1a1406",
+               btn_hover=DARK["press"], press="#2f3136", sel_bg=DARK["press"], btn_dis="#2b2d31", fg_dis="#6a6e75", on_accent="#1a1406",
                bar=DARK["field"], head="#ffffff", accent_hover="#d8b43a", danger="#ff9a94"),
     False: {"bg": "#f3f3f4", "panel": "#ffffff", "field": "#ffffff", "border": "#d6d7da", "fg": "#1b1c1e",
-            "dim": "#5f636a", "accent": "#8a6a12", "select": "#7a1f1f", "hover": "#e9eaec", "press": "#dcdde0",
+            "dim": "#5f636a", "accent": "#8a6a12", "select": "#7a1f1f", "hover": "#e9eaec", "press": "#dcdde0", "sel_bg": "#dcdde0",
             "card": "#ffffff", "nav": "#e9eaec", "nav_sel": "#f3f3f4", "btn": "#ffffff", "btn_hover": "#e9eaec",
             "btn_dis": "#f3f3f4", "fg_dis": "#a2a5aa", "on_accent": "#ffffff", "bar": "#e4e5e8", "head": "#000000",
             "accent_hover": "#76590f", "danger": "#b42a22"},
@@ -71,7 +71,7 @@ MIN_CONTRAST = 4.5
 # OLED black (1.62.1, user: "mit OLED mehr Farbkombis"): a switch of its own, true black instead of the dark greys
 # – with every accent; the light mode stays as it is
 OLED = {"bg": "#000000", "panel": "#0d0d0f", "field": "#0a0a0b", "card": "#0d0d0f", "nav": "#0d0d0f",
-        "nav_sel": "#000000", "btn": "#1a1b1e", "btn_hover": "#26282c", "hover": "#1a1b1e", "press": "#33363b",
+        "nav_sel": "#000000", "btn": "#1a1b1e", "btn_hover": "#26282c", "hover": "#1a1b1e", "press": "#33363b", "sel_bg": "#26282c",
         "border": "#26282a", "bar": "#141416", "btn_dis": "#0d0d0f"}
 _theme, _oled, _custom, _dark, _zoom = "gold", False, CUSTOM_DEFAULT, True, 1.0
 

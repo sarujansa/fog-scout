@@ -246,7 +246,7 @@ def ui_act(w, value=None):
         elif what == "open" and w.exists(arg):            # 1.23: double-click / Enter on a row
             fn = getattr(w, "_dbdms_open", None)
             if fn is not None:
-                if arg not in w.selection():
+                if list(w.selection()) != [arg]:              # 1.23.1: that row, not the first marked one
                     w.selection_set([arg])
                     w.focus(arg)
                     w.event_generate("<<TreeviewSelect>>")
