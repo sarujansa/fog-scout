@@ -2231,7 +2231,17 @@ def test_a_question_that_deletes_says_so_and_keeps_the_data_on_enter(qapp, keep)
 def test_a_tile_button_ends_in_dots_when_the_tile_is_narrow(qapp, keep):
     """1.23 (audit, seen at 1280 px): the overview tile's "Match-Daten einrichten …" was cut on both sides; it
     ends in "…" now and shows whole when there is room."""
+    from PySide6.QtGui import QFontDatabase
     from fogscout.qt_views import ElideButton
+    # 1.23.1: with DejaVu Sans (the CI's font) elidedText cut the last character at exactly the size hint
+    for family in [f for f in ("DejaVu Sans", "Inter") if f in QFontDatabase.families()]:
+        for size in range(10, 18):
+            b = keep(ElideButton())
+            b.show()
+            b.setStyleSheet(f"QPushButton {{ font-family: '{family}'; font-size: {size}px; padding: 6px 14px; }}")
+            b.set_full_text("Match-Daten einrichten …")
+            b.resize(b.sizeHint())
+            assert b.text() == "Match-Daten einrichten …", (family, size, b.text())
     b = keep(ElideButton())
     b.show()
     b.setStyleSheet(qt_theme.stylesheet(True))

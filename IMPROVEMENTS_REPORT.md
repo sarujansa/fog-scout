@@ -207,7 +207,13 @@ Die unabhängige Prüfung des Gesamt-Diffs hat sechs Befunde gemeldet; alle sind
   - Letzter vollständiger Lauf vor der HISTORY-Zeile: 1198 bestanden, 1 fehlgeschlagen, 37 übersprungen.
   - Der eine Fehlschlag war `test_the_real_history_ends_with_the_current_version`, weil die HISTORY-Zeile zu 1.23.1 noch fehlte.
   - Nach dem Ergänzen sind die Doku-Wächter (`test_whatsnew.py`, `test_history.py`, 30 Tests) grün.
-- GitHub Actions für die Pakete 1 und 2: Linux (pyflakes + pytest) und Windows (pytest inkl. `tests/test_windows.py`) grün; beide Jobs liefen mit echtem Runner. Die Läufe für die Pakete 3–5 stehen im PR.
+- GitHub Actions für die Pakete 1 und 2: Linux (pyflakes + pytest) und Windows (pytest inkl. `tests/test_windows.py`) grün; beide Jobs liefen mit echtem Runner.
+- **Pakete 3 und 4 waren in CI rot (Linux, Windows grün):** `test_a_tile_button_ends_in_dots_when_the_tile_is_narrow`.
+  - Mit DejaVu Sans, der Schrift im Linux-Runner, kürzt Qts `elidedText` einen Text, der genau in seine Breite passt („…einrichten…“).
+  - Lokal mit Inter fiel das nicht auf. Lokal nachgestellt: 46 von 104 Schrift/Grössen-Kombinationen sind betroffen.
+  - Behoben in 1.23.1 (`ELIDE_SLACK`). Der Test prüft die CI-Schrift jetzt ausdrücklich: mit dem alten Code rot, mit dem neuen grün.
+  - Der Fehler wirkte sich auch für Nutzer aus: Kachel-Knöpfe wären unnötig gekürzt worden.
+- Im selben Log stand eine harmlose Fehlermeldung „Internal C++ object already deleted“. Ursache war ein Timer zum Hervorheben eines Suchtreffers, der nach dem Schliessen des Fensters feuerte (vorhandener Code). Er ist jetzt an sein Widget gebunden.
 
 **Übersprungen:** 37 Tests, nur unter Windows ausführbar.
 
