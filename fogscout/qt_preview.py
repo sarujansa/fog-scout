@@ -146,7 +146,7 @@ class PreviewView(QWidget):
             nf = QFont(self.font())
             nf.setBold(True)
             p.setFont(nf)
-            p.setPen(accent)
+            p.setPen(QColor(qt_theme.colours(qt_theme.current_dark())["accent"]))   # 1.22.3: on the page, not the screen
             # 1.8.8: in its own strip below the screen (1.8.2 put it on the picture, where it hid the music card)
             note = _("Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = Grösse")
             if d.get("limits") and not d.get("limits_on", True):       # 1.8.15: the faint limiter lines

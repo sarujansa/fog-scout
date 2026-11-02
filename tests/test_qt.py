@@ -18,7 +18,9 @@ def test_qt_uses_the_original_palette():
     assert "font-size: 26px" in qt_theme.stylesheet(True, 2.0)          # zoom 200 %: 13 px -> 26 px
     assert qt_theme.hex_colour((134, 239, 172, 255)) == "#86efac"
     assert qt_theme.rgba("#3fb950", 0.5) == "rgba(63, 185, 80, 128)"
-    assert theme.DOT["ok"] in qt_theme.pill_style("ok")
+    # 1.22.3: the pill takes the state colour of its mode (theme.DOT was 2.2:1 on white)
+    assert qt_theme.STATE[True]["ok"] in qt_theme.pill_style("ok", True)
+    assert qt_theme.STATE[False]["ok"] in qt_theme.pill_style("ok", False)
 
 
 # ------------------------------------------------------------------ overview model
@@ -1045,8 +1047,34 @@ def _check_theme(key, oled, custom=None):
             assert _contrast(c["on_accent"], c["accent"]) >= 4.5, (key, dark)
             assert _contrast(c["fg"], c["bg"]) >= 7, (key, dark)
             assert c["accent"] in qt_theme.stylesheet(dark)
+            # 1.22.3 (audit): the hover of an accent button, the state colours (also on their pill tint), the
+            # editor's playhead and marks – the light mode had white on white and 2.0–2.5:1 here
+            assert _contrast(c["on_accent"], c["accent_hover"]) >= 4.5, (key, dark, "hover")
+            for kind in qt_theme.STATE_KINDS:
+                for bg in ("card", "bg", "field", "panel"):
+                    assert _contrast(c[kind], c[bg]) >= 4.5, (key, dark, kind, bg)
+                tint = qt_theme.blend(c[kind], c["card"], qt_theme.PILL_TINT)
+                assert _contrast(c[kind], tint) >= 4.5, (key, dark, kind, "pill")
+            for token in ("playhead", "mark"):
+                for bg in ("field", "panel"):
+                    assert _contrast(c[token], c[bg]) >= 3, (key, dark, token, bg)
+            assert _contrast(c["on_select"], c["select"]) >= 4.5, (key, dark, "select")
+            assert c["press"] != c["btn_hover"], (key, dark, "pressed looks like hover")
     finally:
         qt_theme.set_theme("gold")
+
+
+def test_a_colour_is_made_readable_on_the_card_of_the_mode_shown():
+    """1.22.3: the facts' value colours – a DOT status colour becomes the mode's own, a pastel overlay colour
+    (ping, temperature) keeps its hue and gets dark enough on a light card."""
+    from fogscout.theme import DOT
+    for dark in (True, False):
+        c = qt_theme.colours(dark)
+        assert qt_theme.readable(DOT["warn"], dark) == c["warn"]
+        for pastel in ("#7ee787", "#ffd166", (255, 140, 120, 255)):
+            got = qt_theme.readable(pastel, dark)
+            assert _contrast(got, c["card"]) >= 4.5, (dark, pastel, got)
+    assert qt_theme.readable("#1b1c1e", False) == "#1b1c1e"            # readable already: unchanged
 
 
 def test_today_rows_for_the_black_bar():
@@ -2146,6 +2174,32 @@ def test_danger_buttons_get_their_style_from_the_model():
         w, extra = make_control("button", str(model), lambda *a: None)
         show_control("button", w, extra, ui_state(model))
         assert w.objectName() == name
+
+
+def test_a_disabled_primary_button_does_not_look_active_and_shows_the_focus(qapp):
+    """1.22.3 (audit): the ID rule QPushButton#primary outranked :disabled – a disabled primary button kept the
+    accent fill and looked clickable; the focus of an ID-styled button (rowplay) was invisible."""
+    from PySide6.QtWidgets import QPushButton
+    from PySide6.QtGui import QColor
+    for dark in (True, False):
+        c = qt_theme.colours(dark)
+        qss = qt_theme.stylesheet(dark)
+        shots = []
+        for enabled in (True, False):
+            b = QPushButton("Anwenden")
+            b.setObjectName("primary")
+            b.setEnabled(enabled)
+            b.setStyleSheet(qss)
+            b.resize(140, 36)
+            shots.append(b.grab().toImage().pixelColor(8, 18))     # the padding, not the text
+        on, off = shots
+        accent = QColor(c["accent"])
+        assert on == accent, (dark, on.name())
+        assert off != accent, (dark, off.name())
+    qss = qt_theme.stylesheet(True)
+    for rule in ("QPushButton#primary:disabled", "QPushButton#primary:pressed", "QPushButton#rowplay:focus",
+                 "QPushButton#navsearchbtn:focus"):
+        assert rule in qss, rule
 
 
 def test_ctrl_and_a_number_opens_the_page_in_that_row_of_the_navigation(qapp):

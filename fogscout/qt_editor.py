@@ -170,6 +170,7 @@ QLineEdit#projectname {{ background: transparent; border: 1px solid transparent;
 QLineEdit#projectname:hover {{ border-color: {c['border']}; background: {c['field']}; }}
 QLineEdit#projectname:focus {{ border-color: {c['accent']}; background: {c['field']}; }}
 QLineEdit#search {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 4px 8px; }}
+QLineEdit#search:focus {{ border-color: {c['accent']}; }}  /* 1.22.3: the ID rule hid the focus */
 QToolButton#toolbtn {{ background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 3px; }}
 QToolButton#toolbtn:hover {{ background: {c['hover']}; }}
 QToolButton#toolbtn:pressed {{ background: {c['press']}; }}
@@ -207,14 +208,10 @@ QSlider::sub-page:horizontal:disabled {{ background: {c['border']}; }}
 QListView#media {{ background: transparent; border: none; outline: 0; }}
 QListWidget#marks {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: 6px; padding: 2px; outline: 0; }}
 QListWidget#marks::item {{ padding: 4px 6px; border-radius: 4px; }}
-QListWidget#marks::item:selected {{ background: {c['select']}; color: #ffffff; }}
+QListWidget#marks::item:selected {{ background: {c['select']}; color: {c['on_select']}; }}
 QListWidget#marks::item:hover:!selected {{ background: {c['hover']}; }}
-QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
-QScrollBar::handle:horizontal {{ background: {c['hover']}; border-radius: 4px; min-width: 30px; }}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QProgressBar#busy {{ max-height: 4px; min-height: 4px; }}
 QFrame#section {{ background: transparent; border: none; border-bottom: 1px solid {c['border']}; }}
-QFrame#section:last {{ border-bottom: none; }}
 QPushButton[class="swatch"] {{ border: 2px solid {c['border']}; border-radius: 11px; padding: 0; }}
 QPushButton[class="swatch"]:checked {{ border: 2px solid {c['head']}; }}
 """
@@ -313,7 +310,7 @@ class EditorWindow(MontageMixin, MusicMixin, ProjectMixin, ClipBase):
 
     def _build(self, mode, sound):
         c = self.colours = qt_theme.colours(self.dark)
-        self.setStyleSheet((self.styleSheet() or "") + editor_qss(c))
+        self.setStyleSheet((self.styleSheet() or "") + editor_qss(c, qt_theme.current_zoom()))   # 1.22.3: zoom
         self.ratio = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
