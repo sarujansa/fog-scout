@@ -140,6 +140,7 @@ TIPS = {
     "Anordnung zurücksetzen": "Stellt die Kästen auf allen Seiten, die Reiter-Reihen (Statistik, Overlay) und die "
                               "Navigation links wieder in die ursprüngliche Reihenfolge.",
     "Zurück": "Zurück zu den Karten des Realms (Esc).",
+    "Suche leeren": "Leert das Suchfeld und zeigt wieder alle Maps.",       # 1.24.1: maps page, search without a hit
     "Anzeigen": "Blendet die gewählte Map jetzt als Overlay ein – die Erkennung übernimmt beim nächsten Match "
                 "wieder.",
     "Killer setzen": "Setzt den Killer nur für die markierte Runde und zählt sie als Killer-Runde – z. B. wenn sie "

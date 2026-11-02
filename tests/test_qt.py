@@ -1833,6 +1833,28 @@ def test_the_search_and_the_realm_list_show_and_hide_the_tiles_instead_of_buildi
     assert len(page._tiles) == 7 and page._tiles[("m0_0", 1)] is not tiles[("m0_0", 1)]
 
 
+def test_a_search_without_a_hit_says_so_and_offers_to_clear_it(qapp, keep):
+    """1.24.1 (phase 2 audit: a search without a hit left an empty grid): a line names the search and what it looks
+    at, "Suche leeren" empties the field – that posts the empty search like the field's own clear button."""
+    from fogscout import qt_window
+    posted = []
+    page = keep(qt_window.MapsPage(lambda a, arg=None: posted.append((a, arg))))
+    items = _grid_items(2, 2)
+    page.show_maps(items, None, {}, [], {}, "classic")
+    assert page.no_hits.isHidden()
+    page.search.setText("xyz")
+    page.show_maps(items, None, {}, [], {}, "classic", found=set())
+    assert not page.no_hits.isHidden() and page.visible_tiles() == []
+    assert "„xyz“" in page.no_hits_text.text() and page.no_hits_clear.toolTip()
+    assert page.no_hits_clear.property("glyph") == "close"
+    page.no_hits_clear.click()
+    assert page.search.text() == "" and posted[-1] == ("search", "")
+    page.show_maps(items, None, {}, [], {}, "classic", found=None)
+    assert page.no_hits.isHidden() and len(page.visible_tiles()) == 4
+    page.show_maps(items, None, {}, [], {}, "classic", found={("m1_0", 1)})            # a hit: no line
+    assert page.no_hits.isHidden() and [t.key for t in page.visible_tiles()] == [("m1_0", 1)]
+
+
 def test_the_tiles_are_walked_with_the_keyboard(qapp, keep):
     """1.8.72: the arrows move between the tiles on display, Enter shows a map big, Ctrl+Enter in the game."""
     from PySide6.QtCore import Qt
@@ -2005,6 +2027,114 @@ def test_the_overview_shows_the_quick_switches_and_posts_only_a_click(qapp, keep
     win.show_model(overview.overview_model(app, now, is_win=True))
     assert [w.text() for w in page.switches if not w.isHidden()][1] == "Lobby-Meldung" and shown[3].isEnabled()
     assert len(page.switches) == 7 and page.switches[6].isHidden()           # boxes by position: the last one rests
+
+
+def test_each_feature_says_whether_it_works_now_and_what_is_missing():
+    """1.24.1 (phase 2: "Schnell ein/aus" had no state – is OBS there, is HWiNFO missing, is Spotify signed in?):
+    overview.switch_state gives (level, words) from what the program knows anyway; level is never the only sign –
+    there are always words; nothing known = nothing said."""
+    st = overview.switch_state
+    app = fake_app()
+    assert st(app, "detect", False) == ("off", "aus") and st(app, "rec", False) == ("off", "aus")
+    assert st(app, "detect", True) == ("off", "wartet auf DBD")
+    app.game = object()
+    assert st(app, "detect", True) == ("ok", "aktiv")
+    app._worker_status = "Bildaufnahme fehlgeschlagen"
+    assert st(app, "detect", True) == ("err", "Fehler – Details im Log")
+    assert st(app, "rec", True) == ("", "")                                    # no recorder: nothing to say
+    app.recorder = SimpleNamespace(recording=False, space=SimpleNamespace(t=1.0, folder=""))
+    app.settings["rec_folder"] = "D:\\Aufnahmen"
+    assert st(app, "rec", True) == ("warn", "Platte nicht angeschlossen")
+    app.settings["rec_folder"] = ""
+    assert st(app, "rec", True) == ("warn", "kein Ordner gewählt")
+    app.recorder.space.folder = "D:\\Aufnahmen"
+    app._obs_state = {"connected": False}
+    assert st(app, "rec", True) == ("warn", "OBS nicht erreichbar")
+    app._obs_state = {"connected": True}
+    assert st(app, "rec", True) == ("ok", "bereit")
+    app.recorder.recording = True
+    assert st(app, "rec", True) == ("ok", "nimmt auf")
+    app.conn = SimpleNamespace(running=False, server=None, error="")
+    assert st(app, "conn", True) == ("off", "wartet auf DBD")
+    app._conn_busy = True
+    assert st(app, "conn", True) == ("off", "startet …")
+    app._conn_busy = False
+    app.conn.running = True
+    assert st(app, "conn", True) == ("ok", "aktiv")
+    app.conn.server = {"region": "eu-central-1"}
+    assert st(app, "conn", True) == ("ok", "verbunden")
+    app.conn.error = "Mitschnitt beendet (Code 1)."
+    assert st(app, "conn", True) == ("err", "Fehler – Details im Log")
+    assert st(app, "sysinfo", True, is_win=False) == ("off", "nur unter Windows")
+    assert st(app, "sysinfo", True) == ("off", "wartet auf DBD")
+    app.sysmon = SimpleNamespace(active=True, hwinfo_seen=False)
+    assert st(app, "sysinfo", True) == ("warn", "HWiNFO fehlt")
+    app.sysmon.hwinfo_seen = True
+    assert st(app, "sysinfo", True) == ("ok", "aktiv")
+    app.media = SimpleNamespace(error="")
+    assert st(app, "media", True) == ("", "")
+    app.media.error = "OSError: nicht verfügbar"
+    assert st(app, "media", True) == ("warn", "Mediensteuerung nicht verfügbar")
+    app.presence = SimpleNamespace(connected=False)
+    assert st(app, "discord", True) == ("warn", "Discord nicht erreichbar")
+    app.presence.connected = True
+    assert st(app, "discord", True) == ("ok", "verbunden")
+    app.spotify = SimpleNamespace(state="login_needed")
+    app.youtube = SimpleNamespace(state="linked")
+    assert st(app, "spotify", True) == ("warn", "Anmeldung nötig") and st(app, "youtube", True) == ("ok", "verbunden")
+    app.spotify.state = "off"
+    assert st(app, "spotify", True) == ("", "") and st(app, "notify", True) == ("", "")
+    for level, words in (st(app, k, True) for k in ("detect", "rec", "conn", "sysinfo", "media", "discord")):
+        assert level and words                                                 # never a colour without words
+    sw = {s.key: s for s in overview.switches(app)}
+    assert (sw["detect"].level, sw["detect"].state) == ("err", "Fehler – Details im Log")
+    assert (sw["notify"].level, sw["notify"].state) == ("", "")
+
+
+def test_the_feature_card_writes_the_state_under_each_box(qapp, keep):
+    """1.24.1: the words of switch_state under the box's text, the level as the label's property "state" (colour
+    from the theme); a box with nothing to say has no empty line."""
+    from fogscout import qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.apply_theme(True, 1.0)
+    app = fake_app()
+    win.show_model(overview.overview_model(app, time.time(), is_win=True))
+    page = win.overview
+    labels = {w.key: lab for w, lab in zip(page.switches, page.switch_states) if not w.isHidden()}
+    assert page.switch_card.findChild(type(labels["detect"]), None) is not None
+    assert labels["detect"].text() == "wartet auf DBD" and labels["detect"].property("state") == "off"
+    assert not labels["detect"].isHidden() and labels["notify"].isHidden()
+    app.game = object()
+    app.settings["show_connection"] = True
+    app.conn = SimpleNamespace(running=True, server=None, error="Mitschnitt beendet (Code 1).", ping_ms=None)
+    win.show_model(overview.overview_model(app, time.time(), is_win=True))
+    assert labels["detect"].text() == "aktiv" and labels["detect"].property("state") == "ok"
+    assert labels["conn"].text() == "Fehler – Details im Log" and labels["conn"].property("state") == "err"
+
+
+def test_the_overview_drops_tiles_that_would_only_say_nothing():
+    """1.24.1 (phase 2 audit: six of ten tiles said "–" without match data): set up but nothing for today – no
+    "Ø Kills"/"Entkommen" tile; no waiting time and no ping – no "Ø Wartezeit"; never set up – the one tile that
+    leads to the setup stays. The week leaves out what neither week has."""
+    now = time.time()
+    day = history.period_start("day", now)
+    rnd = history.Round(max(now - 600, day), 540, "coal", "Coal Tower", role="killer", killer="The Oni")
+    app = fake_app(rounds=[rnd])
+    app._joined().matches = [object()]                                        # match data set up, none today
+    tiles, _note = overview.today(app, now)
+    assert [t.title for t in tiles] == ["Runden"]
+    app._joined().matches = []                                                # never set up: the way there stays
+    tiles, _note = overview.today(app, now)
+    assert [t.title for t in tiles] == ["Runden", "Stats-Seite"] and tiles[1].action == "official_setup"
+    rnd.wait = 95.0
+    tiles, _note = overview.today(app, now)
+    assert [t.title for t in tiles] == ["Runden", "Stats-Seite", "Ø Wartezeit"]
+    rnd.farming = True                                                        # farming without BP: the count
+    tiles, _note = overview.today(app, now)
+    assert (tiles[2].title, tiles[2].value, tiles[2].sub) == ("Farming", "1", "Runden · BP/h erst mit Match-Daten")
+    rnd.farming = False                                                       # the week counts normal rounds only
+    tiles, _note = overview.week(app, now)
+    assert [t.title for t in tiles] == ["Runden", "Ø Wartezeit"]
 
 
 def test_the_splash_screen_shows_the_start_and_fades_away(qapp, keep, tmp_path):
