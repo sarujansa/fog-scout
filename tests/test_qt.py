@@ -1620,24 +1620,36 @@ def test_the_settings_page_is_split_into_tabs_with_its_cards(qapp, keep):
         if kind == "title":
             t = qt_window._tab_of(head)
             where[key] = tw.tabText(tw.indexOf(t[0][1])) if t else None
+    recs = ["st.more.rec", "st.rec.when", "st.rec.picture", "st.rec.sound", "st.rec.clips", "st.rec.cleanup"]
     assert where == {"st.look": "Allgemein", "st.start": "Allgemein", "st.updates": "Allgemein",
-                     "st.more.backup": "Allgemein", "st.more.folders": "Allgemein",
+                     "st.more.backup": "Allgemein",
                      "st.detect": "Erkennung", "st.langs": "Erkennung", "st.more.own": "Erkennung", "st.notify": "Erkennung",
                      "st.hotkeys": "Hotkeys", "st.more.official": "Match-Daten", "st.more.farming": "Match-Daten",
-                     "st.more.rec": "Aufnahmen", "st.more.obs": "Verbindungen", "st.more.discord": "Verbindungen", "st.more.spotify": "Verbindungen",
+                     **{k: "Aufnahmen" for k in recs},
+                     "st.more.obs": "Verbindungen", "st.more.discord": "Verbindungen", "st.more.spotify": "Verbindungen",
                      "st.more.youtube": "Verbindungen", "st.more.claude": "Verbindungen"}                                                  # 1.10
     assert [col.ids() for col in page.columns] == [
-        ["st.look", "st.start", "st.updates", "st.more.backup", "st.more.folders"],
+        ["st.look", "st.start", "st.updates", "st.more.backup"],
         ["st.detect", "st.langs", "st.more.own", "st.notify"], ["st.hotkeys"],
-        ["st.more.official", "st.more.farming"], ["st.more.rec"],
+        ["st.more.official", "st.more.farming"], recs,
         ["st.more.obs", "st.more.discord", "st.more.spotify", "st.more.youtube", "st.more.claude"]]
-    rec = page.controls["st.more.rec"][1]
-    card = rec.parentWidget()
-    while card is not None and card.property("class") != "card":
-        card = card.parentWidget()
-    from PySide6.QtWidgets import QLabel
-    subs = [lbl.text() for lbl in card.findChildren(QLabel) if lbl.property("class") == "sub"]
-    assert subs == ["ALLGEMEIN", "AUFNAHME", "TON", "CLIPS", "AUFRÄUMEN"]
+    # 1.29.1 (user: "unübersichtlich, was gehört zu was"): six OBS cards instead of one with five sub-headings;
+    # an option that only counts with the one above sits indented under it
+    from PySide6.QtWidgets import QLabel, QWidget
+    rec_body = tw.widget([tw.tabText(i) for i in range(tw.count())].index("Aufnahmen"))
+    assert not [lbl for lbl in rec_body.findChildren(QLabel) if lbl.property("class") == "sub"]
+
+    def indented(key):
+        w = page.controls[key][1].parentWidget()
+        while w is not None and w.property("class") not in ("indent", "card"):
+            w = w.parentWidget()
+        return w is not None and w.property("class") == "indent"
+    for key in ("st.more.rec_merge", "st.more.rec_game", "st.more.rec_overlay", "st.more.rec_audio_dbd",
+                "st.more.rec_clip_notify", "st.more.rec_clip_dbd", "st.more.dc_killer", "st.more.yt_pl_clip"):
+        assert indented(key), key
+    for key in ("st.more.rec_pre", "st.more.rec_window", "st.more.rec_audio", "st.more.rec_instant"):
+        assert not indented(key), key
+    assert isinstance(page.controls["st.more.rec_on"][1], QWidget)
     # 1.28 (user: "warum ist OBS nicht in Verbindungen"): port, password and the test sit in "OBS-Verbindung"
     obs_tab = tw.widget([tw.tabText(i) for i in range(tw.count())].index("Verbindungen"))
     rec_tab = tw.widget([tw.tabText(i) for i in range(tw.count())].index("Aufnahmen"))
@@ -3017,3 +3029,30 @@ def test_a_long_message_is_never_cut_off_at_the_bottom(qapp, keep):
     assert box.height() >= box.layout().totalHeightForWidth(box.width())
     assert box.text.height() >= box.text.heightForWidth(box.text.width())
     box.cancel.click()
+
+
+def test_long_explanations_wait_behind_a_fold_that_the_search_opens(qapp, keep):
+    """1.29.1 (user: "unübersichtlich"): the long explanations of the settings (OBS, Discord, Spotify, YouTube,
+    Claude, match data, farming) are shut behind "Erklärung" – one click opens them, and the search still finds and
+    opens one (reveal goes through the fold like through a tab)."""
+    from PySide6.QtWidgets import QPushButton
+    from fogscout import qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.show()
+    page = win.forms["settings"]
+    for key in ("st.more.rec_text", "st.more.dc_text", "st.more.sp_text", "st.more.yt_text", "st.more.cl_text",
+                "st.more.off_text", "st.more.farm_text"):
+        w = page.controls[key][1]
+        assert qt_window._folds_of(w), key
+        assert qt_window._reachable(w, page), key                       # the search may go there
+    w = page.controls["st.more.yt_text"][1]
+    body = qt_window._folds_of(w)[0]
+    assert not body.isVisibleTo(body.parentWidget())
+    btn = next(b for b in page.findChildren(QPushButton, "fold") if b.__dict__.get("_dbdms_fold") is body)
+    assert btn.property("glyph") == "chevron_right"
+    win.reveal("settings", "st.more.yt_text")
+    qapp.processEvents()
+    qt_window._open_tabs(w)                                             # what the delayed reveal does
+    assert body.isVisibleTo(body.parentWidget()) and btn.property("glyph") == "chevron_down"
+    btn.click()
+    assert not body.isVisibleTo(body.parentWidget())

@@ -210,10 +210,12 @@ SPECS = {
                     ("check", "st.update"), ("hint", "st.update_note"),
                     ("row", (("button", "st.upd_btn"), ("button", "st.upd_apply"), ("stretch",))), ("hint", "st.upd_status"),
                     ("hint", "st.version"))),                 # 1.2.19: the version where the updates are
-                ("card", "st.more.backup", (("row", (("button", "st.more.export"), ("button", "st.more.import"), ("stretch",),
-                                                     ("button", "st.more.clear_hist"), ("button", "st.more.reset_all"))),
-                                            ("hint", "st.more.backup_hint"))),
-                ("card", "st.more.folders", (("row", (("button", "st.more.dir"), ("button", "st.more.maps_dir"), ("stretch",))),)))),
+                # 1.29.1 (user: "unübersichtlich, Gemeinsamkeiten zusammentun"): backup and folders in one card
+                ("card", "st.more.backup", (("row", (("button", "st.more.export"), ("button", "st.more.import"),
+                                                     ("button", "st.more.dir"), ("button", "st.more.maps_dir"), ("stretch",))),
+                                            ("hint", "st.more.backup_hint"),
+                                            ("row", (("button", "st.more.clear_hist"), ("button", "st.more.reset_all"),
+                                                     ("stretch",))))))),
             ("st.tab.detect", N_("Erkennung"), (
                 # 1.8.78: the page "Erkennung" is gone – its cards live here, "Erweitert" on the log page
                 ("card", "st.detect", (("check", "st.det_auto"), ("check", "st.det_hide"), ("hint", "st.det_hide_hint"),
@@ -234,38 +236,48 @@ SPECS = {
             ("st.tab.data", N_("Match-Daten"), (
                 ("card", "st.more.official", (("check", "st.more.off_open"), ("check", "st.more.off_notify"),
                                               ("row", (("button", "st.more.script"), ("button", "st.more.resave"),
-                                                       ("button", "st.more.structure"), ("stretch",))), ("hint", "st.more.off_text"),
-                                              ("label", "st.more.off_check.label"), ("hint", "st.more.off_check"))),
+                                                       ("button", "st.more.structure"), ("stretch",))), ("label", "st.more.off_check.label"), ("hint", "st.more.off_check"),
+                                              ("fold", N_("Erklärung"), (("hint", "st.more.off_text"),)))),
                 ("card", "st.more.farming", (("check", "st.more.farm_cross"),                       # 1.2.20
                                              ("row", (("label", "st.more.farm_region.label"), ("combo", "st.more.farm_region"),
                                                       ("stretch",))),
-                                             ("hint", "st.more.farm_text"), ("hint", "st.more.farm_opp"))))),
+                                             ("hint", "st.more.farm_opp"), ("fold", N_("Erklärung"), (("hint", "st.more.farm_text"),)))))),
             ("st.tab.rec", N_("Aufnahmen"), (
-                # 1.4: OBS recordings – 1.8.90 in five groups (the card was 686 px of 24 controls)
+                # 1.4: OBS recordings – 1.8.90 one card in five groups; 1.29.1 (user: "unübersichtlich, was gehört zu
+                # was") six cards, options that only count with the one above them indented, explanations folded
                 ("card", "st.more.rec", (
-                    ("sub", N_("Allgemein")), ("check", "st.more.rec_on"), ("hint", "st.more.rec_link_hint"),
+                    ("check", "st.more.rec_on"),
                     ("row", (("button", "st.more.rec_dir"), ("hint", "st.more.rec_folder"))),
                     ("row", (("label", "st.more.rec_limit.label"), ("combo", "st.more.rec_limit"), ("stretch",))),
                     ("check", "st.more.rec_obs_start"),
-                    ("sub", N_("Aufnahme")), ("check", "st.more.rec_early"), ("check", "st.more.rec_pre"),
-                    ("check", "st.more.rec_buffer"), ("check", "st.more.rec_merge"),
+                    ("hint", "st.more.rec_status"), ("hint", "st.more.rec_ffmpeg"), ("hint", "st.more.rec_link_hint"),
+                    ("fold", N_("Erklärung"), (("hint", "st.more.rec_text"),)))),
+                ("card", "st.rec.when", (
+                    ("check", "st.more.rec_early"),
                     ("row", (("label", "st.more.rec_tail.label"), ("combo", "st.more.rec_tail"), ("stretch",))),
-                    ("check", "st.more.rec_window"), ("check", "st.more.rec_game"), ("check", "st.more.rec_overlay"),
-                    ("sub", N_("Ton")), ("check", "st.more.rec_audio"),
-                    ("row", (("check", "st.more.rec_audio_dbd"), ("check", "st.more.rec_audio_discord"),
-                             ("check", "st.more.rec_audio_desktop"), ("check", "st.more.rec_audio_mic"), ("stretch",))),
-                    ("check", "st.more.rec_tracks"), ("hint", "st.more.rec_tracks_hint"),      # 1.8.6
-                    ("sub", N_("Clips")),
-                    ("row", (("check", "st.more.rec_instant"), ("combo", "st.more.rec_clip"),
-                             ("check", "st.more.rec_clip_notify"), ("stretch",))),
-                    ("row", (("label", "st.more.rec_clip_src.label"), ("check", "st.more.rec_clip_dbd"),
-                             ("check", "st.more.rec_clip_discord"), ("check", "st.more.rec_clip_mic"),
-                             ("check", "st.more.rec_clip_other"), ("stretch",))),
-                    ("check", "st.more.rec_autosave"),                                   # 1.18.1
-                    ("sub", N_("Aufräumen")), ("check", "st.more.rec_farming"),
+                    ("check", "st.more.rec_buffer"),
+                    ("check", "st.more.rec_pre"), ("indent", (("check", "st.more.rec_merge"),)))),
+                ("card", "st.rec.picture", (
+                    ("check", "st.more.rec_window"),
+                    ("indent", (("check", "st.more.rec_game"), ("check", "st.more.rec_overlay"))))),
+                ("card", "st.rec.sound", (
+                    ("check", "st.more.rec_audio"),
+                    ("indent", (("row", (("check", "st.more.rec_audio_dbd"), ("check", "st.more.rec_audio_discord"),
+                                         ("check", "st.more.rec_audio_desktop"), ("check", "st.more.rec_audio_mic"),
+                                         ("stretch",))),)),
+                    ("check", "st.more.rec_tracks"),                                                  # 1.8.6
+                    ("indent", (("hint", "st.more.rec_tracks_hint"),)))),
+                ("card", "st.rec.clips", (
+                    ("row", (("check", "st.more.rec_instant"), ("combo", "st.more.rec_clip"), ("stretch",))),
+                    ("indent", (("check", "st.more.rec_clip_notify"),
+                                ("row", (("label", "st.more.rec_clip_src.label"), ("check", "st.more.rec_clip_dbd"),
+                                         ("check", "st.more.rec_clip_discord"), ("check", "st.more.rec_clip_mic"),
+                                         ("check", "st.more.rec_clip_other"), ("stretch",))))),
+                    ("check", "st.more.rec_autosave"))),                                           # 1.18.1
+                ("card", "st.rec.cleanup", (
+                    ("check", "st.more.rec_farming"),
                     ("row", (("label", "st.more.rec_farming_days.label"),           # 1.8.23
-                             ("combo", "st.more.rec_farming_days"), ("stretch",))),
-                    ("hint", "st.more.rec_ffmpeg"), ("hint", "st.more.rec_status"), ("hint", "st.more.rec_text"))),)),
+                             ("combo", "st.more.rec_farming_days"), ("stretch",))))))),
             ("st.tab.links", N_("Verbindungen"), (
                 # 1.28 (user): the connection to OBS here, the recording settings stay on "Aufnahmen"
                 ("card", "st.more.obs", (("row", (("label", "st.more.rec_port.label"), ("entry", "st.more.rec_port"),
@@ -276,35 +288,38 @@ SPECS = {
                                              ("row", (("label", "st.more.dc_id.label"), ("entry", "st.more.dc_id"),
                                                       ("button", "st.more.dc_test"), ("button", "st.more.dc_portal"),
                                                       ("stretch",))),
-                                             ("check", "st.more.dc_killer"), ("check", "st.more.dc_lobby"),
-                                             ("hint", "st.more.dc_status"), ("hint", "st.more.dc_text"))),
+                                             ("indent", (("check", "st.more.dc_killer"), ("check", "st.more.dc_lobby"))),
+                                             ("hint", "st.more.dc_status"), ("fold", N_("Erklärung"), (("hint", "st.more.dc_text"),)))),
                 ("card", "st.more.spotify", (("check", "st.more.sp_on"),                             # 1.8: "Als nächstes"
                                              ("row", (("label", "st.more.sp_id.label"), ("entry", "st.more.sp_id"),
                                                       ("button", "st.more.sp_dash"), ("stretch",))),
                                              ("row", (("button", "st.more.sp_login"), ("button", "st.more.sp_logout"),
                                                       ("stretch",))),
-                                             ("hint", "st.more.sp_status"), ("hint", "st.more.sp_text"))),
+                                             ("hint", "st.more.sp_status"), ("fold", N_("Erklärung"), (("hint", "st.more.sp_text"),)))),
                 ("card", "st.more.youtube", (("check", "st.more.yt_on"),                             # 1.10: upload
                                              ("row", (("label", "st.more.yt_id.label"), ("entry", "st.more.yt_id"),
                                                       ("label", "st.more.yt_secret.label"), ("entry", "st.more.yt_secret"),
-                                                      ("button", "st.more.yt_file"), ("button", "st.more.yt_console"),
+                                                      ("button", "st.more.yt_file"), ("stretch",))),
+                                             ("row", (("button", "st.more.yt_login"), ("button", "st.more.yt_logout"),
                                                       ("stretch",))),
                                              ("row", (("label", "st.more.yt_privacy.label"), ("combo", "st.more.yt_privacy"),
-                                                      ("button", "st.more.yt_login"), ("button", "st.more.yt_logout"),
                                                       ("stretch",))),
-                                             ("row", (("check", "st.more.yt_pl_on"), ("button", "st.more.yt_pl_load"),
-                                                      ("stretch",))),                                  # 1.11: playlists
-                                             ("row", (("label", "st.more.yt_pl_clip.label"), ("combo", "st.more.yt_pl_clip"),
-                                                      ("label", "st.more.yt_pl_round.label"), ("combo", "st.more.yt_pl_round"),
-                                                      ("stretch",))),
-                                             ("hint", "st.more.yt_status"), ("hint", "st.more.yt_text"))),
+                                             ("check", "st.more.yt_pl_on"),                       # 1.11: playlists
+                                             ("indent", (("row", (("label", "st.more.yt_pl_clip.label"), ("combo", "st.more.yt_pl_clip"),
+                                                                  ("label", "st.more.yt_pl_round.label"),
+                                                                  ("combo", "st.more.yt_pl_round"), ("button", "st.more.yt_pl_load"),
+                                                                  ("stretch",))),)),
+                                             ("hint", "st.more.yt_status"),
+                                             ("fold", N_("Erklärung"), (("hint", "st.more.yt_text"),
+                                                           ("row", (("button", "st.more.yt_console"), ("stretch",))))))),
                 ("card", "st.more.claude", (("check", "st.more.cl_on"), ("check", "st.more.cl_editor"),   # 1.26/1.27
                                             ("row", (("label", "st.more.cl_key.label"), ("entry", "st.more.cl_key"),
                                                      ("button", "st.more.cl_test"), ("button", "st.more.cl_clear"),
                                                      ("stretch",))),
                                             ("row", (("button", "st.more.cl_keys"), ("button", "st.more.cl_billing"),
                                                      ("stretch",))),                                  # 1.26.1
-                                            ("hint", "st.more.cl_status"), ("hint", "st.more.cl_text"))))))),
+                                            ("hint", "st.more.cl_status"),
+                                            ("fold", N_("Erklärung"), (("hint", "st.more.cl_text"),)))))))),
     ),
 }
 
@@ -315,8 +330,10 @@ def _spec_keys(items):
         if kind == "card":
             yield it[1]
             yield from _spec_keys(it[2])
-        elif kind in ("row", "panel", "side"):
+        elif kind in ("row", "panel", "side", "indent"):
             yield from _spec_keys(it[1])
+        elif kind == "fold":                        # 1.29.1: (fold, title, items)
+            yield from _spec_keys(it[2])
         elif kind == "split":                       # 1.11.14: columns of items
             for items in it[1:]:
                 yield from _spec_keys(items)
@@ -436,8 +453,33 @@ def _tab_of(w):
     return out
 
 
+def _folds_of(w):
+    """1.29.1: the shut "fold" bodies (qt_pages "fold") above w – the search opens them like tabs."""
+    out, p = [], w
+    while p is not None:
+        if p.property("fold_body"):
+            out.append(p)
+        p = p.parentWidget()
+    return out
+
+
+def _open_folds(w):
+    for body in _folds_of(w):
+        if not body.isVisibleTo(body.parentWidget()):
+            btn = next((b for b in body.parentWidget().findChildren(QPushButton, "fold")
+                        if b.__dict__.get("_dbdms_fold") is body), None)
+            if btn is not None:
+                btn.click()
+            else:
+                body.show()
+
+
 def _reachable(w, page) -> bool:
-    """Shown on the page, or on a tab that is not open now (the search goes there)."""
+    """Shown on the page, or on a tab that is not open now (the search goes there); 1.29.1: also behind a shut
+    fold (opened on the way)."""
+    folds = _folds_of(w)
+    if folds:
+        return (w is folds[0] or w.isVisibleTo(folds[0])) and _reachable(folds[-1].parentWidget(), page)
     tabs = _tab_of(w)
     if not tabs:
         return w.isVisibleTo(page)
@@ -448,6 +490,7 @@ def _reachable(w, page) -> bool:
 def _open_tabs(w):
     for tw, body in reversed(_tab_of(w)):
         tw.setCurrentWidget(body)
+    _open_folds(w)
 
 
 def _node_has(node: dict, key: str) -> bool:
