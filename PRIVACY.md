@@ -14,6 +14,7 @@ Fog Scout ist ein Open-Source-Programm für Windows, das lokal auf deinem PC lä
 | Spotify „Als nächstes“ | Spotify Web API (`api.spotify.com`, `accounts.spotify.com`) | Anmeldung (OAuth 2 PKCE), Lesen der Warteschlange – nie steuern | Nur eingeschaltet und nach deiner Anmeldung |
 | YouTube-Upload | Google (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`) | Siehe unten | Nur eingeschaltet bzw. je Datei auf Klick |
 | Suche mit Claude (seit 1.26) | Anthropic (`api.anthropic.com`) | Deine Suchfrage und die Namen der Einstellungen, Seiten und Aktionen des Programms – nie Runden, Maps, Killer, Pfade oder Spieldaten; dein eigener API-Key, verschlüsselt auf deinem PC (DPAPI), nie in Sicherung, Log oder Diagnose | Nur eingeschaltet und nur, wenn du in der Suche „Claude fragen“ wählst |
+| Clip-Editor mit Claude (seit 1.27) | Anthropic (`api.anthropic.com`) | Deine Bitte und der Schnitt als Zahlen (Zeiten, Tempo, Blenden, Export-Art, eigene Short-Texte, Zeitpunkte deiner F8-Marken) – kein Bild, kein Dateiname, keine Map, kein Killer | Nur mit eingeschaltetem Häkchen „Im Clip-Editor Claude nutzen“ und nur auf „Vorschlagen“ |
 
 Das Programm fasst Dead by Daylight nie an: keine Eingaben, kein Zugriff auf den Spielprozess oder Spieldateien. Es liest Bildschirmpixel, Fensterinformationen und – auf Wunsch – Systemwerte (CPU/GPU-Auslastung und -Temperatur).
 
@@ -49,6 +50,7 @@ Fog Scout is an open-source program for Windows that runs locally on your PC. Th
 | Spotify "Up next" | Spotify Web API (`api.spotify.com`, `accounts.spotify.com`) | Login (OAuth 2 PKCE), reading the queue – never controlling | Only when enabled and after your login |
 | YouTube upload | Google (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`) | See below | Only when enabled, or per file on click |
 | Search with Claude (since 1.26) | Anthropic (`api.anthropic.com`) | Your search question and the names of the program's settings, pages and actions – never rounds, maps, killers, paths or game data; your own API key, encrypted on your PC (DPAPI), never in a backup, the log or the diagnosis | Only when enabled and only when you pick "Ask Claude" in the search |
+| Clip editor with Claude (since 1.27) | Anthropic (`api.anthropic.com`) | Your wish and the cut as numbers (times, speed, fades, export type, your own short texts, times of your F8 marks) – no picture, no file name, no map, no killer | Only with "Use Claude in the clip editor" ticked and only on "Suggest" |
 
 The program never touches Dead by Daylight: no input, no access to the game process or game files. It reads screen pixels, window information and – if you want – system values (CPU/GPU load and temperature).
 

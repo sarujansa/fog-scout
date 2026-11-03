@@ -68,14 +68,18 @@ def _opener():
     return OPENER
 
 
+def request_body(system: str, content: str, schema: dict, max_tokens: int = MAX_TOKENS) -> dict:
+    """1.27: one Messages request with a structured answer (``schema``) – shared by the search and the editor."""
+    return {"model": MODEL, "max_tokens": max_tokens, "fallbacks": "default", "system": system,
+            "output_config": {"effort": EFFORT, "format": {"type": "json_schema", "schema": schema}},
+            "messages": [{"role": "user", "content": content}]}
+
+
 def body(question: str, catalogue) -> dict:
-    """The request body. ``catalogue``: [(id, title)] – only the program's own entries."""
+    """The search's request body. ``catalogue``: [(id, title)] – only the program's own entries."""
     lines = "\n".join(f"{i}\t{t}" for i, t in list(catalogue)[:MAX_CATALOGUE])
-    return {"model": MODEL, "max_tokens": MAX_TOKENS, "fallbacks": "default",
-            "system": SYSTEM,
-            "output_config": {"effort": EFFORT, "format": {"type": "json_schema", "schema": SCHEMA}},
-            "messages": [{"role": "user", "content": f"Catalogue:\n{lines}\n\nQuestion: "
-                                                     f"{str(question or '').strip()[:MAX_QUESTION]}"}]}
+    return request_body(SYSTEM, f"Catalogue:\n{lines}\n\nQuestion: {str(question or '').strip()[:MAX_QUESTION]}",
+                        SCHEMA)
 
 
 def headers(key: str) -> dict:
@@ -83,8 +87,8 @@ def headers(key: str) -> dict:
             "content-type": "application/json"}
 
 
-def parse(reply: dict, known) -> tuple[str, list[str]]:
-    """(answer, ids) from the API's reply – ids only from ``known``, at most MAX_IDS, no repeats."""
+def reply_json(reply: dict) -> dict:
+    """The JSON object of a structured answer (AskError refused/bad otherwise)."""
     if reply.get("stop_reason") == "refusal":
         raise AskError("refused")
     text = "".join(b.get("text", "") for b in reply.get("content") or () if b.get("type") == "text")
@@ -94,6 +98,12 @@ def parse(reply: dict, known) -> tuple[str, list[str]]:
         raise AskError("bad") from None
     if not isinstance(data, dict):
         raise AskError("bad")
+    return data
+
+
+def parse(reply: dict, known) -> tuple[str, list[str]]:
+    """(answer, ids) from the API's reply – ids only from ``known``, at most MAX_IDS, no repeats."""
+    data = reply_json(reply)
     known = set(known)
     ids = []
     for i in data.get("ids") or ():
@@ -102,14 +112,13 @@ def parse(reply: dict, known) -> tuple[str, list[str]]:
     return str(data.get("answer") or "").strip()[:400], ids[:MAX_IDS]
 
 
-def ask(key: str, question: str, catalogue) -> tuple[str, list[str]]:
-    """One request; (answer, ids) or AskError."""
-    catalogue = list(catalogue)
-    req = urllib.request.Request(ENDPOINT, data=json.dumps(body(question, catalogue)).encode("utf-8"),
-                                 headers=headers(key), method="POST")
+def send(key: str, payload: dict) -> dict:
+    """POST ``payload`` to ENDPOINT; the reply as a dict, or AskError with its kind."""
+    req = urllib.request.Request(ENDPOINT, data=json.dumps(payload).encode("utf-8"), headers=headers(key),
+                                 method="POST")
     try:
         with _opener().open(req, timeout=HTTP_TIMEOUT) as r:
-            reply = json.loads(r.read().decode("utf-8"))
+            return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         code = e.code
         try:
@@ -127,7 +136,17 @@ def ask(key: str, question: str, catalogue) -> tuple[str, list[str]]:
         raise AskError("net", type(e).__name__) from None
     except ValueError:
         raise AskError("bad") from None
-    return parse(reply, [i for i, _t in catalogue])
+
+
+def request(key: str, system: str, content: str, schema: dict, max_tokens: int = MAX_TOKENS) -> dict:
+    """1.27: one structured request – the answer's JSON object, or AskError."""
+    return reply_json(send(key, request_body(system, content, schema, max_tokens)))
+
+
+def ask(key: str, question: str, catalogue) -> tuple[str, list[str]]:
+    """The search: one request; (answer, ids) or AskError."""
+    catalogue = list(catalogue)
+    return parse(send(key, body(question, catalogue)), [i for i, _t in catalogue])
 
 
 class Asker(threading.Thread):

@@ -211,6 +211,7 @@ DEFAULTS = {
     "youtube_playlist_round": "",       # … and for rounds ("" = none)
     "youtube_playlist_names": {},       # {id: title} as Google listed them (the two choices)
     "claude_on": False,                 # 1.26: the search (command palette) may ask Claude – only on the user's pick
+    "claude_editor": False,             # 1.27: the clip editor may ask Claude („Mit Claude bearbeiten“) – user's pick
     "claude_key": "",                   # the user's own Anthropic API key, DPAPI-protected (spotify.protect), PC-specific
     "palette_recent": [],               # 1.26: ids of the palette's last picks (palette.RECENT_KEPT), PC-specific
     "sysinfo": "right",                 # system values at the top of a black bar: off | left | right | custom
