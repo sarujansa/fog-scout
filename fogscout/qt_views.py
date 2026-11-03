@@ -145,7 +145,7 @@ def sign_words(text: str) -> str:
         if head == "★":
             out.append(_("behalten (nie aufgeräumt)"))
         elif head == "⚑":
-            out.append(_("{n} Marken", n=rest or "1"))
+            out.append(_("{n} Marken", n=rest) if rest not in ("", "1") else _("1 Marke"))
         elif head == "▶":
             out.append(_("wartet auf den YouTube-Upload") if rest else _("auf YouTube"))
         else:
