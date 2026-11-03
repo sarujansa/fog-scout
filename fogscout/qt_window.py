@@ -103,6 +103,8 @@ PAGES = (("overview", N_("Übersicht")), ("maps", "Maps"), ("overlay", N_("Overl
 NAV_ICON = 18                     # px (logical): every icon of the navigation in the same box
 
 
+NAV_SIGN_X = 24 + NAV_ICON // 2    # 1.24.7: centre of the icons' column – measured: list + item padding (qt_theme)
+#                                   6 + 12 and the style's own margin 6
 NAV_W, NAV_COMPACT_W = 190, 62    # px (logical): navigation with names / only icons
 
 
@@ -486,9 +488,10 @@ class NavStatus(QFrame):
         self.setFocusPolicy(Qt.TabFocus)
         self._on_click = on_click
         h = QHBoxLayout(self)
-        h.setContentsMargins(14, 10, 10, 12)
-        h.setSpacing(8)
+        h.setContentsMargins(NAV_SIGN_X - qt_theme.ICON["s"] // 2, 10, 10, 12)   # 1.24.7: the sign on the icons'
+        h.setSpacing(8)                                                          # column of the navigation
         self.dot = QLabel()
+        self.dot.setFixedWidth(qt_theme.ICON["s"])       # 1.24.7: the layout squeezed it to half – off the column
         self.text = QLabel()
         self.text.setObjectName("navstatustext")         # 1.24.5: lines made by _two_lines, no wrapping
         h.addWidget(self.dot, 0, Qt.AlignTop)
@@ -510,7 +513,8 @@ class NavStatus(QFrame):
         the tooltip. Words to the first line as long as they fit, the rest on the second, cut with "…"."""
         self.text.ensurePolished()
         fm = self.text.fontMetrics()
-        width = NAV_W - 46                       # margins 14 + 10, the sign 14, the gap 8
+        m = self.layout().contentsMargins()      # margins, the sign, the gap
+        width = NAV_W - m.left() - m.right() - qt_theme.ICON["s"] - self.layout().spacing()
         words, first = text.split(), ""
         for i, word in enumerate(words):
             t = f"{first} {word}" if first else word
@@ -1246,7 +1250,7 @@ class MainWindow(QMainWindow):
         row = QWidget()
         row.setObjectName("navbrand")
         h = QHBoxLayout(row)
-        h.setContentsMargins(16, 14, 10, 0)
+        h.setContentsMargins(NAV_SIGN_X - qt_theme.ICON["l"] // 2, 14, 10, 0)   # 1.24.7: on the icons' column
         h.setSpacing(8)
         self.brand_icon = QLabel()
         self.brand_name = QLabel("Fog Scout")
@@ -1258,7 +1262,8 @@ class MainWindow(QMainWindow):
 
     def _brand_paint(self):
         c = qt_theme.colours(self._dark)
-        self.brand_icon.setPixmap(qt_icons.pixmap("compass", c["accent"], qt_theme.ICON["l"],
+        # 1.24.7 (visual QA): in the text's colour – the accent marks only a state and the main action
+        self.brand_icon.setPixmap(qt_icons.pixmap("compass", c["fg"], qt_theme.ICON["l"],
                                                   self.devicePixelRatioF() or 1.0))
 
     def show_status(self, kind: str, text: str):

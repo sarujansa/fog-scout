@@ -194,20 +194,11 @@ class OverviewPage(QWidget):
         self.today_note = _label(cls="dim")
         head.addWidget(self.today_note)
         page.addLayout(head)
-        tiles = TileGrid(min_width=170, columns=5)
+        self.today_grid = TileGrid(min_width=170, columns=5)
         self.tiles, self.tile_cards = [], []
-        for i in range(5):                        # 1.4.2: the fifth ("Aufnahmen") only while recording is on
-            t = _card()
-            tl = QVBoxLayout(t)
-            tl.setContentsMargins(*qt_theme.PAD_CARD)
-            box = FactBox(bar=True, post=post)
-            box.sub.setWordWrap(True)
-            tl.addWidget(box)
-            tiles.addWidget(t)
-            self.tiles.append(box)
-            self.tile_cards.append(t)
-            t.setVisible(i < 4)
-        page.addLayout(tiles)
+        for _i in range(4):                       # 1.24.7: more on demand (_today_tile) – up to seven facts
+            self._today_tile().setVisible(True)
+        page.addLayout(self.today_grid)
 
         # 1.8.83: this week against the last one – shown only once a week has rounds
         head = QHBoxLayout()
@@ -217,7 +208,7 @@ class OverviewPage(QWidget):
         self.week_note = _label(cls="dim", wrap=True)
         head.addWidget(self.week_note, 1)
         page.addLayout(head)
-        wgrid = TileGrid(min_width=170, columns=5)
+        wgrid = TileGrid(min_width=170, columns=5, stretch=False)   # 1.24.7: two tiles not half the page wide
         self.week_tiles, self.week_cards = [], []
         for _i in range(5):
             t = _card()
@@ -326,6 +317,8 @@ class OverviewPage(QWidget):
                     if b.toolTip() != tip:
                         b.setToolTip(tip)
         _set(self.today_note, o.today_note)
+        while len(self.tiles) < len(o.today):
+            self._today_tile()
         for i, (box, card) in enumerate(zip(self.tiles, self.tile_cards)):
             if i < len(o.today):
                 box.show_fact(o.today[i])
@@ -347,6 +340,20 @@ class OverviewPage(QWidget):
             self.days_chart.show_state({"data": days, "dark": getattr(o, "dark", True), "panels": ("rounds",)})
         self.days_card.setVisible(bool(days))
 
+    def _today_tile(self) -> QWidget:
+        """One tile of „Heute“ (1.24.7: made when needed – five fixed widgets dropped the sixth and seventh fact)."""
+        t = _card()
+        tl = QVBoxLayout(t)
+        tl.setContentsMargins(*qt_theme.PAD_CARD)
+        box = FactBox(bar=True, post=self._post)
+        box.sub.setWordWrap(True)
+        tl.addWidget(box)
+        self.today_grid.addWidget(t)
+        self.tiles.append(box)
+        self.tile_cards.append(t)
+        t.setVisible(False)
+        return t
+
     def _show_switches(self, switches):
         """The boxes follow the model: text, tooltip (by the German label, tooltip.TIPS), state – setChecked
         does not emit clicked, so only the user's click posts ("switch", (key, on))."""
@@ -359,8 +366,7 @@ class OverviewPage(QWidget):
             w = WrapCheck()
             w.key = ""
             w.clicked.connect(lambda on, w=w: self._post("switch", (w.key, bool(on))))
-            state = _label(cls="dim")
-            state.setContentsMargins(27, 0, 0, 0)              # under the box's text, not under the box
+            state = _label(cls="dim")                          # under the box's text, not under the box
             pol = state.sizePolicy()                           # a box with nothing to say keeps the line: the
             pol.setRetainSizeWhenHidden(True)                  # row's boxes stay on one height
             state.setSizePolicy(pol)
@@ -369,6 +375,7 @@ class OverviewPage(QWidget):
             self.switch_row.addWidget(item)
             self.switches.append(w)
             self.switch_states.append(state)
+        look = (qt_theme.look_key(), qt_theme.current_zoom())
         for i, w in enumerate(self.switches):
             shown = i < len(switches)
             item = w.parentWidget()
@@ -380,6 +387,9 @@ class OverviewPage(QWidget):
                 continue
             sw = switches[i]
             label = self.switch_states[i]
+            if label.__dict__.get("_look") != look:   # 1.24.7 (visual QA): the indent of the box's own text
+                label._look = look                      # (indicator + spacing of WrapCheck), not a fixed 27 px
+                label.setContentsMargins(w.box.sizeHint().width() + w.layout().spacing(), 0, 0, 0)
             level = getattr(sw, "level", "")
             if label.__dict__.get("_level") != level:            # 1.24.5: a Python attribute, not a property read
                 label._level = level
