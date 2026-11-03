@@ -2868,3 +2868,14 @@ def test_status_signs_are_drawn_glyphs_with_words(qapp, keep):
     assert not t.grab().isNull()                                      # paints without error
     t.show_state({"columns": cols + [("x", "X", "w")], "rows": [("a", 0, "", ["heute", "", ""], [], True)]})
     assert t.itemDelegateForColumn(1) is None                         # a table without signs: plain cells
+
+
+def test_the_hotkeys_tab_lists_every_hotkey_once_in_groups():
+    """1.25: the 14 hotkeys in groups (map, detection, recordings) – none lost, none twice, the keys unchanged."""
+    from fogscout import qt_window
+    keys = [k for _title, group in qt_window.HOTKEY_GROUPS for k in group]
+    assert sorted(keys) == sorted(["toggle_overlay", "next_variant", "scan_now", "prev_map", "next_map", "bigger",
+                                   "smaller", "edit_position", "rotate_map", "next_floor", "reject_map", "mark_clip",
+                                   "record_toggle", "record_pause"])
+    spec = str(qt_window.SPECS["settings"])
+    assert all(f"st.hk.{k}" in spec for k in keys) and spec.count("('sub',") >= 3

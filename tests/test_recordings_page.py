@@ -838,7 +838,7 @@ def test_the_obs_card_does_not_repeat_its_title_in_the_reason():
     from fogscout.app_recordings import rec_card_text
     state, values, _warn = rec_card_text({"connected": False, "error": "OBS nicht erreichbar – läuft OBS, ist der "
                                           "WebSocket-Server an? (ConnectionRefusedError)"})
-    assert state == "OBS nicht erreichbar" and values.endswith("Ursache: ConnectionRefusedError")
+    assert state == "OBS nicht erreichbar" and values.endswith("Ursache: OBS läuft nicht, oder sein WebSocket-Server ist aus")   # 1.25: in words
     assert "läuft OBS" not in values
     _s, values, _w = rec_card_text({"connected": False, "error": "Passwort falsch"})
     assert values.endswith("Passwort falsch")                           # any other message stays as it is
