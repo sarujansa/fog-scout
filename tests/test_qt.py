@@ -2976,3 +2976,26 @@ def test_the_palette_keeps_the_keyboard_and_gives_the_focus_back(qapp, keep):
     assert rows and rows[0].data(Qt.DisplayRole) == "Statistik · Seite"
     assert rows[0].data(Qt.AccessibleTextRole) == "Statistik · Seite"
     p.close_palette()
+
+
+def test_the_features_card_lines_its_switches_up_in_equal_columns(qapp, keep):
+    """1.28.3 (user: "nicht alles sauber in einer Reihe"): the boxes of „Funktionen“ sit in columns of one width,
+    the rows start at the same x – before, each box was as wide as its text (FlowRow)."""
+    from fogscout import overview, qt_pages
+    page = keep(qt_pages.OverviewPage(lambda a, arg=None: None))
+    names = ["Automatische Erkennung", "Aufnahmen mit OBS", "Lobby-Meldung", "Spielserver anzeigen",
+             "Systemwerte im Spiel", "„Heute“ im Spiel", "Musik im Spiel", "Spotify „Als nächstes“", "YouTube-Upload"]
+    page._show_switches([overview.Switch(key=f"k{i}", label=t, on=True, state="an") for i, t in enumerate(names)])
+    page.switch_card.setVisible(True)
+    page.resize(900, 600)
+    page.show()
+    for _i in range(5):
+        qapp.processEvents()
+    items = [w.parentWidget() for w in page.switches[:len(names)]]
+    widths = {it.width() for it in items}
+    assert len(widths) == 1                                              # one column width
+    xs = sorted({it.x() for it in items})
+    rows = {}
+    for it in items:
+        rows.setdefault(it.y(), []).append(it.x())
+    assert len(rows) > 1 and all(sorted(r) == xs[:len(r)] for r in rows.values())   # every row on the same columns
