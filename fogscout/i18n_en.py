@@ -1318,7 +1318,87 @@ EN = {
     'Claude: Zu viele Anfragen – gleich noch einmal versuchen.': 'Claude: too many requests – try again in a moment.',
     'Kein API-Key – unter Einstellungen › Verbindungen › Claude eintragen.':
         'No API key – enter one under Settings › Connections › Claude.',
-    'Claude (Suche)': 'Claude (search)',
+    # 1.27: Claude in the clip editor
+    'Zeigt im grossen Clip-Editor den Abschnitt „Mit Claude bearbeiten“: Du schreibst, was mit dem Schnitt passieren soll, Claude schlägt Schritte vor, du übernimmst oder verwirfst sie. Gesendet werden nur deine Bitte und der Schnitt als Zahlen – kein Bild, kein Dateiname. Braucht einen eigenen API-Key.':
+        'Shows the section “Edit with Claude” in the big clip editor: you write what should happen to the cut, Claude suggests steps, you apply or discard them. Only your wish and the cut as numbers are sent – no picture, no file name. Needs your own API key.',
+    'Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Im Clip-Editor („Mit Claude bearbeiten“) schreibst du, was mit dem Schnitt passieren soll; gesendet werden nur deine Bitte und der Schnitt als Zahlen (Zeiten, Tempo, Blenden, eigene Short-Texte) – kein Bild, kein Dateiname –, Claudes Vorschlag wird geprüft und erst auf „Übernehmen“ ausgeführt. Dafür einen eigenen API-Key aus der Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch ein Ausgabenlimit setzen). Der Key liegt verschlüsselt auf diesem PC und steht nie in der Sicherung, im Log oder in der Diagnose.':
+        'When the search (Ctrl+F) finds nothing that fits, it can ask Claude – only when you pick the row “Ask Claude”, never while typing. Only your question and the names of Fog Scout’s settings, pages and actions are sent to api.anthropic.com – never rounds, maps, killers, paths or game data. Claude only suggests entries; nothing runs until you pick it. In the clip editor (“Edit with Claude”) you write what should happen to the cut; only your wish and the cut as numbers (times, speed, fades, your own short texts) are sent – no picture, no file name –, Claude’s suggestion is checked and only carried out on “Apply”. Enter your own API key from the Anthropic Console for this (“Get API key”). The API is billed separately from a Claude subscription: each question costs some of your credit in the Console (“Add credit” – a spend limit can be set there too). The key is kept encrypted on this PC and is never in the backup, the log or the diagnosis.',
+    'Claude':
+        'Claude',
+    'Im Clip-Editor Claude nutzen':
+        'Use Claude in the clip editor',
+    'Claude: Key eingetragen, Claude ist in Suche und Editor aus.':
+        'Claude: key entered, Claude is off in the search and the editor.',
+    'Mit Claude bearbeiten':
+        'Edit with Claude',
+    'z. B. erste 10 s weg, ab 0:40 doppelt so schnell, als Short':
+        'e.g. drop the first 10 s, double speed from 0:40, as a short',
+    'Vorschlagen':
+        'Suggest',
+    'Schickt deine Bitte und den Schnitt als Zahlen (Zeiten, Tempo, Blenden – kein Bild, kein Dateiname) an Claude; nichts wird geändert, bevor du übernimmst.':
+        'Sends your wish and the cut as numbers (times, speed, fades – no picture, no file name) to Claude; nothing changes until you apply it.',
+    'Übernehmen':
+        'Apply',
+    'Führt die vorgeschlagenen Schritte aus – ein Schritt zum Rückgängigmachen (Strg+Z).':
+        'Carries out the suggested steps – one step to undo (Ctrl+Z).',
+    'Verwerfen':
+        'Discard',
+    'Vergisst den Vorschlag; der Schnitt bleibt, wie er ist.':
+        'Forgets the suggestion; the cut stays as it is.',
+    'Aus – in Einstellungen › Verbindungen › Claude „Im Clip-Editor Claude nutzen“ einschalten und einen API-Key eintragen.':
+        'Off – switch on “Use Claude in the clip editor” under Settings › Connections › Claude and enter an API key.',
+    'Der Schnitt hat sich inzwischen geändert – bitte neu vorschlagen.':
+        'The cut has changed meanwhile – please suggest again.',
+    'Claude hat keinen passenden Schritt gefunden.':
+        'Claude found no step that fits.',
+    'Übernommen – Strg+Z macht es rückgängig.':
+        'Applied – Ctrl+Z undoes it.',
+    'übersprungen: {why}':
+        'skipped: {why}',
+    'unbekannte Aktion':
+        'unknown action',
+    'Zeiten fehlen':
+        'times missing',
+    'Bereich zu kurz oder ausserhalb':
+        'range too short or outside',
+    'Tempo nicht erlaubt':
+        'speed not offered',
+    '{a}–{b} mit Tempo {f}×':
+        '{a}–{b} at speed {f}×',
+    'würde alles entfernen':
+        'would remove everything',
+    '{a}–{b} herausgeschnitten':
+        '{a}–{b} cut out',
+    'nur {a}–{b} behalten':
+        'kept only {a}–{b}',
+    'Stelle ausserhalb':
+        'moment outside',
+    'Schnitt bei {a}':
+        'split at {a}',
+    'Standbild: Stelle oder Dauer fehlt':
+        'freeze frame: moment or length missing',
+    'Standbild bei {a} für {s} s':
+        'freeze frame at {a} for {s} s',
+    'Blende ohne Dauer':
+        'fade without length',
+    'Blenden: ein {i} s, aus {o} s':
+        'fades: in {i} s, out {o} s',
+    'Export-Art unbekannt':
+        'unknown export type',
+    'Export-Art: {m}':
+        'export type: {m}',
+    'nur bei Export-Art Short':
+        'only with export type Short',
+    'Text fehlt':
+        'text missing',
+    'Short-Titel „{t}“':
+        'short title “{t}”',
+    'Untertitel: Zeiten fehlen':
+        'subtitle: times missing',
+    'zu viele Untertitel':
+        'too many subtitles',
+    'Untertitel {a}–{b}':
+        'subtitle {a}–{b}',
     'Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen („API-Key holen“ öffnet die Anthropic Console).':
         'Claude: the API key is not accepted – check it under Settings › Connections (“Get API key” opens the Anthropic Console).',
     'Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › „Guthaben aufladen“.':
@@ -1329,8 +1409,6 @@ EN = {
         'Opens the page “API keys” of the Anthropic Console in the browser (platform.claude.com). Create a key there and paste it here – it starts with sk-ant-.',
     'Öffnet die Seite „Billing“ der Anthropic Console im Browser. Die API wird getrennt von einem Claude-Abo im Voraus bezahlt; dort lässt sich auch ein monatliches Ausgabenlimit setzen.':
         'Opens the page “Billing” of the Anthropic Console in the browser. The API is paid in advance, separately from a Claude subscription; a monthly spend limit can be set there too.',
-    'Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Dafür einen eigenen API-Key aus der Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch ein Ausgabenlimit setzen). Der Key liegt verschlüsselt auf diesem PC und steht nie in der Sicherung, im Log oder in der Diagnose.':
-        'When the search (Ctrl+F) finds nothing that fits, it can ask Claude – only when you pick the row “Ask Claude”, never while typing. Only your question and the names of Fog Scout’s settings, pages and actions are sent to api.anthropic.com – never rounds, maps, killers, paths or game data. Claude only suggests entries; nothing runs until you pick it. Enter your own API key from the Anthropic Console for this (“Get API key”). The API is billed separately from a Claude subscription: each question costs some of your credit in the Console (“Add credit” – a spend limit can be set there too). The key is kept encrypted on this PC and is never in the backup, the log or the diagnosis.',
     'Zeigt in der Suche (Strg+F) die Zeile „Claude fragen“. Erst wenn du sie wählst, gehen deine Frage und die Namen der Einstellungen, Seiten und Aktionen an Claude (api.anthropic.com) – nie Runden, Maps oder Spieldaten. Braucht einen eigenen API-Key.':
         'Shows the row “Ask Claude” in the search (Ctrl+F). Only when you pick it are your question and the names of the settings, pages and actions sent to Claude (api.anthropic.com) – never rounds, maps or game data. Needs your own API key.',
     'Schickt eine kleine Probefrage an Claude und sagt, ob der API-Key angenommen wird (kostet einen kleinen Betrag deines API-Guthabens).':
@@ -1347,7 +1425,6 @@ EN = {
     'Claude: Das sieht nicht wie ein API-Key aus (beginnt mit sk-ant-).':
         'Claude: that does not look like an API key (it starts with sk-ant-).',
     'Claude: Key eingetragen.': 'Claude: key entered.',
-    'Claude: Key eingetragen, Suche mit Claude ist aus.': 'Claude: key entered, asking Claude in the search is off.',
     'Schritt {n} von {total}': 'Step {n} of {total}',
     'Sprache': 'Language',
     'Sprache dieses Programms:': 'Language of this program:',

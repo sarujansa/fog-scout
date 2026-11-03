@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCh
 
 from . import annotate, clipedit, imageedit, medialib, obsrec, project, qt_icons, qt_theme, sequence
 from .i18n import N_, _
+from .editorclaude import ClaudeMixin
 from .editormontage import MontageMixin
 from .editormusic import MusicMixin
 from .editorproject import ProjectMixin
@@ -251,7 +252,7 @@ class Section(QFrame):
         return r
 
 
-class EditorWindow(MontageMixin, MusicMixin, ProjectMixin, ClipBase):
+class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase):
     """The full editor – see the module's docstring. ``media`` = the App's list of MediaItems for the library
     (callable), ``on_open(item, window)`` = the App opens another recording (a new window; ``window`` = this one, to
     be replaced when nothing was edited here), ``cache_dir`` = where the library's pictures are kept,
@@ -278,6 +279,7 @@ class EditorWindow(MontageMixin, MusicMixin, ProjectMixin, ClipBase):
         self._zoom_edit = None              # 1.19: (clip index, 0 start / 1 end) while the zoom frame is edited
         self._short = None                  # 1.20: shorts.ShortSpec of this cut (layout, title, subtitles)
         self._music_init()                  # 1.21: the own audio track A2 (editormusic)
+        self._claude_init()                 # 1.27: „Mit Claude bearbeiten“ (editorclaude)
         self._short_view = False            # 1.20: the preview shows the composed short
         self._crop_saved = (None, None, False)
         super().__init__(path, marks, clips_dir, mode, sound, flags=Qt.Window, **kw)
@@ -571,7 +573,8 @@ class EditorWindow(MontageMixin, MusicMixin, ProjectMixin, ClipBase):
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(0)
         self.sections = {}
-        for key, title, build in (("clip", _("Clip"), self._section_clip), ("fx", _("Effekte"), self._section_fx),
+        for key, title, build in (("claude", _("Mit Claude bearbeiten"), self._section_claude),   # 1.27
+                                  ("clip", _("Clip"), self._section_clip), ("fx", _("Effekte"), self._section_fx),
                                   ("marks", _("Marken (F8)"), self._section_marks),
                                   ("draw", _("Zeichnen"), self._section_draw), ("censor", _("Zensieren"), self._section_censor),
                                   ("picture", _("Bild"), self._section_picture), ("sound", _("Ton"), self._section_sound),
@@ -1568,6 +1571,7 @@ class EditorWindow(MontageMixin, MusicMixin, ProjectMixin, ClipBase):
 
     def _inspector_refresh(self):
         sel = self.timeline.selection
+        self._claude_refresh()                                    # 1.27: the App may switch Claude meanwhile
         secs = self.sections
         secs["clip"].setVisible(sel is not None)
         secs["fx"].setVisible(sel is not None)
