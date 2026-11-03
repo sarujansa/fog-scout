@@ -42,6 +42,7 @@ from .app_export import ExportDialog
 from .app_discord import DiscordPresence
 from .app_spotify import SpotifyUpNext
 from .app_youtube import YouTubeUpload
+from .app_palette import PaletteMixin
 
 LANGS = [("en", "EN"), ("de", "DE"), ("fr", "FR"), ("es", "ES"), ("es-MX", "ES-MX"), ("it", "IT"),
          ("pl", "PL"), ("pt-BR", "PT"), ("tr", "TR")]
@@ -66,7 +67,7 @@ log = logging.getLogger("fogscout")
 
 
 class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, SpotifyUpNext, YouTubeUpload, LobbyInfo,
-          Hotkeys, SettingsTab,
+          Hotkeys, SettingsTab, PaletteMixin,
           SysInfo, OverlayPlacement, LayoutMemory, OverlayTab, QtShell):
     def __init__(self, root_dir: str, simulate: str | None = None, start_in_tray: bool = False, progress=None):
         self.root_dir = root_dir
@@ -913,6 +914,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._spotify_event(ev[1], ev[2])
         elif isinstance(ev, tuple) and ev[0] == "youtube":          # 1.10: upload status / queue / done
             self._youtube_event(ev[1], ev[2])
+        elif isinstance(ev, tuple) and ev[0] == "claude":           # 1.26: Claude's answer for the palette
+            self._claude_event(ev[1], ev[2])
         elif isinstance(ev, tuple) and ev[0] == "call":       # from a window procedure (overlay, HUD)
             ev[1](*ev[2])
         elif isinstance(ev, tuple) and ev[0] == "backup":     # 1.8.80: the daily copy is done
@@ -1621,6 +1624,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             steps = [self._clip_saves_stop,
                      self._qt_close, self.settings.save, self.tray.stop, self.conn.stop, self.sysmon.stop,
                      self.media.stop, self.recorder.quit, self.presence.quit, self.spotify.quit, self.youtube.quit,
+                     lambda: getattr(self, "asker", None) is not None and self.asker.stop(),
                      self.worker.stop,
                      self.hotkeys.stop,
                      lambda: self.worker.join(timeout=4),        # let a running OCR call finish cleanly
