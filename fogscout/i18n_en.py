@@ -3184,6 +3184,8 @@ EN = {
     "Keine Zeilen – das Log ist leer, oder Suche und Kategorien blenden alles aus.":
         "No lines – the log is empty, or the search and the categories hide everything.",
     "OBS nicht verbunden": "OBS not connected",
+    "Kills, Entkommen und Bloodpoints zählen hier ohne Custom Games – die Rolle „Custom Games“ zeigt sie.":
+        "Kills, escapes and bloodpoints count without custom games here – the role “Custom Games” shows them.",
     # 1.24.2 (phase 2): statistics – no tiles of "–", notes without ⚠/✓ in front
     "Keine Runden in dieser Auswahl – „Filter zurücksetzen“ zeigt wieder alle.":
         "No rounds in this selection – “Reset filters” shows them all again.",

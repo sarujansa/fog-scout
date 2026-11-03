@@ -704,11 +704,14 @@ class StatsTab:
             else:
                 label.pack_forget()
         set_up = c.set_up
-        # 1.24.2: the tiles of the stats page left out – say why; 1.24.5 (review): "linked" is any round with its
-        # match, custom games too (pairs leaves those out unless the role filter is "Custom")
-        linked = any(id(r) in c.off for r in rounds)
-        if rounds and not linked:
+        # 1.24.2: the tiles of the stats page left out – say why. They come from the pairs (custom games only with
+        # the role filter "Custom Games"); 1.24.6 (second review): linked custom games alone get their own sentence
+        # instead of none (1.24.5) or a wrong one (1.24.4)
+        if rounds and not pairs:
+            custom_linked = any(id(r) in c.off for r in rounds)
             self.stats_data_var.set(
+                _("Kills, Entkommen und Bloodpoints zählen hier ohne Custom Games – die Rolle „Custom Games“ zeigt "
+                  "sie.") if custom_linked else
                 _("In dieser Auswahl ist keine Runde einem Match der Stats-Seite zugeordnet – darum fehlen Kills, "
                   "Entkommen und Bloodpoints.") if set_up else
                 _("Kills, Entkommen und Bloodpoints kommen von der Stats-Seite – dafür einmal die Match-Daten "
