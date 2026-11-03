@@ -279,10 +279,12 @@ class SettingsTab:
         # (port, password, test) is a card of its own on the tab "Verbindungen"; recording stays on "Aufnahmen"
         # 1.29.1 (user: "unübersichtlich, was gehört zu was"): the OBS settings in six cards – titles only here, the
         # Qt page places the controls by SPECS keys
-        for key, title in (("st.rec.when", _("Wann aufgenommen wird")), ("st.rec.picture", _("Bild")),
-                           ("st.rec.sound", _("Ton")), ("st.rec.clips", _("Clips und Editor")),
-                           ("st.rec.cleanup", _("Aufräumen"))):
-            self._reg(key, ui.LabelFrame(more, text=title, padding=8)).pack(fill="x", pady=(8, 0))
+        for frame in (self._reg("st.rec.when", ui.LabelFrame(more, text=_("Wann aufgenommen wird"), padding=8)),
+                      self._reg("st.rec.picture", ui.LabelFrame(more, text=_("Bild"), padding=8)),
+                      self._reg("st.rec.sound", ui.LabelFrame(more, text=_("Ton"), padding=8)),
+                      self._reg("st.rec.clips", ui.LabelFrame(more, text=_("Clips und Editor"), padding=8)),
+                      self._reg("st.rec.cleanup", ui.LabelFrame(more, text=_("Aufräumen"), padding=8))):
+            frame.pack(fill="x", pady=(8, 0))
         oc = self._reg("st.more.obs", ui.LabelFrame(more, text=_("OBS-Verbindung"), padding=8))
         oc.pack(fill="x", pady=(8, 0))
         rr = ui.Frame(oc)
@@ -481,8 +483,7 @@ class SettingsTab:
         self._reg("st.more.backup_hint", ui.Label(bk, textvariable=self.backup_var, style="Dim.TLabel",
                                                    wraplength=420)).pack(anchor="w", pady=(6, 0))
 
-        folders = self._reg("st.more.folders", ui.LabelFrame(more, text=_("Ordner"), padding=8))
-        folders.pack(fill="x", pady=(8, 0))
+        folders = bk                                   # 1.29.1: one card "Sicherung und Ordner"
         self._reg("st.more.dir", ui.Button(folders, text=_("Programmordner öffnen"),
                                             command=lambda: self._open(self.root_dir))).pack(side="left")
         self._reg("st.more.maps_dir", ui.Button(folders, text=_("Karten-Ordner öffnen"),
