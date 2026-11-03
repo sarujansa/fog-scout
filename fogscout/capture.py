@@ -306,6 +306,18 @@ def describe_window(hwnd) -> str:
         return "(unbekannt)"
 
 
+def window_kind(hwnd, own=()) -> str:
+    """1.28 (audit F13): another program's window for the log and the diagnosis – only what it is (DBD, Fog Scout,
+    another program) and its window class, never its title (a browser tab, a document, a chat name)."""
+    if not IS_WIN or not hwnd:
+        return "(keins)"
+    try:
+        kind = "DBD" if is_game_window(hwnd) else "Fog Scout" if hwnd in own else "anderes Programm"
+        return f"{kind} [{_class_name(hwnd)}]"
+    except Exception:
+        return "(unbekannt)"
+
+
 def is_above(upper, lower) -> bool:
     """True if window `upper` is above window `lower` in the Z order."""
     if not IS_WIN or not upper or not lower:

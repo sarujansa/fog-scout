@@ -1456,11 +1456,12 @@ def test_the_frame_player_runs_faster_at_a_higher_tempo(clip):
     seen, ended = [], threading.Event()
     pl = clipedit.FramePlayer(clip, 0.0, info, lambda t, img: seen.append((t, time.monotonic())), ended.set, end=2.0,
                               ffmpeg=FF, speed=4.0)
-    t0 = time.monotonic()
     pl.start()
     assert ended.wait(20)
     assert seen and seen[-1][0] >= 1.5
-    assert time.monotonic() - t0 < 1.8                                      # 2 s of source in about half a second
+    # 2 s of source in about half a second; 1.28 (audit F12): measured between the first and the last picture, so
+    # ffmpeg's start on a slow runner does not count (at tempo 1 this span is ≥ 1.5 s)
+    assert seen[-1][1] - seen[0][1] < 0.6 * (seen[-1][0] - seen[0][0]) + 0.3        # tempo 4: ≈ 0.25 ×
 
 
 def test_a_closed_editor_stops_its_ffmpeg_analysis_and_leaves_no_process(clip, monkeypatch):

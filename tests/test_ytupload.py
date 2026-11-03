@@ -586,3 +586,18 @@ def test_the_browser_login_hands_a_refresh_token_to_the_app(fake):
     finally:
         up.quit()
         up.join(timeout=3)
+
+
+def test_a_new_login_without_the_windows_encryption_is_kept_in_memory_only(monkeypatch):
+    """1.28 (audit F2): no DPAPI → no "token" event, the status says the connection lasts until quitting."""
+    events = []
+    up = yt.Uploader(lambda kind, d: events.append((kind, d)), opener=lambda url: False)    # not started
+    monkeypatch.setattr(spotify, "CIPHER", None)
+    up._keep_refresh("ref-new")
+    assert not [e for e in events if e[0] == "token"]
+    said = " ".join(str(d) for k, d in events if k == "status")
+    assert "nur bis zum Beenden" in said and "ref-new" not in said
+    monkeypatch.setattr(spotify, "CIPHER", __import__("conftest").fake_cipher)
+    up._keep_refresh("ref-new")
+    (_k, stored), = [e for e in events if e[0] == "token"]
+    assert spotify.is_encrypted(stored) and spotify.unprotect(stored) == "ref-new"

@@ -815,7 +815,7 @@ def test_search_finds_a_setting_and_lights_its_card(qapp, keep):
     win.show()
     qapp.processEvents()
     assert posted.empty()                                     # opening the window does not focus the search
-    win.search.setFocus()
+    QTest.mouseClick(win.search, Qt.LeftButton)               # 1.28: the click opens it (focus alone no more)
     qapp.processEvents()
     assert ("palette_open", None) in [posted.get_nowait() for _i in range(posted.qsize())]   # App fills the pages
     assert win.palette.isVisible() and win.palette.field.hasFocus()
@@ -2883,3 +2883,89 @@ def test_the_hotkeys_tab_lists_every_hotkey_once_in_groups():
                                    "record_toggle", "record_pause"])
     spec = str(qt_window.SPECS["settings"])
     assert all(f"st.hk.{k}" in spec for k in keys) and spec.count("('sub',") >= 3
+
+
+def test_claudes_answer_is_plain_text_wraps_long_runs_and_keeps_lines(qapp, keep):
+    """1.28 (audit F5): an answer from outside is never rendered – "<b>…</b>" and a link show as typed –, a run of
+    2000 characters without a space stays inside the card, and an answer of two lines keeps its two lines."""
+    from PySide6.QtCore import Qt
+    from fogscout import qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.resize(1100, 800)
+    win.show()
+    win.focus_search()
+    qapp.processEvents()
+    p = win.palette
+    html = "<b>fett</b> <a href='https://example.com'>Link</a>"
+    p.show_answer(html, [])
+    qapp.processEvents()
+    assert p.answer.textFormat() == Qt.PlainText and "<b>fett</b>" in p.answer.text()
+    assert p.answer.textInteractionFlags() & Qt.LinksAccessibleByMouse == Qt.NoTextInteraction
+    p.show_answer("A" * 2000, [])
+    qapp.processEvents()
+    assert p.answer.width() <= p.card.width() and p.answer.sizeHint().width() <= p.card.width()
+    p.show_answer("Erste Zeile\nZweite Zeile", [])
+    qapp.processEvents()
+    one = p.answer.fontMetrics().lineSpacing()
+    assert "Zweite Zeile" in p.answer.text() and p.answer.heightForWidth(p.answer.width()) >= 2 * one
+
+
+def test_soft_wrap_breaks_only_runs_without_spaces():
+    from fogscout.qt_common import ZWSP, soft_wrap
+    assert soft_wrap("kurz und gut") == "kurz und gut"
+    long = soft_wrap("x" * 70, run=32)
+    assert long.replace(ZWSP, "") == "x" * 70 and long.count(ZWSP) == 2
+    assert soft_wrap("") == "" and soft_wrap(None) == ""
+
+
+def test_one_click_in_the_search_field_opens_the_palette_once(qapp, keep):
+    """1.28 (audit F7): the click's FocusIn and MouseButtonPress opened it twice – two palette_open, the App filled
+    the pages twice."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from fogscout import qt_window
+    posted = queue.Queue()
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.put((a, arg))))
+    win.resize(1100, 800)
+    win.show()
+    qapp.processEvents()
+    QTest.mouseClick(win.search, Qt.LeftButton)
+    for _i in range(5):
+        qapp.processEvents()
+    got = [posted.get_nowait()[0] for _i in range(posted.qsize())]
+    assert got.count("palette_open") == 1 and win.palette.isVisible()
+
+
+def test_the_palette_keeps_the_keyboard_and_gives_the_focus_back(qapp, keep):
+    """1.28 (audit F14): Shift+Tab stays in the field (the focus never goes behind the dark), Esc gives the focus
+    back to the widget that had it; field, list, card and rows have names a screen reader reads."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from fogscout import palette, qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.resize(1100, 800)
+    win.show()
+    qapp.processEvents()
+    before = win.nav                                          # the navigation had the keyboard
+    win.activateWindow()
+    before.setFocus(Qt.OtherFocusReason)
+    qapp.processEvents()
+    assert qapp.focusWidget() is before
+    win.focus_search()
+    qapp.processEvents()
+    p = win.palette
+    assert p.field.hasFocus()
+    QTest.keyClick(p.field, Qt.Key_Backtab, Qt.ShiftModifier)
+    qapp.processEvents()
+    assert p.field.hasFocus() and p.isVisible()
+    QTest.keyClick(p.field, Qt.Key_Escape)
+    qapp.processEvents()
+    assert not p.isVisible() and qapp.focusWidget() is before
+    assert p.field.accessibleName() and p.rows.accessibleName() and p.card.accessibleName()
+    win.palette_entries([palette.Entry("page", "p:stats", "Statistik", "Seite")])
+    win.focus_search()
+    p.field.setText("stat")
+    rows = [p.rows.item(i) for i in range(p.rows.count()) if p.rows.item(i).flags() & Qt.ItemIsSelectable]
+    assert rows and rows[0].data(Qt.DisplayRole) == "Statistik · Seite"
+    assert rows[0].data(Qt.AccessibleTextRole) == "Statistik · Seite"
+    p.close_palette()

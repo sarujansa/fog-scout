@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 
 from . import layout
-from .capture import IS_WIN, describe_window, foreground_root, is_game_window
+from .capture import IS_WIN, foreground_root, is_game_window, window_kind
 from .i18n import _
 from .textnorm import fmt_duration
 
@@ -321,7 +321,7 @@ class OverlayPlacement:
             fg = foreground_root()
             own = {self.overlay.hwnd(), self._qt_hwnd()}
             if fg not in own and not is_game_window(fg):
-                return _("aktives Fenster ist {window}", window=describe_window(fg))
+                return _("aktives Fenster ist {window}", window=window_kind(fg, own))   # 1.28: no title
         return None
 
     def _waiting_lines(self):

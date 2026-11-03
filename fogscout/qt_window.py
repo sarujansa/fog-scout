@@ -411,6 +411,8 @@ def nav_icon(key: str, colour: str, ratio: float = 1.0, alert: bool = False) -> 
 
 
 SEARCH_KINDS = ("check", "radio", "button", "title", "label", "slider", "tab")   # what the search finds on a page
+# 1.28 (audit F1): the kinds whose text may go to Claude – never "label" (status lines, paths, pings, statistics)
+STATIC_KINDS = ("check", "radio", "button", "title", "slider", "tab")
 from .palette import SEARCH_ALSO      # noqa: E402 – 1.26: moved to palette.py (shared with the palette)
 
 
@@ -616,6 +618,7 @@ class MainWindow(QMainWindow):
         sl.addWidget(self.status_btn)
         self._found = {}                  # search entry text -> (page key, widget, folded)
         self._found_hay = {}              # 1.26: … -> what it is matched against (both languages, SEARCH_ALSO)
+        self._found_static = {}           # 1.28: … -> a fixed program text of an allowed kind (may go to Claude)
         self.search.installEventFilter(self)
         from PySide6.QtGui import QKeySequence, QShortcut
         QShortcut(QKeySequence.Find, self, activated=self.focus_search)
@@ -824,24 +827,29 @@ class MainWindow(QMainWindow):
                     continue
                 if folded:
                     continue
-                found.append((text, key, w, folded, _haystack(text, i18n.other(text))))
+                static = kind in STATIC_KINDS and i18n.is_program_text(text)
+                found.append((text, key, w, folded, _haystack(text, i18n.other(text)), static))
         count = collections.Counter((text, key) for text, key, *_rest in found)
         out = {}
-        for text, key, w, folded, hay in found:
+        for text, key, w, folded, hay, static in found:
             where = ""
             if count[(text, key)] > 1:
                 tabs = _tab_of(w)
                 if tabs:
                     tw, body = tabs[0]
-                    where = " (" + tw.tabText(tw.indexOf(body)).replace("&&", "&") + ")"
-            out.setdefault(f"{text}{where}  ·  {_(labels[key])}", (key, w, folded, hay))
+                    tab = tw.tabText(tw.indexOf(body)).replace("&&", "&")
+                    where = " (" + tab + ")"
+                    static = static and i18n.is_program_text(tab)
+            out.setdefault(f"{text}{where}  ·  {_(labels[key])}", (key, w, folded, hay, static))
         return out
 
     def eventFilter(self, obj, e):
-        if obj is self.search and e.type() in (QEvent.FocusIn, QEvent.MouseButtonPress):
+        # 1.28 (audit F7): only the click opens it – the click's FocusIn opened it a second time (two palette_open,
+        # the pages filled twice); the field takes focus by a click only (ClickFocus), the keyboard has Ctrl+F
+        if obj is self.search and e.type() == QEvent.MouseButtonPress:
             if not self.palette.isVisible():
                 QTimer.singleShot(0, self.focus_search)            # 1.26: the field opens the palette
-            return e.type() == QEvent.MouseButtonPress
+            return True
         return super().eventFilter(obj, e)
 
     def update_search_index(self):
@@ -849,6 +857,7 @@ class MainWindow(QMainWindow):
         hits = self._search_hits()
         self._found = {entry: hit[:3] for entry, hit in hits.items()}
         self._found_hay = {entry: hit[3] for entry, hit in hits.items()}
+        self._found_static = {entry: hit[4] for entry, hit in hits.items()}
 
     def setting_entries(self) -> list:
         """1.26: the search's hits as palette entries (title, page below; matched against both languages)."""
@@ -856,15 +865,18 @@ class MainWindow(QMainWindow):
         out = []
         for entry, hay in self._found_hay.items():
             title, _sep, sub = entry.partition("  ·  ")
-            out.append(Entry("setting", "s:" + entry, title, sub, action="found", arg=entry, words=hay))
+            out.append(Entry("setting", "s:" + entry, title, sub, action="found", arg=entry, words=hay,
+                             static=bool(self._found_static.get(entry, False))))
         return out
 
     def focus_search(self):
         """1.26: Ctrl+F, the navigation's field or its button – the palette over the window, at once with what it
         knew last; the App fills the pages and sends the entries (``palette_open`` → ``palette.update_entries``)."""
+        back = QApplication.focusWidget()                 # 1.28: Esc gives the focus back here
         self.search.clearFocus()
         if not self.palette.isVisible():
-            self.palette.open(self._palette_entries, self._palette_recent, self._palette_claude)
+            self.palette.open(self._palette_entries, self._palette_recent, self._palette_claude,
+                              return_to=None if back is self.search else back)
         self._post("palette_open")
 
     def palette_entries(self, entries, recent=None, claude=None):

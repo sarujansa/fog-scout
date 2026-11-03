@@ -75,6 +75,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._progress = progress or (lambda fraction, text: None)     # 1.14.2: the splash screen's steps
         self.settings = Settings(os.path.join(root_dir, "settings.json"))
         i18n.set_language(self.settings.get("ui_language", "auto"))
+        self._secrets_plain = self._secrets_upgrade()     # 1.28: "plain:" → encrypted, before anything reads them
         self._joined_preload()           # 1.16.2: the statistics files are parsed while the window is built
         self._progress(0.3, _("Lade Maps …"))
         self.catalog = Catalog(root_dir, self.settings["languages"], self.settings.get("user_aliases"))
@@ -160,6 +161,9 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                         "nichts gespeichert.", error=self.settings.load_error) if self.settings.frozen else
                       _("settings.json war nicht lesbar ({error}) – Standardwerte geladen, die alte Datei liegt als "
                         "settings.json.broken daneben.", error=self.settings.load_error), "Fehler")
+        if self._secrets_plain:                 # 1.28: names only – never a value
+            self._log(_("Unverschlüsselt gespeichert (von früher, die Windows-Verschlüsselung ist nicht verfügbar): "
+                        "{names}.", names=", ".join(self._secrets_plain)), "Fehler")
         self._srv_refresh(log_summary=True)
         self._show_update_status()
         self._news_check()                      # 1.8.79: "Neu seit …" on the overview after an update
