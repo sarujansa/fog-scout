@@ -160,6 +160,24 @@ def test_the_map_grows_but_its_text_keeps_its_size():
     assert big.height - 800 == small.height - 400          # the block below the map: the same height
 
 
+def test_a_reused_object_id_never_returns_another_pictures_cached_split(monkeypatch):
+    """1.28 (CI on Python 3.14): the title row and the columns of a picture were cached under id(pic) alone – a
+    picture freed earlier handed its id to a new one, which then got the old one's columns (the timer beside the
+    map, not below). The stale entries of another picture under this id must be ignored."""
+    from PIL import Image
+    from fogscout import preview
+    pic = Image.new("RGBA", (300, 400), (90, 90, 140, 255))
+    monkeypatch.setattr(preview, "_SPLITS", {})
+    clean = preview.overlay_picture(pic, 800, "", True, "3:27", "", None, "", text_h=500)
+    other = Image.new("RGBA", (300, 400), (0, 0, 0, 0))
+    stale = (lambda: other)                                    # an entry made for another picture, same id
+    preview._SPLITS.clear()
+    preview._SPLITS[id(pic)] = (stale, 7)
+    preview._SPLITS[("cols", id(pic))] = (stale, preview.body_cols(other, None))
+    again = preview.overlay_picture(pic, 800, "", True, "3:27", "", None, "", text_h=500)
+    assert again.size == clean.size and again.tobytes() == clean.tobytes()
+
+
 def test_the_drawn_in_name_keeps_its_size_when_the_map_grows():
     """1.65.4 (user: the name above the map as a picture of its own, the map's size freely)."""
     import glob

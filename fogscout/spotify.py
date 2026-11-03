@@ -297,31 +297,60 @@ def _dpapi(data: bytes, encrypt: bool) -> bytes:
         k32.LocalFree(out.pbData)
 
 
+# 1.28 (audit F2): the one cipher for every stored secret (Claude key, OBS password, Spotify/YouTube tokens and
+# the YouTube secret): (data, encrypt) -> bytes. Windows' DPAPI; None where there is none – tests put in a fake.
+CIPHER = _dpapi if IS_WIN else None
+
+
+def SESSION_ONLY_TEXT() -> str:
+    return _("Spotify: verbunden – nur bis zum Beenden, die Windows-Verschlüsselung ist nicht verfügbar.")
+
+
+class CannotProtect(Exception):
+    """1.28: the secret cannot be stored encrypted here (no DPAPI, or it failed). The caller keeps it for this
+    session only – it is never written as clear text or Base64."""
+
+
+def can_protect() -> bool:
+    return CIPHER is not None
+
+
 def protect(secret: str) -> str:
-    """The refresh token for settings.json: DPAPI-encrypted on Windows ("dpapi:…"), elsewhere only encoded
-    ("plain:…", tests/Linux). "" stays ""."""
+    """A secret for settings.json, always encrypted ("dpapi:…"); "" stays "". 1.28 (audit F2): without a working
+    cipher it raises CannotProtect – before, it fell back to "plain:" + Base64 and that counted as protected."""
     if not secret:
         return ""
-    raw = secret.encode("utf-8")
-    if IS_WIN:
-        try:
-            return "dpapi:" + base64.b64encode(_dpapi(raw, True)).decode("ascii")
-        except OSError as e:
-            log.warning("Spotify: DPAPI nicht verfügbar (%s)", e)
-    return "plain:" + base64.b64encode(raw).decode("ascii")
+    if CIPHER is None:
+        raise CannotProtect("no DPAPI")
+    try:
+        return "dpapi:" + base64.b64encode(CIPHER(secret.encode("utf-8"), True)).decode("ascii")
+    except (OSError, ValueError) as e:
+        log.warning("Geheimnis nicht gespeichert: Windows-Verschlüsselung (DPAPI) nicht verfügbar (%s)",
+                    type(e).__name__)
+        raise CannotProtect(type(e).__name__) from None
 
 
 def unprotect(stored) -> str:
-    """The refresh token back from its stored form; "" when it is missing or not readable here."""
+    """A secret back from its stored form; "" when it is missing or not readable here. "plain:" (Base64 from before
+    1.28) is still read – once, so it can be encrypted (``is_legacy``)."""
     s = str(stored or "")
     try:
         if s.startswith("dpapi:"):
-            return _dpapi(base64.b64decode(s[6:]), False).decode("utf-8") if IS_WIN else ""
+            return CIPHER(base64.b64decode(s[6:]), False).decode("utf-8") if CIPHER is not None else ""
         if s.startswith("plain:"):
             return base64.b64decode(s[6:]).decode("utf-8")
     except (ValueError, OSError):
         pass
     return ""
+
+
+def is_encrypted(stored) -> bool:
+    return isinstance(stored, str) and stored.startswith("dpapi:")
+
+
+def is_legacy(stored) -> bool:
+    """A secret stored before 1.28 only Base64-encoded ("plain:") – not protected."""
+    return isinstance(stored, str) and stored.startswith("plain:")
 
 
 # ------------------------------------------------------------------ the browser's redirect during the login
@@ -530,6 +559,10 @@ class SpotifyLink(threading.Thread):
         if changed:
             try:
                 self._post("token", protect(tok.refresh))
+                self._session_only = False
+            except CannotProtect:                         # 1.28: kept in memory, never stored unencrypted
+                self._session_only = True
+                self._say(SESSION_ONLY_TEXT(), True)
             except Exception:
                 pass
 
@@ -663,7 +696,7 @@ class SpotifyLink(threading.Thread):
                 return
             self._keep_tokens(tok)
             self.state = "linked"
-            self._say(_("Spotify: verbunden"), True)
+            self._say(SESSION_ONLY_TEXT() if getattr(self, "_session_only", False) else _("Spotify: verbunden"), True)
             self._kicked = True
         elif srv.error:
             self._stop_login()
