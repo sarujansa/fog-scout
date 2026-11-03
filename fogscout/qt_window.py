@@ -10,9 +10,9 @@ from __future__ import annotations
 import base64
 import collections
 
-from PySide6.QtCore import QByteArray, QEvent, QModelIndex, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap, QStandardItem
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCompleter,
+from PySide6.QtCore import QByteArray, QEvent, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap
+from PySide6.QtWidgets import (QAbstractItemView, QApplication,
                                QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
                                QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget)
 
@@ -295,7 +295,12 @@ SPECS = {
                                              ("row", (("label", "st.more.yt_pl_clip.label"), ("combo", "st.more.yt_pl_clip"),
                                                       ("label", "st.more.yt_pl_round.label"), ("combo", "st.more.yt_pl_round"),
                                                       ("stretch",))),
-                                             ("hint", "st.more.yt_status"), ("hint", "st.more.yt_text"))))))),
+                                             ("hint", "st.more.yt_status"), ("hint", "st.more.yt_text"))),
+                ("card", "st.more.claude", (("check", "st.more.cl_on"),                              # 1.26: the search asks
+                                            ("row", (("label", "st.more.cl_key.label"), ("entry", "st.more.cl_key"),
+                                                     ("button", "st.more.cl_test"), ("button", "st.more.cl_clear"),
+                                                     ("stretch",))),
+                                            ("hint", "st.more.cl_status"), ("hint", "st.more.cl_text"))))))),
     ),
 }
 
@@ -404,21 +409,7 @@ def nav_icon(key: str, colour: str, ratio: float = 1.0, alert: bool = False) -> 
 
 
 SEARCH_KINDS = ("check", "radio", "button", "title", "label", "slider", "tab")   # what the search finds on a page
-# 1.8.38 (QA audit: "autostart", "Tastenkürzel", "Backup" … found nothing): words people search with that the
-# labels do not use – a label (either language, folded) containing the key is also found by the words
-SEARCH_ALSO = {"tast": "hotkey shortcut tastenkürzel", "hotkey": "taste tastenkürzel shortcut",
-               "mit windows starten": "autostart", "start with windows": "autostart",
-               "farb": "color colour theme", "colour": "color farbe theme", "theme": "farbe color",
-               "sicherung": "backup", "backup": "sicherung", "deckkraft": "opacity transparenz transparency",
-               "opacity": "deckkraft transparenz transparency", "grösse": "size zoom", "size": "grösse zoom",
-               "cross-play": "crossplay", "crossplay": "cross-play", "aufnahme": "obs recording",
-               "recording": "obs aufnahme", "einrichtung": "setup assistent wizard",
-               "setup": "einrichtung assistent wizard", "aktualis": "update", "update": "aktualisieren",
-               # 1.23: the folded part at the foot of the log page – found by what it holds
-               "erweitert (fehlersuche": "advanced debug-bilder fensteraufnahme scans/sek rundenende diagnose",
-               "advanced (troubleshooting": "erweitert debug pictures window capture scans/s end of round"}
-HAYSTACK_ROLE = Qt.UserRole + 1           # what a search hit is matched against (the list shows the entry)
-POPUP_W = (320, 720)                      # 1.8.38: the hit list as wide as its longest entry within these
+from .palette import SEARCH_ALSO      # noqa: E402 – 1.26: moved to palette.py (shared with the palette)
 
 
 def _haystack(*texts) -> str:
@@ -427,14 +418,6 @@ def _haystack(*texts) -> str:
     base = " ".join(" ".join(t.split()) for t in texts if t).casefold()
     base = " ".join([base] + [v for k, v in SEARCH_ALSO.items() if k in base])
     return " | ".join(dict.fromkeys((base, base.replace("ß", "ss"), base.replace("ss", "ß"))))
-
-
-class _SearchCompleter(QCompleter):
-    """Matches the hidden haystack, shows the entry; the field keeps what was typed while moving in the list."""
-
-    def pathFromIndex(self, index):
-        w = self.widget()
-        return w.text() if w is not None else ""
 
 
 def _tab_of(w):
@@ -613,12 +596,12 @@ class MainWindow(QMainWindow):
         sl.setSpacing(0)
         self.search = QLineEdit()
         self.search.setObjectName("navsearch")
-        self.search.setPlaceholderText(_("Einstellung suchen …"))
-        self.search.setClearButtonEnabled(True)
+        self.search.setPlaceholderText(_("Suchen … (Strg+F)"))
         self.search.setFocusPolicy(Qt.ClickFocus)  # not the window's first focus: only by a click or Ctrl+F
+        self.search.setReadOnly(True)              # 1.26: a door to the palette – typing happens there
         self.search_btn = QPushButton()
         self.search_btn.setObjectName("navsearchbtn")
-        self.search_btn.setToolTip(_("Einstellung suchen (Strg+F)"))
+        self.search_btn.setToolTip(_("Suchen (Strg+F)"))
         self.search_btn.clicked.connect(self.focus_search)
         self.search_btn.hide()
         sl.addWidget(self._brand_row())           # 1.24 (phase 2): the program's name on top …
@@ -629,18 +612,9 @@ class MainWindow(QMainWindow):
         self.status_btn.setFixedWidth(NAV_W)
         self._status = None                       # (kind, text) shown – status.user_state
         sl.addWidget(self.status_btn)
-        self._found = {}                  # completer text -> (page key, widget)
-        from PySide6.QtGui import QStandardItemModel
-        self._search_model = QStandardItemModel(self)
-        self.completer = _SearchCompleter(self._search_model, self)
-        self.completer.setCompletionRole(HAYSTACK_ROLE)
-        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.completer.setFilterMode(Qt.MatchContains)
-        self.completer.setMaxVisibleItems(12)
-        self.completer.activated[QModelIndex].connect(lambda i: self.go_to_found(i.data(Qt.DisplayRole)))
-        self.search.setCompleter(self.completer)
+        self._found = {}                  # search entry text -> (page key, widget, folded)
+        self._found_hay = {}              # 1.26: … -> what it is matched against (both languages, SEARCH_ALSO)
         self.search.installEventFilter(self)
-        self.search.returnPressed.connect(self._search_first)
         from PySide6.QtGui import QKeySequence, QShortcut
         QShortcut(QKeySequence.Find, self, activated=self.focus_search)
         # 1.65: undo of place/size on the overlay page (a text field keeps its own Ctrl+Z)
@@ -657,6 +631,10 @@ class MainWindow(QMainWindow):
         right.addWidget(self.stack, 1)
         lay.addLayout(right, 1)
         self.setCentralWidget(central)
+        # 1.26: the command palette over the whole content (Ctrl+F, the navigation's field)
+        from .qt_palette import CommandPalette
+        self.palette = CommandPalette(central, post)
+        self._palette_entries, self._palette_recent, self._palette_claude = [], [], False
         self.resize(1100, 760)
         self.setMinimumSize(560, 480)            # narrower: the navigation shows only icons, the pages wrap
         self._log_alert = False
@@ -858,38 +836,44 @@ class MainWindow(QMainWindow):
         return out
 
     def eventFilter(self, obj, e):
-        if obj is self.search and e.type() == QEvent.FocusIn:
-            self._post("search_open")             # the App fills every page once (texts come from the model)
+        if obj is self.search and e.type() in (QEvent.FocusIn, QEvent.MouseButtonPress):
+            if not self.palette.isVisible():
+                QTimer.singleShot(0, self.focus_search)            # 1.26: the field opens the palette
+            return e.type() == QEvent.MouseButtonPress
         return super().eventFilter(obj, e)
 
     def update_search_index(self):
         """After the App filled the pages: what the search offers (open parts, the language now …)."""
         hits = self._search_hits()
         self._found = {entry: hit[:3] for entry, hit in hits.items()}
-        self._search_model.clear()
-        for entry in sorted(hits, key=str.lower):
-            item = QStandardItem(entry)
-            item.setData(hits[entry][3], HAYSTACK_ROLE)
-            item.setEditable(False)
-            self._search_model.appendRow(item)
-        fm = self.completer.popup().fontMetrics()                  # 1.8.38: 190 px cut ⅔ of the entries off
-        widest = max((fm.horizontalAdvance(e) for e in hits), default=0) + 48
-        self.completer.popup().setMinimumWidth(max(POPUP_W[0], min(POPUP_W[1], widest)))
+        self._found_hay = {entry: hit[3] for entry, hit in hits.items()}
+
+    def setting_entries(self) -> list:
+        """1.26: the search's hits as palette entries (title, page below; matched against both languages)."""
+        from .palette import Entry
+        out = []
+        for entry, hay in self._found_hay.items():
+            title, _sep, sub = entry.partition("  ·  ")
+            out.append(Entry("setting", "s:" + entry, title, sub, action="found", arg=entry, words=hay))
+        return out
 
     def focus_search(self):
-        if self._nav_compact:
-            self._compact_nav(False, keep=True)                    # room for the field while searching
-        self.search.setFocus()
-        self.search.selectAll()
+        """1.26: Ctrl+F, the navigation's field or its button – the palette over the window, at once with what it
+        knew last; the App fills the pages and sends the entries (``palette_open`` → ``palette.update_entries``)."""
+        self.search.clearFocus()
+        if not self.palette.isVisible():
+            self.palette.open(self._palette_entries, self._palette_recent, self._palette_claude)
+        self._post("palette_open")
 
-    def _search_first(self):
-        if self.completer.completionCount():
-            self.completer.setCurrentRow(0)
-            self.go_to_found(self.completer.currentIndex().data(Qt.DisplayRole))
-        elif self.search.text().strip():                           # 1.8.38: say so instead of doing nothing
-            from PySide6.QtWidgets import QToolTip
-            QToolTip.showText(self.search.mapToGlobal(self.search.rect().bottomLeft()), _("Nichts gefunden"),
-                              self.search)
+    def palette_entries(self, entries, recent=None, claude=None):
+        """The App's entries for the palette (kept for the next opening, shown now when it is open)."""
+        self._palette_entries = list(entries)
+        if recent is not None:
+            self._palette_recent = list(recent)
+        if claude is not None:
+            self._palette_claude = bool(claude)
+            self.palette._claude = bool(claude)
+        self.palette.update_entries(self._palette_entries)
 
     def go_to_found(self, entry: str):
         """Open the page of a search hit, scroll to it and light up its card for a moment."""
@@ -898,7 +882,6 @@ class MainWindow(QMainWindow):
             return
         key, w, folded = hit
         self.show_page(key)
-        self.search.clear()
         self.search.clearFocus()
         if isinstance(w, QPushButton) and w.property("glyph") == "chevron_right":   # 1.24: the fold's sign
             w.click()                                  # 1.23: a closed fold opens (Log › Erweitert)
@@ -1135,7 +1118,7 @@ class MainWindow(QMainWindow):
         if qss == self._qss:
             return
         self._qss = qss
-        for w in (self._side, self.message, self.completer.popup()):
+        for w in (self._side, self.message, self.palette):
             w.setStyleSheet(qss)
         current = self.stack.currentWidget()
         self._stale = [self.stack.widget(i) for i in range(self.stack.count())]

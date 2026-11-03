@@ -1296,8 +1296,51 @@ EN = {
     'Einrichtung starten': 'Start setup',
     'Öffnet noch einmal die Einrichtung vom ersten Start: Spielsprache, Overlay-Position und die wichtigsten Tasten.':
         'Opens the setup of the first start again: game language, overlay position and the most important keys.',
-    'Einstellung suchen (Strg+F)': 'Search settings (Ctrl+F)',
-    'Einstellung suchen …': 'Search settings …',
+    'Suchen (Strg+F)': 'Search (Ctrl+F)',
+    'Suchen … (Strg+F)': 'Search … (Ctrl+F)',
+    # 1.26: the command palette and the optional question to Claude
+    'Suchen: Einstellung, Seite, Map, Aktion, Runde …': 'Search: setting, page, map, action, round …',
+    'Pfeiltasten wählen · Enter öffnen · Strg+Enter im Spiel bzw. die Aufnahme · Esc schliesst':
+        'Arrow keys choose · Enter opens · Ctrl+Enter in the game or the recording · Esc closes',
+    'Aktionen': 'Actions',
+    'Seiten': 'Pages',
+    'Vorschlag von Claude': 'Suggested by Claude',
+    'Enter': 'Enter',
+    'Strg+Enter': 'Ctrl+Enter',
+    'Claude fragen: „{q}“': 'Ask Claude: “{q}”',
+    'Schickt nur die Frage und die Namen der Einstellungen an Claude':
+        'Sends only the question and the names of the settings to Claude',
+    'Claude denkt nach …': 'Claude is thinking …',
+    'Claude hat nichts Passendes gefunden.': 'Claude found nothing that fits.',
+    'Claude hat die Frage abgelehnt.': 'Claude declined the question.',
+    'Claude hat unverständlich geantwortet.': 'Claude gave an answer that could not be read.',
+    'Claude ist nicht erreichbar – keine Internetverbindung?': 'Claude cannot be reached – no internet connection?',
+    'Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen.':
+        'Claude: the API key is not accepted – check it under Settings › Connections.',
+    'Claude: Zu viele Anfragen – gleich noch einmal versuchen.': 'Claude: too many requests – try again in a moment.',
+    'Claude: Kein Guthaben mehr auf dem API-Konto.': 'Claude: no credit left on the API account.',
+    'Kein API-Key – unter Einstellungen › Verbindungen › Claude eintragen.':
+        'No API key – enter one under Settings › Connections › Claude.',
+    'Claude (Suche)': 'Claude (search)',
+    'Zeigt in der Suche (Strg+F) die Zeile „Claude fragen“. Erst wenn du sie wählst, gehen deine Frage und die Namen der Einstellungen, Seiten und Aktionen an Claude (api.anthropic.com) – nie Runden, Maps oder Spieldaten. Braucht einen eigenen API-Key.':
+        'Shows the row “Ask Claude” in the search (Ctrl+F). Only when you pick it are your question and the names of the settings, pages and actions sent to Claude (api.anthropic.com) – never rounds, maps or game data. Needs your own API key.',
+    'Schickt eine kleine Probefrage an Claude und sagt, ob der API-Key angenommen wird (kostet einen kleinen Betrag deines API-Guthabens).':
+        'Sends a small test question to Claude and says whether the API key is accepted (costs a small amount of your API credit).',
+    'Entfernt den API-Key von diesem PC; die Suche fragt Claude dann nicht mehr.':
+        'Removes the API key from this PC; the search then no longer asks Claude.',
+    'In der Suche Claude fragen können': 'Let the search ask Claude',
+    'API-Key': 'API key',
+    'Key prüfen': 'Check key',
+    'Key löschen': 'Delete key',
+    'Claude: Key funktioniert.': 'Claude: the key works.',
+    'Claude: prüfe den Key …': 'Claude: checking the key …',
+    'Claude: kein API-Key eingetragen.': 'Claude: no API key entered.',
+    'Claude: Das sieht nicht wie ein API-Key aus (beginnt mit sk-ant-).':
+        'Claude: that does not look like an API key (it starts with sk-ant-).',
+    'Claude: Key eingetragen.': 'Claude: key entered.',
+    'Claude: Key eingetragen, Suche mit Claude ist aus.': 'Claude: key entered, asking Claude in the search is off.',
+    'Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Dafür einen eigenen API-Key aus der Anthropic Console eintragen (jede Frage kostet etwas von deinem API-Guthaben); er liegt verschlüsselt auf diesem PC und steht nie in der Sicherung, im Log oder in der Diagnose.':
+        'When the search (Ctrl+F) finds nothing that fits, it can ask Claude – only when you pick the row “Ask Claude”, never while typing. Only your question and the names of Fog Scout’s settings, pages and actions are sent to api.anthropic.com – never rounds, maps, killers, paths or game data. Claude only suggests entries; nothing runs until you pick it. Enter your own API key from the Anthropic Console for this (each question costs some of your API credit); it is kept encrypted on this PC and is never in the backup, the log or the diagnosis.',
     'Schritt {n} von {total}': 'Step {n} of {total}',
     'Sprache': 'Language',
     'Sprache dieses Programms:': 'Language of this program:',
