@@ -192,11 +192,15 @@ class PaletteMixin:
 
     # ---------------------------------------------------------- settings card (Einstellungen → Verbindungen)
     def _claude_card(self, more):
-        cc = self._reg("st.more.claude", ui.LabelFrame(more, text=_("Claude (Suche)"), padding=8))
+        cc = self._reg("st.more.claude", ui.LabelFrame(more, text=_("Claude"), padding=8))
         cc.pack(fill="x", pady=(8, 0))
         self.cl_on_var = ui.BooleanVar(value=bool(self.settings.get("claude_on", False)))
         self._reg("st.more.cl_on", ui.Checkbutton(cc, text=_("In der Suche Claude fragen können"),
                                                    variable=self.cl_on_var, command=self._claude_setting)).pack(anchor="w")
+        self.cl_editor_var = ui.BooleanVar(value=bool(self.settings.get("claude_editor", False)))     # 1.27
+        self._reg("st.more.cl_editor", ui.Checkbutton(cc, text=_("Im Clip-Editor Claude nutzen"),
+                                                       variable=self.cl_editor_var,
+                                                       command=self._claude_setting)).pack(anchor="w")
         row = ui.Frame(cc)
         row.pack(fill="x", pady=(4, 0))
         self._reg("st.more.cl_key.label", ui.Label(row, text=_("API-Key"))).pack(side="left")
@@ -222,7 +226,10 @@ class PaletteMixin:
             "Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ "
             "wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und "
             "Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude "
-            "schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Dafür einen eigenen API-Key aus der "
+            "schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Im Clip-Editor („Mit Claude bearbeiten“) "
+            "schreibst du, was mit dem Schnitt passieren soll; gesendet werden nur deine Bitte und der Schnitt als "
+            "Zahlen (Zeiten, Tempo, Blenden, eigene Short-Texte) – kein Bild, kein Dateiname –, Claudes Vorschlag "
+            "wird geprüft und erst auf „Übernehmen“ ausgeführt. Dafür einen eigenen API-Key aus der "
             "Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: "
             "jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch "
             "ein Ausgabenlimit setzen). Der Key liegt "
@@ -234,15 +241,17 @@ class PaletteMixin:
         key = self.cl_key_var.get().strip()
         if save:
             self.settings.set("claude_on", bool(self.cl_on_var.get()))
+            self.settings.set("claude_editor", bool(self.cl_editor_var.get()))
             self.settings.set("claude_key", spotify.protect(key))
             self._save_soon()
         if not key:
-            self.cl_status_var.set(_("Claude: kein API-Key eingetragen.") if self.cl_on_var.get() else "")
+            self.cl_status_var.set(_("Claude: kein API-Key eingetragen.")
+                                   if self.cl_on_var.get() or self.cl_editor_var.get() else "")
         elif not askclaude.valid_key(key):
             self.cl_status_var.set(_("Claude: Das sieht nicht wie ein API-Key aus (beginnt mit sk-ant-)."))
         else:
-            self.cl_status_var.set(_("Claude: Key eingetragen.") if self.cl_on_var.get()
-                                   else _("Claude: Key eingetragen, Suche mit Claude ist aus."))
+            self.cl_status_var.set(_("Claude: Key eingetragen.") if self.cl_on_var.get() or self.cl_editor_var.get()
+                                   else _("Claude: Key eingetragen, Claude ist in Suche und Editor aus."))
         q = getattr(self, "qt", None)
         if q is not None and hasattr(q, "palette_entries"):
             q.palette_entries(q._palette_entries, claude=self._claude_ready())
@@ -265,8 +274,14 @@ class PaletteMixin:
                 self.events.put(("claude", "test_err", {"error": "bad"}))
         threading.Thread(target=work, daemon=True, name="claude-test").start()
 
+    def _claude_editor_key(self) -> str:
+        """1.27: the key for the clip editor – "" while the user has not allowed Claude there (or no valid key)."""
+        key = self._claude_key()
+        return key if self.settings.get("claude_editor", False) and askclaude.valid_key(key) else ""
+
     def _claude_diag(self) -> str:
         """For the diagnosis: on/off, a key set, counts – never the key, never a question."""
         a = getattr(self, "asker", None)
-        return (f"Claude-Suche: an={bool(self.settings.get('claude_on'))}, Key gesetzt={bool(self._claude_key())}, "
+        return (f"Claude: Suche an={bool(self.settings.get('claude_on'))}, "
+                f"Editor an={bool(self.settings.get('claude_editor'))}, Key gesetzt={bool(self._claude_key())}, "
                 + (a.diag_line() if a is not None else "noch nicht gefragt"))
