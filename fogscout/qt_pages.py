@@ -162,7 +162,8 @@ class OverviewPage(QWidget):
         swl.setSpacing(8)
         # 1.24 (phase 2): "Funktionen" – each box with what it does now below it (overview.switch_state)
         swl.addWidget(_label(_("Funktionen").upper(), "h2"))
-        self.switch_row = FlowRow(spacing=22)
+        # 1.28.3 (user: "nicht alles sauber in einer Reihe"): equal columns, rows evened out (9 = 3 × 3 or 5 + 4)
+        self.switch_row = TileGrid(min_width=SWITCH_W, columns=6, spacing=18)
         swl.addLayout(self.switch_row)
         self.switches = []
         self.switch_states = []                   # the words under each box (QLabel, property "state")
@@ -372,6 +373,7 @@ class OverviewPage(QWidget):
             state.setSizePolicy(pol)
             col.addWidget(w)
             col.addWidget(state)
+            col.addStretch(1)                                  # top-aligned when a neighbour wraps to two lines
             self.switch_row.addWidget(item)
             self.switches.append(w)
             self.switch_states.append(state)
@@ -565,6 +567,7 @@ def _holder(layout, w):
     return None
 
 
+SWITCH_W = 180                              # 1.28.3: width of a column in the card „Funktionen“ (one line for most labels)
 HINT_CHARS = 100                            # 1.17.1: a hint line wraps at about this many characters
 
 NOTE_KEYS = {"ov.size_cap"}                 # 1.8.24: hints that warn (amber) instead of explaining (grey)
