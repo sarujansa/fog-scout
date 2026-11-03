@@ -1134,6 +1134,9 @@ EN = {
         "Backup: {files} copied to {folder}/ (the last {n} copies are kept).",
     "{n} Dateien, zuletzt {day}": "{n} files, latest {day}",
     "1 Datei, zuletzt {day}": "1 file, latest {day}",
+    "behalten (nie aufgeräumt)": "kept (never cleaned up)",
+    "wartet auf den YouTube-Upload": "waiting for the YouTube upload",
+    "auf YouTube": "on YouTube",
     "noch keine": "none yet",
     "Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die letzten {n} Stände je Datei; vor „Alle Runden löschen“ eine zusätzliche): {state}":
         "Daily copy of rounds.jsonl and official.jsonl to {folder}/ (only on changes, the last {n} copies per file; one more before \"Delete all rounds\"): {state}",
@@ -1256,7 +1259,7 @@ EN = {
     'Killer × Map – Ø Kills laut Stats-Seite': 'Killer × map – avg. kills from the stats page',
     'Maps – am häufigsten gespielt': 'Maps – most played',
     'Median {time}': 'median {time}',
-    'Noch keine Killer-Runden mit Ergebnis von der Stats-Seite (Einstellungen → Match-Daten → Offizielle Match-Daten).': 'No killer rounds with a result from the stats page yet (Settings → Match data → Official match data).',
+    'Noch keine Killer-Runde mit Ergebnis von der Stats-Seite.': 'No killer round with a result from the stats page yet.',
     'keine Killer-Runden mit Stats-Daten': 'no killer rounds with stats data',
     'keine Survivor-Runden mit Stats-Daten': 'no survivor rounds with stats data',
     '{map} · {killer}: Ø {kills} Kills ({n} Runden)': '{map} · {killer}: avg. {kills} kills ({n} rounds)',

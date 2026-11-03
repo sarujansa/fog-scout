@@ -272,6 +272,7 @@ class RecordingsTab:
             self.rec_table.heading(key, text=title, anchor=anchor)
             self.rec_table.column(key, width=width, anchor=anchor, stretch=key == "map")
         self.rec_table._dbdms_hide = ("file",)
+        self.rec_table._dbdms_signs = ("status",)                   # 1.25: drawn signs
         self.rec_table.pack(side="left", fill="both", expand=True)
         self.rec_table.bind("<<TreeviewSelect>>", lambda e: self._rec_buttons())
         self.rec_table._dbdms_open = lambda iid: self._rec_play()          # 1.23: double-click / Enter
@@ -369,6 +370,7 @@ class RecordingsTab:
         for key, title, width, anchor in cols:
             self.clip_table.heading(key, text=title, anchor=anchor)
             self.clip_table.column(key, width=width, anchor=anchor, stretch=key == "map")
+        self.clip_table._dbdms_signs = ("status",)                  # 1.25: drawn signs
         self.clip_table._dbdms_hide = ("file",)                                                   # 1.12.2
         self.clip_table.pack(side="left", fill="both", expand=True)
         self.clip_table.bind("<<TreeviewSelect>>", lambda e: self._clip_buttons())

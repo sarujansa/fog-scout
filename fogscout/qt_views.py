@@ -9,7 +9,7 @@ import sys
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QContextMenuEvent
 from PySide6.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QTreeWidget, QTreeWidgetItem,
-                               QVBoxLayout, QWidget)
+                               QVBoxLayout, QWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QToolTip)
 
 from . import qt_theme
 from .qt_layouts import FlowRow, TileGrid
@@ -134,6 +134,78 @@ def _check(item, tags):
         item.setCheckState(0, state)
 
 
+SIGNS = {"★": "star", "⚑": "flag", "▶": "play"}     # 1.25: status characters of a column → glyphs (qt_icons)
+
+
+def sign_words(text: str) -> str:
+    """The words for a status cell ("★  ⚑2  ▶…"): the tooltip of the drawn signs."""
+    out = []
+    for token in str(text or "").split():
+        head, rest = token[:1], token[1:]
+        if head == "★":
+            out.append(_("behalten (nie aufgeräumt)"))
+        elif head == "⚑":
+            out.append(_("{n} Marken", n=rest or "1"))
+        elif head == "▶":
+            out.append(_("wartet auf den YouTube-Upload") if rest else _("auf YouTube"))
+        else:
+            out.append(token)
+    return " · ".join(out)
+
+
+class SignsDelegate(QStyledItemDelegate):
+    """1.25 (audit: the last Unicode symbols of the window, ★ ⚑ ▶ from whatever font the system has): draws a
+    status cell's characters as the window's glyphs, the numbers after them as text; the cell keeps its text
+    (sorting, copying, tests) and says it in words as the tooltip."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pix = {}
+
+    def _glyph(self, name, colour, size, ratio):
+        key = (name, colour, size, ratio)
+        pm = self._pix.get(key)
+        if pm is None:
+            from . import qt_icons
+            pm = self._pix[key] = qt_icons.pixmap(name, colour, size, ratio)
+        return pm
+
+    def paint(self, p, opt, index):
+        text = str(index.data() or "")
+        o = QStyleOptionViewItem(opt)
+        self.initStyleOption(o, index)
+        o.text = ""
+        widget = o.widget
+        widget.style().drawControl(QStyle.CE_ItemViewItem, o, p, widget)
+        c = qt_theme.colours(qt_theme.current_dark())
+        colour = c["on_select"] if o.state & QStyle.State_Selected else c["fg"]
+        size = qt_theme.ICON["s"]
+        ratio = widget.devicePixelRatioF() if widget is not None else 1.0
+        x, mid = o.rect.x() + 6, o.rect.center().y()
+        p.save()
+        p.setPen(QColor(colour))
+        fm = p.fontMetrics()
+        for token in text.split():
+            name = SIGNS.get(token[:1])
+            if name:
+                p.drawPixmap(x, mid - size // 2, self._glyph(name, colour, size, ratio))
+                x += size + 1
+                token = token[1:]
+            if token:
+                p.drawText(x, o.rect.y(), fm.horizontalAdvance(token) + 2, o.rect.height(),
+                           Qt.AlignVCenter | Qt.AlignLeft, token)
+                x += fm.horizontalAdvance(token)
+            x += 8
+        p.restore()
+
+    def helpEvent(self, event, view, opt, index):
+        words = sign_words(index.data())
+        if words and event is not None:
+            QToolTip.showText(event.globalPos(), words, view)
+            return True
+        return super().helpEvent(event, view, opt, index)
+
+
 class Table(QTreeWidget):
     """A table of the UI model (uimodel.Treeview): columns, rows (with groups), colours by tag, selection. A click
     on a row or a heading goes to the model (sorting, selecting, the server tab's tick boxes)."""
@@ -169,6 +241,7 @@ class Table(QTreeWidget):
         self._menu_on = False             # 1.8.10: the model has actions for a right click on a row
         self._model_sel = set()
         self._empty = ""                  # 1.24.3: words in the empty table (filters hide every row)
+        self._signs = None                # 1.25: the delegate of the model's _dbdms_signs columns
 
     def col_key(self) -> str:
         """The table's name in the setting: its columns – unlike the model path it stays the same when a later
@@ -285,6 +358,13 @@ class Table(QTreeWidget):
             self._cols = [c[0] for c in cols]
             self._titles = [c[1] for c in cols]
             self._hide_default = tuple(st.get("hide", ()))
+            for i, cid in enumerate(self._cols):                  # 1.25: drawn status signs
+                if cid in st.get("signs", ()):
+                    if self._signs is None:
+                        self._signs = SignsDelegate(self)
+                    self.setItemDelegateForColumn(i, self._signs)
+                elif self.itemDelegateForColumn(i) is self._signs and self._signs is not None:
+                    self.setItemDelegateForColumn(i, None)
             self.hidden = set(self._hidden_map.get(self.col_key(), self._hide_default))
             tree = bool(cols) and cols[0][0] == "#0"
             self.setRootIsDecorated(tree and any(r[1] > 0 for r in rows))
@@ -1014,6 +1094,7 @@ class DashboardView(QWidget):
         self.maps.set_rows(d.maps, d.maps_max, dark)
         self.heat.set_data(d, dark)
         self.heat.setVisible(bool(d.rows))
-        _set(self.heat_note, "" if d.rows else _("Noch keine Killer-Runden mit Ergebnis von der Stats-Seite "
-                                                 "(Einstellungen → Match-Daten → Offizielle Match-Daten)."))
+        # 1.25: without the settings path – the line under the dashboard says how to set the match data up (it said
+        # the same three times)
+        _set(self.heat_note, "" if d.rows else _("Noch keine Killer-Runde mit Ergebnis von der Stats-Seite."))
         self.heat_note.setVisible(not d.rows)
