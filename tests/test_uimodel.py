@@ -2690,10 +2690,10 @@ def test_a_role_read_on_the_second_look_corrects_the_round_just_saved(app_root):
         app.quit()
 
 
-def test_a_rounds_dropouts_are_counted_shown_and_the_overlay_warns(app_root):
+def test_a_rounds_dropouts_are_counted_and_shown_but_never_in_the_overlay(app_root):
     """1.11.9: while the server is known its receive gaps go into the round → stored count and longest, a log line,
-    "3× Aussetzer" next to the ping in the statistics; "Verbindung stockt" in the overlay's amber line while it
-    stutters – never over the doubt about the detected map."""
+    "3× Aussetzer" next to the ping in the statistics. 1.28.2 (user: remove "Verbindung stockt"): the overlay's
+    amber line never says it any more."""
     from types import SimpleNamespace as NS
     from fogscout import history
     from fogscout.app import App
@@ -2705,20 +2705,12 @@ def test_a_rounds_dropouts_are_counted_shown_and_the_overlay_warns(app_root):
         app.conn.poll = lambda now, hwnd=None: None
         app.conn.server = {"ip": "3.120.45.67", "region": "eu-central-1", "pps": 40.0}
         app.conn.take_gaps = lambda: gaps.pop() if gaps else []
-        lag = [True]
-        app.conn.lagging = lambda now=None: lag[0]
+        app.conn.quiet = 2.0                                # silent right now: before 1.28.2 the overlay warned
         t0 = time.time() - 700
         app._hist = {"t": t0, "map_id": "coal", "map": "Coal Tower"}
         app._conn_tick(force=True)
-        assert notes[-1] == "Verbindung stockt"
-        app._unsure = {"shown": True}                       # the doubt line wins
-        n = len(notes)
         app._conn_tick(force=True)
-        assert len(notes) == n
-        app._unsure = None
-        lag[0] = False
-        app._conn_tick(force=True)
-        assert notes[-1] == ""
+        assert not any("stockt" in str(n) for n in notes)
         app._event(NS(kind="match_end", data={"gen": None, "t": t0 + 600, "role": "killer"}))
         r = history.load(str(app_root / "rounds.jsonl"))[0]
         assert (r.stalls, r.stall_max) == (3, 0.9)

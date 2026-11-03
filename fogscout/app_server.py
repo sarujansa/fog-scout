@@ -160,16 +160,7 @@ class ServerTab:
         show = self.settings["overlay"].get("show_server", True)
         self.overlay.set_server(connwatch.region_name(srv["region"]) if srv and show else "",
                                 self.conn.ping_ms)
-        self._lag_note(bool(srv and show and self.conn.lagging(now)))
-
-    def _lag_note(self, lag: bool):
-        """1.11.9: "Verbindung stockt" in the overlay's amber line while the server is silent – never over the
-        doubt about the detected map (that line wins)."""
-        was, self._lag_shown = getattr(self, "_lag_shown", False), lag
-        if (getattr(self, "_unsure", None) or {}).get("shown"):
-            return
-        if lag or was:                     # every tick while it lasts: back after the doubt line went away
-            self.overlay.set_note(_("Verbindung stockt") if lag else "")
+        # 1.28.2 (user): no "Verbindung stockt" in the overlay any more – the dropouts are still counted per round
 
     def _srv_toggle(self, iid):
         if not iid or self._srv_busy:
