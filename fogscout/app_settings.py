@@ -19,11 +19,12 @@ from .textnorm import fmt_duration
 
 log = logging.getLogger("fogscout")
 
-PROTECTED = ("dpapi:", "plain:")         # spotify.protect's forms
+STORED_FORMS = ("dpapi:", "plain:")      # spotify.protect's encrypted form and the Base64 of before 1.28
 
 
 def is_protected(stored) -> bool:
-    return isinstance(stored, str) and stored.startswith(PROTECTED)
+    """1.28 (audit F2): only the encrypted form counts as protected – "plain:" is Base64, not protection."""
+    return spotify.is_encrypted(stored)
 
 
 def read_password(stored) -> tuple[str, bool]:
@@ -33,7 +34,7 @@ def read_password(stored) -> tuple[str, bool]:
     s = str(stored or "")
     if not s:
         return "", True
-    if is_protected(s):
+    if s.startswith(STORED_FORMS):
         pw = spotify.unprotect(s)
         return pw, bool(pw)
     return s, True
@@ -668,17 +669,44 @@ class SettingsTab:
         from .overview import switches
         return switches(self)
 
+    def _secrets_upgrade(self) -> list:
+        """1.28 (audit F2): secrets stored before 1.28 only as Base64 ("plain:") are encrypted on the start, once.
+        Without the Windows encryption they stay as they are (the log names them, the Claude card says so);
+        returns the setting names left so – names only, never a value."""
+        from .config import SECRET_KEYS
+        left, upgraded = [], False
+        for name in SECRET_KEYS:
+            stored = self.settings.get(name)
+            if not spotify.is_legacy(stored):
+                continue
+            secret = spotify.unprotect(stored)
+            if not secret:
+                continue                         # not readable: left as it is, never overwritten
+            try:
+                self.settings.set(name, spotify.protect(secret))
+                upgraded = True
+            except spotify.CannotProtect:
+                left.append(name)
+        if upgraded:
+            self.settings.save()
+        return left
+
     def _rec_password_load(self) -> str:
         """1.16.2 (A14): the OBS password for the settings field. Stored DPAPI-protected like the Spotify and
         YouTube secrets; a clear-text one from before is protected right away (once, on this start)."""
         stored = self.settings.get("rec_password")
         pw, ok = read_password(stored)
-        self._rec_pw_unreadable = not ok      # post-review: the next save replaces the useless value
+        self._rec_pw_unreadable = not ok
+        self._rec_pw_loaded = pw              # 1.28: what the field showed – only a new input is stored
         if not ok:
             self._log(_("OBS-Passwort ist auf diesem PC/Benutzerkonto nicht lesbar – bitte neu eingeben."), "Fehler")
-        elif pw and not is_protected(stored):
-            self.settings.set("rec_password", spotify.protect(pw))
-            self._save_soon()
+        elif pw and not is_protected(stored):  # clear text (before 1.16.2) or Base64 (before 1.28): encrypt it
+            try:
+                self.settings.set("rec_password", spotify.protect(pw))
+                self._save_soon()
+            except spotify.CannotProtect:
+                self._log(_("OBS-Passwort ist nicht verschlüsselt gespeichert – die Windows-Verschlüsselung ist "
+                            "nicht verfügbar."), "Fehler")
         return pw
 
     def _rec_setting(self, save=True):
@@ -686,10 +714,16 @@ class SettingsTab:
         if save:
             self.settings.set("rec_on", cfg.on)
             self.settings.set("rec_port", cfg.port)
-            if cfg.password != read_password(self.settings.get("rec_password"))[0] \
-                    or getattr(self, "_rec_pw_unreadable", False):
-                self.settings.set("rec_password", spotify.protect(cfg.password))   # 1.16.2: only when it changed
-                self._rec_pw_unreadable = False
+            # 1.28 (audit F2b): only a password the user typed is stored – a value not readable here stays until
+            # then; without DPAPI the new one works for this session only (the field holds it) and is not stored
+            if cfg.password != getattr(self, "_rec_pw_loaded", cfg.password):
+                self._rec_pw_loaded = cfg.password
+                try:
+                    self.settings.set("rec_password", spotify.protect(cfg.password))
+                    self._rec_pw_unreadable = False
+                except spotify.CannotProtect:
+                    self._log(_("OBS-Passwort gilt nur bis zum Beenden – die Windows-Verschlüsselung ist nicht "
+                                "verfügbar, darum wird es nicht gespeichert."), "System")
             self.settings.set("rec_limit_gb", cfg.limit_gb)
             self.settings.set("rec_pre", cfg.pre)
             self.settings.set("rec_tail_s", int(cfg.tail_s))

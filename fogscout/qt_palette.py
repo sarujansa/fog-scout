@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import (QFrame, QGraphicsOpacityEffect, QLineEdit, QListWidget, QListWidgetItem, QStyle,
-                               QStyledItemDelegate, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsOpacityEffect, QLineEdit, QListWidget, QListWidgetItem,
+                               QStyle, QStyledItemDelegate, QVBoxLayout, QWidget)
 
 from . import palette, qt_theme
 from .i18n import N_, _
-from .qt_common import _label
+from .qt_common import PlainLabel, _label
 
 DIM = {True: 170, False: 110}          # alpha of the black over the window (dark, light)
 CARD_W = (420, 640)                    # the card's width: between these, 80 % of the window
@@ -84,6 +84,8 @@ class CommandPalette(QWidget):
         self.setObjectName("palette")
         self._entries, self._recent, self._claude = [], [], False
         self._answer_ids = None                  # Claude's suggestion shown instead of the ranking
+        self._return_to = None                   # 1.28 (audit F14): the widget that had the focus before opening
+        self.setAccessibleName(_("Befehlspalette"))
         self.card = QFrame(self)
         self.card.setProperty("class", "card")
         self.card.setObjectName("palettecard")
@@ -96,8 +98,10 @@ class CommandPalette(QWidget):
         self.field.setClearButtonEnabled(True)
         self.field.textChanged.connect(self._typed)
         self.field.installEventFilter(self)
+        self.field.setAccessibleName(_("Suchen"))
+        self.card.setAccessibleName(_("Befehlspalette"))
         lay.addWidget(self.field)
-        self.answer = _label("", wrap=True)
+        self.answer = PlainLabel("")             # 1.28: Claude's answer – plain text, long runs broken
         self.answer.setObjectName("paletteanswer")
         self.answer.hide()
         lay.addWidget(self.answer)
@@ -106,6 +110,7 @@ class CommandPalette(QWidget):
         self.rows.setItemDelegate(_Rows(self.rows))
         self.rows.setFocusPolicy(Qt.NoFocus)                    # the field keeps the keyboard
         self.rows.setUniformItemSizes(False)
+        self.rows.setAccessibleName(_("Vorschläge"))
         self.rows.itemClicked.connect(lambda it: self._run(it, alt=False))
         lay.addWidget(self.rows, 1)
         self.empty = _label(_("Nichts gefunden"), "dim")
@@ -123,8 +128,13 @@ class CommandPalette(QWidget):
         self.hide()
 
     # ------------------------------------------------------------------ open / close
-    def open(self, entries, recent=(), claude=False, text=""):
-        """Show the palette with ``entries`` (palette.Entry, prepared here once)."""
+    def open(self, entries, recent=(), claude=False, text="", return_to=None):
+        """Show the palette with ``entries`` (palette.Entry, prepared here once). ``return_to``: the widget that
+        gets the focus back when the palette closes without a pick (default: the one focused now)."""
+        if return_to is None:
+            here = QApplication.focusWidget()
+            return_to = None if here is not None and self.isAncestorOf(here) else here
+        self._return_to = return_to
         self._entries = [e.prepare() for e in entries]
         self._recent, self._claude = list(recent or ()), bool(claude)
         self._answer_ids = None
@@ -151,9 +161,19 @@ class CommandPalette(QWidget):
             self._fill()
 
     def close_palette(self):
+        """Esc or a click beside the card: closed, the focus back where it was (1.28, audit F14)."""
         if self.isVisible():
             self.hide()
+            self._give_focus_back()
             self._post("palette_closed")
+
+    def _give_focus_back(self):
+        w, self._return_to = self._return_to, None
+        try:
+            if w is not None and w.isVisible() and w.isEnabled() and w.window() is self.window():
+                w.setFocus(Qt.OtherFocusReason)
+        except RuntimeError:                          # the widget is gone meanwhile
+            pass
 
     # ------------------------------------------------------------------ Claude
     def show_answer(self, text: str, ids):
@@ -205,18 +225,25 @@ class CommandPalette(QWidget):
         for kind, items in groups:
             head = QListWidgetItem()
             head.setData(ROLE, ("head", _(GROUP_TITLES.get(kind, kind))))
+            head.setData(Qt.DisplayRole, _(GROUP_TITLES.get(kind, kind)))
             head.setFlags(Qt.NoItemFlags)
             self.rows.addItem(head)
             for e in items:
                 it = QListWidgetItem()
                 it.setData(ROLE, ("entry", e))
-                it.setToolTip(e.title + (" · " + e.sub if e.sub else ""))
+                words = e.title + (" · " + e.sub if e.sub else "")
+                it.setData(Qt.DisplayRole, words)           # 1.28: what a screen reader reads (the delegate paints)
+                it.setData(Qt.AccessibleTextRole, words)
+                it.setToolTip(words)
                 self.rows.addItem(it)
                 first = first or it
         ask = self._claude and len(query.strip()) >= 3 and self._answer_ids is None
         if ask:
             it = QListWidgetItem()
             it.setData(ROLE, ("ask", query.strip()))
+            words = _("Claude fragen: „{q}“", q=query.strip())
+            it.setData(Qt.DisplayRole, words)
+            it.setData(Qt.AccessibleTextRole, words)
             self.rows.addItem(it)
             first = first or it
         if first is not None:
@@ -249,6 +276,7 @@ class CommandPalette(QWidget):
             self.show_waiting()
             return
         self._recent = palette.remember(self._recent, value.id)
+        self._return_to = None                        # a pick: the place it opens takes the focus
         self.hide()
         self._post("palette_pick", (value.id, bool(alt and value.alt)))
 
@@ -266,6 +294,8 @@ class CommandPalette(QWidget):
                 return True
             if key in (Qt.Key_PageDown, Qt.Key_PageUp):
                 self._move(5 if key == Qt.Key_PageDown else -5)
+                return True
+            if key == Qt.Key_Backtab:                 # 1.28: Shift+Tab stays in the field (focus behind the dark)
                 return True
             if key == Qt.Key_Tab:
                 items = self._selectable()

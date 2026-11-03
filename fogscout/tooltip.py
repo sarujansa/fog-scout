@@ -173,8 +173,8 @@ TIPS = {
     "Developer-Dashboard öffnen": "Öffnet developer.spotify.com/dashboard im Browser: „Create app“, Redirect URI wie "
                                   "unten angegeben eintragen, die Client-ID kopieren und links einfügen.",
     "Mit Spotify verbinden": "Öffnet die Spotify-Anmeldung im Browser. Nach dem Zustimmen kommt der Browser auf "
-                             "127.0.0.1 zurück und das Programm merkt sich die Freigabe (verschlüsselt, nur auf diesem "
-                             "PC). Dafür hört es nur während der Anmeldung einmal auf diesem Port.",
+                             "127.0.0.1 zurück und das Programm merkt sich die Freigabe (mit der Windows-Verschlüsselung, nur auf "
+                             "diesem PC – sonst nur bis zum Beenden). Dafür hört es nur während der Anmeldung einmal auf diesem Port.",
     "Spotify-Verbindung trennen": "Vergisst die Spotify-Freigabe auf diesem PC; die Liste verschwindet. In Spotify selbst "
                                   "lässt sich die App unter Konto → Apps ebenfalls entfernen.",
     # 1.10: YouTube upload
@@ -185,13 +185,13 @@ TIPS = {
                                                 "wartet bis zum nächsten Tag. Die Datei bleibt auf der Platte.",
     "Client-Datei laden …": "Liest Client-ID und Client-Secret aus der Datei „client_secret_….json“, die Google nach dem "
                             "Anlegen des OAuth-Clients zum Herunterladen anbietet („JSON herunterladen“). Die Datei wird "
-                            "nur gelesen und bleibt, wo sie ist; das Secret landet verschlüsselt in den Einstellungen.",
+                            "nur gelesen und bleibt, wo sie ist; das Secret landet mit der Windows-Verschlüsselung in den Einstellungen (sonst gilt es nur bis zum Beenden).",
     "Google Cloud Console öffnen": "Öffnet die Anmeldedaten der Google Cloud Console im Browser: Projekt anlegen, "
                                    "„YouTube Data API v3“ aktivieren, OAuth-Client „Desktop-App“ erstellen, Client-ID "
                                    "und -Secret hier einfügen.",
     "Mit YouTube verbinden": "Öffnet die Google-Anmeldung im Browser (nur Recht „Videos hochladen“). Danach kommt der "
-                             "Browser auf 127.0.0.1 zurück und das Programm merkt sich die Freigabe verschlüsselt auf "
-                             "diesem PC. Dafür hört es nur während der Anmeldung einmal auf einem freien Port.",
+                             "Browser auf 127.0.0.1 zurück und das Programm merkt sich die Freigabe mit der Windows-"
+                             "Verschlüsselung auf diesem PC (sonst nur bis zum Beenden). Dafür hört es nur während der Anmeldung einmal auf einem freien Port.",
     "YouTube-Verbindung trennen": "Vergisst die Google-Freigabe auf diesem PC; die Warteschlange wartet, bis du dich "
                                   "neu verbindest. In deinem Google-Konto unter Sicherheit → Drittanbieter-Apps lässt "
                                   "sich der Zugriff ebenfalls entfernen.",

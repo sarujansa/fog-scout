@@ -8,7 +8,7 @@ import sys
 import time
 
 from . import __version__
-from .capture import IS_WIN, describe_window, find_game_window, foreground_root, is_above
+from .capture import IS_WIN, describe_window, find_game_window, foreground_root, is_above, window_kind
 
 
 def spotify_match(app) -> str:
@@ -60,6 +60,26 @@ def _win_info(hwnd):
     return out
 
 
+def _own_hwnd(app) -> int:
+    try:
+        return app._qt_hwnd()
+    except Exception:
+        return 0
+
+
+def home_short(path) -> str:
+    """1.28 (audit F13): a folder for the diagnosis – the user's home folder as "~" (it holds the account name)."""
+    path = str(path or "")
+    home = os.path.expanduser("~")
+    if home and home not in ("~", os.sep):
+        for h in {home, os.path.normcase(home)}:
+            if os.path.normcase(path).startswith(os.path.normcase(h)):
+                rest = path[len(h):]
+                if not rest or rest[0] in "\\/":
+                    return "~" + rest
+    return path
+
+
 def _qt_version() -> str:
     try:
         import PySide6
@@ -106,7 +126,8 @@ def collect(app) -> str:
                  f"über_spiel_gehoben={ov.raised_over_game}×")
     if game and oh:
         lines.append(f"Z-Reihenfolge: Overlay über Spiel = {is_above(oh, game.hwnd)}")
-    lines.append(f"Vordergrund: {describe_window(foreground_root())}")
+    own = {h for h in (oh, _own_hwnd(app)) if h}
+    lines.append(f"Vordergrund: {window_kind(foreground_root(), own)}")     # 1.28: never another program's title
     if IS_WIN:
         from . import appid
         link = appid.start_menu_link()

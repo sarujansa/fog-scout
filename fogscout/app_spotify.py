@@ -57,7 +57,7 @@ class SpotifyUpNext:
             "Spotify selbst: Dafür im Developer-Dashboard „Create app“ anlegen (Name frei, API „Web API“), als "
             "Redirect URI genau {uri} eintragen, die Client-ID kopieren und hier einfügen, dann „Mit Spotify "
             "verbinden“ – der Browser fragt einmal nach der Freigabe. Gelesen wird nur die Warteschlange, nichts "
-            "gesteuert; die Freigabe liegt verschlüsselt auf diesem PC und lässt sich hier trennen. Titel kommen nie "
+            "gesteuert; die Freigabe wird mit der Windows-Verschlüsselung auf diesem PC gespeichert (geht das nicht, gilt sie nur bis zum Beenden) und lässt sich hier trennen. Titel kommen nie "
             "ins Log.", uri=spotify.REDIRECT_URI), style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(4, 0))
 
     def _spotify_setting(self, save=True):

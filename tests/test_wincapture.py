@@ -125,12 +125,17 @@ def test_no_picture_in_time_returns_none(monkeypatch):
     cap = WindowCapture(1)
     cap.start()
     cap._on_frame = lambda frame: None                          # frames arrive but never answer
-    t0 = time.time()
+    # 1.28 (audit F12): what is waited for, not how long it took (no time limits on a shared runner)
+    waits, real_wait = [], cap._got.wait
+
+    def spy(timeout=None):
+        waits.append(timeout)
+        return real_wait(timeout)
+    cap._got.wait = spy
     assert cap.grab(0, 0, 4, 4, timeout=0.1) is None
-    assert time.time() - t0 < 0.5
-    t1 = time.time()
+    assert waits == [0.1]                                       # the caller's timeout, once
     assert cap.grab(0, 0, 4, 4, timeout=0.1) is None             # right after a timeout: no waiting at all
-    assert time.time() - t1 < 0.05
+    assert waits == [0.1]
     cap.stop()
 
 

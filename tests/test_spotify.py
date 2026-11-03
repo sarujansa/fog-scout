@@ -266,11 +266,32 @@ def test_a_song_change_reads_the_queue_at_once_and_once_more_shortly_after(fake,
 
 
 def test_the_refresh_token_is_stored_protected_and_garbage_reads_as_nothing():
-    stored = spotify.protect("ref-secret")
-    assert stored.startswith("dpapi:" if sys.platform == "win32" else "plain:") and "ref-secret" not in stored
+    stored = spotify.protect("ref-secret")       # 1.28: always encrypted (outside Windows the conftest cipher)
+    assert stored.startswith("dpapi:") and "ref-secret" not in stored
     assert spotify.unprotect(stored) == "ref-secret"
     assert spotify.protect("") == "" and spotify.unprotect("") == "" and spotify.unprotect(None) == ""
     assert spotify.unprotect("plain:!!!") == "" and spotify.unprotect("ref-secret") == ""
+
+
+def test_without_the_windows_encryption_nothing_is_stored_never_plain(monkeypatch, caplog):
+    """1.28 (audit F2): no DPAPI (or it fails) → CannotProtect; "plain:" is never written, the log names neither
+    the secret nor where it came from. A "plain:" value from before 1.28 is still read once (is_legacy)."""
+    import logging
+    caplog.set_level(logging.DEBUG)
+    monkeypatch.setattr(spotify, "CIPHER", None)
+    assert not spotify.can_protect()
+    with pytest.raises(spotify.CannotProtect):
+        spotify.protect("ref-secret")
+
+    def broken(data, encrypt):
+        raise OSError("CryptProtectData failed")
+    monkeypatch.setattr(spotify, "CIPHER", broken)
+    with pytest.raises(spotify.CannotProtect):
+        spotify.protect("ref-secret")
+    assert "ref-secret" not in caplog.text and "DPAPI" in caplog.text
+    assert spotify.protect("") == ""                          # nothing to keep: nothing refused
+    old = "plain:" + __import__("base64").b64encode(b"alt").decode()
+    assert spotify.unprotect(old) == "alt" and spotify.is_legacy(old) and not spotify.is_encrypted(old)
 
 
 # ------------------------------------------------------------------ the login listener
@@ -695,3 +716,15 @@ def test_a_used_up_quota_pauses_the_list_visibly_and_a_bare_429_backs_off(fake):
     finally:
         link.quit()
         link.join(timeout=3)
+
+
+def test_a_new_login_without_the_windows_encryption_is_kept_in_memory_only(monkeypatch):
+    """1.28 (audit F2): no DPAPI → no "token" event (nothing to store), the token is used for this run and the
+    status says it lasts until quitting."""
+    events = []
+    link = spotify.SpotifyLink(lambda kind, data: events.append((kind, data)), opener=lambda url: False)  # not started
+    monkeypatch.setattr(spotify, "CIPHER", None)
+    link._keep_tokens(spotify.Token("acc", "ref-new", time.time() + 3600))
+    assert link._refresh == "ref-new" and not [e for e in events if e[0] == "token"]
+    said = " ".join(str(d) for k, d in events if k == "status")
+    assert "nur bis zum Beenden" in said and "ref-new" not in said

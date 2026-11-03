@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton
 
 from . import askclaude, editcommands, sequence
 from .i18n import N_, _
+from .qt_common import PlainLabel
 
 ERROR_WORDS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
                        "(„API-Key holen“ öffnet die Anthropic Console)."),
@@ -31,7 +32,8 @@ class ClaudeMixin:
         self.claude_key = lambda: ""         # set by the App: the key while the user allows Claude in the editor
         self._claude_seq = 0                 # number of the last wish sent (older answers are dropped)
         self._claude_base = None             # the state the shown proposal was made for
-        self._claude_result = None           # (new state, new mode)
+        self._claude_result = None           # (new state, new mode or None)
+        self._claude_busy = False            # 1.28 (audit F3): a wish is on its way – no second (paid) request
 
     # ---- the inspector section
     def _section_claude(self, sec, mode):
@@ -50,12 +52,9 @@ class ClaudeMixin:
         row.addWidget(self.cl_ask_btn)
         row.addStretch()
         sec.body.addLayout(row)
-        self.cl_status = QLabel("")
-        self.cl_status.setProperty("class", "dim")
-        self.cl_status.setWordWrap(True)
+        self.cl_status = PlainLabel("", "dim")             # 1.28: Claude's summary – plain text, long runs broken
         sec.body.addWidget(self.cl_status)
-        self.cl_list = QLabel("")
-        self.cl_list.setWordWrap(True)
+        self.cl_list = PlainLabel("")                      # … and the steps (a short title comes from Claude)
         self.cl_list.hide()
         sec.body.addWidget(self.cl_list)
         row2 = QHBoxLayout()
@@ -84,7 +83,7 @@ class ClaudeMixin:
             return
         on = bool(self.claude_key())
         self.cl_field.setEnabled(on)
-        self.cl_ask_btn.setEnabled(on and self.history is not None)
+        self.cl_ask_btn.setEnabled(on and self.history is not None and not self._claude_busy)
         if not on and self._claude_result is None:
             self.cl_status.setText(_("Aus – in Einstellungen › Verbindungen › Claude „Im Clip-Editor Claude "
                                      "nutzen“ einschalten und einen API-Key eintragen."))
@@ -101,6 +100,8 @@ class ClaudeMixin:
         return out
 
     def claude_ask(self):
+        if self._claude_busy:                            # 1.28: Enter again while waiting – nothing is sent
+            return
         key = self.claude_key()
         wish = self.cl_field.text().strip()
         if not key or not wish or self.history is None:
@@ -112,6 +113,8 @@ class ClaudeMixin:
         mode = str(self.mode_box.currentData() or "copy")
         text = editcommands.content(wish, base, mode, self._claude_marks())
         self._claude_base, self._claude_result = base, None
+        self._claude_busy = True
+        self.cl_ask_btn.setEnabled(False)
         self._claude_buttons(False)
         self.cl_list.hide()
         self.cl_status.setText(_("Claude denkt nach …"))
@@ -129,14 +132,30 @@ class ClaudeMixin:
     def _claude_answer(self, item):
         seq, base, mode, data, error = item
         if self._closed or seq != self._claude_seq:
-            return                                       # a newer wish was sent meanwhile
+            return                                       # an older wish (the window was busy with a newer one)
+        self._claude_busy = False                        # 1.28: whatever comes next, asking works again
+        try:
+            self._claude_show(base, mode, data, error)
+        except Exception:                                # never left on „Claude denkt nach …“
+            self._claude_result = None
+            self._claude_buttons(False)
+            self.cl_status.setText(_(ERROR_WORDS["bad"]))
+        finally:
+            self._claude_refresh()
+
+    def _claude_show(self, base, mode, data, error):
         if error is not None:
             self.cl_status.setText(_(ERROR_WORDS.get(error, ERROR_WORDS["net"])))
             return
         if self._state() != base:
             self.cl_status.setText(_("Der Schnitt hat sich inzwischen geändert – bitte neu vorschlagen."))
             return
-        new, new_mode, done, skipped = editcommands.apply(base, data.get("ops"), mode)
+        try:
+            new, new_mode, done, skipped = editcommands.apply(base, data.get("ops"), mode)
+        except ValueError:                               # "ops" not a list: an answer it cannot read
+            self.cl_list.hide()
+            self.cl_status.setText(_(ERROR_WORDS["bad"]))
+            return
         summary = " ".join(str(data.get("summary") or "").split())[:300]
         lines = ["• " + _(w, **kw) for _op, (w, kw) in done]
         lines += ["– " + _("übersprungen: {why}", why=_(w, **kw)) for _op, (w, kw) in skipped]
@@ -155,13 +174,14 @@ class ClaudeMixin:
         if result is None:
             return
         if self._edit_locked() or self._gesture_active():
+            self.cl_status.setText(_("Gerade nicht möglich – erst die laufende Bearbeitung beenden, dann übernehmen."))
             return
         if self._state() != base:
             self.claude_drop()
             self.cl_status.setText(_("Der Schnitt hat sich inzwischen geändert – bitte neu vorschlagen."))
             return
         new, new_mode = result
-        if new_mode != self.mode_box.currentData():
+        if new_mode is not None and new_mode != self.mode_box.currentData():   # 1.28: only an explicit mode step
             self.mode_box.setCurrentIndex(max(0, self.mode_box.findData(new_mode)))
         self._apply(new)
         self._commit()                                   # one step back with Ctrl+Z

@@ -98,17 +98,27 @@ def _fmt(t: float) -> str:
     return clipedit.fmt_pos(max(0.0, t))
 
 
+def _valid_fade(v) -> bool:
+    return v is not None and any(abs(v - f) <= 1e-3 for f in clipedit.FADES)
+
+
 def apply(state: sequence.EditState, ops, mode: str):
-    """(new state, new mode, done, skipped) – ``done``/``skipped`` are (op, words) for the list in the editor; the
-    words are German keys the editor translates. An answer that would leave no clip changes nothing."""
+    """(new state, new mode, done, skipped) – ``done``/``skipped`` are (op, (German key, values)) for the list in the
+    editor. 1.28 (audit B1–B5): every invalid value is refused, never moved to a limit; an operation that would change
+    nothing is "skipped: keine Änderung", never "done"; ``new mode`` is None unless a valid ``mode`` operation set it
+    (the export type the user chose meanwhile stays); ``ops`` that are not a list raise ValueError (the editor says
+    Claude answered something it cannot read). An answer that would leave no clip changes nothing."""
+    if not isinstance(ops, list):
+        raise ValueError("ops is not a list")
     new = state.copy()
-    new_mode = mode
+    new_mode = None
     done, skipped = [], []
-    for raw in list(ops or ())[:MAX_OPS]:
+    for raw in ops[:MAX_OPS]:
         op = raw if isinstance(raw, dict) else {}
         kind = op.get("op")
         parts = new.parts
         total = sequence.duration(parts)
+        mode_now = new_mode or mode
         if kind not in KINDS:
             skipped.append((op, (N_("unbekannte Aktion"), {})))
             continue
@@ -117,63 +127,88 @@ def apply(state: sequence.EditState, ops, mode: str):
             if a is None or b is None:
                 skipped.append((op, (N_("Zeiten fehlen"), {})))
                 continue
-            a, b = max(0.0, min(a, total)), max(0.0, min(b, total))
+            if a < 0 or a >= total:
+                skipped.append((op, (N_("Bereich zu kurz oder ausserhalb"), {})))
+                continue
+            b = min(b, total)                            # "to the end" may name any later second
             if b - a < sequence.MIN_LEN:
                 skipped.append((op, (N_("Bereich zu kurz oder ausserhalb"), {})))
                 continue
-            parts = _cut_at(_cut_at(parts, a), b)
+            factor = None
             if kind == "speed":
                 factor = _num(op, "factor")
                 if factor is None or not any(abs(factor - s) < 1e-6 for s in clipedit.SPEEDS):
                     skipped.append((op, (N_("Tempo nicht erlaubt"), {})))
                     continue
-                for i in _inside(parts, a, b):
-                    parts = sequence.with_speed(parts, i, factor)
-                done.append((op, (N_("{a}–{b} mit Tempo {f}×"), {"a": _fmt(a), "b": _fmt(b), "f": f"{factor:g}"})))
+            cut = _cut_at(_cut_at(parts, a), b)
+            inside = _inside(cut, a, b)
+            if kind == "speed":
+                for i in inside:
+                    cut = sequence.with_speed(cut, i, factor)
+                words = (N_("{a}–{b} mit Tempo {f}×"), {"a": _fmt(a), "b": _fmt(b), "f": f"{factor:g}"})
             else:
-                inside = set(_inside(parts, a, b))
-                keep = [p for i, p in enumerate(parts) if (i in inside) == (kind == "keep")]
+                keep = [p for i, p in enumerate(cut) if (i in set(inside)) == (kind == "keep")]
                 if not keep:
                     skipped.append((op, (N_("würde alles entfernen"), {})))
                     continue
-                parts = keep
-                done.append((op, (N_("{a}–{b} herausgeschnitten") if kind == "cut" else N_("nur {a}–{b} behalten"),
-                                  {"a": _fmt(a), "b": _fmt(b)})))
-            new.parts = parts
+                cut = keep
+                words = (N_("{a}–{b} herausgeschnitten") if kind == "cut" else N_("nur {a}–{b} behalten"),
+                         {"a": _fmt(a), "b": _fmt(b)})
+            if abs(sequence.duration(cut) - total) < 1e-9:   # nothing removed / no tempo changed (only split)
+                skipped.append((op, (N_("keine Änderung"), {})))      # e.g. a range too close to a clip's edge
+                continue
+            new.parts = cut
+            done.append((op, words))
         elif kind == "split":
             t = _num(op, "at")
             if t is None or not EPS < t < total - EPS:
                 skipped.append((op, (N_("Stelle ausserhalb"), {})))
                 continue
-            new.parts = _cut_at(parts, t)
+            cut = _cut_at(parts, t)
+            if cut == parts:
+                skipped.append((op, (N_("keine Änderung"), {})))
+                continue
+            new.parts = cut
             done.append((op, (N_("Schnitt bei {a}"), {"a": _fmt(t)})))
         elif kind == "hold":
             t, sec = _num(op, "at"), _num(op, "seconds")
-            if t is None or sec is None or not 0 <= t <= total or sec <= 0:
-                skipped.append((op, (N_("Standbild: Stelle oder Dauer fehlt"), {})))
+            if t is None or not 0 <= t <= total:
+                skipped.append((op, (N_("Stelle ausserhalb"), {})))
+                continue
+            if sec is None or not 0.1 <= sec <= clipedit.HOLD_MAX_S:
+                skipped.append((op, (N_("Standbild: Dauer ungültig"), {})))
                 continue
             new.parts, _j = sequence.insert_hold(parts, min(t, max(0.0, total - EPS)), sec)
-            done.append((op, (N_("Standbild bei {a} für {s} s"), {"a": _fmt(t), "s": f"{min(sec, clipedit.HOLD_MAX_S):g}"})))
+            done.append((op, (N_("Standbild bei {a} für {s} s"), {"a": _fmt(t), "s": f"{sec:g}"})))
         elif kind == "fade":
             fi, fo = _num(op, "in"), _num(op, "out")
-            if fi is None and fo is None:
+            if "in" not in op and "out" not in op:
                 skipped.append((op, (N_("Blende ohne Dauer"), {})))
                 continue
-            near = (lambda v: min(clipedit.FADES, key=lambda f: abs(f - v)))
+            if ("in" in op and not _valid_fade(fi)) or ("out" in op and not _valid_fade(fo)):
+                skipped.append((op, (N_("Blende ungültig"), {})))
+                continue
+            before = (new.fade_in, new.fade_out)
             if fi is not None:
-                new.fade_in = near(fi)
+                new.fade_in = min(clipedit.FADES, key=lambda f: abs(f - fi))
             if fo is not None:
-                new.fade_out = near(fo)
+                new.fade_out = min(clipedit.FADES, key=lambda f: abs(f - fo))
+            if (new.fade_in, new.fade_out) == before:
+                skipped.append((op, (N_("keine Änderung"), {})))
+                continue
             done.append((op, (N_("Blenden: ein {i} s, aus {o} s"), {"i": f"{new.fade_in:g}", "o": f"{new.fade_out:g}"})))
         elif kind == "mode":
             value = str(op.get("value") or "")
             if value not in clipedit.MODES:
                 skipped.append((op, (N_("Export-Art unbekannt"), {})))
                 continue
+            if value == mode_now:
+                skipped.append((op, (N_("keine Änderung"), {})))
+                continue
             new_mode = value
             done.append((op, (N_("Export-Art: {m}"), {"m": value})))
         elif kind in ("short_title", "subtitle"):
-            if new_mode != "shorts":
+            if mode_now != "shorts":
                 skipped.append((op, (N_("nur bei Export-Art Short"), {})))
                 continue
             text = " ".join(str(op.get("text") or "").split())
@@ -186,15 +221,25 @@ def apply(state: sequence.EditState, ops, mode: str):
                 done.append((op, (N_("Short-Titel „{t}“"), {"t": text[:MAX_TITLE]})))
             else:
                 a, b = _num(op, "from"), _num(op, "to")
-                if a is None or b is None or b - a < 0.2 or a < 0 or a >= total:
+                if a is None or b is None:
                     skipped.append((op, (N_("Untertitel: Zeiten fehlen"), {})))
+                    continue
+                if a < 0 or a >= total:
+                    skipped.append((op, (N_("Stelle ausserhalb"), {})))
+                    continue
+                b = min(b, total)                         # first to the clip's end, then the shortest length
+                if b - a < 0.2:
+                    skipped.append((op, (N_("Untertitel zu kurz"), {})))
                     continue
                 if len(spec.subs) >= shorts.MAX_SUBS:
                     skipped.append((op, (N_("zu viele Untertitel"), {})))
                     continue
-                spec.subs.append(shorts.Sub(max(0.0, a), min(b, total), text[:MAX_SUB]))
-                done.append((op, (N_("Untertitel {a}–{b}"), {"a": _fmt(a), "b": _fmt(min(b, total))})))
+                spec.subs.append(shorts.Sub(a, b, text[:MAX_SUB]))
+                done.append((op, (N_("Untertitel {a}–{b}"), {"a": _fmt(a), "b": _fmt(b)})))
             new.short = spec
+    if len(ops) > MAX_OPS:
+        skipped.append((None, (N_("{n} weitere Schritte nicht ausgeführt (höchstens {max})"),
+                               {"n": len(ops) - MAX_OPS, "max": MAX_OPS})))
     if not new.parts:
-        return state.copy(), mode, [], [(None, (N_("würde alles entfernen"), {}))]
+        return state.copy(), None, [], [(None, (N_("würde alles entfernen"), {}))]
     return new, new_mode, done, skipped
