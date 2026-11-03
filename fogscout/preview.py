@@ -4,6 +4,7 @@ card – rendered with the very functions the overlay windows use, as layers in 
 from __future__ import annotations
 
 import time
+import weakref
 from functools import lru_cache
 
 from PIL import Image, ImageDraw
@@ -71,12 +72,22 @@ def _music_body(rows, cover, height, style, look):
     return _BODY[1][0]
 
 
+def _cached(key, pic, make):
+    """The value cached for ``pic`` under ``key`` (built by ``make`` when missing). 1.28: the entry holds a weak
+    reference to its picture – keyed by id() alone, a picture freed meanwhile handed its id (and its title row and
+    columns) to a new one (seen on Python 3.14: the timer was set beside the map instead of below)."""
+    entry = _SPLITS.get(key)
+    if entry is not None and entry[0]() is pic:
+        return entry[1]
+    value = make()
+    _SPLITS.clear() if len(_SPLITS) > 16 else None
+    _SPLITS[key] = (weakref.ref(pic), value)
+    return value
+
+
 def _cols(pic):
     """overlay_win32.body_cols of the picture (1.8.24), once per picture."""
-    key = ("cols", id(pic))
-    if key not in _SPLITS:
-        _SPLITS[key] = body_cols(pic, _split(pic))
-    return _SPLITS[key]
+    return _cached(("cols", id(pic)), pic, lambda: body_cols(pic, _split(pic)))
 
 
 def extent(pic):
@@ -87,13 +98,11 @@ def extent(pic):
 
 def _split(pic):
     """Row where the map starts below its drawn-in name (mapimage.title_split), once per picture (1.65.4)."""
-    key = id(pic)
-    if key not in _SPLITS:
+    def make():
         from .mapimage import title_split
         parts = title_split(pic)
-        _SPLITS.clear() if len(_SPLITS) > 16 else None
-        _SPLITS[key] = parts[2] if parts else None
-    return _SPLITS[key]
+        return parts[2] if parts else None
+    return _cached(id(pic), pic, make)
 
 
 _CACHE: dict = {}             # {layer: {inputs: picture}}: a slider that moves the map does not redraw the others

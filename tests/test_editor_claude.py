@@ -164,7 +164,9 @@ def test_claudes_summary_and_steps_are_plain_text_and_never_widen_the_inspector(
         for label in (win.cl_status, win.cl_list):
             assert label.textFormat() == Qt.PlainText
         assert "<b>fett</b>" in win.cl_status.text() and "<i>4K</i>" in win.cl_list.text()
-        assert win.sections["claude"].width() <= width + 1 and win.cl_status.sizeHint().width() <= width
+        # the width a layout must give the labels (a word-wrapped label's sizeHint is only a wish Qt shrinks)
+        assert win.sections["claude"].width() <= width + 1
+        assert win.cl_status.minimumSizeHint().width() <= width and win.cl_list.minimumSizeHint().width() <= width
     finally:
         win.close()
 
