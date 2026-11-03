@@ -428,7 +428,14 @@ Ein erster Lauf mit n = 10 ergab 544,9 gegen 630,8 ms (A 460–2700, B 484–828
     - Windows: 1137 passed, 118 skipped in 6:18 min auf einem echten Runner.
     - CodeQL sowie Analyze (python, javascript-typescript, actions): grün.
   - `ad4b74c` (1.24.6) und `879f9b0` (1.24.7): grün (Tests Linux + Windows, CodeQL).
-  - `2077617`, `952098a` und der Bericht: siehe Prüfungen am PR – der Bericht wird erst als fertig gemeldet, wenn sie grün sind.
+  - `06573af` (Bericht): Linux, Windows und die drei CodeQL-Analysen grün.
+    - Der zusammenfassende Check **„CodeQL“ ist rot**: „1 new alert including 1 high severity security vulnerability“ – *Use of a broken or weak cryptographic hashing algorithm on sensitive data*, `fogscout/obsrec.py:230` (`auth_string`).
+    - Eingeordnet als **Fehlalarm, nicht geändert**:
+      - Die Zeile ist die Anmeldung, die obs-websocket 5 vorschreibt: `base64(sha256(base64(sha256(Passwort + Salt)) + Challenge))`.
+      - Das Programm speichert keinen Passwort-Hash; das Passwort liegt DPAPI-geschützt in den Einstellungen (seit 1.16.2).
+      - Ein langsamer Hash wie bcrypt würde das Protokoll brechen – OBS würde die Anmeldung ablehnen.
+      - Die Zeile ist seit 1.4 unverändert. Als „neu in diesem PR“ gilt sie, weil `Recorder._client` (geändert in 1.24.6: `_reachable`) auf dem Datenweg des Passworts liegt.
+    - Offen für Saru: den Alert in GitHub (Security → Code scanning) als „False positive“ bzw. „Won't fix“ schliessen – eine Repo-Sicherheitsaktion, die ich nicht selbst ausführe.
 
 ## 12. Harte Projektregeln
 
