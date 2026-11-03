@@ -425,6 +425,7 @@ class SettingsTab:
         self._spotify_init()
         self._youtube_card(more)                      # 1.10: upload
         self._youtube_init()
+        self._claude_card(more)                       # 1.26: the search may ask Claude
 
         # 1.2.15: the same controls once more for the setup assistant's step "Match-Daten" – the originals sit
         # under "Mehr" and count as hidden while it is folded (the settings page itself draws only SPECS keys)

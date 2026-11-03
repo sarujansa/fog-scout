@@ -360,6 +360,7 @@ QLabel[state="ok"] {{ color: {c['ok']}; }}  /* 1.24: state words – always besi
 QLabel[state="warn"] {{ color: {c['warn']}; }}
 QLabel[state="err"] {{ color: {c['err']}; }}
 QLabel[state="off"] {{ color: {c['dim']}; }}
+QListWidget#paletterows {{ background: transparent; border: none; outline: 0; }}  /* 1.26: the palette's rows */
 QListWidget#realms {{ border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; padding: 4px; outline: 0; }}
 QListWidget#realms::item {{ padding: 7px 0; border-radius: {RADIUS['m']}px; }}
 QListWidget#realms::item:selected {{ background: {c['nav_sel']}; }}
