@@ -201,6 +201,13 @@ TIPS = {
                                          "Anhaken einmal neu „Mit YouTube verbinden“. Das Programm nutzt davon nur "
                                          "Playlists auflisten und Video einsortieren (50 Einheiten je Video; es bleiben "
                                          "sechs Uploads am Tag).",
+    "In der Suche Claude fragen können": "Zeigt in der Suche (Strg+F) die Zeile „Claude fragen“. Erst wenn du sie "
+                                         "wählst, gehen deine Frage und die Namen der Einstellungen, Seiten und "
+                                         "Aktionen an Claude (api.anthropic.com) – nie Runden, Maps oder Spieldaten. "
+                                         "Braucht einen eigenen API-Key.",
+    "Key prüfen": "Schickt eine kleine Probefrage an Claude und sagt, ob der API-Key angenommen wird (kostet "
+                  "einen kleinen Betrag deines API-Guthabens).",
+    "Key löschen": "Entfernt den API-Key von diesem PC; die Suche fragt Claude dann nicht mehr.",
     "Playlists laden": "Holt die Liste deiner Playlists von YouTube (1 Einheit) in die beiden Auswahlfelder. Neue "
                        "Playlists legst du auf YouTube an und lädst die Liste danach neu.",
     "Auf YouTube hochladen": "Die markierte Datei in die YouTube-Warteschlange (Sichtbarkeit wie in den Einstellungen, "

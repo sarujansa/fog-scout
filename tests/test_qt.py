@@ -804,6 +804,10 @@ def test_setup_assistant_goes_through_its_steps(qapp, keep):
 
 
 def test_search_finds_a_setting_and_lights_its_card(qapp, keep):
+    """1.26: the navigation's field opens the palette (the App fills the pages on palette_open); a setting picked
+    there opens its page and tab and lights it up (go_to_found, as before)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
     from fogscout import qt_window
     posted = queue.Queue()
     win = keep(qt_window.MainWindow(lambda a, arg=None: posted.put((a, arg))))
@@ -813,29 +817,34 @@ def test_search_finds_a_setting_and_lights_its_card(qapp, keep):
     assert posted.empty()                                     # opening the window does not focus the search
     win.search.setFocus()
     qapp.processEvents()
-    assert ("search_open", None) in [posted.get_nowait() for _i in range(posted.qsize())]   # App fills the pages
+    assert ("palette_open", None) in [posted.get_nowait() for _i in range(posted.qsize())]   # App fills the pages
+    assert win.palette.isVisible() and win.palette.field.hasFocus()
     win.show_states("overlay", {"ov.caption": {"text": "Map-Namen über der Karte anzeigen", "value": False,
                                                "enabled": True, "visible": True},
                                 "ov.look": {"text": "Darstellung", "visible": True}})
     win.update_search_index()
     hits = [e for e in win._found if e.startswith("Map-Namen über")]
     assert hits == ["Map-Namen über der Karte anzeigen  ·  Overlay"]
-    win.go_to_found(hits[0])
-    assert win.current_key() == "overlay" and win.search.text() == ""
+    win.palette_entries(win.setting_entries())
+    win.palette.field.setText("map namen")
+    QTest.keyClick(win.palette.field, Qt.Key_Return)
+    assert ("palette_pick", ("s:" + hits[0], False)) in [posted.get_nowait() for _i in range(posted.qsize())]
+    assert not win.palette.isVisible()
+    win.go_to_found(hits[0])                                  # what the App does with that pick
+    assert win.current_key() == "overlay"
     qapp.processEvents()
     tabs = win.forms["overlay"].controls["ov.look"][1]      # 1.66.4: on another tab – that tab is opened
     assert tabs.currentWidget() is win.forms["overlay"].controls["ov.look"][2] and tabs.property("found") is True
 
 
 def _completions(win, text):
-    win.completer.setCompletionPrefix(text)
-    m = win.completer.completionModel()
-    return [m.index(i, 0).data() for i in range(m.rowCount())]
+    from fogscout import palette
+    return [e.arg for e in palette.rank(text, win.setting_entries(), limit=999)]
 
 
 def test_the_search_knows_other_words_both_languages_and_tells_twins_apart(qapp, keep):
     """1.8.38 (QA audit: "autostart", "Größe", "shortcut", "color" found nothing; "Position" three times on the
-    overlay page, only the first reachable; a 190-px list cut ⅔ of the entries off; "Overlay" matched everything)."""
+    overlay page, only the first reachable; "Overlay" matched everything). 1.26: through the palette's ranking."""
     from fogscout import qt_window
     win = keep(qt_window.MainWindow(lambda a, arg=None: None))
     win.resize(1100, 800)
@@ -852,22 +861,14 @@ def test_the_search_knows_other_words_both_languages_and_tells_twins_apart(qapp,
     win.update_search_index()
     assert any(e.startswith("Mit Windows starten") for e in _completions(win, "autostart"))
     assert any(e.startswith("Eigene Grösse") for e in _completions(win, "Größe"))      # ß ↔ ss
+    assert any(e.startswith("Eigene Grösse") for e in _completions(win, "groesse"))    # … and oe
     assert any(e.startswith("Map-Namen über") for e in _completions(win, "map name above"))   # the English name
     positions = sorted(e for e in win._found if e.startswith("Position"))
     assert len(positions) == 3 and len(set(positions)) == 3 and all("(" in e for e in positions)
     every = len(win._found)
     assert len(_completions(win, "Overlay")) < every / 2                   # the page name is not searched
     assert any(e.startswith("Musik") for e in _completions(win, "Musik"))  # a tab of the overlay page
-    longest = max(win.completer.popup().fontMetrics().horizontalAdvance(e) for e in win._found)
-    assert win.completer.popup().minimumWidth() >= min(qt_window.POPUP_W[1], longest)
-    win.search.setText("Größe")
-    hit = _completions(win, "Größe")[0]
-    win._search_first()                                       # Enter: the first hit
-    assert win.current_key() == "overlay" and hit.startswith("Eigene Grösse")
-    win.search.setText("qqqxyz")
-    win.completer.setCompletionPrefix("qqqxyz")
-    win._search_first()                                       # nothing: a tip, no page change, no error
-    assert win.current_key() == "overlay"
+    assert _completions(win, "qqqxyz") == []
 
 
 def test_open_tab_shows_an_elements_settings(qapp, keep):
