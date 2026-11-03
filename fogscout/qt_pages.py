@@ -686,6 +686,7 @@ def make_control(kind, key, post):
 
 
 # 1.24 (phase 2): the overview's buttons with a sign of their own (rotate, step on to the next layout/floor)
+INDENT_W = 28                       # 1.29.1: options under the one they depend on (about the tick box + gap)
 OVERVIEW_GLYPHS = {"rotate": "rotate", "layout": "chevron_right", "floor": "chevron_right", "scan": "search"}
 
 
@@ -1324,6 +1325,42 @@ class FormPage(QWidget, _Arranged):
             return
         if kind == "sub":                           # a small heading inside a card (1.66.3: groups of tick boxes)
             lay.addWidget(_label(_(item[1]).upper(), "sub"))
+            return
+        if kind == "indent":                        # 1.29.1: options that only count with the one above them
+            box = QWidget()
+            box.setProperty("class", "indent")
+            il = QVBoxLayout(box)
+            il.setContentsMargins(INDENT_W, 0, 0, 0)
+            il.setSpacing(6)
+            for c in item[1]:
+                self._add(c, il)
+            lay.addWidget(box)
+            return
+        if kind == "fold":                          # 1.29.1: a long explanation behind "Erklärung" – shut at first
+            btn = QPushButton(_(item[1]))
+            btn.setObjectName("fold")
+            btn.setFlat(True)
+            btn.setCursor(Qt.PointingHandCursor)
+            body = QWidget()
+            body.setProperty("fold_body", True)
+            bl = QVBoxLayout(body)
+            bl.setContentsMargins(0, 0, 0, 0)
+            bl.setSpacing(4)
+            for c in item[2]:
+                self._add(c, bl)
+            body.hide()
+
+            def flip(_checked=False, b=btn, w=body):
+                w.setVisible(not w.isVisibleTo(w.parentWidget()))
+                set_glyph(b, "chevron_down" if w.isVisibleTo(w.parentWidget()) else "chevron_right")
+            set_glyph(btn, "chevron_right")
+            btn.clicked.connect(flip)
+            btn._dbdms_fold = body
+            row = QHBoxLayout()
+            row.addWidget(btn)
+            row.addStretch(1)
+            lay.addLayout(row)
+            lay.addWidget(body)
             return
         if kind == "note":                          # a fixed text of the page itself (setup assistant)
             lay.addWidget(_label(_(item[1]), wrap=True))

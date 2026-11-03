@@ -885,3 +885,24 @@ def test_the_card_rates_the_recording_quality_and_a_click_sets_only_what_obs_tak
         assert app.settings.get("rec_obs_before") == {} and not app.rec_quality_undo.winfo_manager()
     finally:
         app.quit()
+
+
+def test_an_option_that_needs_the_one_above_is_greyed_out_while_that_is_off(app_root, tmp_path, monkeypatch):
+    """1.29.1 (user: "unübersichtlich, was gehört zu was"): the indented options of the OBS settings follow the one
+    above them – greyed out while it is off, their value kept; a choice box comes back read-only, not editable."""
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    reg = app._qt_reg
+    try:
+        app.rec_window_var.set(False)
+        app.rec_instant_var.set(False)
+        app.rec_game_var.set(True)
+        app._rec_setting()
+        assert str(reg["st.more.rec_game"].cget("state")) == "disabled" and app.rec_game_var.get()
+        assert str(reg["st.more.rec_clip"].cget("state")) == "disabled"
+        app.rec_window_var.set(True)
+        app.rec_instant_var.set(True)
+        app._rec_setting()
+        assert str(reg["st.more.rec_game"].cget("state")) == "normal"
+        assert str(reg["st.more.rec_clip"].cget("state")) == "readonly"
+    finally:
+        app.quit()
