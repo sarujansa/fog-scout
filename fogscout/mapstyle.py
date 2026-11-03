@@ -15,6 +15,7 @@ framed) has its own way since 1.66.2 (``restyle_floors``).
 from __future__ import annotations
 
 import os
+import re
 import threading
 from functools import lru_cache
 
@@ -418,6 +419,50 @@ def styled_path(path: str, cache_dir: str, make: bool = True, style: str = "dark
         return target
     except Exception:
         return path
+
+
+_CACHE_NAME = re.compile(r"^(?P<stem>.+)-(?P<mtime>\d+)-(?P<size>\d+)(?P<tag>-[a-z_]+)?-v(?P<ver>\d+)\.webp$")
+
+
+def prune(cache_dir: str) -> int:
+    """1.25 (audit: the cache only ever grew – every STYLE_VERSION and every changed picture left its files, ~0.1 MB
+    each × maps × styles): remove our own cached pictures of another STYLE_VERSION and, per picture and style, every
+    file but the newest source state. Only files in ``cache_dir`` whose name is ours (styled_path); returns how many
+    went."""
+    gone = 0
+    try:
+        subs = [d for d in os.listdir(cache_dir) if os.path.isdir(os.path.join(cache_dir, d))]
+    except OSError:
+        return 0
+    for sub in subs:
+        folder = os.path.join(cache_dir, sub)
+        newest, drop = {}, []
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        for name in names:
+            m = _CACHE_NAME.match(name)
+            if m is None:
+                continue                                    # not ours: left alone
+            if int(m["ver"]) != STYLE_VERSION:
+                drop.append(name)
+                continue
+            key, when = (m["stem"], m["tag"] or ""), int(m["mtime"])
+            old = newest.get(key)
+            if old is None or when > old[0]:
+                if old is not None:
+                    drop.append(old[1])
+                newest[key] = (when, name)
+            else:
+                drop.append(name)
+        for name in drop:
+            try:
+                os.remove(os.path.join(folder, name))
+                gone += 1
+            except OSError:
+                pass
+    return gone
 
 
 def warm(paths, cache_dir: str, stop=lambda: False, style: str = "dark") -> int:

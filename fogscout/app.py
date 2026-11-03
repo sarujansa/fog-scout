@@ -780,6 +780,9 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         stop = lambda: self.settings["overlay"].get("map_style", "classic") != style   # noqa: E731
 
         def run():
+            gone = mapstyle.prune(cache)                 # 1.25: old versions and source states of our cache
+            if gone:
+                log.info("Kartenstil-Cache: %d alte Bilder entfernt", gone)
             mapstyle.warm(paths, cache, stop, style)
             self._qt_maps_rev = getattr(self, "_qt_maps_rev", 0) + 1     # the tiles of the maps page: dark now
         threading.Thread(target=run, daemon=True, name="mapstyle").start()
