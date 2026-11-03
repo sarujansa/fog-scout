@@ -167,7 +167,6 @@ def test_a_map_shown_after_the_round_ended_does_not_rename_it(app):
 def test_stopping_the_worker_does_not_wait_for_its_nap(tmp_path, monkeypatch):
     """1.8.84 (idea 8 of the UI review): without a picture the simulation slept half a second per loop and
     quitting waited for it – the nap now ends with the stop command."""
-    import time
     w, events, calls = _worker(tmp_path, monkeypatch, fails=None)
 
     class Empty:
@@ -179,12 +178,20 @@ def test_stopping_the_worker_does_not_wait_for_its_nap(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "ImageSource", Empty)
     w = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
                                events, simulate=str(tmp_path))
+    # 1.28 (audit F12): no time limit on a shared runner – every nap lasts ten minutes here; the worker ending at
+    # all (join well before that) shows the stop command ended the nap
+    import threading
+    napping, real_nap = threading.Event(), w._nap
+
+    def long_nap(seconds):
+        napping.set()
+        real_nap(600.0)
+    w._nap = long_nap
     w.start()
-    time.sleep(0.3)                                       # well inside a nap
-    t0 = time.perf_counter()
+    assert napping.wait(30)
     w.stop()
-    w.join(timeout=4)
-    assert not w.is_alive() and time.perf_counter() - t0 < 0.3
+    w.join(timeout=60)
+    assert not w.is_alive()
 
 
 def _start(tmp_path, settings, rounds=None, matches=None):
@@ -250,16 +257,79 @@ def test_a_start_without_any_history_file_is_quiet(tmp_path):
         a.quit()
 
 
-def test_an_unreadable_obs_password_is_replaced_on_the_next_save(tmp_path):
-    """Post-review 1.16.2 (F1): a password DPAPI cannot read here showed an empty field – leaving it empty (OBS
-    without a password) counted as "unchanged", so the useless value and its error line came back on every start."""
+def test_an_unreadable_obs_password_stays_until_a_new_one_is_typed(tmp_path):
+    """1.28 (audit F2b) – replaces the 1.16.2 test "is replaced on the next save": a value this PC cannot read is
+    no longer overwritten by any save (a switch elsewhere on the OBS card wiped it); the error line says so, only a
+    password the user types replaces it. Never the value in the log."""
+    from fogscout import spotify
     a = _start(tmp_path, {"welcome_seen": True, "rec_password": "dpapi:AAAA"})
     try:
         assert a.rec_pw_var.get() == ""
         assert [t for _c, cat, t in a._log_entries if cat == "Fehler" and "OBS-Passwort" in t]
         assert "AAAA" not in " ".join(t for *_x, t in a._log_entries)
         a._rec_setting()
-        assert a.settings.get("rec_password") == "" and not a._rec_pw_unreadable
+        a.rec_on_var.set(not a.rec_on_var.get())
+        a._rec_setting()
+        assert a.settings.get("rec_password") == "dpapi:AAAA"
+        a.rec_pw_var.set("neu")
+        stored = a.settings.get("rec_password")
+        assert spotify.is_encrypted(stored) and spotify.unprotect(stored) == "neu"
+    finally:
+        a.quit()
+
+
+def _secret_values():
+    import base64
+    return {k: "plain:" + base64.b64encode(("alt-" + k).encode()).decode()
+            for k in ("rec_password", "spotify_token", "youtube_client_secret", "youtube_token", "claude_key")}
+
+
+def test_old_plain_secrets_are_encrypted_on_the_start(tmp_path):
+    """1.28 (audit F2): "plain:" (Base64, before 1.28) of every secret is encrypted on the start – read back the
+    same, nothing in the file readable any more."""
+    from fogscout import spotify
+    old = _secret_values()
+    a = _start(tmp_path, dict({"welcome_seen": True}, **old))
+    try:
+        for name in old:
+            stored = a.settings.get(name)
+            assert spotify.is_encrypted(stored) and spotify.unprotect(stored) == "alt-" + name, name
+        a.settings.save()
+        text = (tmp_path / "settings.json").read_text(encoding="utf-8")
+        assert "plain:" not in text and not any(v[6:] in text for v in old.values())
+        assert not [t for _c, cat, t in a._log_entries if "Unverschlüsselt" in t]
+    finally:
+        a.quit()
+
+
+def test_without_the_windows_encryption_secrets_live_for_the_session_only(tmp_path, monkeypatch, caplog):
+    """1.28 (audit F2/F2b): no DPAPI – old "plain:" values stay as they are (the log names the settings, never a
+    value), a newly typed OBS password or YouTube secret works for this run but is not written; nothing new in
+    clear text or Base64 lands in settings.json."""
+    import base64
+    import logging
+    from fogscout import spotify
+    caplog.set_level(logging.DEBUG)
+    monkeypatch.setattr(spotify, "CIPHER", None)
+    old = _secret_values()
+    a = _start(tmp_path, dict({"welcome_seen": True}, **old))
+    try:
+        assert {k: a.settings.get(k) for k in old} == old
+        line = [t for _c, cat, t in a._log_entries if cat == "Fehler" and "Unverschlüsselt" in t]
+        assert line and "rec_password" in line[0] and "alt-" not in line[0]
+        a.rec_pw_var.set("geheim-obs")
+        a.yt_secret_var.set("geheim-yt")
+        assert a._rec_cfg().password == "geheim-obs" and a.yt_secret_var.get() == "geheim-yt"
+        assert a.settings.get("rec_password") == old["rec_password"]
+        assert a.settings.get("youtube_client_secret") == old["youtube_client_secret"]
+        assert [t for _c, _cat, t in a._log_entries if "OBS-Passwort gilt nur bis zum Beenden" in t]
+        assert [t for _c, _cat, t in a._log_entries if "Client-Secret gilt nur bis zum Beenden" in t]
+        a.settings.save()
+        text = (tmp_path / "settings.json").read_text(encoding="utf-8")
+        for secret in ("geheim-obs", "geheim-yt"):
+            assert secret not in text and base64.b64encode(secret.encode()).decode() not in text
+        logs = caplog.text + " ".join(t for *_x, t in a._log_entries)
+        assert "geheim" not in logs and not any(v[6:] in logs for v in old.values())
     finally:
         a.quit()
 

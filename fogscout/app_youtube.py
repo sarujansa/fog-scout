@@ -40,6 +40,7 @@ class YouTubeUpload:
         self._reg("st.more.yt_id", ui.Entry(row, textvariable=self.yt_id_var, width=34)).pack(side="left", padx=6)
         self._reg("st.more.yt_secret.label", ui.Label(row, text=_("Client-Secret"))).pack(side="left")
         self.yt_secret_var = ui.StringVar(value=spotify.unprotect(self.settings.get("youtube_client_secret", "")))
+        self._yt_secret_loaded = self.yt_secret_var.get().strip()   # 1.28: only a new input is stored
         self.yt_secret_var.trace_add("write", lambda *a: self._youtube_setting())
         secret = self._reg("st.more.yt_secret", ui.Entry(row, textvariable=self.yt_secret_var, width=22))
         secret._dbdms_secret = True
@@ -98,7 +99,7 @@ class YouTubeUpload:
             "Google erlaubt mit dem Standardkontingent etwa sechs Uploads am Tag; was nicht mehr passt, wartet in der "
             "Warteschlange bis zum nächsten Tag. Hochgeladen wird nur, wenn du weder in einer Lobby noch in einer Runde bist; die Datei bleibt immer "
             "auch auf der Platte. Gesendet werden nur die Videodatei, Titel (Map, Killer, Datum) und Beschreibung – "
-            "nie Spielernamen; die Freigabe liegt verschlüsselt auf diesem PC. Mit „Uploads in Playlists einsortieren“ kommt jedes Video "
+            "nie Spielernamen; die Freigabe wird mit der Windows-Verschlüsselung auf diesem PC gespeichert (geht das nicht, gilt sie nur bis zum Beenden). Mit „Uploads in Playlists einsortieren“ kommt jedes Video "
             "zusätzlich in eine Playlist deiner Wahl – dafür fragt die Anmeldung die breitere Berechtigung „YouTube-Konto "
             "verwalten“ an (einmal neu verbinden)."),
             style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(4, 0))
@@ -112,7 +113,13 @@ class YouTubeUpload:
         if save:
             self.settings.set("youtube_on", on)
             self.settings.set("youtube_client_id", cid)
-            self.settings.set("youtube_client_secret", spotify.protect(secret))
+            if secret != self._yt_secret_loaded:         # 1.28 (audit F2b): a value not readable here stays
+                self._yt_secret_loaded = secret
+                try:
+                    self.settings.set("youtube_client_secret", spotify.protect(secret))
+                except spotify.CannotProtect:            # works for this session (the field holds it), not stored
+                    self._log(_("YouTube: Client-Secret gilt nur bis zum Beenden – die Windows-Verschlüsselung ist "
+                                "nicht verfügbar, darum wird es nicht gespeichert."), "System")
             self.settings.set("youtube_privacy", privacy)
             self.settings.set("youtube_playlists", manage)
             for key, pid in playlists.items():

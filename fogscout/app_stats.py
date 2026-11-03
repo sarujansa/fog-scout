@@ -1929,10 +1929,12 @@ class StatsTab:
             for p in [official.Player(role=m.role, status=m.status, img=m.img)] + m.opp:
                 key = f"{p.role or '?'}: {p.status or '–'} / {p.img or '–'}"
                 statuses[key] = statuses.get(key, 0) + 1
+        from .diagnose import home_short
         bundled = official.script_version(os.path.join(os.path.dirname(official.__file__), official.SCRIPT))
         lines = [f"Offizielle Daten: {len(matches)} Matches, {len(tied)} von {len(rounds)} Runden zugeordnet, "
                  f"andere Map {len(other)}, Lücken {len(official.load_gaps(self._official_path()))}, "
-                 f"Userscript {getattr(self, '_off_script', 0)}/{bundled}, Ordner {self._official_folder()}"]
+                 f"Userscript {getattr(self, '_off_script', 0)}/{bundled}, "
+                 f"Ordner {home_short(self._official_folder())}"]
         if matches:                                       # 1.8.68: what the userscript 3+ fields hold
             with_lo = [m for m in matches if builds.has_loadout(m)]
             lines.append(f"  Felder ab Userscript 3: Modus {sum(1 for m in matches if m.mode)}, Loadout {len(with_lo)}, "

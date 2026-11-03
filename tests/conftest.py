@@ -52,3 +52,26 @@ def _never_the_real_hosts_file(monkeypatch):
             pytest.fail("test reached the real hosts file")
         monkeypatch.setattr(hostsedit, "hosts_path", refuse)
     yield
+
+
+_FAKE_MARK = b"FAKEDPAPI1"
+
+
+def fake_cipher(data: bytes, encrypt: bool) -> bytes:
+    """1.28: a reversible stand-in for DPAPI (spotify.CIPHER) – the tests outside Windows store secrets the way the
+    program does on Windows; anything not made by it raises ValueError like CryptUnprotectData fails."""
+    if encrypt:
+        return _FAKE_MARK + bytes(b ^ 0x5A for b in data)
+    if not data.startswith(_FAKE_MARK):
+        raise ValueError("not ours")
+    return bytes(b ^ 0x5A for b in data[len(_FAKE_MARK):])
+
+
+@pytest.fixture(autouse=True)
+def _a_cipher_like_dpapi(monkeypatch):
+    """Outside Windows there is no DPAPI (spotify.CIPHER is None and protect() refuses); the tests get the fake one.
+    Tests about a missing/failing cipher set spotify.CIPHER themselves. On Windows the real DPAPI is used."""
+    from fogscout import spotify
+    if spotify.CIPHER is None:
+        monkeypatch.setattr(spotify, "CIPHER", fake_cipher)
+    yield

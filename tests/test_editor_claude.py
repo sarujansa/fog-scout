@@ -143,3 +143,99 @@ def test_a_shorts_wish_switches_the_export_type_and_sets_the_title(qapp, clip, t
         assert win.mode_box.currentData() == "shorts" and win._short is not None and win._short.title == "4K Nurse"
     finally:
         win.close()
+
+
+def test_claudes_summary_and_steps_are_plain_text_and_never_widen_the_inspector(qapp, clip, tmp_path, monkeypatch):
+    """1.28 (audit F5): the summary and a short title from Claude show as typed (no rich text, no link) and a run
+    without spaces is broken, so the inspector keeps its width."""
+    from PySide6.QtCore import Qt
+    fake = FakeOpener({"summary": "<b>fett</b> " + "B" * 300,
+                       "ops": [{"op": "mode", "value": "shorts"}, {"op": "short_title", "text": "<i>4K</i>"}]})
+    monkeypatch.setattr(askclaude, "OPENER", fake)
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.claude_key = lambda: KEY
+        win._claude_refresh()
+        width = win.sections["claude"].width()
+        win.cl_field.setText("als Short")
+        win.claude_ask()
+        assert _pump(qapp, lambda: win.cl_take_btn.isVisible())
+        _pump(qapp, seconds=0.2)
+        for label in (win.cl_status, win.cl_list):
+            assert label.textFormat() == Qt.PlainText
+        assert "<b>fett</b>" in win.cl_status.text() and "<i>4K</i>" in win.cl_list.text()
+        # the width a layout must give the labels (a word-wrapped label's sizeHint is only a wish Qt shrinks)
+        assert win.sections["claude"].width() <= width + 1
+        assert win.cl_status.minimumSizeHint().width() <= width and win.cl_list.minimumSizeHint().width() <= width
+    finally:
+        win.close()
+
+
+class SlowOpener(FakeOpener):
+    """Holds the answer until ``go`` is set – a request still on its way."""
+
+    def __init__(self, answer):
+        import threading
+        super().__init__(answer)
+        self.go = threading.Event()
+
+    def open(self, req, timeout=None):
+        self.go.wait(10)
+        return super().open(req, timeout)
+
+
+def test_a_second_wish_while_one_is_on_its_way_sends_nothing(qapp, clip, tmp_path, monkeypatch):
+    """1.28 (audit F3): Enter again (or the button) while Claude still thinks starts no second paid request; after
+    the answer asking works again."""
+    slow = SlowOpener({"summary": "ok", "ops": [{"op": "cut", "from": 0, "to": 2}]})
+    monkeypatch.setattr(askclaude, "OPENER", slow)
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.claude_key = lambda: KEY
+        win._claude_refresh()
+        win.cl_field.setText("erste 2 s weg")
+        win.claude_ask()
+        assert not win.cl_ask_btn.isEnabled()
+        win.claude_ask()
+        win.cl_field.returnPressed.emit()
+        slow.go.set()
+        assert _pump(qapp, lambda: win.cl_take_btn.isVisible())
+        _pump(qapp, seconds=0.3)
+        assert len(slow.bodies) == 1 and win.cl_ask_btn.isEnabled()
+    finally:
+        slow.go.set()
+        win.close()
+
+
+def test_apply_keeps_the_export_type_chosen_meanwhile_when_claude_set_none(qapp, clip, tmp_path, monkeypatch):
+    """1.28 (audit F4): asked in "exact", switched to GIF while waiting, „Übernehmen“ of a cut without a mode step
+    leaves GIF."""
+    monkeypatch.setattr(askclaude, "OPENER", FakeOpener({"summary": "ok", "ops": [{"op": "cut", "from": 0, "to": 2}]}))
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.claude_key = lambda: KEY
+        win._claude_refresh()
+        win.mode_box.setCurrentIndex(win.mode_box.findData("exact"))
+        win.cl_field.setText("erste 2 s weg")
+        win.claude_ask()
+        assert _pump(qapp, lambda: win.cl_take_btn.isVisible())
+        win.mode_box.setCurrentIndex(win.mode_box.findData("gif"))
+        win.claude_take()
+        assert win.mode_box.currentData() == "gif" and round(win.parts[0].start, 1) == 2.0
+    finally:
+        win.close()
+
+
+def test_an_answer_whose_ops_are_not_a_list_ends_in_a_message_not_in_waiting(qapp, clip, tmp_path, monkeypatch):
+    """1.28 (audit B5): "ops": 5 – the status says Claude's answer could not be read, asking works again."""
+    monkeypatch.setattr(askclaude, "OPENER", FakeOpener({"summary": "kaputt", "ops": 5}))
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.claude_key = lambda: KEY
+        win._claude_refresh()
+        win.cl_field.setText("irgendwas")
+        win.claude_ask()
+        assert _pump(qapp, lambda: "unverständlich" in win.cl_status.text())
+        assert win.cl_ask_btn.isEnabled() and not win.cl_take_btn.isVisible()
+    finally:
+        win.close()

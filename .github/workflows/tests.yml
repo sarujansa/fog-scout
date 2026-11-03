@@ -1,5 +1,8 @@
 # Runs the test suite on every pull request and push to main: on Linux, and on Windows for the
 # Win32 parts (native overlay, notification window, hotkeys, window capture) that Linux never runs.
+# 1.28: every supported Python (3.12–3.14, start.bat) on Linux, the lowest and highest on Windows; the jobs on
+# 3.12 keep their old names ("pytest", "windows") so required checks stay the same. Actions are pinned to the
+# full commit SHA of their tag (a moved tag cannot change what runs here); the tag is in the comment.
 name: Tests
 
 on:
@@ -10,15 +13,25 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # a new push to the same pull request cancels its older run; runs on main always finish
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   pytest:
+    name: ${{ matrix.python == '3.12' && 'pytest' || format('pytest ({0})', matrix.python) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
           cache: pip
       - name: Schriften für die Overlay-Tests, Bibliotheken für Qt (offscreen)
         run: >-
@@ -29,18 +42,24 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest pyflakes
       - name: pyflakes
-        run: python -m pyflakes fogscout tests
+        if: matrix.python == '3.12'
+        run: python -m pyflakes fogscout tests tools
       - name: pytest
         run: python -m pytest -q tests
 
   windows:
+    name: ${{ matrix.python == '3.12' && 'windows' || format('windows ({0})', matrix.python) }}
     runs-on: windows-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
           cache: pip
       - name: Pakete (wie start.bat, windows-capture ohne Abhängigkeiten)
         run: |
