@@ -367,6 +367,9 @@ QListWidget#realms::item:selected {{ background: {c['nav_sel']}; }}
 QListWidget#realms::item:hover:!selected {{ background: {c['hover']}; }}
 QFrame#roundrow {{ border-radius: {RADIUS['m']}px; }}  /* 1.17.1: overview "Letzte Runden" – a row opens the round */
 QFrame#roundrow:hover {{ background: {c['hover']}; }}
+QPushButton#fold {{ background: transparent; border: 1px solid transparent; padding: 2px 6px 2px 0; color: {c['dim']}; }}
+QPushButton#fold:hover {{ color: {c['fg']}; }}
+QPushButton#fold:focus {{ border-color: {c['accent']}; }}
 QPushButton#rowplay {{ background: transparent; border: 1px solid transparent; padding: 0 6px; color: {c['dim']}; }}
 QPushButton#rowplay:hover {{ color: {c['accent']}; border-color: {c['border']}; }}
 QPushButton#rowplay:focus {{ border-color: {c['accent']}; }}  /* 1.22.3: the ID rule hid the keyboard focus */

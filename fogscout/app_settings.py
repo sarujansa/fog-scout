@@ -277,6 +277,12 @@ class SettingsTab:
             style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(4, 0))
         # 1.28 (user: "warum ist OBS auf einer separaten Seite und nicht in Verbindungen"): the connection to OBS
         # (port, password, test) is a card of its own on the tab "Verbindungen"; recording stays on "Aufnahmen"
+        # 1.29.1 (user: "unübersichtlich, was gehört zu was"): the OBS settings in six cards – titles only here, the
+        # Qt page places the controls by SPECS keys
+        for key, title in (("st.rec.when", _("Wann aufgenommen wird")), ("st.rec.picture", _("Bild")),
+                           ("st.rec.sound", _("Ton")), ("st.rec.clips", _("Clips und Editor")),
+                           ("st.rec.cleanup", _("Aufräumen"))):
+            self._reg(key, ui.LabelFrame(more, text=title, padding=8)).pack(fill="x", pady=(8, 0))
         oc = self._reg("st.more.obs", ui.LabelFrame(more, text=_("OBS-Verbindung"), padding=8))
         oc.pack(fill="x", pady=(8, 0))
         rr = ui.Frame(oc)
@@ -370,7 +376,7 @@ class SettingsTab:
                                                         variable=self.rec_tracks_var, command=self._rec_audio_changed)).pack(anchor="w", pady=(4, 0))
         self._reg("st.more.rec_tracks_hint", ui.Label(rc, text=_(
             "Dafür in OBS: Einstellungen → Ausgabe → Ausgabemodus „Erweitert“ → Reiter Aufnahme → Audiospur 1 bis 5 anhaken. "
-            "Das Programm prüft das beim DBD-Start und meldet es im Status unten; es ändert nichts am OBS-Profil."),
+            "Das Programm prüft das beim DBD-Start und meldet es im Kasten „Aufnahmen mit OBS“; es ändert nichts am OBS-Profil."),
             wraplength=420, style="Dim.TLabel")).pack(anchor="w")
         rs = ui.Frame(rc)                                                                           # 1.8.6
         rs.pack(fill="x")
@@ -460,7 +466,7 @@ class SettingsTab:
                              "ins Internet."),
                   style="Dim.TLabel", wraplength=420)).pack(anchor="w")
 
-        bk = self._reg("st.more.backup", ui.LabelFrame(more, text=_("Sicherung"), padding=8))
+        bk = self._reg("st.more.backup", ui.LabelFrame(more, text=_("Sicherung und Ordner"), padding=8))
         bk.pack(fill="x", pady=(8, 0))
         self._reg("st.more.export", ui.Button(bk, text=_("Einstellungen exportieren …"),
                                                command=self._export_settings)).pack(side="left")
@@ -719,6 +725,25 @@ class SettingsTab:
                             "nicht verfügbar."), "Fehler")
         return pw
 
+    def _rec_depends(self):
+        """1.29.1: an option that only counts with the one above it (indented on the page) is greyed out while that
+        one is off – its value stays."""
+        pairs = ((self.rec_pre_var, ("st.more.rec_merge",)),
+                 (self.rec_window_var, ("st.more.rec_game", "st.more.rec_overlay")),
+                 (self.rec_audio_var, ("st.more.rec_audio_dbd", "st.more.rec_audio_discord",
+                                       "st.more.rec_audio_desktop", "st.more.rec_audio_mic")),
+                 (self.rec_instant_var, ("st.more.rec_clip", "st.more.rec_clip_notify", "st.more.rec_clip_dbd",
+                                         "st.more.rec_clip_discord", "st.more.rec_clip_mic", "st.more.rec_clip_other")))
+        reg = self.__dict__.get("_qt_reg", {})
+        for var, keys in pairs:
+            for key in keys:
+                w = reg.get(key)
+                if w is None:
+                    continue
+                state = ("readonly" if isinstance(w, ui.Combobox) else "normal") if var.get() else "disabled"
+                if str(w.cget("state")) != state:
+                    w.configure(state=state)
+
     def _rec_setting(self, save=True):
         cfg = self._rec_cfg()
         if save:
@@ -756,6 +781,7 @@ class SettingsTab:
             self.settings.set("rec_clip_sources", list(cfg.clip_sources))
             self._save_soon()
         self.recorder.configure(cfg)
+        self._rec_depends()
         folder = cfg.folder
         self.rec_folder_var.set(folder if folder else _("(kein Ordner gewählt)"))
         self.rec_ffmpeg_var.set(_("ffmpeg fehlt (Paket imageio-ffmpeg) – start.bat installiert es beim nächsten Start; "

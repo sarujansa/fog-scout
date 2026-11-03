@@ -177,7 +177,6 @@ EN = {
     "Benachrichtigungen": "Notifications",
     "Runde auf {map} nicht gezählt: ihr Ende wurde nicht erkannt.":
         "Round on {map} not counted: its end was not detected.",
-    "Sicherung": "Backup",
     "Einstellungen exportieren …": "Export settings …",
     "Einstellungen importieren …": "Import settings …",
     "Einstellungen exportieren": "Export settings",
@@ -2010,7 +2009,7 @@ EN = {
     'OBS bereit – Runden werden aufgenommen. {problem}': 'OBS ready – rounds are recorded. {problem}',
     'Für die Tonmischung im Clip-Editor in OBS: Einstellungen → Ausgabe → Ausgabemodus „Erweitert“ → Reiter Aufnahme → Audiospur 1 bis 5 anhaken (1 alles, 2 Spiel, 3 Discord, 4 Mikrofon, 5 Hintergrund)': 'For the sound mix in the clip editor, in OBS: Settings → Output → Output mode "Advanced" → tab Recording → tick audio tracks 1 to 5 (1 everything, 2 game, 3 Discord, 4 microphone, 5 background)',
     "Jede Tonquelle auf eine eigene OBS-Tonspur": "Each sound source on an OBS track of its own",
-    'Dafür in OBS: Einstellungen → Ausgabe → Ausgabemodus „Erweitert“ → Reiter Aufnahme → Audiospur 1 bis 5 anhaken. Das Programm prüft das beim DBD-Start und meldet es im Status unten; es ändert nichts am OBS-Profil.': 'For this, in OBS: Settings → Output → Output mode "Advanced" → tab Recording → tick audio tracks 1 to 5. The program checks this when DBD starts and reports it in the status below; it changes nothing in the OBS profile.',
+    'Dafür in OBS: Einstellungen → Ausgabe → Ausgabemodus „Erweitert“ → Reiter Aufnahme → Audiospur 1 bis 5 anhaken. Das Programm prüft das beim DBD-Start und meldet es im Kasten „Aufnahmen mit OBS“; es ändert nichts am OBS-Profil.': 'For this, in OBS: Settings → Output → Output mode "Advanced" → tab Recording → tick audio tracks 1 to 5. The program checks this when DBD starts and reports it in the card “Recordings with OBS”; it changes nothing in the OBS profile.',
     'Sofort-Clip (F8) mit Ton von:': 'Instant clip (F8) with sound from:',
     'Wie bei Medal: Das Programm weist in OBS jede Tonquelle der Spur 1 (alles – spielt in jedem Player) und ihrer eigenen Spur zu: nur DBD 2, Discord 3, Mikrofon 4, alle anderen Tonquellen in OBS (z. B. Spotify, Browser) 5 = Hintergrund. Der Desktop-Ton von Windows enthält auch DBD und Discord und liegt deshalb nur auf Spur 1. Im Clip-Editor schaltest du jede Quelle an oder aus und regelst ihre Lautstärke; beim Speichern mischt ffmpeg sie zusammen. OBS schreibt die Spuren nur im Ausgabemodus „Erweitert“ mit Audiospur 1 bis 5 angehakt (MKV oder MP4, nicht FLV); das Programm prüft das beim DBD-Start und meldet es, ändert aber nichts am OBS-Profil. Aus = Spuren bleiben, wie sie in OBS stehen.': 'Like Medal: the program assigns every sound source in OBS to track 1 (everything – plays in any player) and to its own track: DBD only 2, Discord 3, microphone 4, every other sound source in OBS (e.g. Spotify, browser) 5 = background. Windows\' desktop sound holds DBD and Discord too and therefore sits on track 1 only. In the clip editor you switch each source on or off and set its level; ffmpeg mixes them when saving. OBS writes the tracks only in the output mode "Advanced" with audio tracks 1 to 5 ticked (MKV or MP4, not FLV); the program checks this when DBD starts and reports it, but changes nothing in the OBS profile. Off = the tracks stay as set in OBS.',
     'Nur der Ton von DBD im Sofort-Clip.': 'Only the sound of DBD in the instant clip.',
@@ -3450,4 +3449,9 @@ EN = {
         "frame rate, simple recording quality) “Set in OBS” sets, the old values are kept.",
     "Stellt die OBS-Werte von vor „In OBS einstellen“ wieder her.":
         "Restores the OBS values from before “Set in OBS”.",
+    # 1.29.1 (user: "unübersichtlich, Gemeinsamkeiten zusammentun"): the settings tabs regrouped
+    "Clips und Editor": "Clips and editor",
+    "Erklärung": "Explanation",
+    "Sicherung und Ordner": "Backup and folders",
+    "Wann aufgenommen wird": "When to record",
 }
