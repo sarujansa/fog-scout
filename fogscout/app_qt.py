@@ -483,6 +483,8 @@ class QtShell:
                 src = auto if page in self._qt_mod.AUTO_PAGES else reg
                 self.qt.show_states(page, {k: ui_state(src[k]) for k in form.controls if k in src})
             self.qt.update_search_index()
+        elif action in ("palette_open", "palette_pick", "palette_ask"):     # 1.26: the command palette
+            self._palette_event(action, arg)
         elif action == "setup_done":                 # assistant finished or skipped: not again on the next start
             self.settings.set("welcome_seen", True)
             self._save_soon()

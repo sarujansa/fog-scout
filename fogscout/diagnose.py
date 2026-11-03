@@ -169,6 +169,8 @@ def collect(app) -> str:
     if yt is not None:
         lines.append(yt.diag_line() + f" (ID gesetzt={bool(app.settings.get('youtube_client_id'))}, "
                      f"Sichtbarkeit={app.settings.get('youtube_privacy')})")
+    if hasattr(app, "_claude_diag"):                      # 1.26: counts only – never the key or a question
+        lines.append(app._claude_diag())
     mon = getattr(app, "sysmon", None)
     if mon is not None:
         lines.append(mon.diag_line() + f" (Anzeige={app.settings.get('sysinfo')}, Rechteck="
