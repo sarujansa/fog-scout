@@ -1315,13 +1315,22 @@ EN = {
     'Claude hat die Frage abgelehnt.': 'Claude declined the question.',
     'Claude hat unverständlich geantwortet.': 'Claude gave an answer that could not be read.',
     'Claude ist nicht erreichbar – keine Internetverbindung?': 'Claude cannot be reached – no internet connection?',
-    'Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen.':
-        'Claude: the API key is not accepted – check it under Settings › Connections.',
     'Claude: Zu viele Anfragen – gleich noch einmal versuchen.': 'Claude: too many requests – try again in a moment.',
-    'Claude: Kein Guthaben mehr auf dem API-Konto.': 'Claude: no credit left on the API account.',
     'Kein API-Key – unter Einstellungen › Verbindungen › Claude eintragen.':
         'No API key – enter one under Settings › Connections › Claude.',
     'Claude (Suche)': 'Claude (search)',
+    'Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen („API-Key holen“ öffnet die Anthropic Console).':
+        'Claude: the API key is not accepted – check it under Settings › Connections (“Get API key” opens the Anthropic Console).',
+    'Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › „Guthaben aufladen“.':
+        'Claude: no credit left on the API account – Settings › Connections › “Add credit”.',
+    'API-Key holen': 'Get API key',
+    'Guthaben aufladen': 'Add credit',
+    'Öffnet die Seite „API keys“ der Anthropic Console im Browser (platform.claude.com). Dort einen Key anlegen und hier einfügen – er beginnt mit sk-ant-.':
+        'Opens the page “API keys” of the Anthropic Console in the browser (platform.claude.com). Create a key there and paste it here – it starts with sk-ant-.',
+    'Öffnet die Seite „Billing“ der Anthropic Console im Browser. Die API wird getrennt von einem Claude-Abo im Voraus bezahlt; dort lässt sich auch ein monatliches Ausgabenlimit setzen.':
+        'Opens the page “Billing” of the Anthropic Console in the browser. The API is paid in advance, separately from a Claude subscription; a monthly spend limit can be set there too.',
+    'Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Dafür einen eigenen API-Key aus der Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch ein Ausgabenlimit setzen). Der Key liegt verschlüsselt auf diesem PC und steht nie in der Sicherung, im Log oder in der Diagnose.':
+        'When the search (Ctrl+F) finds nothing that fits, it can ask Claude – only when you pick the row “Ask Claude”, never while typing. Only your question and the names of Fog Scout’s settings, pages and actions are sent to api.anthropic.com – never rounds, maps, killers, paths or game data. Claude only suggests entries; nothing runs until you pick it. Enter your own API key from the Anthropic Console for this (“Get API key”). The API is billed separately from a Claude subscription: each question costs some of your credit in the Console (“Add credit” – a spend limit can be set there too). The key is kept encrypted on this PC and is never in the backup, the log or the diagnosis.',
     'Zeigt in der Suche (Strg+F) die Zeile „Claude fragen“. Erst wenn du sie wählst, gehen deine Frage und die Namen der Einstellungen, Seiten und Aktionen an Claude (api.anthropic.com) – nie Runden, Maps oder Spieldaten. Braucht einen eigenen API-Key.':
         'Shows the row “Ask Claude” in the search (Ctrl+F). Only when you pick it are your question and the names of the settings, pages and actions sent to Claude (api.anthropic.com) – never rounds, maps or game data. Needs your own API key.',
     'Schickt eine kleine Probefrage an Claude und sagt, ob der API-Key angenommen wird (kostet einen kleinen Betrag deines API-Guthabens).':
@@ -1339,8 +1348,6 @@ EN = {
         'Claude: that does not look like an API key (it starts with sk-ant-).',
     'Claude: Key eingetragen.': 'Claude: key entered.',
     'Claude: Key eingetragen, Suche mit Claude ist aus.': 'Claude: key entered, asking Claude in the search is off.',
-    'Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Dafür einen eigenen API-Key aus der Anthropic Console eintragen (jede Frage kostet etwas von deinem API-Guthaben); er liegt verschlüsselt auf diesem PC und steht nie in der Sicherung, im Log oder in der Diagnose.':
-        'When the search (Ctrl+F) finds nothing that fits, it can ask Claude – only when you pick the row “Ask Claude”, never while typing. Only your question and the names of Fog Scout’s settings, pages and actions are sent to api.anthropic.com – never rounds, maps, killers, paths or game data. Claude only suggests entries; nothing runs until you pick it. Enter your own API key from the Anthropic Console for this (each question costs some of your API credit); it is kept encrypted on this PC and is never in the backup, the log or the diagnosis.',
     'Schritt {n} von {total}': 'Step {n} of {total}',
     'Sprache': 'Language',
     'Sprache dieses Programms:': 'Language of this program:',

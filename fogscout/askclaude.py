@@ -29,6 +29,10 @@ MAX_IDS = 5
 MAX_QUESTION = 300                   # characters of the question sent at most
 MAX_CATALOGUE = 600                  # entries sent at most
 KEY_PREFIX = "sk-ant-"
+# 1.26.1 (user: "einen Button, dass man direkt auf die Seite kommt"): the Anthropic Console's pages, opened in the
+# default browser on a click only (like ytupload.CONSOLE) – the program itself sends nothing there
+CONSOLE_KEYS = "https://platform.claude.com/settings/keys"
+CONSOLE_BILLING = "https://platform.claude.com/settings/billing"
 
 SYSTEM = ("You help users of Fog Scout, a desktop companion app for the game Dead by Daylight, find things in the "
           "app. You get the user's question and a catalogue of the app's settings, pages and actions as lines "

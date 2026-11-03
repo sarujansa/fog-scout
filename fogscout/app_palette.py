@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
+import webbrowser
 
 from . import askclaude, i18n, overview, palette, spotify
 from . import uimodel as ui
@@ -180,9 +181,11 @@ class PaletteMixin:
 
     @staticmethod
     def _claude_words(kind: str) -> str:
-        return {"auth": _("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen."),
+        return {"auth": _("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
+                         "(„API-Key holen“ öffnet die Anthropic Console)."),
                 "rate": _("Claude: Zu viele Anfragen – gleich noch einmal versuchen."),
-                "quota": _("Claude: Kein Guthaben mehr auf dem API-Konto."),
+                "quota": _("Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › "
+                          "„Guthaben aufladen“."),
                 "refused": _("Claude hat die Frage abgelehnt."),
                 "bad": _("Claude hat unverständlich geantwortet.")}.get(
             kind, _("Claude ist nicht erreichbar – keine Internetverbindung?"))
@@ -205,6 +208,13 @@ class PaletteMixin:
         self._reg("st.more.cl_test", ui.Button(row, text=_("Key prüfen"), command=self._claude_test)).pack(side="left")
         self._reg("st.more.cl_clear", ui.Button(row, text=_("Key löschen"),
                                                  command=lambda: self.cl_key_var.set(""))).pack(side="left", padx=(6, 0))
+        row2 = ui.Frame(cc)                       # 1.26.1: straight to the Anthropic Console's pages
+        row2.pack(fill="x", pady=(4, 0))
+        self._reg("st.more.cl_keys", ui.Button(row2, text=_("API-Key holen"),
+                                                command=lambda: webbrowser.open(askclaude.CONSOLE_KEYS))).pack(side="left")
+        self._reg("st.more.cl_billing", ui.Button(row2, text=_("Guthaben aufladen"),
+                                                   command=lambda: webbrowser.open(askclaude.CONSOLE_BILLING))
+                  ).pack(side="left", padx=(6, 0))
         self.cl_status_var = ui.StringVar(value="")
         self._reg("st.more.cl_status", ui.Label(cc, textvariable=self.cl_status_var, wraplength=420,
                                                  style="Dim.TLabel")).pack(anchor="w", pady=(4, 0))
@@ -213,7 +223,9 @@ class PaletteMixin:
             "wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und "
             "Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude "
             "schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Dafür einen eigenen API-Key aus der "
-            "Anthropic Console eintragen (jede Frage kostet etwas von deinem API-Guthaben); er liegt "
+            "Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: "
+            "jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch "
+            "ein Ausgabenlimit setzen). Der Key liegt "
             "verschlüsselt auf diesem PC und steht nie in der Sicherung, im Log oder in der Diagnose."),
             style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(4, 0))
         self._claude_setting(save=False)

@@ -207,6 +207,10 @@ TIPS = {
                                          "Braucht einen eigenen API-Key.",
     "Key prüfen": "Schickt eine kleine Probefrage an Claude und sagt, ob der API-Key angenommen wird (kostet "
                   "einen kleinen Betrag deines API-Guthabens).",
+    "API-Key holen": "Öffnet die Seite „API keys“ der Anthropic Console im Browser (platform.claude.com). Dort einen "
+                     "Key anlegen und hier einfügen – er beginnt mit sk-ant-.",
+    "Guthaben aufladen": "Öffnet die Seite „Billing“ der Anthropic Console im Browser. Die API wird getrennt von einem "
+                         "Claude-Abo im Voraus bezahlt; dort lässt sich auch ein monatliches Ausgabenlimit setzen.",
     "Key löschen": "Entfernt den API-Key von diesem PC; die Suche fragt Claude dann nicht mehr.",
     "Playlists laden": "Holt die Liste deiner Playlists von YouTube (1 Einheit) in die beiden Auswahlfelder. Neue "
                        "Playlists legst du auf YouTube an und lädst die Liste danach neu.",
