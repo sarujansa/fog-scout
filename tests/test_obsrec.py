@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from fogscout import obsrec  # noqa: E402
+from fogscout import obsrec, recquality  # noqa: E402
 
 ROOMY = SimpleNamespace(total=4 * 2 ** 40, used=2 ** 40, free=3 * 2 ** 40)
 
@@ -61,6 +61,8 @@ class FakeObs(threading.Thread):
         self.replay_fails = False                   # 1.8.42: the encoder cannot start the replay buffer
         self.source_size = (3440, 1440)             # 1.8.89: what every source reports as its picture size
         self.paused = False                         # 1.15: PauseRecord / ResumeRecord
+        self.video = {"baseWidth": 2560, "baseHeight": 1440, "outputWidth": 2560, "outputHeight": 1440,
+                      "fpsNumerator": 60, "fpsDenominator": 1}                    # 1.29: SetVideoSettings
         self.stats = {"activeFps": 60.0, "cpuUsage": 3.5, "availableDiskSpace": 2048.0,     # 1.15: GetStats
                       "renderSkippedFrames": 2, "renderTotalFrames": 1000, "outputSkippedFrames": 0,
                       "outputTotalFrames": 900}
@@ -227,8 +229,17 @@ class FakeObs(threading.Thread):
                     out = {"sceneItemId": self._item(data["sceneName"], data["sourceName"],
                                                      data.get("sceneItemEnabled", True))}
             elif kind == "GetVideoSettings":           # 1.8.41
-                out = {"baseWidth": 2560, "baseHeight": 1440, "outputWidth": 2560, "outputHeight": 1440,
-                       "fpsNumerator": 60, "fpsDenominator": 1}
+                out = dict(self.video)
+            elif kind == "SetVideoSettings":           # 1.29: OBS refuses while an output runs
+                ok = self.recording is None and not self.replay
+                if ok:
+                    self.video.update(data)
+            elif kind == "SetProfileParameter":        # 1.29: null removes the value (OBS's default again)
+                key = (data["parameterCategory"], data["parameterName"])
+                if data.get("parameterValue") is None:
+                    self.profile.pop(key, None)
+                else:
+                    self.profile[key] = data["parameterValue"]
             elif kind == "SetSceneItemTransform":
                 hits = [i for i in self.scenes.get(data["sceneName"], []) if i["sceneItemId"] == data["sceneItemId"]]
                 ok = bool(hits)
@@ -2144,3 +2155,79 @@ def test_the_recorder_thread_survives_an_error_in_its_idle_work(obs, tmp_path, m
 
 def test_an_index_name_with_a_nul_is_no_path():
     assert obsrec.rel_path("/d/DBD", "a\x00b.mkv") is None
+
+
+# ------------------------------------------------------------------ 1.29: recording quality on a click
+def test_the_poll_reads_what_the_quality_check_needs(obs, tmp_path):
+    obs.video.update(outputWidth=1920, outputHeight=1080)
+    obs.profile[("AdvOut", "RecRescale")] = "true"
+    r, posted = _recorder(obs, str(tmp_path))
+    r._poll()
+    d = posted.get(timeout=1)[1]
+    assert (d["base_width"], d["base_height"], d["width"], d["height"]) == (2560, 1440, 1920, 1080)
+    assert d["encoder_raw"] == "jim_nvenc" and d["rescale"] == "true" and "quality" not in d
+    assert all(k.startswith("Get") for k, _a in obs.requests)        # still only reads
+
+
+def test_quality_is_written_only_on_a_click_only_the_allowed_values_and_the_old_ones_first(obs, tmp_path):
+    obs.profile.update({("Output", "Mode"): "Simple", ("SimpleOutput", "RecQuality"): "Stream",
+                        ("SimpleOutput", "RecEncoder"): "x264"})
+    obs.video.update(outputWidth=1920, outputHeight=1080, fpsNumerator=30)
+    obs.replay = True
+    r, posted = _recorder(obs, str(tmp_path))
+    r._poll()
+    d = posted.get(timeout=1)[1]
+    assert not any(k.startswith("Set") for k, _a in obs.requests)     # reading never writes
+    plan = recquality.plan(d, nvidia=True)
+    plan["profile"].append(("Output", "Mode", "Simple"))               # not a quality key: never written
+    plan["profile"].append(("AdvOut", "RecEncoder", "obs_x264"))
+    n = len(obs.requests)
+    r._quality(plan)
+    events = _drain(posted)
+    before = next(e[1]["before"] for e in events if e[0] == "obs_quality" and "before" in e[1])
+    assert before["video"] == {"outputWidth": 1920, "outputHeight": 1080, "fpsNumerator": 30, "fpsDenominator": 1}
+    assert ("SimpleOutput", "RecQuality", "Stream") in before["profile"]
+    assert ("SimpleOutput", "RecEncoder", "x264") in before["profile"]
+    sets = [(k, a) for k, a in obs.requests[n:] if k.startswith("Set")]
+    assert [k for k, _a in sets] == ["SetVideoSettings", "SetProfileParameter", "SetProfileParameter"]
+    assert all((a["parameterCategory"], a["parameterName"]) in obsrec.QUALITY_KEYS
+               for k, a in sets if k == "SetProfileParameter")
+    assert obs.video["outputWidth"] == 2560 and obs.video["fpsNumerator"] == 60
+    assert obs.profile[("SimpleOutput", "RecQuality")] == "HQ" and obs.profile[("SimpleOutput", "RecEncoder")] == "nvenc"
+    assert obs.profile[("Output", "Mode")] == "Simple" and obs.profile[("AdvOut", "RecEncoder")] == "jim_nvenc"
+    assert obs.replay                                                 # the buffer was stopped for it and runs again
+    kinds = [k for k, _a in obs.requests[n:]]
+    assert kinds.index("StopReplayBuffer") < kinds.index("SetVideoSettings") < kinds.index("StartReplayBuffer")
+    r._quality(dict(before, restore=True))                            # "Zurücksetzen"
+    assert obs.video["outputWidth"] == 1920 and obs.video["fpsNumerator"] == 30
+    assert obs.profile[("SimpleOutput", "RecQuality")] == "Stream" and obs.profile[("SimpleOutput", "RecEncoder")] == "x264"
+
+
+def test_quality_is_never_set_while_obs_records(obs, tmp_path):
+    obs.video.update(outputWidth=1920, outputHeight=1080)
+    r, posted = _recorder(obs, str(tmp_path))
+    r._begin({"t": 1.0, "label": "Coal Tower"})
+    _drain(posted)
+    n = len(obs.requests)
+    r._quality({"video": {"outputWidth": 2560, "outputHeight": 1440}})
+    assert not any(k.startswith("Set") for k, _a in obs.requests[n:]) and obs.video["outputWidth"] == 1920
+    assert not any(e[0] == "obs_quality" for e in _drain(posted))
+    r._finish({})
+
+
+def test_the_advanced_mode_writes_no_encoder_value_and_a_restore_removes_what_was_not_set(obs, tmp_path):
+    obs.profile[("AdvOut", "RecRescale")] = "true"
+    r, posted = _recorder(obs, str(tmp_path))
+    r._poll()
+    d = posted.get(timeout=1)[1]
+    plan = recquality.plan(d, nvidia=True)
+    assert plan == {"profile": [("AdvOut", "RecRescale", "false")]}
+    r._quality(plan)
+    before = next(e[1]["before"] for e in _drain(posted) if e[0] == "obs_quality" and "before" in e[1])
+    assert obs.profile[("AdvOut", "RecRescale")] == "false" and obs.profile[("AdvOut", "RecEncoder")] == "jim_nvenc"
+    obs.profile.pop(("AdvOut", "RecRescale"))
+    r._quality({"profile": [("AdvOut", "RecRescale", "false")]})
+    before = next(e[1]["before"] for e in _drain(posted) if e[0] == "obs_quality" and "before" in e[1])
+    assert before["profile"] == [("AdvOut", "RecRescale", None)]
+    r._quality(dict(before, restore=True))
+    assert ("AdvOut", "RecRescale") not in obs.profile                # null = OBS's default again

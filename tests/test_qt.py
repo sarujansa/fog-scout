@@ -2999,3 +2999,21 @@ def test_the_features_card_lines_its_switches_up_in_equal_columns(qapp, keep):
     for it in items:
         rows.setdefault(it.y(), []).append(it.x())
     assert len(rows) > 1 and all(sorted(r) == xs[:len(r)] for r in rows.values())   # every row on the same columns
+
+
+def test_a_long_message_is_never_cut_off_at_the_bottom(qapp, keep):
+    """1.29 (offscreen screenshot of the OBS quality steps): adjustSize measured the wrapped text for a wider line
+    than MessageBox.WIDTH leaves it – the last line of a long text fell under the buttons. The box is as tall as its
+    layout needs for its width, so the text gets the height it needs."""
+    from fogscout import qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.show()
+    box = win.message
+    text = "\n".join("• " + "Voreinstellung: P5: Langsam (gute Qualität), Tuning: Hohe Qualität, Mehrfachdurchlauf"
+                     for _ in range(14))
+    win.show_question(("Aufnahmequalität", text, True))
+    qapp.processEvents()
+    assert box.isVisible()
+    assert box.height() >= box.layout().totalHeightForWidth(box.width())
+    assert box.text.height() >= box.text.heightForWidth(box.text.width())
+    box.cancel.click()

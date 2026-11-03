@@ -15,7 +15,7 @@ import threading
 import time
 from types import SimpleNamespace
 
-from . import encoders, history, obsrec, project, steamshots, uimodel as ui
+from . import encoders, history, obsrec, project, recquality, steamshots, uimodel as ui
 from .medialib import montage_items
 from .app_stats import STATS_PERIODS
 from .capture import IS_WIN
@@ -192,6 +192,16 @@ class RecordingsTab:
         self.rec_warn_label = ui.Label(card, textvariable=self.rec_warn_var, style="Note.TLabel",   # 1.24.3: amber
                                        wraplength=560)
         self.rec_warn_label.pack(anchor="w")
+        # 1.29 (user: "OBS-Aufnahmen mit guter Qualität"): how sharp OBS records (recquality) – the measured bitrate
+        # while a recording runs, the last one after it; the button explains and, on a click, sets what it can
+        self._rec_quality_last = None
+        qrow = ui.Frame(card)
+        qrow.pack(fill="x", pady=(4, 0))
+        self.rec_quality_var = ui.StringVar(value="")
+        self.rec_quality_label = ui.level(ui.Label(qrow, textvariable=self.rec_quality_var, wraplength=560))
+        self.rec_quality_label.pack(side="left")
+        self.rec_quality_btn = ui.Button(qrow, text=_("Qualität verbessern …"), command=self.rec_quality_open)
+        self.rec_quality_undo = ui.Button(qrow, text=_("OBS-Werte zurücksetzen"), command=self.rec_quality_restore)
         crow = ui.Frame(card)
         crow.pack(fill="x", pady=(6, 0))
         self.rec_start_btn = ui.Button(crow, text=_("Aufnahme starten"), command=self.record_toggle)
@@ -642,6 +652,9 @@ class RecordingsTab:
 
     def _rec_card_state(self, d):
         self._obs_state, self._obs_state_t = dict(d), time.time()
+        v = recquality.verdict(d)
+        if v.mbps is not None:
+            self._rec_quality_last = v
         if d.get("ours"):
             self._rec_paused = bool(d.get("paused"))
         self._rec_card_render()
@@ -674,6 +687,7 @@ class RecordingsTab:
                 var.set(text)
         rec_on = bool(self.settings.get("rec_on", False))
         ui.level(self.rec_state_label, rec_card_level(d, on, rec_on))
+        self._rec_quality_render()
         # 1.24.3: recordings off and OBS never asked – the summary above says so; the card would say it again
         card = d is not None or on
         if card and not self.rec_card.winfo_manager():
@@ -700,6 +714,94 @@ class RecordingsTab:
                        else "disabled")):                  # 1.24.7 (visual QA): a clip needs OBS, like F9
             if str(b.cget("state")) != st:
                 b.configure(state=st)
+
+    # ---- 1.29: recording quality (recquality)
+    def _rec_quality_verdict(self):
+        """The verdict for the card: the recording on air, else the last measured one (its words marked)."""
+        d = self._obs_state
+        v = recquality.verdict(d or {})
+        last = self._rec_quality_last
+        if v.mbps is None and last is not None and d and d.get("connected") and not d.get("recording"):
+            level = last.level if last.level == "err" or v.level != "warn" else "warn"
+            v = recquality.Verdict(level=level, words=_("{words} (letzte Aufnahme)", words=last.words),
+                                   hints=list(dict.fromkeys(v.hints + last.hints)), fixable=v.fixable,
+                                   mbps=last.mbps)
+        return v
+
+    def _rec_quality_render(self):
+        v = self._rec_quality_verdict()
+        if self.rec_quality_var.get() != v.words:
+            self.rec_quality_var.set(v.words)
+        ui.level(self.rec_quality_label, v.level or None)
+        shown = bool(v.words)
+        for b, want, pad in ((self.rec_quality_btn, shown, (10, 0)),
+                             (self.rec_quality_undo, shown and bool(self.settings.get("rec_obs_before")), (6, 0))):
+            if want and not b.winfo_manager():
+                b.pack(side="left", padx=pad)
+            elif not want and b.winfo_manager():
+                b.pack_forget()
+
+    def _rec_quality_text(self, v, d) -> str:
+        parts = [v.words]
+        if v.hints:
+            parts.append("\n".join("• " + h for h in v.hints))
+        steps = recquality.steps(d.get("mode", ""), d.get("encoder_raw") or d.get("encoder") or "")
+        parts.append(_("Empfohlen (in OBS einzustellen):") + "\n" + steps[0] + "\n"
+                     + "\n".join("• " + x for x in steps[1:]))
+        return "\n\n".join(p for p in parts if p)
+
+    def rec_quality_open(self):
+        """The card's "Qualität verbessern …": verdict, hints and OBS's steps; with something a request can set,
+        the question "In OBS einstellen" – OK writes only that (Recorder.apply_quality), never during a recording."""
+        d = dict(self._obs_state or {})
+        v = self._rec_quality_verdict()
+        p = recquality.plan(d, nvidia=recquality.nvidia_present())
+        text = self._rec_quality_text(v, d)
+        if not p:
+            self._inform(_("Aufnahmequalität"), text + "\n\n" + _("Diese Werte lassen sich nur in OBS selbst "
+                                                                  "einstellen – Fog Scout zeigt, wo."))
+            return
+        if d.get("recording"):
+            self._inform(_("Aufnahmequalität"), text + "\n\n" + _("Einstellen geht erst nach der Aufnahme."))
+            return
+        lines = "\n".join("• " + x for x in recquality.plan_lines(p))
+        if not self._ask(_("Aufnahmequalität"),
+                         text + "\n\n" + _("Fog Scout stellt in OBS ein (die alten Werte werden gemerkt):") + "\n"
+                         + lines, self.rec_quality_open, ok_text=_("In OBS einstellen")):
+            return
+        self.recorder.apply_quality(p)
+        self._rec_card_poll_now()
+
+    def rec_quality_restore(self):
+        """"OBS-Werte zurücksetzen": the values from before the last "In OBS einstellen"."""
+        before = self.settings.get("rec_obs_before") or {}
+        if not before:
+            return
+        if not self._ask(_("OBS-Werte zurücksetzen"), _("Die OBS-Werte von vor „In OBS einstellen“ wiederherstellen?"),
+                         self.rec_quality_restore, ok_text=_("Zurücksetzen")):
+            return
+        self.recorder.restore_quality(before)
+        self._rec_card_poll_now()
+
+    def _rec_quality_event(self, d):
+        """Event obs_quality: ``before`` = the values before writing (kept for "Zurücksetzen"); ``done`` = written."""
+        if "before" in d:                      # a second click keeps the first originals: "Zurücksetzen" = before Fog Scout
+            old, new = self.settings.get("rec_obs_before") or {}, d["before"] or {}
+            merged = {}
+            video = dict(new.get("video") or {}, **(old.get("video") or {}))
+            if video:
+                merged["video"] = video
+            prof = {tuple(p[:2]): list(p) for p in (new.get("profile") or [])}
+            prof.update({tuple(p[:2]): list(p) for p in (old.get("profile") or [])})
+            if prof:
+                merged["profile"] = list(prof.values())
+            self.settings.set("rec_obs_before", merged)
+        elif d.get("done"):
+            if d.get("restore"):
+                self.settings.set("rec_obs_before", {})
+            self._rec_quality_last = None
+            self._rec_card_poll_now()
+        self._rec_card_render()
 
     def _show_round_recording(self, t: float) -> bool:
         """1.17.1: the page Aufnahmen › Runden with the recording of the round at ``t`` marked (the compact editor
