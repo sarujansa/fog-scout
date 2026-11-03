@@ -1321,8 +1321,6 @@ EN = {
     # 1.27: Claude in the clip editor
     'Zeigt im grossen Clip-Editor den Abschnitt „Mit Claude bearbeiten“: Du schreibst, was mit dem Schnitt passieren soll, Claude schlägt Schritte vor, du übernimmst oder verwirfst sie. Gesendet werden nur deine Bitte und der Schnitt als Zahlen – kein Bild, kein Dateiname. Braucht einen eigenen API-Key.':
         'Shows the section “Edit with Claude” in the big clip editor: you write what should happen to the cut, Claude suggests steps, you apply or discard them. Only your wish and the cut as numbers are sent – no picture, no file name. Needs your own API key.',
-    'Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Im Clip-Editor („Mit Claude bearbeiten“) schreibst du, was mit dem Schnitt passieren soll; gesendet werden nur deine Bitte und der Schnitt als Zahlen (Zeiten, Tempo, Blenden, eigene Short-Texte) – kein Bild, kein Dateiname –, Claudes Vorschlag wird geprüft und erst auf „Übernehmen“ ausgeführt. Dafür einen eigenen API-Key aus der Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch ein Ausgabenlimit setzen). Der Key liegt verschlüsselt auf diesem PC und steht nie in der Sicherung, im Log oder in der Diagnose.':
-        'When the search (Ctrl+F) finds nothing that fits, it can ask Claude – only when you pick the row “Ask Claude”, never while typing. Only your question and the names of Fog Scout’s settings, pages and actions are sent to api.anthropic.com – never rounds, maps, killers, paths or game data. Claude only suggests entries; nothing runs until you pick it. In the clip editor (“Edit with Claude”) you write what should happen to the cut; only your wish and the cut as numbers (times, speed, fades, your own short texts) are sent – no picture, no file name –, Claude’s suggestion is checked and only carried out on “Apply”. Enter your own API key from the Anthropic Console for this (“Get API key”). The API is billed separately from a Claude subscription: each question costs some of your credit in the Console (“Add credit” – a spend limit can be set there too). The key is kept encrypted on this PC and is never in the backup, the log or the diagnosis.',
     'Claude':
         'Claude',
     'Im Clip-Editor Claude nutzen':
@@ -1375,8 +1373,19 @@ EN = {
         'moment outside',
     'Schnitt bei {a}':
         'split at {a}',
-    'Standbild: Stelle oder Dauer fehlt':
-        'freeze frame: moment or length missing',
+    # 1.28: refused instead of bent
+    'keine Änderung':
+        'no change',
+    'Blende ungültig':
+        'fade not offered',
+    'Standbild: Dauer ungültig':
+        'freeze frame: length not allowed',
+    'Untertitel zu kurz':
+        'subtitle too short',
+    '{n} weitere Schritte nicht ausgeführt (höchstens {max})':
+        '{n} more steps not carried out (at most {max})',
+    'Gerade nicht möglich – erst die laufende Bearbeitung beenden, dann übernehmen.':
+        'Not possible right now – finish the current edit first, then apply.',
     'Standbild bei {a} für {s} s':
         'freeze frame at {a} for {s} s',
     'Blende ohne Dauer':
@@ -2150,8 +2159,6 @@ EN = {
     'Developer-Dashboard öffnen': 'Open developer dashboard',
     'Mit Spotify verbinden': 'Connect to Spotify',
     'Spotify-Verbindung trennen': 'Disconnect Spotify',
-    'Zeigt in der Musikkarte, was in Spotify als Nächstes kommt (Position und Anzahl unter Overlay → Musik). Die Windows-Mediensteuerung kennt nur den laufenden Titel, die Liste holt das Programm deshalb von Spotify selbst: Dafür im Developer-Dashboard „Create app“ anlegen (Name frei, API „Web API“), als Redirect URI genau {uri} eintragen, die Client-ID kopieren und hier einfügen, dann „Mit Spotify verbinden“ – der Browser fragt einmal nach der Freigabe. Gelesen wird nur die Warteschlange, nichts gesteuert; die Freigabe liegt verschlüsselt auf diesem PC und lässt sich hier trennen. Titel kommen nie ins Log.':
-        'Shows on the music card what comes next in Spotify (place and count under Overlay → Music). The Windows media controls know only the current track, so the program gets the list from Spotify itself: in the developer dashboard "Create app" (any name, API "Web API"), enter exactly {uri} as the redirect URI, copy the Client ID and paste it here, then "Connect to Spotify" – the browser asks once for your consent. Only the queue is read, nothing is controlled; the consent is kept encrypted on this PC and can be removed here. Titles never go to the log.',
     'Spotify: öffne die Anmeldung im Browser …': 'Spotify: opening the login in the browser …',
 
     # ------------------------------------------------------------------ 1.10: YouTube upload
@@ -2185,8 +2192,6 @@ EN = {
     'Auf YouTube hochladen': 'Upload to YouTube',
     'YouTube-Link kopieren': 'Copy YouTube link',
     'Auf YouTube öffnen': 'Open on YouTube',
-    'Lädt Clips (F8 und Editor) von selbst auf deinen YouTube-Kanal, Runden nur auf Wunsch: Rechtsklick oder „Auf YouTube hochladen“ unter Aufnahmen. Dafür einmal in der Google Cloud Console ein Projekt anlegen, „YouTube Data API v3“ aktivieren, unter „Anmeldedaten“ einen OAuth-Client vom Typ „Desktop-App“ erstellen und den Zustimmungsbildschirm veröffentlichen (sonst läuft die Anmeldung nach 7 Tagen ab); Client-ID und Client-Secret hier einfügen oder die heruntergeladene JSON-Datei laden, dann „Mit YouTube verbinden“ – der Browser fragt einmal nach der Freigabe. Google erlaubt mit dem Standardkontingent etwa sechs Uploads am Tag; was nicht mehr passt, wartet in der Warteschlange bis zum nächsten Tag. Hochgeladen wird nur, wenn du weder in einer Lobby noch in einer Runde bist; die Datei bleibt immer auch auf der Platte. Gesendet werden nur die Videodatei, Titel (Map, Killer, Datum) und Beschreibung – nie Spielernamen; die Freigabe liegt verschlüsselt auf diesem PC. Mit „Uploads in Playlists einsortieren“ kommt jedes Video zusätzlich in eine Playlist deiner Wahl – dafür fragt die Anmeldung die breitere Berechtigung „YouTube-Konto verwalten“ an (einmal neu verbinden).':
-        'Uploads clips (F8 and editor) to your YouTube channel by themselves, rounds only on request: right click or "Upload to YouTube" under Recordings. For that, create a project once in the Google Cloud console, enable "YouTube Data API v3", create an OAuth client of type "Desktop app" under "Credentials" and publish the consent screen (otherwise the login expires after 7 days); paste the client ID and client secret here or load the downloaded JSON file, then "Connect to YouTube" – the browser asks once for your consent. With the default quota Google allows about six uploads a day; what does not fit waits in the queue until the next day. Uploads run only while you are in neither a lobby nor a round; the file always stays on the disk too. Only the video file, a title (map, killer, date) and a description are sent – never player names; the consent is kept encrypted on this PC. With "Sort uploads into playlists" every video also goes into a playlist of your choice – for that the login asks for the wider permission "Manage your YouTube account" (connect once more).',
     'YouTube: Client-ID (…apps.googleusercontent.com) und Client-Secret eintragen.':
         'YouTube: enter the client ID (…apps.googleusercontent.com) and the client secret.',
     'YouTube: öffne die Anmeldung im Browser …': 'YouTube: opening the login in the browser …',
@@ -2248,12 +2253,8 @@ EN = {
     # tooltips
     'Jeder neue Clip (F8 und aus dem Editor) kommt in die Warteschlange und geht auf deinen Kanal, sobald du weder in einer Lobby noch in einer Runde bist – mit der Sichtbarkeit rechts, Standard privat. Runden lädst du nur auf Wunsch hoch (Rechtsklick unter Aufnahmen). Google erlaubt etwa sechs Uploads am Tag, der Rest wartet bis zum nächsten Tag. Die Datei bleibt auf der Platte.':
         'Every new clip (F8 and from the editor) joins the queue and goes to your channel as soon as you are in neither a lobby nor a round – with the visibility on the right, private by default. Rounds are uploaded only on request (right click under Recordings). Google allows about six uploads a day, the rest waits until the next day. The file stays on the disk.',
-    'Liest Client-ID und Client-Secret aus der Datei „client_secret_….json“, die Google nach dem Anlegen des OAuth-Clients zum Herunterladen anbietet („JSON herunterladen“). Die Datei wird nur gelesen und bleibt, wo sie ist; das Secret landet verschlüsselt in den Einstellungen.':
-        'Reads client ID and client secret from the file "client_secret_….json" Google offers for download after the OAuth client was created ("Download JSON"). The file is only read and stays where it is; the secret goes encrypted into the settings.',
     'Öffnet die Anmeldedaten der Google Cloud Console im Browser: Projekt anlegen, „YouTube Data API v3“ aktivieren, OAuth-Client „Desktop-App“ erstellen, Client-ID und -Secret hier einfügen.':
         'Opens the credentials page of the Google Cloud console in the browser: create a project, enable "YouTube Data API v3", create an OAuth client "Desktop app", paste client ID and secret here.',
-    'Öffnet die Google-Anmeldung im Browser (nur Recht „Videos hochladen“). Danach kommt der Browser auf 127.0.0.1 zurück und das Programm merkt sich die Freigabe verschlüsselt auf diesem PC. Dafür hört es nur während der Anmeldung einmal auf einem freien Port.':
-        'Opens the Google login in the browser (only the right "upload videos"). The browser then comes back to 127.0.0.1 and the program keeps the consent encrypted on this PC. For that it listens once on a free port, only during the login.',
     'Vergisst die Google-Freigabe auf diesem PC; die Warteschlange wartet, bis du dich neu verbindest. In deinem Google-Konto unter Sicherheit → Drittanbieter-Apps lässt sich der Zugriff ebenfalls entfernen.':
         'Forgets the Google consent on this PC; the queue waits until you connect again. In your Google account under Security → Third-party apps the access can be removed as well.',
     'Die markierte Datei in die YouTube-Warteschlange (Sichtbarkeit wie in den Einstellungen, Standard privat). Hochgeladen wird, sobald du weder in einer Lobby noch in einer Runde bist und das Tageskontingent reicht; der Link erscheint danach im Rechtsklick-Menü.':
@@ -2292,8 +2293,6 @@ EN = {
         'The next tracks of your Spotify queue below or beside the current song. Needs an app of your own in the Spotify developer dashboard (Client ID) and one login in the browser; only while Spotify plays.',
     'Öffnet developer.spotify.com/dashboard im Browser: „Create app“, Redirect URI wie unten angegeben eintragen, die Client-ID kopieren und links einfügen.':
         'Opens developer.spotify.com/dashboard in the browser: "Create app", enter the redirect URI given below, copy the Client ID and paste it on the left.',
-    'Öffnet die Spotify-Anmeldung im Browser. Nach dem Zustimmen kommt der Browser auf 127.0.0.1 zurück und das Programm merkt sich die Freigabe (verschlüsselt, nur auf diesem PC). Dafür hört es nur während der Anmeldung einmal auf diesem Port.':
-        'Opens the Spotify login in the browser. After you agree, the browser returns to 127.0.0.1 and the program keeps the consent (encrypted, on this PC only). For that it listens on this port once, only during the login.',
     'Vergisst die Spotify-Freigabe auf diesem PC; die Liste verschwindet. In Spotify selbst lässt sich die App unter Konto → Apps ebenfalls entfernen.':
         'Forgets the Spotify consent on this PC; the list goes away. In Spotify itself the app can be removed under Account → Apps as well.',
     'Alle Arten': 'All kinds',
@@ -3340,4 +3339,45 @@ EN = {
         "No map matches “{text}”. The search looks at map and realm names in every game language and at abbreviations.",
     "Leert das Suchfeld und zeigt wieder alle Maps.": "Clears the search field and shows all maps again.",
 
+    # 1.28 (audit F2): keys are stored only encrypted – otherwise for this session only
+    "Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Im Clip-Editor („Mit Claude bearbeiten“) schreibst du, was mit dem Schnitt passieren soll; gesendet werden nur deine Bitte und der Schnitt als Zahlen (Zeiten, Tempo, Blenden, eigene Short-Texte) – kein Bild, kein Dateiname –, Claudes Vorschlag wird geprüft und erst auf „Übernehmen“ ausgeführt. Dafür einen eigenen API-Key aus der Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch ein Ausgabenlimit setzen). Der Key wird mit der Windows-Verschlüsselung auf diesem PC gespeichert – geht das nicht, gilt er nur bis zum Beenden. Er steht nie in der Sicherung, im Log oder in der Diagnose.":
+        "When the search (Ctrl+F) finds nothing that fits, it can ask Claude – only when you pick the row “Ask Claude”, never while typing. Only your question and the names of Fog Scout’s settings, pages and actions are sent to api.anthropic.com – never rounds, maps, killers, paths or game data. Claude only suggests entries; nothing runs until you pick it. In the clip editor (“Edit with Claude”) you write what should happen to the cut; only your wish and the cut as numbers (times, speed, fades, your own short texts) are sent – no picture, no file name –, Claude’s suggestion is checked and only carried out on “Apply”. Enter your own API key from the Anthropic Console for this (“Get API key”). The API is billed separately from a Claude subscription: each question costs some of your credit in the Console (“Add credit” – a spend limit can be set there too). The key is stored with the Windows encryption on this PC – if that is not available, it only lasts until you quit. It is never in the backup, the log or the diagnosis.",
+    "Zeigt in der Musikkarte, was in Spotify als Nächstes kommt (Position und Anzahl unter Overlay → Musik). Die Windows-Mediensteuerung kennt nur den laufenden Titel, die Liste holt das Programm deshalb von Spotify selbst: Dafür im Developer-Dashboard „Create app“ anlegen (Name frei, API „Web API“), als Redirect URI genau {uri} eintragen, die Client-ID kopieren und hier einfügen, dann „Mit Spotify verbinden“ – der Browser fragt einmal nach der Freigabe. Gelesen wird nur die Warteschlange, nichts gesteuert; die Freigabe wird mit der Windows-Verschlüsselung auf diesem PC gespeichert (geht das nicht, gilt sie nur bis zum Beenden) und lässt sich hier trennen. Titel kommen nie ins Log.":
+        "Shows on the music card what comes next in Spotify (place and count under Overlay → Music). The Windows media controls know only the current track, so the program gets the list from Spotify itself: in the developer dashboard \"Create app\" (any name, API \"Web API\"), enter exactly {uri} as the redirect URI, copy the Client ID and paste it here, then \"Connect to Spotify\" – the browser asks once for your consent. Only the queue is read, nothing is controlled; the consent is stored with the Windows encryption on this PC (if that is not available, it only lasts until you quit) and can be removed here. Titles never go to the log.",
+    "Lädt Clips (F8 und Editor) von selbst auf deinen YouTube-Kanal, Runden nur auf Wunsch: Rechtsklick oder „Auf YouTube hochladen“ unter Aufnahmen. Dafür einmal in der Google Cloud Console ein Projekt anlegen, „YouTube Data API v3“ aktivieren, unter „Anmeldedaten“ einen OAuth-Client vom Typ „Desktop-App“ erstellen und den Zustimmungsbildschirm veröffentlichen (sonst läuft die Anmeldung nach 7 Tagen ab); Client-ID und Client-Secret hier einfügen oder die heruntergeladene JSON-Datei laden, dann „Mit YouTube verbinden“ – der Browser fragt einmal nach der Freigabe. Google erlaubt mit dem Standardkontingent etwa sechs Uploads am Tag; was nicht mehr passt, wartet in der Warteschlange bis zum nächsten Tag. Hochgeladen wird nur, wenn du weder in einer Lobby noch in einer Runde bist; die Datei bleibt immer auch auf der Platte. Gesendet werden nur die Videodatei, Titel (Map, Killer, Datum) und Beschreibung – nie Spielernamen; die Freigabe wird mit der Windows-Verschlüsselung auf diesem PC gespeichert (geht das nicht, gilt sie nur bis zum Beenden). Mit „Uploads in Playlists einsortieren“ kommt jedes Video zusätzlich in eine Playlist deiner Wahl – dafür fragt die Anmeldung die breitere Berechtigung „YouTube-Konto verwalten“ an (einmal neu verbinden).":
+        "Uploads clips (F8 and editor) to your YouTube channel by themselves, rounds only on request: right click or \"Upload to YouTube\" under Recordings. For that, create a project once in the Google Cloud console, enable \"YouTube Data API v3\", create an OAuth client of type \"Desktop app\" under \"Credentials\" and publish the consent screen (otherwise the login expires after 7 days); paste the client ID and client secret here or load the downloaded JSON file, then \"Connect to YouTube\" – the browser asks once for your consent. With the default quota Google allows about six uploads a day; what does not fit waits in the queue until the next day. Uploads run only while you are in neither a lobby nor a round; the file always stays on the disk too. Only the video file, a title (map, killer, date) and a description are sent – never player names; the consent is stored with the Windows encryption on this PC (if that is not available, it only lasts until you quit). With \"Sort uploads into playlists\" every video also goes into a playlist of your choice – for that the login asks for the wider permission \"Manage your YouTube account\" (connect once more).",
+    "Liest Client-ID und Client-Secret aus der Datei „client_secret_….json“, die Google nach dem Anlegen des OAuth-Clients zum Herunterladen anbietet („JSON herunterladen“). Die Datei wird nur gelesen und bleibt, wo sie ist; das Secret landet mit der Windows-Verschlüsselung in den Einstellungen (sonst gilt es nur bis zum Beenden).":
+        "Reads client ID and client secret from the file \"client_secret_….json\" Google offers for download after the OAuth client was created (\"Download JSON\"). The file is only read and stays where it is; the secret goes into the settings with the Windows encryption (otherwise it only lasts until you quit).",
+    "Öffnet die Google-Anmeldung im Browser (nur Recht „Videos hochladen“). Danach kommt der Browser auf 127.0.0.1 zurück und das Programm merkt sich die Freigabe mit der Windows-Verschlüsselung auf diesem PC (sonst nur bis zum Beenden). Dafür hört es nur während der Anmeldung einmal auf einem freien Port.":
+        "Opens the Google login in the browser (only the right \"upload videos\"). The browser then comes back to 127.0.0.1 and the program keeps the consent with the Windows encryption on this PC (otherwise only until you quit). For that it listens once on a free port, only during the login.",
+    "Öffnet die Spotify-Anmeldung im Browser. Nach dem Zustimmen kommt der Browser auf 127.0.0.1 zurück und das Programm merkt sich die Freigabe (mit der Windows-Verschlüsselung, nur auf diesem PC – sonst nur bis zum Beenden). Dafür hört es nur während der Anmeldung einmal auf diesem Port.":
+        "Opens the Spotify login in the browser. After you agree, the browser returns to 127.0.0.1 and the program keeps the consent (with the Windows encryption, on this PC only – otherwise only until you quit). For that it listens on this port once, only during the login.",
+    "({how})":
+        "({how})",
+    "Claude: API-Key gilt nur bis zum Beenden – die Windows-Verschlüsselung ist nicht verfügbar, darum wird er nicht gespeichert.":
+        "Claude: the API key only lasts until you quit – the Windows encryption is not available, so it is not stored.",
+    "Claude: Der gespeicherte Key ist auf diesem PC nicht lesbar – bitte neu eintragen oder „Key löschen“.":
+        "Claude: the stored key cannot be read on this PC – enter it again or use “Delete key”.",
+    "OBS-Passwort gilt nur bis zum Beenden – die Windows-Verschlüsselung ist nicht verfügbar, darum wird es nicht gespeichert.":
+        "OBS password only lasts until you quit – the Windows encryption is not available, so it is not stored.",
+    "OBS-Passwort ist nicht verschlüsselt gespeichert – die Windows-Verschlüsselung ist nicht verfügbar.":
+        "The OBS password is stored unencrypted – the Windows encryption is not available.",
+    "Spotify: verbunden – nur bis zum Beenden, die Windows-Verschlüsselung ist nicht verfügbar.":
+        "Spotify: connected – only until you quit, the Windows encryption is not available.",
+    "Unverschlüsselt gespeichert (von früher, die Windows-Verschlüsselung ist nicht verfügbar): {names}.":
+        "Stored unencrypted (from before, the Windows encryption is not available): {names}.",
+    "YouTube: Client-Secret gilt nur bis zum Beenden – die Windows-Verschlüsselung ist nicht verfügbar, darum wird es nicht gespeichert.":
+        "YouTube: the client secret only lasts until you quit – the Windows encryption is not available, so it is not stored.",
+    "YouTube: verbunden – nur bis zum Beenden, die Windows-Verschlüsselung ist nicht verfügbar.":
+        "YouTube: connected – only until you quit, the Windows encryption is not available.",
+    "nur für diese Sitzung – die Windows-Verschlüsselung ist nicht verfügbar":
+        "for this session only – the Windows encryption is not available",
+    "unverschlüsselt gespeichert (alt)":
+        "stored unencrypted (old)",
+    "verschlüsselt gespeichert":
+        "stored encrypted",
+    # 1.28 (audit F14): names a screen reader reads in the palette
+    "Befehlspalette": "Command palette",
+    "Suchen": "Search",
+    "Vorschläge": "Suggestions",
 }

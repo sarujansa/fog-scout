@@ -157,3 +157,37 @@ def test_the_obs_password_is_stored_protected_and_an_old_clear_one_still_works(t
     assert SettingsTab._rec_password_load(h) == "" and [c for c, _t in h.logged] == ["Fehler"]
     assert "AAAA" not in h.logged[0][1]
 
+
+
+def test_the_backup_leaves_out_the_youtube_queue_and_an_import_keeps_this_pcs(tmp_path):
+    """1.28 (audit F10): the queue holds upload session URIs and recording paths – not in a file passed on."""
+    queue = [{"rel": "Clips/a.mp4", "session": "https://www.googleapis.com/upload/youtube/v3/videos?upload_id=X"}]
+    data = dict(config.DEFAULTS, youtube_queue=queue)
+    path = str(tmp_path / "backup.json")
+    config.export_settings(data, path)
+    text = open(path, encoding="utf-8").read()
+    assert "youtube_queue" not in text and "upload_id" not in text and "hotkeys" in text
+    mine = [{"rel": "Clips/mine.mp4"}]
+    merged = config.read_backup(path, dict(config.DEFAULTS, youtube_queue=mine))
+    assert merged["youtube_queue"] == mine
+
+
+def test_claude_switches_and_recent_picks_of_the_wrong_type_read_as_their_defaults(tmp_path):
+    """1.28 (audit F11): a hand-edited "claude_on": "false" was a true value – Claude on against the user's will;
+    palette_recent with numbers or lists in it broke the palette's ranking."""
+    from fogscout import palette
+    assert config.RECENT_KEPT == palette.RECENT_KEPT
+    for bad, want in (("false", False), (5, False), (None, False), ([True], False), (True, True)):
+        p = tmp_path / f"s{abs(hash(repr(bad)))}.json"
+        p.write_text(json.dumps({"claude_on": bad, "claude_editor": bad}), encoding="utf-8")
+        s = config.Settings(str(p))
+        assert s.get("claude_on") is want and s.get("claude_editor") is want, bad
+    p = tmp_path / "recent.json"
+    for bad, want in (("a:scan", []), ([[1]], []), (["a:scan", 3, None, "p:stats"], ["a:scan", "p:stats"]),
+                      ({"a": 1}, []), (["x"] * 20, ["x"] * config.RECENT_KEPT)):
+        p.write_text(json.dumps({"palette_recent": bad}), encoding="utf-8")
+        assert config.Settings(str(p)).get("palette_recent") == want, bad
+    p.write_text(json.dumps({"palette_recent": ["a:scan"], "claude_on": True, "rec_port": "4455"}), encoding="utf-8")
+    s = config.Settings(str(p))
+    assert s.get("palette_recent") == ["a:scan"] and s.get("claude_on") is True
+    assert s.get("rec_port") == "4455"                  # only the TYPED keys are checked, nothing else changes

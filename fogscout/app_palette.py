@@ -20,6 +20,33 @@ ROUNDS_KEPT = 50          # the last rounds offered
 CLAUDE_KINDS = ("setting", "page", "action")     # what Claude may see (titles of the program's own texts)
 
 
+def _fixed(text: str) -> bool:
+    """A fixed program text – also "Position (Musik)": a fixed text with the fixed name of its tab."""
+    t = str(text or "").strip()
+    if i18n.is_program_text(t):
+        return True
+    if t.endswith(")") and " (" in t:
+        head, _sep, tail = t[:-1].rpartition(" (")
+        return i18n.is_program_text(head) and i18n.is_program_text(tail)
+    return False
+
+
+def claude_catalogue(entries) -> tuple[list, dict]:
+    """1.28 (audit F1, Datenschutz): what the Claude search may send – a positive list. An entry goes only when
+    (1) it is a setting, page or action, (2) its widget kind allows it (``Entry.static``, set by the window only for
+    tick boxes, buttons, titles, sliders and tabs – never labels, which hold status lines, paths, pings, statistics)
+    and (3) its title and sub are verbatim the program's own texts (i18n.is_program_text). The ids are opaque
+    ("e1" …) so no entry text travels twice. Returns ([(id, text)], {id: entry id})."""
+    out, ids = [], {}
+    for e in entries:
+        if e.kind not in CLAUDE_KINDS or not e.static or not _fixed(e.title) or (e.sub and not _fixed(e.sub)):
+            continue
+        cid = f"e{len(out) + 1}"
+        ids[cid] = e.id
+        out.append((cid, e.title + (f" ({e.sub})" if e.sub else "")))
+    return out, ids
+
+
 class PaletteMixin:
     # ---------------------------------------------------------- entries
     def _palette_actions(self) -> list:
@@ -37,13 +64,14 @@ class PaletteMixin:
             out.append(("clip", _("Clip speichern")))
         out += [("update", _("Jetzt nach Updates suchen")), ("diagnose", _("Diagnose kopieren")),
                 ("setup", _("Einrichtung starten"))]
-        return [palette.Entry("action", "a:" + key, title, action=key) for key, title in out]
+        return [palette.Entry("action", "a:" + key, title, action=key, static=i18n.is_program_text(title))
+                for key, title in out]
 
     def _palette_pages(self) -> list:
         from .qt_common import PAGE_SUBTITLES
         from .qt_window import PAGES
         return [palette.Entry("page", "p:" + key, _(label), _(PAGE_SUBTITLES.get(key, "")), action="page", arg=key,
-                              words=i18n.other(_(label)))
+                              words=i18n.other(_(label)), static=True)
                 for key, label in PAGES]
 
     def _palette_settings(self) -> list:
@@ -91,7 +119,19 @@ class PaletteMixin:
         return bool(self.settings.get("claude_on", False)) and askclaude.valid_key(self._claude_key())
 
     def _claude_key(self) -> str:
-        return spotify.unprotect(self.settings.get("claude_key", "") or "")
+        """The key in use: one typed this session that could not be stored encrypted (1.28), else the stored one."""
+        return getattr(self, "_claude_session_key", "") or spotify.unprotect(self.settings.get("claude_key", "") or "")
+
+    def _claude_stored_words(self) -> str:
+        """1.28 (audit F2): says honestly how the key is kept – never „verschlüsselt“ when it is not."""
+        stored = self.settings.get("claude_key", "") or ""
+        if getattr(self, "_claude_session_key", ""):
+            return _("nur für diese Sitzung – die Windows-Verschlüsselung ist nicht verfügbar")
+        if spotify.is_legacy(stored):
+            return _("unverschlüsselt gespeichert (alt)")
+        if spotify.is_encrypted(stored) and spotify.unprotect(stored):
+            return _("verschlüsselt gespeichert")
+        return ""
 
     # ---------------------------------------------------------- events of the palette
     def _palette_event(self, action, arg):
@@ -155,8 +195,10 @@ class PaletteMixin:
         if not askclaude.valid_key(key):
             self.qt.palette.show_error(_("Kein API-Key – unter Einstellungen › Verbindungen › Claude eintragen."))
             return
-        catalogue = [(e.id, e.title + (f" ({e.sub})" if e.sub else ""))
-                     for e in getattr(self, "_palette_by_id", {}).values() if e.kind in CLAUDE_KINDS]
+        catalogue, self._claude_ids = claude_catalogue(getattr(self, "_palette_by_id", {}).values())
+        if not catalogue:                     # nothing fixed to offer: nothing is sent
+            self.qt.palette.show_error(_("Claude hat nichts Passendes gefunden."))
+            return
         self._asker().ask(key, question, catalogue)
 
     def _asker(self):
@@ -175,7 +217,8 @@ class PaletteMixin:
         if p is None or not p.isVisible() or p.field.text().strip() != str(data.get("question", "")).strip():
             return                            # closed or typed on meanwhile: the answer is stale
         if kind == "answer":
-            p.show_answer(data.get("answer", ""), data.get("ids") or [])
+            ids = getattr(self, "_claude_ids", {})          # 1.28: the opaque ids back to the entries
+            p.show_answer(data.get("answer", ""), [ids[i] for i in data.get("ids") or [] if i in ids])
         else:
             p.show_error(self._claude_words(data.get("error", "net")))
 
@@ -204,14 +247,16 @@ class PaletteMixin:
         row = ui.Frame(cc)
         row.pack(fill="x", pady=(4, 0))
         self._reg("st.more.cl_key.label", ui.Label(row, text=_("API-Key"))).pack(side="left")
-        self.cl_key_var = ui.StringVar(value=self._claude_key())
+        self._claude_session_key = ""
+        self._claude_loaded = self._claude_key()      # 1.28: the key is written only when the field really changes
+        self.cl_key_var = ui.StringVar(value=self._claude_loaded)
         self.cl_key_var.trace_add("write", lambda *a: self._claude_setting())
         key = self._reg("st.more.cl_key", ui.Entry(row, textvariable=self.cl_key_var, width=34))
         key._dbdms_secret = True
         key.pack(side="left", padx=6)
         self._reg("st.more.cl_test", ui.Button(row, text=_("Key prüfen"), command=self._claude_test)).pack(side="left")
         self._reg("st.more.cl_clear", ui.Button(row, text=_("Key löschen"),
-                                                 command=lambda: self.cl_key_var.set(""))).pack(side="left", padx=(6, 0))
+                                                 command=self._claude_clear)).pack(side="left", padx=(6, 0))
         row2 = ui.Frame(cc)                       # 1.26.1: straight to the Anthropic Console's pages
         row2.pack(fill="x", pady=(4, 0))
         self._reg("st.more.cl_keys", ui.Button(row2, text=_("API-Key holen"),
@@ -232,8 +277,8 @@ class PaletteMixin:
             "wird geprüft und erst auf „Übernehmen“ ausgeführt. Dafür einen eigenen API-Key aus der "
             "Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: "
             "jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch "
-            "ein Ausgabenlimit setzen). Der Key liegt "
-            "verschlüsselt auf diesem PC und steht nie in der Sicherung, im Log oder in der Diagnose."),
+            "ein Ausgabenlimit setzen). Der Key wird mit der Windows-Verschlüsselung auf diesem PC gespeichert – geht "
+            "das nicht, gilt er nur bis zum Beenden. Er steht nie in der Sicherung, im Log oder in der Diagnose."),
             style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(4, 0))
         self._claude_setting(save=False)
 
@@ -242,19 +287,50 @@ class PaletteMixin:
         if save:
             self.settings.set("claude_on", bool(self.cl_on_var.get()))
             self.settings.set("claude_editor", bool(self.cl_editor_var.get()))
-            self.settings.set("claude_key", spotify.protect(key))
+            if key != self._claude_loaded:        # 1.28 (audit F2b): a switch never overwrites the stored key
+                self._claude_store(key)
             self._save_soon()
-        if not key:
-            self.cl_status_var.set(_("Claude: kein API-Key eingetragen.")
-                                   if self.cl_on_var.get() or self.cl_editor_var.get() else "")
+        on = self.cl_on_var.get() or self.cl_editor_var.get()
+        stored = self.settings.get("claude_key", "") or ""
+        if not key and stored and not spotify.unprotect(stored):
+            self.cl_status_var.set(_("Claude: Der gespeicherte Key ist auf diesem PC nicht lesbar – bitte neu "
+                                     "eintragen oder „Key löschen“."))
+        elif not key:
+            self.cl_status_var.set(_("Claude: kein API-Key eingetragen.") if on else "")
         elif not askclaude.valid_key(key):
             self.cl_status_var.set(_("Claude: Das sieht nicht wie ein API-Key aus (beginnt mit sk-ant-)."))
         else:
-            self.cl_status_var.set(_("Claude: Key eingetragen.") if self.cl_on_var.get() or self.cl_editor_var.get()
-                                   else _("Claude: Key eingetragen, Claude ist in Suche und Editor aus."))
+            words = self._claude_stored_words()
+            text = (_("Claude: Key eingetragen.") if on
+                    else _("Claude: Key eingetragen, Claude ist in Suche und Editor aus."))
+            self.cl_status_var.set(text + (" " + _("({how})", how=words) if words else ""))
         q = getattr(self, "qt", None)
         if q is not None and hasattr(q, "palette_entries"):
             q.palette_entries(q._palette_entries, claude=self._claude_ready())
+
+    def _claude_store(self, key: str):
+        """Writes a newly typed key encrypted; without the Windows encryption it is kept for this session only and
+        the stored value stays as it was (never clear text, never Base64)."""
+        self._claude_loaded = key
+        if not key:
+            self._claude_session_key = ""
+            self.settings.set("claude_key", "")
+            return
+        try:
+            self.settings.set("claude_key", spotify.protect(key))
+            self._claude_session_key = ""
+        except spotify.CannotProtect:
+            self._claude_session_key = key
+            self._log(_("Claude: API-Key gilt nur bis zum Beenden – die Windows-Verschlüsselung ist nicht verfügbar, "
+                       "darum wird er nicht gespeichert."), "System")
+
+    def _claude_clear(self):
+        """„Key löschen“: removes the stored key too – also one this PC cannot read."""
+        self._claude_session_key = ""
+        self._claude_loaded = ""
+        self.settings.set("claude_key", "")
+        self.cl_key_var.set("")
+        self._claude_setting()
 
     def _claude_test(self):
         """One small request with a one-line catalogue – says whether the key works (and costs next to nothing)."""

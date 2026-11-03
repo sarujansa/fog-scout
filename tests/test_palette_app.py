@@ -144,14 +144,17 @@ def test_claude_is_asked_only_when_switched_on_and_gets_only_the_programs_names(
         (key, question, catalogue), = asked
         assert key == KEY and question == "karte grösser"
         ids = [i for i, _t in catalogue]
-        assert all(i[:2] in ("s:", "p:", "a:") for i in ids)            # never maps or rounds
+        assert all(i[:1] == "e" and i[1:].isdigit() for i in ids)       # 1.28: opaque ids, no entry text twice
+        real = app._claude_ids                                          # … mapped back to settings/pages/actions
+        assert all(real[i][:2] in ("s:", "p:", "a:") for i in ids)      # never maps or rounds
         text = json.dumps(catalogue)
         assert "Coal Tower" not in text and "Nurse" not in text and str(app_root) not in text
-        sid = next(i for i in ids if i.startswith("s:"))
-        app._claude_event("answer", {"answer": "Hier.", "ids": [sid, "p:overlay"], "question": "karte grösser"})
+        cid = next(i for i in ids if real[i].startswith("s:"))
+        pid = next(i for i in ids if real[i] == "p:overlay")
+        app._claude_event("answer", {"answer": "Hier.", "ids": [cid, pid, "e9999"], "question": "karte grösser"})
         assert p.answer.isVisible() and p.answer.text() == "Hier."
         shown = _rows(p)
-        assert [v[1].id for v in shown if v[0] == "entry"] == [sid, "p:overlay"]
+        assert [v[1].id for v in shown if v[0] == "entry"] == [real[cid], "p:overlay"]
         app._claude_event("error", {"error": "auth", "question": "karte grösser"})
         assert "API-Key" in p.answer.text()
         app._claude_event("answer", {"answer": "alt", "ids": [], "question": "etwas anderes"})
@@ -184,5 +187,123 @@ def test_the_card_opens_the_consoles_key_and_billing_pages(app_root, monkeypatch
         app._qt_reg["st.more.cl_billing"].invoke()
         assert opened == [askclaude.CONSOLE_KEYS, askclaude.CONSOLE_BILLING]
         assert all(u.startswith("https://platform.claude.com/settings/") for u in opened)
+    finally:
+        app.quit()
+
+
+class _BodyOpener:
+    """Fake HTTP: records the request bodies the Claude search really sends (no network)."""
+
+    def __init__(self):
+        import threading
+        self.bodies, self.sent = [], threading.Event()
+
+    def open(self, req, timeout=None):
+        import io
+        self.bodies.append(req.data.decode("utf-8"))
+        self.sent.set()
+        reply = json.dumps({"stop_reason": "end_turn",
+                            "content": [{"type": "text", "text": json.dumps({"answer": "ok", "ids": []})}]})
+
+        class R(io.BytesIO):
+            def __enter__(s):
+                return s
+
+            def __exit__(s, *a):
+                return False
+        return R(reply.encode("utf-8"))
+
+
+def test_the_claude_search_sends_only_fixed_program_texts_never_status_paths_or_game_values(app_root, monkeypatch):
+    """1.28 (audit F1, P1): the request body of the Claude search – read from the fake HTTP layer, not from a helper
+    – holds no run-time text: a server status with a Windows path, statistics lines with a map, a time and a ping
+    stay home; the fixed names of actions, pages and settings still go, so the search keeps working."""
+    for i in range(6):
+        history.append(str(app_root / "rounds.jsonl"), history.Round(time.time() - 9000 + i * 900, 600, "coal",
+                                                                    "Coal Tower II", role="killer", killer="The Nurse"))
+    opener = _BodyOpener()
+    monkeypatch.setattr(askclaude, "OPENER", opener)
+    app = _app(app_root, claude_on=True, claude_key=spotify.protect(KEY))
+    try:
+        secrets = ("C:\\Windows\\Testpfad", "Testpfad", "Coal Tower", "Nurse", "21:37", "47 ms", "eu-central-1")
+        app.srv_status.set("hosts-Datei nicht lesbar: C:\\Windows\\Testpfad\\hosts – Frankfurt 47 ms")
+        for var in ("stats_farm_var", "stats_rating_var", "stats_saved_var", "stats_wait_var"):
+            getattr(app, var).set("Zuletzt: Coal Tower II, 21:37 – The Nurse, 47 ms, eu-central-1")
+        p = _open(app)
+        _pump(app)
+        p.field.setText("wie mache ich die karte grösser")
+        app._qt_event("palette_ask", "wie mache ich die karte grösser")
+        assert opener.sent.wait(10), "no request was made"
+        body = opener.bodies[0]
+        sent = json.loads(body)["messages"][0]["content"]
+        for s in secrets:
+            assert s not in body, s
+        for fixed in ("Overlay testen", "Statistik", "Mit Windows starten"):            # still usable
+            assert fixed in sent, fixed
+        assert "\\ts:" not in sent and "\\tp:" not in sent       # ids are opaque, entry texts not twice
+    finally:
+        app.quit()
+
+
+def test_the_claude_key_is_stored_encrypted_or_lives_for_the_session_only(app_root, monkeypatch, caplog):
+    """1.28 (audit F2/F2b): with the Windows encryption the card says „verschlüsselt gespeichert“; without it a new
+    key works for this run only – settings.json keeps the old value, the card says so, never „verschlüsselt“; the
+    key is never in a log."""
+    import logging
+    caplog.set_level(logging.DEBUG)
+    app = _app(app_root)
+    try:
+        app.cl_on_var.set(True)
+        app._claude_setting()
+        app.cl_key_var.set(KEY)
+        assert spotify.is_encrypted(app.settings.get("claude_key")) and app._claude_key() == KEY
+        assert "(verschlüsselt gespeichert)" in app.cl_status_var.get()
+        stored = app.settings.get("claude_key")
+        monkeypatch.setattr(spotify, "CIPHER", None)
+        other = "sk-ant-api03-" + "z" * 40
+        app.cl_key_var.set(other)
+        assert app.settings.get("claude_key") == stored and app._claude_key() == other
+        status = app.cl_status_var.get()
+        assert "nur für diese Sitzung" in status and "verschlüsselt gespeichert" not in status
+        assert app._claude_ready()
+        app.settings.save()
+        text = (app_root / "settings.json").read_text(encoding="utf-8")
+        assert other not in text and "plain:" not in text
+        logs = caplog.text + " ".join(t for *_x, t in app._log_entries)
+        assert KEY not in logs and other not in logs and "zzzzzzzz" not in logs
+    finally:
+        app.quit()
+
+
+def test_an_unreadable_claude_key_survives_a_switch_and_goes_only_by_key_loeschen(app_root):
+    """1.28 (audit F2b): a stored key this PC cannot read showed an empty field, and the next click on a switch
+    wrote that empty field over it. Now switches leave it, the card says it is not readable, „Key löschen“ removes
+    it on purpose."""
+    app = _app(app_root, claude_key="dpapi:QUJD")
+    try:
+        assert app.cl_key_var.get() == "" and app._claude_key() == ""
+        assert "nicht lesbar" in app.cl_status_var.get()
+        app.cl_on_var.set(True)
+        app._claude_setting()
+        app.cl_editor_var.set(True)
+        app._claude_setting()
+        assert app.settings.get("claude_key") == "dpapi:QUJD"
+        assert "verschlüsselt gespeichert" not in app.cl_status_var.get()
+        app._qt_reg["st.more.cl_clear"].invoke()
+        assert app.settings.get("claude_key") == "" and "nicht lesbar" not in app.cl_status_var.get()
+    finally:
+        app.quit()
+
+
+def test_an_old_plain_claude_key_is_called_unencrypted_when_it_cannot_be_encrypted(app_root, monkeypatch):
+    """1.28: a "plain:" key from before 1.28 that cannot be encrypted (no DPAPI) stays readable and the card says
+    „unverschlüsselt gespeichert (alt)“ – never „verschlüsselt“."""
+    import base64
+    monkeypatch.setattr(spotify, "CIPHER", None)
+    old = "plain:" + base64.b64encode(KEY.encode()).decode()
+    app = _app(app_root, claude_key=old, claude_on=True)
+    try:
+        assert app.settings.get("claude_key") == old and app._claude_key() == KEY
+        assert "unverschlüsselt gespeichert (alt)" in app.cl_status_var.get()
     finally:
         app.quit()

@@ -93,6 +93,33 @@ def other(text: str) -> str:
     return EN.get(text, "")
 
 
+_FIXED_NAMES = frozenset({"Maps", "Log", "Overlay", "OBS", "Discord", "Spotify", "YouTube", "Claude"})
+
+
+def is_program_text(text: str) -> bool:
+    """1.28 (audit F1): True only for a text that stands verbatim in the program's own table (German key or English
+    translation) or is one of the few names never translated. A text formatted at run time (a status with a path, a
+    ping, a map, a time) is never in the table – the positive list the Claude search builds its catalogue from."""
+    t = str(text or "").strip()
+    if not t:
+        return False
+    if t in _FIXED_NAMES:
+        return True
+    from .i18n_en import EN
+    return t in EN or t in _english_values()
+
+
+_EN_VALUES = None
+
+
+def _english_values():
+    global _EN_VALUES
+    if _EN_VALUES is None:
+        from .i18n_en import EN
+        _EN_VALUES = frozenset(EN.values())
+    return _EN_VALUES
+
+
 def N_(text: str) -> str:
     """Marks a text for translation where it is defined (lists, tables); translated later with _()."""
     return text
