@@ -695,7 +695,6 @@ class Chart(QWidget):
 HEAT_RAMP = ("#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281")
 
 
-BAR_NEUTRAL = {True: "#6b7079", False: "#a3a8b0"}     # map bars: a plain count, no identity – neutral grey
 
 
 def heat_colour(value: float, dark: bool, top: float = 4.0) -> QColor:
@@ -753,7 +752,7 @@ class MapBars(QWidget):
             p.drawText(0, y, name_w, self.ROW, Qt.AlignLeft | Qt.AlignVCenter, fm.elidedText(name, Qt.ElideRight, name_w))
             length = max(3.0, bar_w * n / self._max)
             p.setPen(Qt.NoPen)
-            p.setBrush(QColor(BAR_NEUTRAL[self._dark]))
+            p.setBrush(QColor(c["handle"]))      # map bars: a plain count, neutral – 1.25: >= 3:1 (was 2.4/2.8:1)
             p.drawRoundedRect(bar_x, round(mid - 5), round(length), 10, 4, 4)
             p.setPen(QColor(c["fg"]))
             p.drawText(round(bar_x + length + 6), y, 40, self.ROW, Qt.AlignLeft | Qt.AlignVCenter, str(n))
