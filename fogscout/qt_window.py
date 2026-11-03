@@ -296,7 +296,7 @@ SPECS = {
                                                       ("label", "st.more.yt_pl_round.label"), ("combo", "st.more.yt_pl_round"),
                                                       ("stretch",))),
                                              ("hint", "st.more.yt_status"), ("hint", "st.more.yt_text"))),
-                ("card", "st.more.claude", (("check", "st.more.cl_on"),                              # 1.26: the search asks
+                ("card", "st.more.claude", (("check", "st.more.cl_on"), ("check", "st.more.cl_editor"),   # 1.26/1.27
                                             ("row", (("label", "st.more.cl_key.label"), ("entry", "st.more.cl_key"),
                                                      ("button", "st.more.cl_test"), ("button", "st.more.cl_clear"),
                                                      ("stretch",))),
