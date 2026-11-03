@@ -1549,6 +1549,9 @@ class RecordingsTab:
                          sources=(r.extra or {}).get("sources"),                            # 1.8.23
                          encoding=encoders.from_settings(self.settings), **extra)           # 1.15
         win.on_saved = lambda out: self._clip_saved(r, out, win)              # 1.8.13: into the clips list
+        if hasattr(win, "claude_key"):                                         # 1.27: „Mit Claude bearbeiten“
+            win.claude_key = self._claude_editor_key
+            win._claude_refresh()
         return win
 
     def _rec_preview_follow(self, r):

@@ -207,6 +207,10 @@ TIPS = {
                                          "Braucht einen eigenen API-Key.",
     "Key prüfen": "Schickt eine kleine Probefrage an Claude und sagt, ob der API-Key angenommen wird (kostet "
                   "einen kleinen Betrag deines API-Guthabens).",
+    "Im Clip-Editor Claude nutzen": "Zeigt im grossen Clip-Editor den Abschnitt „Mit Claude bearbeiten“: Du schreibst, was "
+                                    "mit dem Schnitt passieren soll, Claude schlägt Schritte vor, du übernimmst oder "
+                                    "verwirfst sie. Gesendet werden nur deine Bitte und der Schnitt als Zahlen – kein "
+                                    "Bild, kein Dateiname. Braucht einen eigenen API-Key.",
     "API-Key holen": "Öffnet die Seite „API keys“ der Anthropic Console im Browser (platform.claude.com). Dort einen "
                      "Key anlegen und hier einfügen – er beginnt mit sk-ant-.",
     "Guthaben aufladen": "Öffnet die Seite „Billing“ der Anthropic Console im Browser. Die API wird getrennt von einem "
