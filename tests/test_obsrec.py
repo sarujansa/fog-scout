@@ -338,15 +338,33 @@ def _recorder(obs, folder, **kw):
 
 def test_the_recorder_says_whether_obs_is_ready_for_the_running_game(obs, tmp_path):
     """1.24.5 (review: the overview said "bereit" without knowing): obs_ready = None while DBD does not run (the
-    recorder talks to OBS only then), False until OBS is set up for it, True after; OBS closed again → False."""
-    r, _posted = _recorder(obs, str(tmp_path), pre=False)
+    recorder talks to OBS only then). 1.24.6 (second review): from the last connection, not from "set up" – a
+    settings change (``_ready`` reset) is no "not connected", and OBS closed is noticed by the next connection."""
+    r, posted = _recorder(obs, str(tmp_path), pre=False)
     assert r.obs_ready is None
     r._game = True
-    assert r.obs_ready is False
-    r._ready = True
+    assert r.obs_ready is None                                 # no connection tried yet
+    r._client().close()
     assert r.obs_ready is True
+    r._ready = False                                           # a settings change while DBD runs: still connected
+    assert r.obs_ready is True
+    r.cfg.port = 1                                             # OBS closed: the next connection fails
+    with pytest.raises(obsrec.ObsError):
+        r._client()
+    assert r.obs_ready is False
     r._game = False
     assert r.obs_ready is None
+
+
+def test_obs_away_at_dbd_start_is_marked_as_a_failure(obs, tmp_path):
+    """1.24.6 (second review): the err flag only came from failed commands – OBS away when DBD starts (a _warn) and
+    failures of the idle steps (StopRecord after the tail) were amber in the settings, a failed test red."""
+    r, posted = _recorder(obs, str(tmp_path), pre=False)
+    r.cfg.port = 1
+    r._game = True
+    r._setup(quiet=False)
+    status = [d for k, d in _drain(posted) if k == "status"]
+    assert status and status[-1].get("err") is True and "OBS läuft nicht" in status[-1]["text"]
 
 
 def test_a_round_is_recorded_named_and_indexed(obs, tmp_path):

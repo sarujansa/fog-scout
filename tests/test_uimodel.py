@@ -1033,8 +1033,9 @@ def test_the_statistics_say_once_what_the_stats_page_would_add_instead_of_tiles_
 
 
 def test_linked_custom_games_are_not_called_unlinked(app_root):
-    """1.24.5 (review): the line "keine Runde … zugeordnet" looked at the pairs for the kill figures, which leave
-    custom games out unless the role filter is "Custom" – a selection of linked custom games was called unlinked."""
+    """1.24.5 (review): the line "keine Runde … zugeordnet" called a selection of linked custom games unlinked;
+    1.24.6 (second review): hiding the line left the missing tiles unexplained – the tiles come from the pairs (no
+    custom games unless the role filter is "Custom Games"), so linked custom games get their own sentence."""
     import json
     from fogscout import history, official
     from fogscout.app import App
@@ -1050,7 +1051,9 @@ def test_linked_custom_games_are_not_called_unlinked(app_root):
         app._stats_render()
         c = app._stats_ctx
         assert c.rounds and not c.pairs and any(id(r) in c.off for r in c.rounds)   # linked, no kill pair
-        assert not app.stats_data_row.winfo_manager()
+        assert app.stats_data_row.winfo_manager() and not app.stats_data_btn.winfo_manager()
+        assert "ohne Custom Games" in app.stats_data_var.get()
+        assert "Entkommen" not in [t.title for t in app.stats_dash.data.tiles]
     finally:
         app.quit()
 

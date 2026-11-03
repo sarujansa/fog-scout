@@ -515,9 +515,10 @@ class NavStatus(QFrame):
         for i, word in enumerate(words):
             t = f"{first} {word}" if first else word
             if first and fm.horizontalAdvance(t) > width:
-                return first + "\n" + fm.elidedText(" ".join(words[i:]), Qt.ElideRight, width)
+                return (fm.elidedText(first, Qt.ElideRight, width) + "\n"      # 1.24.6: a long first word too
+                        + fm.elidedText(" ".join(words[i:]), Qt.ElideRight, width))
             first = t
-        return first
+        return fm.elidedText(first, Qt.ElideRight, width)
 
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.LeftButton and self.rect().contains(e.position().toPoint()):
@@ -1110,8 +1111,7 @@ class MainWindow(QMainWindow):
         qt_theme.set_dark(dark, zoom)                              # 1.22.3: state colours, editor zoom
         self._style_lazily(qt_theme.stylesheet(dark, zoom))
         self._dark = bool(dark)
-        self._nav_icons()
-        self._signs_paint()                                        # 1.24: compass, state dot, drawn signs
+        self._signs_paint()                               # 1.24: navigation icons, compass, state dot, drawn signs
         try:
             hints = QApplication.styleHints()
             hints.setColorScheme(Qt.ColorScheme.Dark if dark else Qt.ColorScheme.Light)   # title bar (Qt 6.8+)
@@ -1210,10 +1210,18 @@ class MainWindow(QMainWindow):
         """1.24.5: everything drawn as a picture in the theme's colours at the screen's pixel ratio – the compass,
         the state's sign and the signs set once on the hand-made pages (qt_common.refresh_glyphs)."""
         from .qt_common import refresh_glyphs
+        self._nav_icons()                                # 1.24.6 (second review): the navigation and the narrow
+        self._search_icon()                              # search button are pictures at a pixel ratio too
         self._brand_paint()
         self.status_btn._shown = None                    # drawn again even if state and colour stayed
         self._status_paint()
         refresh_glyphs(self)
+
+    def _search_icon(self):
+        """The narrow navigation's search button (drawn while it shows; _signs_paint keeps theme and ratio)."""
+        if self._nav_compact:
+            self.search_btn.setIcon(QIcon(nav_icon("search", qt_theme.colours(self._dark)["dim"],
+                                                   self.devicePixelRatioF() or 1.0)))
 
     def changeEvent(self, e):
         if e.type() == QEvent.WindowStateChange:
@@ -1283,8 +1291,7 @@ class MainWindow(QMainWindow):
         self.search.setVisible(not on)
         self.search_btn.setVisible(on)
         if on:
-            self.search_btn.setIcon(QIcon(nav_icon("search", qt_theme.colours(self._dark)["dim"],
-                                                   self.devicePixelRatioF() or 1.0)))
+            self._search_icon()
         self.nav.setFixedWidth(NAV_COMPACT_W if on else NAV_W)
         self.search.setFixedWidth(NAV_W)
         self.search_btn.setFixedWidth(NAV_COMPACT_W)
