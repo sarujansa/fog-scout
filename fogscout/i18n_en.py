@@ -176,10 +176,6 @@ EN = {
     "Regionen": "Regions",
     "Markierte Runde:": "Selected round:",
     "Benachrichtigungen": "Notifications",
-    "⚠ Nicht gezählt: {n} × Rundenende nicht erkannt (die nächste Map kam, bevor das Ende erkannt wurde). "
-    "Zuletzt: {map}, {when}.":
-        "⚠ Not counted: {n} × end of round not detected (the next map came before the end was detected). "
-        "Last: {map}, {when}.",
     "Runde auf {map} nicht gezählt: ihr Ende wurde nicht erkannt.":
         "Round on {map} not counted: its end was not detected.",
     "Sicherung": "Backup",
@@ -283,7 +279,7 @@ EN = {
     "oben schon einen Namen, passiert nichts. Beim Drehen bleibt der Name aufrecht.":
         "Writes the map name in white with a shadow above the map, in the style of the supplied maps. If the "
         "picture already has a name on top, nothing happens. The name stays upright when the map is rotated.",
-    "Drehen ↻": "Rotate ↻",
+    "Drehen": "Rotate",
     "Karte drehen": "Rotate map",
     "Etage wechseln": "Change floor",
     "Beide Etagen": "Both floors",
@@ -501,7 +497,6 @@ EN = {
     "Anteil": "Share",
     "Region nur bekannt, wenn im Tab Server „Verbundener Spielserver“ an war.":
         "Region only known if “Connected game server” was on in the Server tab.",
-    "Keine Runden in dieser Auswahl.": "No rounds in this selection.",
     "Wann": "When",
     "Dauer": "Length",
     "Alle Runden löschen …": "Delete all rounds …",
@@ -536,10 +531,6 @@ EN = {
     "Runde {what} aus der Statistik löschen?": "Delete round {what} from the statistics?",
     "Runde konnte nicht gelöscht werden: {error}": "Could not delete the round: {error}",
     "Runde gelöscht: {map} ({when}).": "Round deleted: {map} ({when}).",
-    "✓ {n} × Map mitten im Match falsch erkannt (laut Stats-Seite lief da schon ein Match) – nicht gezählt. "
-    "Zuletzt: {map}, {when}.":
-        "✓ {n} × map read wrongly in the middle of a match (the stats page already had a match running) – not "
-        "counted. Last: {map}, {when}.",
     "Noch keine Runden gespeichert.": "No rounds saved yet.",
     "Alle Runden löschen": "Delete all rounds",
     "Alle gespeicherten Runden löschen? Vorher wird eine Kopie in {folder}/ angelegt.":
@@ -649,6 +640,7 @@ EN = {
         "Press the new combination – Esc cancels, Delete switches the hotkey off.",
     "{keys} ist schon „{action}“ – andere wählen.": "{keys} is already “{action}” – choose another one.",
     "aus": "off",
+    "an": "on",
     "Hotkey {action}: {keys}.": "Hotkey {action}: {keys}.",
     "Standard-Hotkeys wiederhergestellt.": "Default hotkeys restored.",
     "Strg": "Ctrl",
@@ -853,8 +845,7 @@ EN = {
     "Starte Erkennung …": "Starting the detection …",
     "Öffne Fenster …": "Opening the window …",
     "Fog Scout ist bereit.": "Fog Scout is ready.",
-    # ------------------------------------------------------------------ 1.14: overview card "Schnell ein/aus"
-    "Schnell ein/aus": "Quick on/off",
+    # ------------------------------------------------------------------ 1.14: overview card "Schnell ein/aus" (1.24.1: "Funktionen")
     "Automatische Erkennung": "Automatic detection",
     "Aufnahmen mit OBS": "Recordings with OBS",
     "Lobby-Meldung": "Lobby notification",
@@ -958,7 +949,6 @@ EN = {
     "er automatisch erkannt.":
         "The name read belongs to an existing map (e.g. spelled differently)? Assign it once – after that it is "
         "recognised automatically.",
-    "✕": "✕",
     "Hinweis ausblenden.": "Hide this notice.",
     "Eigenes Bild für eine Map wählen: vorhandenes Bild ersetzen oder neue Map anlegen. Rand und Hintergrund "
     "werden automatisch entfernt.":
@@ -1143,6 +1133,14 @@ EN = {
     "Sicherung: {files} nach {folder}/ kopiert (die letzten {n} Stände bleiben).":
         "Backup: {files} copied to {folder}/ (the last {n} copies are kept).",
     "{n} Dateien, zuletzt {day}": "{n} files, latest {day}",
+    "1 Datei, zuletzt {day}": "1 file, latest {day}",
+    "behalten (nie aufgeräumt)": "kept (never cleaned up)",
+    "wartet auf den YouTube-Upload": "waiting for the YouTube upload",
+    "auf YouTube": "on YouTube",
+    "Karte im Spiel": "Map in the game",
+    "OBS läuft nicht, oder sein WebSocket-Server ist aus": "OBS is not running, or its WebSocket server is off",
+    "OBS antwortet nicht": "OBS does not answer",
+    "OBS hat die Verbindung getrennt": "OBS closed the connection",
     "noch keine": "none yet",
     "Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die letzten {n} Stände je Datei; vor „Alle Runden löschen“ eine zusätzliche): {state}":
         "Daily copy of rounds.jsonl and official.jsonl to {folder}/ (only on changes, the last {n} copies per file; one more before \"Delete all rounds\"): {state}",
@@ -1253,7 +1251,6 @@ EN = {
     "letzte Runde": "last round",
     "startet": "starting",
     "4K: {n} von {total}": "4K: {n} of {total}",
-    "noch keine Stats-Daten": "no stats page data yet",
     "{n} Survivor-Runden": "{n} survivor rounds",
     "{n} normal": "{n} normal",
     "{n} Farming-Runden · Ø {bp} BP": "{n} farming rounds · avg. {bp} BP",
@@ -1266,7 +1263,7 @@ EN = {
     'Killer × Map – Ø Kills laut Stats-Seite': 'Killer × map – avg. kills from the stats page',
     'Maps – am häufigsten gespielt': 'Maps – most played',
     'Median {time}': 'median {time}',
-    'Noch keine Killer-Runden mit Ergebnis von der Stats-Seite (Einstellungen → Match-Daten → Offizielle Match-Daten).': 'No killer rounds with a result from the stats page yet (Settings → Match data → Official match data).',
+    'Noch keine Killer-Runde mit Ergebnis von der Stats-Seite.': 'No killer round with a result from the stats page yet.',
     'keine Killer-Runden mit Stats-Daten': 'no killer rounds with stats data',
     'keine Survivor-Runden mit Stats-Daten': 'no survivor rounds with stats data',
     '{map} · {killer}: Ø {kills} Kills ({n} Runden)': '{map} · {killer}: avg. {kills} kills ({n} rounds)',
@@ -1581,7 +1578,7 @@ EN = {
         'The list shows the newest 100 rounds of the selection; every click appends 100 older ones.',
     'Server-Tab öffnen': 'Open the server tab',
     'Match-Daten einrichten …': 'Set up match data …',
-    'Stats-Seite nicht eingerichtet': 'Stats page not set up',          # 1.8.75
+    'Einrichten …': 'Set up …',
     'Noch keine Runden heute': 'No rounds yet today',
     'Stats-Seite': 'Stats page',
     'nicht eingerichtet': 'not set up',
@@ -1770,7 +1767,6 @@ EN = {
     'Alle Aufnahmen': 'All recordings',
     'Aufnahme fehlt: {file}': 'Recording missing: {file}',
     'Aufnahme gelöscht: {file}': 'Recording deleted: {file}',
-    'Aufnahme ist aus.': 'Recording is off.',
     'Aufnahme löschen': 'Delete recording',
     'Aufnahme nicht gelöscht ({error}): {file}': 'Recording not deleted ({error}): {file}',
     'Aufnahme wird behalten: {file}': 'Recording is kept: {file}',
@@ -2327,8 +2323,7 @@ EN = {
         'Mark a recording: play, cut a clip, keep, delete – or right-click.',
     'Clip markieren: abspielen, im Editor öffnen, löschen – oder Rechtsklick.':
         'Mark a clip: play, open in the editor, delete – or right-click.',
-    'Filter{count} ▾': 'Filters{count} ▾',
-    'Filter{count} ▴': 'Filters{count} ▴',
+    'Filter{count}': 'Filters{count}',
     'Filter zurücksetzen': 'Reset filters',
     'Alle Filter der Statistik zurück auf „alle“ – Zeitraum, Rolle, Region, Killer, Map, Modus und „Farming ausblenden“.':
         'Every filter of the statistics back to "all" – period, role, region, killer, map, mode and "Hide farming".',
@@ -2645,7 +2640,6 @@ EN = {
         'What encodes the clip: the graphics card (NVENC, AMF, Quick Sync – only when ffmpeg can really use it here) hardly loads the processor; “Automatic” takes the first one that works.',
     'letzter Clip {file} (vor {age})': 'last clip {file} ({age} ago)',
     'Fortsetzen': 'Resume',
-    '⚑ {n} Marken': '⚑ {n} marks',
     'von Hand gestartet': 'started by hand',
     'von OBS selbst gestartet': 'started in OBS itself',
     'Beendet die laufende Aufnahme jetzt (bei einer Runde ohne Nachlauf) und legt sie in den Aufnahmeordner.':
@@ -3156,4 +3150,67 @@ EN = {
         "New in the download folder – a click puts it on A2 at the playhead:",
     "Öffnet YouTubes Audiomediathek im Browser: kostenlose Musik und Effekte, für Videos freigegeben (keine Content-ID-Ansprüche). Heruntergeladene MP3s erscheinen hier darunter.":
         "Opens YouTube's Audio Library in the browser: free music and effects, cleared for videos (no Content ID claims). Downloaded MP3s show up below.",
+    # 1.24 (phase 2): page purposes, the state at the foot of the navigation
+    "Status, aktuelle Map und deine Runden auf einen Blick": "Status, current map and your rounds at a glance",
+    "Alle Callout-Karten – ansehen, von Hand einblenden, eigene Bilder und Notizen":
+        "All callout maps – look at them, show one by hand, own pictures and notes",
+    "Was im Spiel erscheint, wo und wie gross": "What shows in the game, where and how big",
+    "Deine Runden, Kills und Wartezeiten – nur auf diesem PC gespeichert":
+        "Your rounds, kills and waiting times – stored on this PC only",
+    "Runden, Clips und Screenshots – abspielen, schneiden, aufräumen":
+        "Rounds, clips and screenshots – play, cut, tidy up",
+    "Server-Regionen wählen und die Verbindung im Blick behalten":
+        "Choose the server regions and keep an eye on the connection",
+    "Alles, was Fog Scout tut – suchen mit Strg+F": "Everything Fog Scout does – search with Ctrl+F",
+    "Was das Programm gemacht hat – zum Nachlesen und für die Fehlersuche":
+        "What the program did – to read up on and for troubleshooting",
+    "Übersicht öffnen": "Open the overview",
+    # 1.24.1 (phase 2): the overview's card "Funktionen" – what each feature does now
+    "Funktionen": "Features",
+    "aktiv": "active",
+    "wartet auf DBD": "waiting for DBD",
+    "nimmt auf": "recording",
+    "verbunden": "connected",
+    "verbindet …": "connecting …",
+    "startet …": "starting …",
+    "Fehler – Details im Log": "Error – details in the log",
+    "nur unter Windows": "Windows only",
+    "HWiNFO fehlt": "HWiNFO missing",
+    "Mediensteuerung nicht verfügbar": "Media control not available",
+    "Discord nicht erreichbar": "Discord not reachable",
+    "Anmeldung nötig": "Sign-in needed",
+    "keine Client-ID": "no client ID",
+    # 1.24.1: the maps page – a search without a hit
+    "Suche leeren": "Clear search",
+    "Runden · BP/h erst mit Match-Daten": "rounds · BP/h needs the match data",
+    # 1.24.3 (phase 2): recordings, server, settings, log – states in words and colour, the next step
+    "Verbindung prüfen …": "Check connection …",
+    "Öffnet Einstellungen → Aufnahmen: OBS-Verbindung (Port, Passwort) und „Verbindung testen“.":
+        "Opens Settings → Recordings: the OBS connection (port, password) and “Test connection”.",
+    "{n} Marken": "{n} marks",
+    "1 Marke": "1 mark",
+    "Keine Aufnahme passt zu den Filtern oben.": "No recording matches the filters above.",
+    "Kein Clip passt zu den Filtern oben.": "No clip matches the filters above.",
+    "Keine Zeilen – das Log ist leer, oder Suche und Kategorien blenden alles aus.":
+        "No lines – the log is empty, or the search and the categories hide everything.",
+    "OBS nicht verbunden": "OBS not connected",
+    "Kills, Entkommen und Bloodpoints zählen hier ohne Custom Games – die Rolle „Custom Games“ zeigt sie.":
+        "Kills, escapes and bloodpoints count without custom games here – the role “Custom Games” shows them.",
+    # 1.24.2 (phase 2): statistics – no tiles of "–", notes without ⚠/✓ in front
+    "Keine Runden in dieser Auswahl – „Filter zurücksetzen“ zeigt wieder alle.":
+        "No rounds in this selection – “Reset filters” shows them all again.",
+    "In dieser Auswahl ist keine Runde einem Match der Stats-Seite zugeordnet – darum fehlen Kills, Entkommen und Bloodpoints.":
+        "No round of this selection is linked to a match of the stats page – that is why kills, escapes and bloodpoints are missing.",
+    "Kills, Entkommen und Bloodpoints kommen von der Stats-Seite – dafür einmal die Match-Daten einrichten.":
+        "Kills, escapes and bloodpoints come from the stats page – set up the match data once for them.",
+    "Nicht gezählt: {n} × Rundenende nicht erkannt (die nächste Map kam, bevor das Ende erkannt wurde). Zuletzt: {map}, {when}.":
+        "Not counted: {n} × end of round not detected (the next map came before the end was detected). Last: {map}, {when}.",
+    "{n} × Rundenende nicht erkannt, aber mit der Dauer laut Stats-Seite gezählt.":
+        "{n} × end of round not detected, but counted with the length from the stats page.",
+    "{n} × Map mitten im Match falsch erkannt (laut Stats-Seite lief da schon ein Match) – nicht gezählt. Zuletzt: {map}, {when}.":
+        "{n} × map read wrongly in the middle of a match (the stats page already had a match running) – not counted. Last: {map}, {when}.",
+    "Keine Map passt zu „{text}“. Gesucht wird in Map- und Realm-Namen aller Spielsprachen und in Abkürzungen.":
+        "No map matches “{text}”. The search looks at map and realm names in every game language and at abbreviations.",
+    "Leert das Suchfeld und zeigt wieder alle Maps.": "Clears the search field and shows all maps again.",
+
 }

@@ -56,6 +56,21 @@ def fmt_bytes(n: float) -> str:
     return f"{n / 1024:.0f} KB"
 
 
+CAUSES = {                     # 1.25: the card names the cause in words, not as a Python exception
+    "ConnectionRefusedError": N_("OBS läuft nicht, oder sein WebSocket-Server ist aus"),
+    "TimeoutError": N_("OBS antwortet nicht"),
+    "timeout": N_("OBS antwortet nicht"),
+    "ConnectionResetError": N_("OBS hat die Verbindung getrennt"),
+}
+
+
+def cause_words(cause: str) -> str:
+    """1.25 (audit: "Ursache: ConnectionRefusedError" on the recording card): the known causes in words; anything
+    else as it came (an OBS message is already words)."""
+    key = str(cause or "").strip()
+    return _(CAUSES[key]) if key in CAUSES else key
+
+
 def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: float | None = None,
                   last_clip=None) -> tuple[str, str, str]:
     """1.15 (pure): the recording card's three lines from the last ``obs_status`` event ``d`` (obsrec.Recorder._poll;
@@ -70,13 +85,13 @@ def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: fl
         head = _("OBS nicht erreichbar")
         if why.startswith(head):                   # 1.23: the recorder's message repeats title and advice –
             cause = why.rsplit("(", 1)[-1].rstrip(")") if why.endswith(")") else ""   # keep only the cause
-            why = _("Ursache: {cause}", cause=cause) if cause else ""
+            why = _("Ursache: {cause}", cause=cause_words(cause)) if cause else ""
         return _("OBS nicht erreichbar"), (_("OBS starten, WebSocket-Server einschalten, Port/Passwort prüfen (Einstellungen → "
                                               "Aufnahmen → Verbindung testen). {why}", why=why).strip()), ""
     rec, paused = bool(d.get("recording")), bool(d.get("paused"))
     secs = float(d.get("seconds") or 0.0) + (extra_s if rec and not paused else 0.0)
     if rec:
-        bits = [("⏸ " + _("Pausiert")) if paused else ("● " + _("Nimmt auf"))]
+        bits = [_("Pausiert") if paused else _("Nimmt auf")]       # 1.24.3: the colour is the line's (ui.level)
         if d.get("ours"):
             if d.get("label"):
                 bits.append(d["label"])
@@ -88,7 +103,7 @@ def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: fl
         if d.get("bytes"):
             bits.append(fmt_bytes(d["bytes"]))
         if d.get("marks"):
-            bits.append(_("⚑ {n} Marken", n=d["marks"]))
+            bits.append(_("{n} Marken", n=d["marks"]) if d["marks"] != 1 else _("1 Marke"))
         state = " · ".join(bits)
     else:
         buf = d.get("buffer")
@@ -129,6 +144,20 @@ def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: fl
     return state, " · ".join(vals), " ".join(warn)
 
 
+def rec_card_level(d: dict | None, on: bool, rec_on: bool = True) -> str:
+    """1.24.3 (phase 2, pure): the colour of the card's first line (ui.level) – the words say the same: off = "aus",
+    err = OBS not reachable, ok = recording, warn = ready, but F8 has no buffer; "" = plain (waiting, ready).
+    1.24.5 (review): recordings switched off on purpose (``rec_on`` False, a folder still set – the card still asks
+    OBS): OBS away is no error then; 1.24.6 (second review): but recording by hand (F9) still needs it – amber."""
+    if d is None:
+        return "" if on else "off"
+    if not d.get("connected"):
+        return "err" if rec_on else "warn"
+    if d.get("recording"):
+        return "warn" if d.get("paused") else "ok"
+    return "warn" if d.get("buffer", False) is None else ""
+
+
 def show_in_explorer(path: str):
     """Windows Explorer with the file marked (nothing else runs the file)."""
     subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])     # noqa: S603, S607
@@ -145,7 +174,8 @@ class RecordingsTab:
         self.rec_summary_var = ui.StringVar(value="")
         ui.Label(f, textvariable=self.rec_summary_var, style="Big.TLabel", wraplength=560).pack(anchor="w")
         self.rec_hint_var = ui.StringVar(value="")
-        ui.Label(f, textvariable=self.rec_hint_var, style="Dim.TLabel", wraplength=560).pack(anchor="w")
+        self.rec_hint_label = ui.Label(f, textvariable=self.rec_hint_var, style="Dim.TLabel", wraplength=560)
+        self.rec_hint_label.pack(anchor="w")
         # 1.15 (audit of the video system): the recording card – OBS's live state (polled every STATUS_POLL_S only
         # while this page is shown) and the quick actions: start/stop by hand, pause, F8 clip, mark
         self._obs_state, self._obs_state_t, self._rec_poll_t = None, 0.0, 0.0
@@ -153,11 +183,14 @@ class RecordingsTab:
         card = self.rec_card = ui.LabelFrame(f, text=_("Aufnahme"), padding=8)
         card.pack(fill="x", pady=(8, 0))
         self.rec_state_var = ui.StringVar(value=_("Warte auf OBS …"))
-        ui.Label(card, textvariable=self.rec_state_var, style="Big.TLabel", wraplength=560).pack(anchor="w")
+        self.rec_state_label = ui.level(ui.Label(card, textvariable=self.rec_state_var, style="Big.TLabel",
+                                                 wraplength=560))           # 1.24.3: the state's colour too
+        self.rec_state_label.pack(anchor="w")
         self.rec_live_var = ui.StringVar(value="")
         ui.Label(card, textvariable=self.rec_live_var, style="Dim.TLabel", wraplength=560).pack(anchor="w")
         self.rec_warn_var = ui.StringVar(value="")
-        self.rec_warn_label = ui.Label(card, textvariable=self.rec_warn_var, wraplength=560)
+        self.rec_warn_label = ui.Label(card, textvariable=self.rec_warn_var, style="Note.TLabel",   # 1.24.3: amber
+                                       wraplength=560)
         self.rec_warn_label.pack(anchor="w")
         crow = ui.Frame(card)
         crow.pack(fill="x", pady=(6, 0))
@@ -169,6 +202,8 @@ class RecordingsTab:
         self.rec_f8_btn.pack(side="left", padx=(6, 0))
         self.rec_mark_btn = ui.Button(crow, text=_("Marke setzen"), command=self._rec_card_mark_only, state="disabled")
         self.rec_mark_btn.pack(side="left", padx=(6, 0))
+        # 1.24.3 (phase 2): OBS not reachable – the next step right here (the settings with "Verbindung testen")
+        self.rec_obs_btn = ui.Button(crow, text=_("Verbindung prüfen …"), command=self._reveal_rec)
         # 1.11.14 (user picked "leere Zustände mit Handlung"): nothing recorded yet – the next step instead of an empty
         # table (the button while recording is off, the note while it is on)
         self.rec_setup_btn = ui.Button(f, text=_("Aufnahmen einrichten …"), command=self._reveal_rec)
@@ -252,6 +287,7 @@ class RecordingsTab:
             self.rec_table.heading(key, text=title, anchor=anchor)
             self.rec_table.column(key, width=width, anchor=anchor, stretch=key == "map")
         self.rec_table._dbdms_hide = ("file",)
+        self.rec_table._dbdms_signs = ("status",)                   # 1.25: drawn signs
         self.rec_table.pack(side="left", fill="both", expand=True)
         self.rec_table.bind("<<TreeviewSelect>>", lambda e: self._rec_buttons())
         self.rec_table._dbdms_open = lambda iid: self._rec_play()          # 1.23: double-click / Enter
@@ -349,6 +385,7 @@ class RecordingsTab:
         for key, title, width, anchor in cols:
             self.clip_table.heading(key, text=title, anchor=anchor)
             self.clip_table.column(key, width=width, anchor=anchor, stretch=key == "map")
+        self.clip_table._dbdms_signs = ("status",)                  # 1.25: drawn signs
         self.clip_table._dbdms_hide = ("file",)                                                   # 1.12.2
         self.clip_table.pack(side="left", fill="both", expand=True)
         self.clip_table.bind("<<TreeviewSelect>>", lambda e: self._clip_buttons())
@@ -624,7 +661,8 @@ class RecordingsTab:
 
     def _rec_card_render(self):
         d = self._obs_state
-        if d is None and not (self.settings.get("rec_on", False) or self.settings.get("rec_folder")):
+        on = bool(self.settings.get("rec_on", False) or self.settings.get("rec_folder"))
+        if d is None and not on:
             state, live, warn = _("Aufnahmen sind aus."), _("Einschalten unter Einstellungen → Aufnahmen."), ""
         else:
             extra = max(0.0, time.time() - self._obs_state_t) if d is not None else 0.0
@@ -633,6 +671,19 @@ class RecordingsTab:
         for var, text in ((self.rec_state_var, state), (self.rec_live_var, live), (self.rec_warn_var, warn)):
             if var.get() != text:
                 var.set(text)
+        rec_on = bool(self.settings.get("rec_on", False))
+        ui.level(self.rec_state_label, rec_card_level(d, on, rec_on))
+        # 1.24.3: recordings off and OBS never asked – the summary above says so; the card would say it again
+        card = d is not None or on
+        if card and not self.rec_card.winfo_manager():
+            self.rec_card.pack(fill="x", pady=(8, 0), after=self.rec_hint_label)
+        elif not card and self.rec_card.winfo_manager():
+            self.rec_card.pack_forget()
+        away = d is not None and not d.get("connected")     # 1.24.6: also with rec_on off – F9 still needs OBS
+        if away and not self.rec_obs_btn.winfo_manager():
+            self.rec_obs_btn.pack(side="left", padx=(6, 0))
+        elif not away and self.rec_obs_btn.winfo_manager():
+            self.rec_obs_btn.pack_forget()
         ours = bool(self.recorder.recording)
         obs_rec = bool(d and d.get("connected") and d.get("recording"))
         start_text = _("Aufnahme stoppen") if ours else _("Aufnahme starten")
@@ -644,7 +695,8 @@ class RecordingsTab:
             self.rec_pause_btn.configure(text=pause_text)
         for b, st in ((self.rec_start_btn, start_state), (self.rec_pause_btn, "normal" if ours else "disabled"),
                       (self.rec_mark_btn, "normal" if ours else "disabled"),
-                      (self.rec_f8_btn, "normal" if self.settings.get("rec_instant", True) else "disabled")):
+                      (self.rec_f8_btn, "normal" if self.settings.get("rec_instant", True) and not away
+                       else "disabled")):                  # 1.24.7 (visual QA): a clip needs OBS, like F9
             if str(b.cget("state")) != st:
                 b.configure(state=st)
 
@@ -691,7 +743,7 @@ class RecordingsTab:
         recs = obsrec.load_index(folder) if folder else []
         sp = self.recorder.space
         if not self.settings.get("rec_on", False) and not recs:
-            self.rec_summary_var.set(_("Aufnahme ist aus."))
+            self.rec_summary_var.set(_("Aufnahmen sind aus."))         # 1.24.3: one wording (the card is hidden)
             self.rec_hint_var.set(_("Einschalten unter Einstellungen → Aufnahmen."))
         elif folder is None:
             self.rec_summary_var.set(_("Aufnahme-Laufwerk nicht angeschlossen.") if self.settings.get("rec_folder")
@@ -719,6 +771,7 @@ class RecordingsTab:
         j = self._joined()
         by_t = {r.t: r for r in j.rounds}
         t = self.rec_table
+        t._dbdms_empty = _("Keine Aufnahme passt zu den Filtern oben.") if recs and not shown else ""  # 1.24.3
         keep = t.selection()
         t.delete(*t.get_children())
         self._rec_rows = {}
@@ -811,6 +864,7 @@ class RecordingsTab:
             self.clip_summary_var.set(" · ".join([_("{n} von {total} Clips", n=len(shown), total=len(clips)),
                                                   fmt_bytes(sum(c.size for c in shown))]))
         t = self.clip_table
+        t._dbdms_empty = _("Kein Clip passt zu den Filtern oben.") if clips and not shown else ""   # 1.24.3
         keep = t.selection()
         t.delete(*t.get_children())
         self._clip_rows = {}

@@ -991,6 +991,73 @@ def test_the_match_start_and_f8_reach_the_recorder(app_root):
         app.quit()
 
 
+def test_the_statistics_say_once_what_the_stats_page_would_add_instead_of_tiles_of_nothing(app_root):
+    """1.24.2 (phase 2 audit: four of eight tiles said "–" without match data): the dashboard leaves those tiles out,
+    one line says why – with "Match-Daten einrichten …" while never set up, without it once set up – and a round
+    linked to a match brings the tiles back; a round not counted is a yellow note (Note), no ⚠ in front."""
+    import json
+    from fogscout import history, official
+    from fogscout.app import App
+    t0 = time.time() - 3 * 3600
+    path = str(app_root / history.FILE)
+    history.append(path, history.Round(t=t0, seconds=600, map_id="coal-tower", map="Coal Tower", role="killer",
+                                       killer="The Oni"))
+    history.append_lost(path, t0 + 900, "The Game", "next banner")
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._stats_render()
+        titles = [t.title for t in app.stats_dash.data.tiles]
+        assert "Ø Kills" not in titles and "Entkommen" not in titles and "Ø Bloodpoints" not in titles
+        assert titles[0] == "Runden" and "Ø Rundendauer" in titles
+        assert app.stats_data_row.winfo_manager() and app.stats_data_btn.winfo_manager()
+        assert app.stats_data_var.get().startswith("Kills, Entkommen und Bloodpoints kommen von der Stats-Seite")
+        assert app.stats_data_btn._dbdms_tip()
+        assert app.stats_lost_var.get().startswith("Nicht gezählt: 1 × Rundenende") and "⚠" not in app.stats_lost_var.get()
+        assert app.stats_lost_label.winfo_manager() and app.stats_lost_label.cget("style") == "Note.TLabel"
+        assert not app.stats_saved_label.winfo_manager()
+        with open(app_root / official.FILE, "a", encoding="utf-8") as f:        # set up, the round not linked
+            f.write(json.dumps({"t": t0 - 5 * 3600, "map": "The Game", "role": "killer", "character": "The Oni",
+                                "seconds": 600, "bp": 20000}) + "\n")
+        app._stats_render()
+        assert app.stats_data_row.winfo_manager() and not app.stats_data_btn.winfo_manager()
+        assert app.stats_data_var.get().startswith("In dieser Auswahl ist keine Runde einem Match")
+        with open(app_root / official.FILE, "a", encoding="utf-8") as f:        # now the round has its match
+            f.write(json.dumps({"t": t0 - 38, "map": "Coal Tower", "role": "killer", "character": "The Oni",
+                                "seconds": 600, "bp": 30000}) + "\n")
+        app._stats_render()
+        assert not app.stats_data_row.winfo_manager()
+        assert "Ø Bloodpoints" in [t.title for t in app.stats_dash.data.tiles]
+    finally:
+        app.quit()
+
+
+def test_linked_custom_games_are_not_called_unlinked(app_root):
+    """1.24.5 (review): the line "keine Runde … zugeordnet" called a selection of linked custom games unlinked;
+    1.24.6 (second review): hiding the line left the missing tiles unexplained – the tiles come from the pairs (no
+    custom games unless the role filter is "Custom Games"), so linked custom games get their own sentence."""
+    import json
+    from fogscout import history, official
+    from fogscout.app import App
+    t0 = time.time() - 3 * 3600
+    history.append(str(app_root / history.FILE), history.Round(t=t0, seconds=600, map_id="coal-tower",
+                                                               map="Coal Tower", role="survivor", custom=True))
+    with open(app_root / official.FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"t": t0 - 38, "map": "Coal Tower", "custom": True, "role": "survivor", "seconds": 600,
+                            "status": "ESCAPED"}) + "\n")
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._stats_render()
+        c = app._stats_ctx
+        assert c.rounds and not c.pairs and any(id(r) in c.off for r in c.rounds)   # linked, no kill pair
+        assert app.stats_data_row.winfo_manager() and not app.stats_data_btn.winfo_manager()
+        assert "ohne Custom Games" in app.stats_data_var.get()
+        assert "Entkommen" not in [t.title for t in app.stats_dash.data.tiles]
+    finally:
+        app.quit()
+
+
 def test_custom_rounds_that_were_public_matches_are_offered_as_farming(app_root):
     """1.6.1: rounds saved as custom games, which the stats page lists as public matches (instant lobbies with
     cross-play off before 1.5.5), are shown with a button: all become farming rounds (custom dropped); "Ignorieren"
@@ -2499,7 +2566,7 @@ def test_the_history_is_copied_before_it_is_cleared(app_root):
             time.sleep(0.05)
         app._backup_done(backups.snapshot(str(app_root)))                       # nothing new: only the hint
         names = sorted(os.listdir(app_root / "backup"))
-        assert len(names) == 1 and names[0].startswith("rounds-") and "1 Dateien" in app.backup_var.get()
+        assert len(names) == 1 and names[0].startswith("rounds-") and "1 Datei," in app.backup_var.get()   # 1.25: not "1 Dateien"
         app._ask = lambda *a, **k: True
         app._stats_clear()
         names = sorted(os.listdir(app_root / "backup"))
@@ -2675,21 +2742,22 @@ def test_the_statistics_filters_fold_away_count_and_reset(app_root):
     try:
         app._stats_render()
         assert not app.stats_more_row.winfo_manager() and not app.stats_reset_btn.winfo_manager()
-        assert app.stats_filter_btn.cget("text") == "Filter ▾"
+        assert app.stats_filter_btn.cget("text") == "Filter" and app.stats_filter_btn._dbdms_glyph == "chevron_down"
         app._stats_more_toggle()
-        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter ▴"
+        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter"
+        assert app.stats_filter_btn._dbdms_glyph == "chevron_up"                 # 1.24: a drawn chevron, not "▴"
         app._stats_more_toggle()
         app._dash_clicked(("map", "Coal Tower"))                       # a hidden filter set: the row opens
-        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter (1) ▴"
+        assert app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter (1)"
         assert app.stats_reset_btn.winfo_manager()
         app.stats_period_var.set(app._stats_periods[1][1])
         app._farming_vars[0].set(True)
         app._farming_switch(app._farming_vars[0])
-        assert app.stats_filter_btn.cget("text") == "Filter (2) ▴"
+        assert app.stats_filter_btn.cget("text") == "Filter (2)"
         app._stats_filters_reset()
         assert app.stats_map_var.get() == "Alle Maps" and app.stats_period_var.get() == app._stats_periods[0][1]
         assert not app._farming_hidden() and not app.stats_reset_btn.winfo_manager()
-        assert not app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter ▾"
+        assert not app.stats_more_row.winfo_manager() and app.stats_filter_btn.cget("text") == "Filter"
         assert app.stats_filter_btn._dbdms_tip() and app.stats_reset_btn._dbdms_tip()
         page = app.qt.forms["stats"]
         seg = [tw for _k, tw, _p, _w in page._tabs if tw.objectName() == "segments"]
@@ -2849,7 +2917,8 @@ def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
         app._rec_event("obs_status", {"connected": True, "recording": True, "paused": True, "ours": True,
                                       "label": "Coal Tower", "seconds": 30.0, "bytes": 0, "buffer": True,
                                       "width": 2560, "height": 1440, "fps": 60.0, "encoder": "x264 (CPU)"})
-        assert app.rec_state_var.get().startswith("⏸ Pausiert · Coal Tower")
+        assert app.rec_state_var.get().startswith("Pausiert · Coal Tower")
+        assert app.rec_state_label._dbdms_level == "warn"                        # 1.24.3: colour + words
         assert "2560×1440" in app.rec_live_var.get() and app.rec_start_btn.cget("text") == "Aufnahme stoppen"
         assert app.rec_pause_btn.cget("text") == "Fortsetzen" and str(app.rec_mark_btn.cget("state")) == "normal"
         app.rec_start_btn.invoke()
@@ -2871,10 +2940,16 @@ def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
         # OBS unreachable: the card says so and the start button waits
         app._rec_event("obs_status", {"connected": False, "error": "x", "ours": False})
         assert app.rec_state_var.get() == "OBS nicht erreichbar" and str(app.rec_start_btn.cget("state")) == "disabled"
+        assert app.rec_state_label._dbdms_level == "err" and app.rec_obs_btn.winfo_manager()   # 1.24.3: next step
+        assert app.rec_obs_btn._dbdms_tip()
+        app.rec_obs_btn.invoke()
+        assert app.qt.current_key() == "settings"
+        app.nb.select(str(app.tab_recordings))
         # F8 clip saved: the card names it
         app._rec_event("obs_status", {"connected": True, "recording": False, "ours": False, "buffer": True})
         app._rec_event("clip", {"ok": True, "file": "c.mp4", "seconds": 30})
         assert "letzter Clip c.mp4" in app.rec_live_var.get()
+        assert not app.rec_obs_btn.winfo_manager() and app.rec_state_label._dbdms_level == ""
         # no folder and recordings off: the card says so instead of polling
         app.rec_on_var.set(False)
         app._rec_setting()
@@ -2882,6 +2957,7 @@ def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
         app._rec_poll_t = 0.0
         app._rec_tab_tick()
         assert len([c for c in calls if c[0] == "poll"]) == n and app.rec_state_var.get() == "Aufnahmen sind aus."
+        assert not app.rec_card.winfo_manager()           # 1.24.3: the summary above says it – not twice
         app.record_toggle()
         assert toasts[-1] == "Keine Aufnahme" and calls[-1][0] != "record_start"
     finally:
@@ -2957,6 +3033,53 @@ def test_the_search_finds_the_folded_advanced_part_and_opens_it(app_root):
         app.quit()
 
 
+def test_an_unreadable_hosts_file_is_an_error_and_locks_apply_and_release(app_root, monkeypatch):
+    """1.24.3 (phase 2 audit: the hosts error was plain text, the buttons stayed active): the line in the error
+    colour (ui.level – with its words), "Auswahl anwenden" and "Alles freigeben" locked until the file reads again;
+    "Ping messen" stays (it never touches the file). "Auswahl anwenden" is the page's main action."""
+    import json
+    from fogscout import regions
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        codes = [c for c, _n, _g in regions.REGIONS]
+        assert getattr(app.srv_btns[1], "_dbdms_primary", False) and not getattr(app.srv_btns[0], "_dbdms_primary", False)
+        monkeypatch.setattr(regions, "current_state",              # never the real hosts file (conftest)
+                            lambda text=None: {"error": "Zugriff verweigert", "regions": {}, "own": False,
+                                               "myc": False, "foreign": 0})
+        app._srv_refresh()
+        assert app.srv_status.get() == "hosts-Datei nicht lesbar: Zugriff verweigert"
+        assert app.srv_status_label._dbdms_level == "err"
+        assert [b.instate(["disabled"]) for b in app.srv_btns] == [False, True, True]
+        app._srv_ping_done({"_error": "x"})                      # 1.24.5 (review): a failed ping kept no lock
+        assert [b.instate(["disabled"]) for b in app.srv_btns] == [False, True, True]
+        assert app.srv_status_label._dbdms_level == "err"
+        monkeypatch.setattr(regions, "current_state",
+                            lambda text=None: {"regions": {c: "frei" for c in codes}, "own": False, "myc": False,
+                                               "foreign": 0})
+        app._srv_refresh()
+        assert app.srv_status_label._dbdms_level == "" and not any(b.instate(["disabled"]) for b in app.srv_btns)
+        from fogscout.app_qt import ui_state
+        assert ui_state(app.srv_btns[1]).get("primary") and ui_state(app.srv_status_label)["level"] == ""
+    finally:
+        app.quit()
+
+
+def test_the_obs_line_in_the_settings_is_coloured_by_what_it_says():
+    """1.24.3 (phase 2 audit: a failed test was grey like a hint): ok green, OBS away or a failure red, the rest
+    of "not ok" (sound source, buffer, drive) amber – the words are always there."""
+    from fogscout.app_settings import rec_status_level
+    assert rec_status_level("OBS bereit – Runden werden aufgenommen", True) == "ok"
+    assert rec_status_level("OBS nicht erreichbar – läuft OBS, ist der WebSocket-Server an? (ConnectionRefusedError)",
+                            False) == "err"
+    assert rec_status_level("Fehler: x", False) == "err"
+    assert rec_status_level("Aufnahme-Laufwerk nicht angeschlossen – nichts gestartet", False) == "warn"
+    # 1.24.5 (review): every failure the recorder marks (ObsError: wrong password, no obs-websocket …) is red
+    assert rec_status_level("OBS hat die Anmeldung abgelehnt – Passwort falsch?", False, err=True) == "err"
+    assert rec_status_level("OBS hat die Anmeldung abgelehnt – Passwort falsch?", False) == "warn"   # unmarked
+
+
 def test_the_server_page_says_when_the_ticks_are_not_applied(app_root):
     """1.23 (audit, prompt.md): ticking a region changes nothing until „Auswahl anwenden“ – the list looked
     applied. A line says how many regions differ from the hosts file."""
@@ -3013,5 +3136,47 @@ def test_deleting_all_rounds_asks_with_a_red_button_or_says_there_are_none(app_r
         title, _text, retry, ok_text, danger = app._qt_question
         assert (title, ok_text, danger) == ("Alle Runden löschen", "Alle löschen", True) and retry is not None
         assert (app_root / "rounds.jsonl").exists()                        # nothing deleted before the answer
+    finally:
+        app.quit()
+
+
+def test_the_state_reaches_the_foot_of_the_navigation_on_every_page(app_root):
+    """1.24 (phase 2): the App hands status.user_state to the window on every refresh – the same words as the tray's
+    dot – whatever page is open; a map on display shows its name there."""
+    import json
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app.qt.show_page("log")
+        app._qt_refresh(force=True)
+        assert app.qt.status_btn.text.text().replace("\n", " ") == "Simulation – wartet auf das Map-Banner"
+        app.show_map("coal-tower", 1, source="manual")
+        app._qt_refresh(force=True)
+        assert app.qt.status_btn.text.text().replace("\n", " ").startswith("Im Match: Coal Tower")
+    finally:
+        app.quit()
+
+
+def test_the_page_warm_up_waits_while_the_user_clicks_or_types(app_root):
+    """1.25 (measured: a search in the maps page took up to 198 ms when the warm-up built a page in the same pass):
+    no warm-up step within WARM_QUIET_S of a click or key – it comes back later instead."""
+    import json
+    from fogscout import app_qt
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        built, later = [], []
+        app.qt.build_next = lambda: built.append(1) or False
+        app.root.after = lambda ms, fn, *a: later.append((ms, fn))
+        app._warm_queue = []
+        app._ui_refresh_t = time.monotonic()                     # a click just now
+        app._qt_warm()
+        assert built == [] and later and later[0][1] == app._qt_warm
+        assert later[0][0] == round(app_qt.WARM_QUIET_S * 1000)
+        app._ui_refresh_t = time.monotonic() - app_qt.WARM_QUIET_S - 1
+        app._qt_warm()
+        assert built == [1]                                     # quiet again: the step runs
     finally:
         app.quit()

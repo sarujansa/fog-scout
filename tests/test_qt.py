@@ -519,6 +519,24 @@ def test_log_view_colours_and_escapes(qapp, keep):
 
 
 
+def test_an_empty_table_and_an_empty_log_say_why(qapp, keep):
+    """1.24.3 (phase 2): a table whose filters hide every row draws the model's words (``empty``) instead of a
+    blank box, a table with rows does not; the log names search and categories when no line is left."""
+    from fogscout import qt_window
+    t = keep(qt_window.Table("t", lambda a, arg=None: None))
+    t.resize(400, 200)
+    cols = [("a", "A", "w")]
+    t.show_state({"columns": cols, "rows": [], "empty": "Nichts passt."})
+    t.show()
+    qapp.processEvents()
+    assert t._empty == "Nichts passt." and not t.grab().toImage().isNull()
+    t.show_state({"columns": cols, "rows": [("r1", 0, "", ["x"], [], False)], "empty": ""})
+    assert t._empty == "" and t.topLevelItemCount() == 1
+    log = keep(qt_window.LogView())
+    log.show_state({"lines": [], "dark": True, "rev": 1})
+    assert log.document().isEmpty() and log.placeholderText().startswith("Keine Zeilen – das Log ist leer")
+
+
 def test_log_view_appends_new_lines_and_rebuilds_only_when_needed(qapp, keep):
     from fogscout import qt_window
     log = keep(qt_window.LogView())
@@ -691,7 +709,20 @@ def test_dashboard_model():
     assert d.rows == ["Coal Tower"] and d.columns == ["The Nurse"]          # Oni: one round – no cell, no column
     assert d.cells == {("Coal Tower", "The Nurse"): (3.0, 2)}
     assert dashboard.build([], []).empty and dashboard.short_killer("The Nurse") == "Nurse"
-    assert dashboard.play_time(7200) == "2.0 h" and ":" in dashboard.play_time(600)
+    assert dashboard.play_time(7200) == "2,0 h" and ":" in dashboard.play_time(600)
+
+
+def test_the_dashboard_has_no_tile_that_would_only_say_nothing():
+    """1.24.2 (phase 2 audit): without match data the tiles Ø Kills, Entkommen, Ø Bloodpoints and Bloodpoints pro
+    Stunde are left out (they said "–"), no waiting time no "Ø Wartezeit"; only killer rounds: no "Entkommen"."""
+    from fogscout import dashboard
+    rs, pairs = _dash_data()
+    assert [t.title for t in dashboard.tiles(rs, [])] == ["Runden", "Ø Rundendauer"]
+    assert all(t.value != "–" for t in dashboard.tiles(rs, []))
+    killers = [(r, m) for r, m in pairs if r.role == "killer"]
+    titles = [t.title for t in dashboard.tiles([r for r, _m in killers], killers)]
+    assert "Ø Kills" in titles and "Entkommen" not in titles and "Ø Bloodpoints" in titles
+    assert "Filter zurücksetzen" in dashboard.build([], []).empty
 
 
 def test_dashboard_view_draws_tiles_bars_and_heatmap(qapp, keep):
@@ -1351,7 +1382,7 @@ def test_map_tiles_show_marks_and_a_context_menu(qapp, keep):
     assert [e for _a, _l, e in page.menu_entries(("pit", 1))] == [True, True, False, True, True]
     page.open_menu(("coal", 1), coal.mapToGlobal(coal.rect().center()))
     acts = page._menu.actions()
-    assert [a.text() for a in acts][:2] == ["Anzeigen", "Drehen ↻"]
+    assert [a.text() for a in acts][:2] == ["Anzeigen", "Drehen"]
     acts[1].trigger()
     assert posted.get_nowait() == ("map_action", ("rotate", ("coal", 1)))
     page._menu.close()
@@ -1625,16 +1656,19 @@ def test_the_overlay_preview_and_its_tools_sit_side_by_side_on_a_wide_page(qapp,
     split.arrange(qt_pages.SPLIT_FROM + 200)
     side.arrange((qt_pages.SPLIT_FROM + 200) // 2)
     assert split.beside() and not side.beside()                    # tabs beside, preview above the tools
-    split.arrange(950)
-    side.arrange(950)
+    split.arrange(qt_pages.SPLIT_FROM - 20)
+    side.arrange(qt_pages.SPLIT_FROM - 20)
     assert not split.beside() and side.beside()                    # as before 1.11.14
     split.arrange(600)
     side.arrange(600)
     assert not split.beside() and not side.beside()
-    page.show()                  # and in a real window, as wide as fits a Windows runner's screen (1100 did before)
+    # 1.24.2 (phase 2: at 1280 px the tabs sat below the fold): SPLIT_FROM 1080 → 940 – a 1280 window's page
+    # (~1036 px) shows preview + tools | tabs; a 1100 window's (~860 px) keeps preview | tools above the tabs
+    assert 860 < qt_pages.SPLIT_FROM <= 1000
+    page.show()                  # and in a real window, as wide as fits a Windows runner's screen
     page.resize(1100, 700)
     qapp.processEvents()
-    assert not split.beside() and side.beside() and side.cards[0].x() < side.cards[1].x()
+    assert split.beside() and not side.beside() and side.cards[0].y() < side.cards[1].y()
     page.resize(600, 700)
     qapp.processEvents()
     assert not split.beside() and not side.beside() and side.cards[0].y() < side.cards[1].y()
@@ -1833,6 +1867,28 @@ def test_the_search_and_the_realm_list_show_and_hide_the_tiles_instead_of_buildi
     assert len(page._tiles) == 7 and page._tiles[("m0_0", 1)] is not tiles[("m0_0", 1)]
 
 
+def test_a_search_without_a_hit_says_so_and_offers_to_clear_it(qapp, keep):
+    """1.24.1 (phase 2 audit: a search without a hit left an empty grid): a line names the search and what it looks
+    at, "Suche leeren" empties the field – that posts the empty search like the field's own clear button."""
+    from fogscout import qt_window
+    posted = []
+    page = keep(qt_window.MapsPage(lambda a, arg=None: posted.append((a, arg))))
+    items = _grid_items(2, 2)
+    page.show_maps(items, None, {}, [], {}, "classic")
+    assert page.no_hits.isHidden()
+    page.search.setText("xyz")
+    page.show_maps(items, None, {}, [], {}, "classic", found=set())
+    assert not page.no_hits.isHidden() and page.visible_tiles() == []
+    assert "„xyz“" in page.no_hits_text.text() and page.no_hits_clear.toolTip()
+    assert page.no_hits_clear.property("glyph") == "close"
+    page.no_hits_clear.click()
+    assert page.search.text() == "" and posted[-1] == ("search", "")
+    page.show_maps(items, None, {}, [], {}, "classic", found=None)
+    assert page.no_hits.isHidden() and len(page.visible_tiles()) == 4
+    page.show_maps(items, None, {}, [], {}, "classic", found={("m1_0", 1)})            # a hit: no line
+    assert page.no_hits.isHidden() and [t.key for t in page.visible_tiles()] == [("m1_0", 1)]
+
+
 def test_the_tiles_are_walked_with_the_keyboard(qapp, keep):
     """1.8.72: the arrows move between the tiles on display, Enter shows a map big, Ctrl+Enter in the game."""
     from PySide6.QtCore import Qt
@@ -2005,6 +2061,131 @@ def test_the_overview_shows_the_quick_switches_and_posts_only_a_click(qapp, keep
     win.show_model(overview.overview_model(app, now, is_win=True))
     assert [w.text() for w in page.switches if not w.isHidden()][1] == "Lobby-Meldung" and shown[3].isEnabled()
     assert len(page.switches) == 7 and page.switches[6].isHidden()           # boxes by position: the last one rests
+
+
+def test_each_feature_says_whether_it_works_now_and_what_is_missing():
+    """1.24.1 (phase 2: "Schnell ein/aus" had no state – is OBS there, is HWiNFO missing, is Spotify signed in?):
+    overview.switch_state gives (level, words) from what the program knows anyway; level is never the only sign –
+    there are always words; nothing known = nothing said."""
+    st = overview.switch_state
+    app = fake_app()
+    assert st(app, "detect", False) == ("off", "aus") and st(app, "rec", False) == ("off", "aus")
+    assert st(app, "detect", True) == ("off", "wartet auf DBD")
+    app.game = object()
+    assert st(app, "detect", True) == ("ok", "aktiv")
+    app._worker_status = "Bildaufnahme fehlgeschlagen"
+    assert st(app, "detect", True) == ("err", "Fehler – Details im Log")
+    assert st(app, "rec", True) == ("", "")                                    # no recorder: nothing to say
+    app.recorder = SimpleNamespace(recording=False, space=SimpleNamespace(t=1.0, folder=""))
+    app.settings["rec_folder"] = "D:\\Aufnahmen"
+    assert st(app, "rec", True) == ("warn", "Platte nicht angeschlossen")
+    app.settings["rec_folder"] = ""
+    assert st(app, "rec", True) == ("warn", "kein Ordner gewählt")
+    app.recorder.space.folder = "D:\\Aufnahmen"
+    app._obs_state, app._obs_state_t = {"connected": False}, time.time()
+    assert st(app, "rec", True) == ("warn", "OBS nicht erreichbar")
+    app._obs_state = {"connected": True}
+    assert st(app, "rec", True) == ("ok", "bereit")
+    app._obs_state_t = time.time() - overview.OBS_STATE_FRESH_S - 5           # stale (page closed, OBS started
+    assert st(app, "rec", True) == ("off", "wartet auf DBD")                    # since): no old answer, and
+    app.recorder.obs_ready = False                                              # 1.24.5: never "bereit" unknown –
+    assert st(app, "rec", True) == ("warn", "OBS nicht verbunden")              # the recorder's own answer while
+    app.recorder.obs_ready = True                                               # DBD runs
+    assert st(app, "rec", True) == ("ok", "bereit")
+    app.recorder.recording = True
+    assert st(app, "rec", True) == ("ok", "nimmt auf")
+    app.conn = SimpleNamespace(running=False, server=None, error="")
+    assert st(app, "conn", True) == ("off", "wartet auf DBD")
+    app._conn_busy = True
+    assert st(app, "conn", True) == ("off", "startet …")
+    app._conn_busy = False
+    app.conn.running = True
+    assert st(app, "conn", True) == ("ok", "aktiv")
+    app.conn.server = {"region": "eu-central-1"}
+    assert st(app, "conn", True) == ("ok", "verbunden")
+    app.conn.error = "Mitschnitt beendet (Code 1)."
+    assert st(app, "conn", True) == ("err", "Fehler – Details im Log")
+    assert st(app, "sysinfo", True, is_win=False) == ("off", "nur unter Windows")
+    assert st(app, "sysinfo", True) == ("off", "wartet auf DBD")
+    app.sysmon = SimpleNamespace(active=True, hwinfo_seen=False, snapshot=None)
+    assert st(app, "sysinfo", True) == ("ok", "aktiv")                         # 1.24.5: no reading yet – no claim
+    app.sysmon.snapshot = SimpleNamespace(t=time.time(), hwinfo=False)
+    assert st(app, "sysinfo", True) == ("ok", "aktiv")                         # not HWINFO_WAIT_S yet
+    app._hwinfo_told = True                                                     # the moment the log says it
+    assert st(app, "sysinfo", True) == ("warn", "HWiNFO fehlt")
+    app._hwinfo_told = False
+    app.sysmon.snapshot.hwinfo, app.sysmon.hwinfo_seen = True, True
+    assert st(app, "sysinfo", True) == ("ok", "aktiv")
+    app.sysmon.snapshot.hwinfo = False                                          # closed mid-session: said at once
+    assert st(app, "sysinfo", True) == ("warn", "HWiNFO fehlt")
+    app.media = SimpleNamespace(error="")
+    assert st(app, "media", True) == ("", "")
+    app.media.error = "OSError: nicht verfügbar"
+    assert st(app, "media", True) == ("warn", "Mediensteuerung nicht verfügbar")
+    app.presence = SimpleNamespace(connected=False)
+    assert st(app, "discord", True) == ("warn", "Discord nicht erreichbar")
+    app.presence.connected = True
+    assert st(app, "discord", True) == ("ok", "verbunden")
+    app.spotify = SimpleNamespace(state="login_needed")
+    app.youtube = SimpleNamespace(state="linked")
+    assert st(app, "spotify", True) == ("warn", "Anmeldung nötig") and st(app, "youtube", True) == ("ok", "verbunden")
+    app.spotify.state = "off"
+    assert st(app, "spotify", True) == ("", "") and st(app, "notify", True) == ("", "")
+    for level, words in (st(app, k, True) for k in ("detect", "rec", "conn", "sysinfo", "media", "discord")):
+        assert level and words                                                 # never a colour without words
+    sw = {s.key: s for s in overview.switches(app)}
+    assert (sw["detect"].level, sw["detect"].state) == ("err", "Fehler – Details im Log")
+    assert (sw["notify"].level, sw["notify"].state) == ("", "an")                # 1.24.7: on says "an"
+
+
+def test_the_feature_card_writes_the_state_under_each_box(qapp, keep):
+    """1.24.1: the words of switch_state under the box's text, the level as the label's property "state" (colour
+    from the theme); a box with nothing to say has no empty line."""
+    from fogscout import qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.apply_theme(True, 1.0)
+    app = fake_app()
+    win.show_model(overview.overview_model(app, time.time(), is_win=True))
+    page = win.overview
+    labels = {w.key: lab for w, lab in zip(page.switches, page.switch_states) if not w.isHidden()}
+    assert page.switch_card.findChild(type(labels["detect"]), None) is not None
+    assert labels["detect"].text() == "wartet auf DBD" and labels["detect"].property("state") == "off"
+    assert not labels["detect"].isHidden() and labels["notify"].text() == "an"   # 1.24.7: on says "an"
+    win.show()
+    qapp.processEvents()
+    box = next(w for w in page.switches if w.key == "notify")                     # under the box's text: the
+    assert labels["notify"].contentsMargins().left() == box.label.x()             # indent of WrapCheck's label
+    app.game = object()
+    app.settings["show_connection"] = True
+    app.conn = SimpleNamespace(running=True, server=None, error="Mitschnitt beendet (Code 1).", ping_ms=None)
+    win.show_model(overview.overview_model(app, time.time(), is_win=True))
+    assert labels["detect"].text() == "aktiv" and labels["detect"].property("state") == "ok"
+    assert labels["conn"].text() == "Fehler – Details im Log" and labels["conn"].property("state") == "err"
+
+
+def test_the_overview_drops_tiles_that_would_only_say_nothing():
+    """1.24.1 (phase 2 audit: six of ten tiles said "–" without match data): set up but nothing for today – no
+    "Ø Kills"/"Entkommen" tile; no waiting time and no ping – no "Ø Wartezeit"; never set up – the one tile that
+    leads to the setup stays. The week leaves out what neither week has."""
+    now = time.time()
+    day = history.period_start("day", now)
+    rnd = history.Round(max(now - 600, day), 540, "coal", "Coal Tower", role="killer", killer="The Oni")
+    app = fake_app(rounds=[rnd])
+    app._joined().matches = [object()]                                        # match data set up, none today
+    tiles, _note = overview.today(app, now)
+    assert [t.title for t in tiles] == ["Runden"]
+    app._joined().matches = []                                                # never set up: the way there stays
+    tiles, _note = overview.today(app, now)
+    assert [t.title for t in tiles] == ["Runden", "Stats-Seite"] and tiles[1].action == "official_setup"
+    rnd.wait = 95.0
+    tiles, _note = overview.today(app, now)
+    assert [t.title for t in tiles] == ["Runden", "Stats-Seite", "Ø Wartezeit"]
+    rnd.farming = True                                                        # farming without BP: the count
+    tiles, _note = overview.today(app, now)
+    assert (tiles[2].title, tiles[2].value, tiles[2].sub) == ("Farming", "1", "Runden · BP/h erst mit Match-Daten")
+    rnd.farming = False                                                       # the week counts normal rounds only
+    tiles, _note = overview.week(app, now)
+    assert [t.title for t in tiles] == ["Runden", "Ø Wartezeit"]
 
 
 def test_the_splash_screen_shows_the_start_and_fades_away(qapp, keep, tmp_path):
@@ -2438,3 +2619,264 @@ def test_page_keys_never_get_in_the_way_of_typing(qapp, keep):
     assert win.current_key() == win.nav_keys()[2]
     win.allow_close = True
     win.close()
+
+
+def test_the_navigation_shows_the_name_and_the_state_on_every_page(qapp, keep):
+    """1.24 (phase 2): the program's name above the navigation, and what it does now at its foot – a dot in the
+    state's colour and the words (never colour alone); narrow, only the dot with the words as hover text. A click
+    or Enter opens the overview. Before, only the overview showed the state."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from fogscout import qt_window
+    posted = []
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.append((a, arg))))
+    win.resize(1280, 800)
+    win.show()
+    assert win.brand_name.text() == "Fog Scout" and not win.brand_icon.pixmap().isNull()
+    win.show_page("log")
+    win.show_status("wait", "Wartet auf das nächste Match")
+    st = win.status_btn
+    assert st.text.text().replace("\n", " ") == "Wartet auf das nächste Match" and not st.dot.pixmap().isNull()
+    assert "Übersicht öffnen" in st.toolTip()
+    QTest.mouseClick(st, Qt.LeftButton)
+    assert win.current_key() == "overview"
+    win.show_page("log")
+    st.setFocus()
+    QTest.keyClick(st, Qt.Key_Return)
+    assert win.current_key() == "overview"
+    # 1.24.5 (review): two lines at most (the whole text is the tooltip), a problem has its own sign – not only
+    # its colour
+    long = "Die Erkennung ist abgestürzt – bitte Fog Scout neu starten. " * 3
+    win.show_status("err", long.strip())
+    assert st.text.text().count("\n") <= 1 and st.text.text().endswith("…") and st._shown[-1] == "warning"
+    assert long.strip() in st.toolTip()
+    from fogscout import qt_icons, qt_theme                   # 1.24.6: what is drawn, not only what was asked
+    colour = qt_theme.dot_colour("err", True)
+    ratio = win.devicePixelRatioF() or 1.0
+    assert st.dot.pixmap().toImage() == qt_icons.pixmap("warning", colour, qt_theme.ICON["s"], ratio).toImage()
+    assert st.dot.pixmap().toImage() != qt_icons.pixmap("record", colour, qt_theme.ICON["s"], ratio).toImage()
+    fm, width = st.text.fontMetrics(), qt_window.NAV_W - 58     # 1.24.6: a first word wider than the column (1.24.7: margins 26 + 10)
+    win.show_status("err", "Bildschirmaufnahmeverbindungsfehlermeldung fehlgeschlagen: Zugriff verweigert")
+    first = st.text.text().split("\n")[0]
+    assert first.endswith("…") and fm.horizontalAdvance(first) <= width
+    win.show_status("wait", "Wartet auf das nächste Match")
+    assert st._shown[-1] == "record"
+    win.resize(900, 700)                                    # narrow: icons only
+    qapp.processEvents()
+    assert win._nav_compact and st.text.isHidden() and not win.brand_name.isVisible()
+    assert "Wartet auf das nächste Match" in st.toolTip()
+    assert not win.overview.status_line.isHidden()          # 1.24.5: the overview says it in words again
+    win.show_model(overview.overview_model(fake_app(), time.time(), is_win=True))     # 1.24.6: and which words
+    line = win.overview.status_line
+    assert line.text() and "Wartet auf DBD" in line.text() and line.property("state") == ""
+    win.resize(1280, 800)
+    qapp.processEvents()
+    assert win.overview.status_line.isHidden()
+    win.allow_close = True
+    win.close()
+
+
+def test_signs_made_before_the_theme_follow_it_and_another_screen_scale(qapp, keep):
+    """1.24.5 (review): the overview and the maps page are built before App sets the theme – their drawn signs
+    (Zurück, Suche leeren, the rounds' ▶) kept the dark colours in the light mode. apply_theme draws them again
+    (qt_common.refresh_glyphs), and so does a change of the screen's pixel ratio (QEvent.DevicePixelRatioChange)."""
+    from PySide6.QtCore import QEvent
+    from fogscout import qt_common, qt_theme, qt_window
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    back = win.maps.p_back
+    dark = qt_theme.current_dark()
+    try:
+        win.apply_theme(True, 1.0)
+        assert back._glyph_key[-1][0] is True
+        win.apply_theme(False, 1.0)
+        assert back._glyph_key[-1][0] is False and win.maps.no_hits_clear._glyph_key[-1][0] is False
+        win.show_status("ok", "Coal Tower")
+        drawn = win.status_btn._shown
+        win.status_btn._shown = ("stale",)                    # what a screen change has to replace
+        calls = []                                            # 1.24.6: navigation icons and every glyph too
+        real_nav, real_refresh = win._nav_icons, qt_common.refresh_glyphs
+        win._nav_icons = lambda: (calls.append("nav"), real_nav())
+        qt_common.refresh_glyphs = lambda root: (calls.append("glyphs"), real_refresh(root))
+        back._glyph_key = None                                # a sign drawn for another screen
+        try:
+            type(qapp).sendEvent(win, QEvent(QEvent.DevicePixelRatioChange))
+            qapp.processEvents()
+        finally:
+            qt_common.refresh_glyphs = real_refresh
+        assert win.status_btn._shown == drawn and calls == ["nav", "glyphs"] and back._glyph_key is not None
+    finally:
+        win.apply_theme(dark, 1.0)
+        win.allow_close = True
+        win.close()
+
+
+def test_a_model_button_can_be_the_main_action_and_carry_a_drawn_sign(qapp):
+    """1.24 (phase 2): ui.primary (accent fill) and ui.glyph (qt_icons sign before the text, instead of Unicode
+    signs like ▸ ↻) reach the Qt button; the sign is set again only when it, the mode or the accent changed."""
+    from fogscout import uimodel as ui
+    from fogscout.app_qt import ui_state
+    from fogscout.qt_pages import make_control, show_control
+    root = ui.Frame()
+    b = ui.glyph(ui.primary(ui.Button(root, text="Auswahl anwenden")), "check")
+    st = ui_state(b)
+    assert st["primary"] is True and st["glyph"] == "check"
+    w, extra = make_control("button", str(b), lambda *a: None)
+    show_control("button", w, extra, st)
+    assert w.objectName() == "primary" and w.property("glyph") == "check" and not w.icon().isNull()
+    key = w._glyph_key
+    show_control("button", w, extra, st)
+    assert w._glyph_key is key                               # unchanged: not drawn again
+    ui.glyph(b, "chevron_down")
+    show_control("button", w, extra, ui_state(b))
+    assert w.property("glyph") == "chevron_down"
+    # 1.24.5: the key is the theme's inputs (qt_theme.look_key), not its palette – another mode still redraws
+    from fogscout import qt_theme
+    key, dark = w._glyph_key, qt_theme.current_dark()
+    try:
+        qt_theme.set_dark(not dark)
+        show_control("button", w, extra, ui_state(b))
+        assert w._glyph_key != key and not w.icon().isNull()
+    finally:
+        qt_theme.set_dark(dark)
+
+
+def test_a_model_label_level_reaches_the_qt_property(qapp):
+    """1.24.6 (second review): ui.level must end as the Qt property "state" the style sheet colours by – the tests
+    only read the model's attribute."""
+    from fogscout import uimodel as ui
+    from fogscout.app_qt import ui_state
+    from fogscout.qt_pages import make_control, show_control
+    lab = ui.level(ui.Label(ui.Frame(), text="OBS nicht erreichbar"), "err")
+    w, extra = make_control("label", str(lab), lambda *a: None)
+    show_control("label", w, extra, ui_state(lab))
+    assert w.property("state") == "err"
+    ui.level(lab, "")
+    show_control("label", w, extra, ui_state(lab))
+    assert w.property("state") == ""
+
+
+def test_every_page_says_what_it_is_for_under_its_title():
+    """1.24 (phase 2): one line under each page's title (qt_common.PAGE_SUBTITLES), for all eight pages."""
+    from fogscout import qt_window
+    from fogscout.qt_common import PAGE_SUBTITLES
+    assert set(PAGE_SUBTITLES) == {k for k, _l in qt_window.PAGES}
+
+
+def test_the_new_signs_are_drawn(qapp):
+    """1.24 (phase 2): the signs that replace ↻ ▸ ▾ ✕ ★ ⚑ ⚠ ● ← ↗ draw something at every size."""
+    from fogscout import qt_icons
+    for name in ("star", "warning", "chevron_right", "chevron_down", "chevron_up", "rotate", "record", "back",
+                 "external", "close", "play", "search"):
+        img = qt_icons.pixmap(name, "#ffffff", 20).toImage()
+        lit = sum(1 for x in range(img.width()) for y in range(img.height()) if img.pixelColor(x, y).alpha() > 100)
+        assert lit > 10, name
+
+
+def test_the_overview_draws_a_main_action_only_when_the_player_has_to_act():
+    """1.24 (phase 2): "Scannen" was always the accent button – a fallback, not the next step. Now: "Stimmt" while a
+    doubtful map waits for the player, "Map wählen …" while the automatic detection is off, otherwise none."""
+    # 1.24.5: a real "now" – 1000.0 (1970) broke datetime.timestamp() on the Windows runner (OSError 22)
+    now = time.time()
+    app = fake_app()
+    o = overview.overview_model(app, now, True)
+    assert o.primary is None and o.actions["scan"][0]                  # the map comes by itself
+    app.settings["auto_detect"] = False
+    assert overview.overview_model(app, now, True).primary == "choose"
+    app = fake_app(current=("coal", 1), source="auto")
+    app._unsure = {"shown": True, "label": "Coal Tower", "name": "COAL"}
+    assert overview.overview_model(app, now, True).primary == "confirm"
+
+
+def test_the_overview_fixes_of_the_visual_qa(qapp, keep):
+    """1.24.7 (visual QA of phase 2): every fact of „Heute“ gets a tile (five fixed widgets dropped the sixth and
+    seventh); two week tiles keep the width of a full row; the tile „Stats-Seite“ has no big "–" and a short
+    button; the compass and the status sign sit on the column of the navigation's icons."""
+    from PySide6.QtCore import QRect
+    from PySide6.QtWidgets import QWidget
+    from fogscout import qt_window
+    from fogscout.qt_layouts import TileGrid
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.apply_theme(True, 1.0)
+    win.resize(1400, 900)
+    win.show()
+    o = overview.overview_model(fake_app(), time.time(), is_win=True)
+    o.today = [overview.Fact(f"T{i}", str(i)) for i in range(7)]
+    win.show_model(o)
+    qapp.processEvents()
+    page = win.overview
+    assert sum(not c.isHidden() for c in page.tile_cards) == 7
+    setup = overview._setup_fact()
+    assert setup.value == "" and setup.action_label == "Einrichten …"
+    o.today = [setup]
+    win.show_model(o)
+    assert page.tiles[0].value.isHidden() and not page.tiles[0].link.isHidden()
+    grid = TileGrid(min_width=170, columns=5, stretch=False)
+    holder = keep(QWidget())
+    holder.setLayout(grid)
+    for _i in range(2):
+        grid.addWidget(QWidget())
+    grid.setGeometry(QRect(0, 0, 1000, 200))
+    assert grid.itemAt(0).widget().width() == (1000 - 4 * 12) // 5
+    nav_icon_centre = qt_window.NAV_SIGN_X
+    brand = win.brand_icon
+    assert abs(brand.mapTo(win, brand.rect().center()).x() - nav_icon_centre) <= 1
+    dot = win.status_btn.dot
+    assert abs(dot.mapTo(win, dot.rect().center()).x() - nav_icon_centre) <= 1
+
+
+def test_placeholders_grips_and_handles_are_readable_in_every_theme(qapp, keep):
+    """1.25 (audit): with `color` in the style sheet Qt drew placeholder text as the text colour at 50 % (3.3:1 in
+    light mode) – the sheet now names the dim colour; scroll handles, card grips and map bars use the token `handle`
+    (>= 3:1 on page and card, they were 1.1–2.8:1). Every theme, light/dark/OLED and an own colour."""
+    from PySide6.QtGui import QPalette
+    from fogscout import qt_window
+    try:
+        for key, custom in [(k, None) for k in qt_theme.THEMES] + [("custom", "#22ccaa")]:
+            for dark, oled in ((False, False), (True, False), (True, True)):
+                qt_theme.set_theme(key, oled, custom)
+                c = qt_theme.colours(dark)
+                for bg in (c["bg"], c["card"]):
+                    assert qt_theme.contrast(c["handle"], bg) >= qt_theme.HANDLE_CONTRAST, (key, dark, oled)
+                    assert qt_theme.contrast(c["dim"], bg) >= 4.5, (key, dark, oled)
+        qt_theme.set_theme("gold")
+        win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+        win.apply_theme(False, 1.0)
+        win.show()
+        qapp.processEvents()
+        field = win.search                                   # styled by the window's sheet (sets `color`)
+        field.ensurePolished()
+        got = field.palette().color(QPalette.PlaceholderText)
+        assert got.name() == qt_theme.colours(False)["dim"] and got.alpha() == 255
+    finally:
+        qt_theme.set_theme("gold")
+
+
+def test_status_signs_are_drawn_glyphs_with_words(qapp, keep):
+    """1.25 (audit: ★ ⚑ ▶ were the window's last Unicode symbols): the model's _dbdms_signs columns get a delegate
+    that draws the glyphs; the cell keeps its text and says it in words as the tooltip."""
+    from fogscout import qt_views
+    assert qt_views.sign_words("★  ⚑2  ▶…") == "behalten (nie aufgeräumt) · 2 Marken · wartet auf den YouTube-Upload"
+    assert qt_views.sign_words("▶") == "auf YouTube" and qt_views.sign_words("") == ""
+    assert qt_views.sign_words("⚑1") == "1 Marke"                        # not "1 Marken"
+    t = keep(qt_views.Table("rec", lambda *a: None))
+    cols = [("when", "Wann", "w"), ("status", "Status", "w")]
+    t.show_state({"columns": cols, "rows": [("a", 0, "", ["heute", "★  ⚑2"], [], True)], "signs": ["status"]})
+    assert isinstance(t.itemDelegateForColumn(1), qt_views.SignsDelegate) and t.itemDelegateForColumn(0) is None
+    assert t.topLevelItem(0).text(1) == "★  ⚑2"                        # sorting and copying keep the text
+    t.resize(300, 200)
+    t.show()
+    qapp.processEvents()
+    assert not t.grab().isNull()                                      # paints without error
+    t.show_state({"columns": cols + [("x", "X", "w")], "rows": [("a", 0, "", ["heute", "", ""], [], True)]})
+    assert t.itemDelegateForColumn(1) is None                         # a table without signs: plain cells
+
+
+def test_the_hotkeys_tab_lists_every_hotkey_once_in_groups():
+    """1.25: the 14 hotkeys in groups (map, detection, recordings) – none lost, none twice, the keys unchanged."""
+    from fogscout import qt_window
+    keys = [k for _title, group in qt_window.HOTKEY_GROUPS for k in group]
+    assert sorted(keys) == sorted(["toggle_overlay", "next_variant", "scan_now", "prev_map", "next_map", "bigger",
+                                   "smaller", "edit_position", "rotate_map", "next_floor", "reject_map", "mark_clip",
+                                   "record_toggle", "record_pause"])
+    spec = str(qt_window.SPECS["settings"])
+    assert all(f"st.hk.{k}" in spec for k in keys) and spec.count("('sub',") >= 3

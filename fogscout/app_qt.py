@@ -24,6 +24,7 @@ log = logging.getLogger("fogscout")
 
 WARM_AFTER_MS = 300                  # 1.3.4: pages laid out once after the start (1.8.72: built here, so sooner)
 WARM_STEP_MS = 40                    # 1.8.72: pause between building two pages in the warm-up (each 20–70 ms)
+WARM_QUIET_S = 0.4                   # 1.25: no warm-up step this soon after a click or key (_ui_refresh_t)
 GEOMETRY_DELAY = 1.0          # s after the last move/resize before the size is saved
 QT_HOTKEYS = {"scan": "scan_now", "reject": "reject_map"}
 PREVIEW_PX = 900              # map preview on the maps page: picture scaled to fit this box first
@@ -162,7 +163,9 @@ def ui_state(w) -> dict:
                   multi=str(w.cget("selectmode")) == "extended",          # 1.5.4: several rows at once
                   menu=hasattr(w, "_dbdms_menu"),                         # 1.8.10: right-click actions
                   open=hasattr(w, "_dbdms_open"),                         # 1.23: double-click / Enter
-                  see=getattr(w, "_see", None))                           # 1.17.1: scroll a row into view
+                  see=getattr(w, "_see", None),                           # 1.17.1: scroll a row into view
+                  empty=getattr(w, "_dbdms_empty", ""),                   # 1.24.3: words when no row is shown
+                  signs=list(getattr(w, "_dbdms_signs", ())))             # 1.25: ★ ⚑ ▶ drawn as glyphs
         return st
     if isinstance(w, ui.Scale):
         value = w.get()
@@ -180,6 +183,12 @@ def ui_state(w) -> dict:
         st["pil"] = w._dbdms_pil
     if getattr(w, "_dbdms_danger", False):       # 1.12.3: deletes or resets data (ui.danger)
         st["danger"] = True
+    if getattr(w, "_dbdms_primary", False):      # 1.24: the main action (ui.primary)
+        st["primary"] = True
+    if getattr(w, "_dbdms_glyph", None):         # 1.24: a drawn sign before the text (ui.glyph)
+        st["glyph"] = w._dbdms_glyph
+    if hasattr(w, "_dbdms_level"):               # 1.24.3: a label's state colour (ui.level)
+        st["level"] = w._dbdms_level
     if isinstance(w, (ui.Button, ui.Checkbutton, ui.Radiobutton, ui.Combobox, ui.Entry)):
         st["enabled"] = not w.instate(["disabled"])
         tip = getattr(w, "_dbdms_tip", None)
@@ -320,6 +329,11 @@ class QtShell:
         next ones (measured: settings 112 → ~11 ms). 1.8.72: the pages are built here too, one per step with a
         pause between (WARM_STEP_MS) – the window showed only after all of them were built before."""
         if self.qt is None or self._quitting:
+            return
+        # 1.25 (measured: the maps search took up to 198 ms when a page was built in the same pass): while the user
+        # clicks or types, the warm-up waits – it is for later visits, the click is now
+        if time.monotonic() - self.__dict__.get("_ui_refresh_t", -1e9) < WARM_QUIET_S:
+            self.root.after(round(WARM_QUIET_S * 1000), self._qt_warm)
             return
         try:
             if self.qt.build_next():
@@ -605,6 +619,8 @@ class QtShell:
                 self._save_soon()
         if not (visible or force):
             return
+        st = self._user_state()                       # 1.24: the state at the foot of the navigation, every page
+        q.show_status(st.kind, st.text)
         page = q.current_key()
         if page == "overview":
             q.show_model(overview.overview_model(self, now, IS_WIN), self._overview_thumb(), self._qt_tip)
