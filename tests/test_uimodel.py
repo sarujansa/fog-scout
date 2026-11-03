@@ -3180,3 +3180,32 @@ def test_the_page_warm_up_waits_while_the_user_clicks_or_types(app_root):
         assert built == [1]                                     # quiet again: the step runs
     finally:
         app.quit()
+
+
+def test_check_connection_opens_the_obs_card_on_connections_and_shows_the_test_there(app_root):
+    """1.28 (user: "warum ist OBS auf einer separaten Seite und nicht in Verbindungen"): port, password and
+    „Verbindung testen“ are the card „OBS-Verbindung“ on the tab "Verbindungen"; „Verbindung prüfen …“ of the
+    recording card opens that tab, and the test's result shows there as well as under "Aufnahmen"."""
+    import json
+    import time
+    from fogscout import qt_window
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app.qt.show()
+        app.recorder.test = lambda: None                     # no OBS here: only the button's path is checked
+        app._qt_reg["st.more.rec_test"].invoke()
+        assert app.obs_status_label.cget("textvariable") is app.rec_status_label.cget("textvariable")
+        assert app.rec_status_var.get() == "Verbinde mit OBS …"
+        app.rec_obs_btn.invoke()
+        for _i in range(5):
+            app.qapp.processEvents()
+            time.sleep(0.03)
+        assert app.qt.current_key() == "settings"
+        w = app.qt.forms["settings"].controls["st.more.rec_port"][1]
+        tabs = qt_window._tab_of(w)
+        assert tabs and tabs[0][0].currentWidget() is tabs[0][1]
+        assert tabs[0][0].tabText(tabs[0][0].currentIndex()) == "Verbindungen"
+    finally:
+        app.quit()
