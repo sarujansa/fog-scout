@@ -842,3 +842,46 @@ def test_the_obs_card_does_not_repeat_its_title_in_the_reason():
     assert "läuft OBS" not in values
     _s, values, _w = rec_card_text({"connected": False, "error": "Passwort falsch"})
     assert values.endswith("Passwort falsch")                           # any other message stays as it is
+
+
+def test_the_card_rates_the_recording_quality_and_a_click_sets_only_what_obs_takes(app_root, tmp_path, monkeypatch):
+    """1.29 (user: "OBS-Aufnahmen mit guter Qualität"): 6 Mbit/s on 2560×1440@60 is mushy (red), the measurement
+    stays after the recording; "Qualität verbessern …" asks before writing and hands only the plan to the recorder;
+    the values before come back as "Zurücksetzen"."""
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    applied, restored = [], []
+    monkeypatch.setattr(app.recorder, "apply_quality", applied.append)
+    monkeypatch.setattr(app.recorder, "restore_quality", restored.append)
+    base = {"connected": True, "mode": "Advanced", "encoder": "NVENC H.264", "encoder_raw": "jim_nvenc",
+            "width": 2560, "height": 1440, "base_width": 2560, "base_height": 1440, "fps": 60.0, "rescale": "false"}
+    try:
+        app._rec_card_state(dict(base, recording=True, seconds=60.0, bytes=int(6e6 / 8 * 60)))
+        assert "matschig" in app.rec_quality_var.get() and app.rec_quality_label._dbdms_level == "err"
+        assert app.rec_quality_btn.winfo_manager() and not app.rec_quality_undo.winfo_manager()
+        app._rec_card_state(dict(base, recording=False))
+        assert "letzte Aufnahme" in app.rec_quality_var.get() and app.rec_quality_label._dbdms_level == "err"
+        app.rec_quality_open()                                     # advanced, nothing a request can set: steps only
+        title, text, retry = app._qt_question[:3]
+        assert retry is None and "CQP" in text and not applied
+        app._rec_card_state(dict(base, recording=False, width=1920, height=1080))
+        app.rec_quality_open()
+        title, text, retry, ok_text = app._qt_question[:4]
+        assert ok_text == "In OBS einstellen" and "2560×1440" in text and not applied
+        app._confirmed = True
+        retry()
+        assert applied == [{"video": {"outputWidth": 2560, "outputHeight": 1440}}]
+        before = {"video": {"outputWidth": 1920, "outputHeight": 1080}}
+        app._rec_event("obs_quality", {"before": before})
+        assert app.settings.get("rec_obs_before") == before and app.rec_quality_undo.winfo_manager()
+        app._rec_event("obs_quality", {"before": {"video": {"outputWidth": 2560, "outputHeight": 1440},  # 2nd click
+                                                  "profile": [("AdvOut", "RecRescale", "true")]}})
+        assert app.settings.get("rec_obs_before") == {"video": {"outputWidth": 1920, "outputHeight": 1080},
+                                                      "profile": [["AdvOut", "RecRescale", "true"]]}
+        before = app.settings.get("rec_obs_before")
+        app._confirmed = True
+        app.rec_quality_restore()
+        assert restored == [before]
+        app._rec_event("obs_quality", {"done": True, "restore": True})
+        assert app.settings.get("rec_obs_before") == {} and not app.rec_quality_undo.winfo_manager()
+    finally:
+        app.quit()
