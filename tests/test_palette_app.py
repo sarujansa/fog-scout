@@ -169,3 +169,20 @@ def test_the_key_is_never_in_the_backup(tmp_path):
     text = open(path, encoding="utf-8").read()
     assert "claude_key" not in text and "claude_on" in text
     assert "claude_key" in config.LOCAL_KEYS and "palette_recent" in config.LOCAL_KEYS
+
+
+def test_the_card_opens_the_consoles_key_and_billing_pages(app_root, monkeypatch):
+    """1.26.1 (user: "einen Button, dass man direkt auf die Seite kommt"): two buttons open the Anthropic Console's
+    pages in the browser – only on a click, nothing is sent by the program."""
+    import webbrowser
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: opened.append(url))
+    app = _app(app_root)
+    try:
+        assert opened == []                                             # nothing opens by itself
+        app._qt_reg["st.more.cl_keys"].invoke()
+        app._qt_reg["st.more.cl_billing"].invoke()
+        assert opened == [askclaude.CONSOLE_KEYS, askclaude.CONSOLE_BILLING]
+        assert all(u.startswith("https://platform.claude.com/settings/") for u in opened)
+    finally:
+        app.quit()
