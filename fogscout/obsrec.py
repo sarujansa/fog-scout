@@ -163,6 +163,11 @@ def profile_keys(mode: str) -> dict:
             "buffer_s": ("SimpleOutput", "RecRBTime"), "quality": ("SimpleOutput", "RecQuality")}
 
 
+# 1.29 (user: "Prüfen + Anleitung + auf Klick einstellen"): the only profile values a click may write (recquality,
+# Recorder.apply_quality) – the simple mode's recording quality and encoder, the advanced mode's rescale switch.
+QUALITY_KEYS = (("SimpleOutput", "RecQuality"), ("SimpleOutput", "RecEncoder"), ("AdvOut", "RecRescale"))
+
+
 def encoder_label(raw: str) -> str:
     """"jim_hevc_nvenc" → "NVENC HEVC", "obs_x264" → "x264 (CPU)", "" → "" (unknown)."""
     r = (raw or "").lower()
@@ -1305,6 +1310,16 @@ class Recorder(threading.Thread):
             self._poll_waiting = True
             self.cmds.put(("poll", None))
 
+    def apply_quality(self, plan: dict):
+        """1.29 (user's click only): write recquality.plan into OBS – SetVideoSettings and SetProfileParameter for
+        recquality.QUALITY_KEYS, never anything else. The values before are posted first (event ``obs_quality``,
+        ``before``) so restore_quality can put them back. Refused while OBS records."""
+        self.cmds.put(("quality", dict(plan or {})))
+
+    def restore_quality(self, before: dict):
+        """1.29: put back what apply_quality changed (``before`` from its event)."""
+        self.cmds.put(("quality", dict(before or {}, restore=True)))
+
     def quit(self):
         self.cmds.put(("quit", None))
 
@@ -1376,6 +1391,8 @@ class Recorder(threading.Thread):
                     self._manual_stop()
                 elif cmd == "rec_pause":
                     self._pause(arg)
+                elif cmd == "quality":
+                    self._quality(arg)
                 elif cmd == "poll":
                     self._poll_waiting = False
                     self._poll()
@@ -2212,28 +2229,102 @@ class Recorder(threading.Thread):
         self._post("obs_status", **d)
 
     def _read_profile(self, c: ObsClient) -> dict:
-        """Output size and rate (GetVideoSettings), encoder and replay buffer length (profile, read only)."""
+        """Output and base size, rate (GetVideoSettings), encoder, replay buffer length and – 1.29, recquality – the
+        simple mode's recording quality or the advanced mode's rescale switch (profile, read only)."""
         out = {}
         try:
             v = c.request("GetVideoSettings")
             num, den = float(v.get("fpsNumerator") or 0), float(v.get("fpsDenominator") or 1)
             out.update(width=int(v.get("outputWidth") or 0), height=int(v.get("outputHeight") or 0),
+                       base_width=int(v.get("baseWidth") or 0), base_height=int(v.get("baseHeight") or 0),
                        fps=round(num / den, 3) if num and den else 0.0)
         except ObsError:
             pass
         try:
             mode = self._profile(c, "Output", "Mode")
             keys = profile_keys(mode)
-            raw = self._profile(c, *keys["encoder"])
+            raw = rec_raw = self._profile(c, *keys["encoder"])
             if keys["quality"] and self._profile(c, *keys["quality"]).lower() == "stream" or raw.lower() == "none":
                 raw = self._profile(c, *keys["stream"])
             out["encoder"] = encoder_label(raw)
+            out["encoder_raw"] = rec_raw                 # 1.29: recquality.plan (simple mode: x264 → NVENC)
             out["mode"] = mode
+            if keys["quality"]:
+                out["quality"] = self._profile(c, *keys["quality"])
+            else:
+                out["rescale"] = self._profile(c, "AdvOut", "RecRescale")
             rb = self._profile(c, *keys["buffer_s"])
             out["buffer_s"] = int(float(rb)) if rb.strip() else None
         except (ObsError, ValueError):
             pass
         return out
+
+    # ---- 1.29: recording quality on the user's click (recquality)
+    QUALITY_KEYS = QUALITY_KEYS
+    VIDEO_PAIRS = (("outputWidth", "outputHeight"), ("fpsNumerator", "fpsDenominator"))
+    BUFFER_STOP_S = 5.0
+
+    def _quality(self, plan: dict):
+        """Write ``plan`` ({"video": {...}, "profile": [(cat, name, value)], "restore": bool}): only the video
+        pairs of VIDEO_PAIRS and profile values of QUALITY_KEYS. Not while OBS records (it refuses video settings
+        while an output runs); a running replay buffer is stopped for it and started again."""
+        restore = bool(plan.get("restore"))
+        video = {k: plan["video"][k] for pair in self.VIDEO_PAIRS if all(p in (plan.get("video") or {}) for p in pair)
+                 for k in pair}
+        prof = [tuple(p) for p in plan.get("profile") or () if tuple(p[:2]) in self.QUALITY_KEYS]
+        if not video and not prof:
+            self._say(_("Nichts einzustellen."), True)
+            return
+        c = self._client()
+        try:
+            if c.request("GetRecordStatus").get("outputActive"):
+                self._say(_("OBS nimmt gerade auf – Qualität erst nach der Aufnahme einstellen."), False)
+                return
+            before = {}
+            if video:
+                v = c.request("GetVideoSettings")
+                before["video"] = {k: v.get(k) for k in video}
+            if prof:
+                before["profile"] = [(cat, name, self._profile_raw(c, cat, name)) for cat, name, _v in prof]
+            if not restore:
+                self._post("obs_quality", before=before)     # the app keeps it for "Zurücksetzen" before anything
+            buffer = False
+            if video:
+                try:
+                    buffer = bool(self._buffer_state(c))
+                except ObsError:
+                    buffer = False
+                if buffer:
+                    c.request("StopReplayBuffer")
+                    end = time.time() + self.BUFFER_STOP_S
+                    while self._buffer_state(c) and time.time() < end:
+                        time.sleep(0.1)
+            try:
+                if video:
+                    c.request("SetVideoSettings", dict(video))
+                for cat, name, value in prof:
+                    c.request("SetProfileParameter", {"parameterCategory": cat, "parameterName": name,
+                                                      "parameterValue": value if value not in ("", None) else None})
+            finally:
+                if buffer:
+                    try:
+                        c.request("StartReplayBuffer")
+                    except ObsError as e:
+                        log.info("OBS: Wiederholungspuffer nach dem Einstellen nicht gestartet (%s)", e)
+        finally:
+            c.close()
+        self._slow_t = 0.0                               # the next poll reads the new values
+        names = [k for k in video] + [name for _c, name, _v in prof]
+        log.info("OBS: Qualität %s (%s)", "zurückgesetzt" if restore else "eingestellt", ", ".join(names))
+        self._post("obs_quality", done=True, restore=restore)
+        self._say(_("OBS-Einstellungen zurückgesetzt.") if restore else
+                  _("In OBS eingestellt – OBS einmal neu starten, damit alle Werte sicher gelten."), True)
+
+    @staticmethod
+    def _profile_raw(c: ObsClient, category: str, name: str):
+        """The value the profile holds itself (None = not set, OBS uses its default) – restored exactly."""
+        return c.request("GetProfileParameter", {"parameterCategory": category,
+                                                 "parameterName": name}).get("parameterValue")
 
     # ---- 1.6: audio sources in OBS
     def _audio_now(self):

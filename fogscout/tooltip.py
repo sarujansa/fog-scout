@@ -264,6 +264,10 @@ TIPS = {
                                                       "aus: Am PC des Nutzers lief der Rundenteil der zusammengefügten "
                                                       "Datei zu schnell. Klappt es nicht, bleiben beide Dateien liegen.",
     "Aufnahmen einrichten …": "Öffnet die Einstellungen für die Aufnahmen mit OBS (Ordner, Verbindung).",
+    "Qualität verbessern …": "Was die Aufnahme unscharf macht und wie OBS am besten eingestellt wird – was eine "
+                             "Anfrage setzen kann (Ausgabeauflösung, Bildrate, einfache Aufnahmequalität), stellt "
+                             "„In OBS einstellen“ ein, die alten Werte werden gemerkt.",
+    "OBS-Werte zurücksetzen": "Stellt die OBS-Werte von vor „In OBS einstellen“ wieder her.",
     "Verbindung prüfen …": "Öffnet Einstellungen → Verbindungen: OBS-Verbindung (Port, Passwort) und „Verbindung testen“.",
     "Farming-Runden im Unterordner „Farming“ ablegen": "Runden, die das Programm als Farming erkennt (Crossplay aus "
                                                         "oder die Farming-Region), landen im Unterordner „Farming“ "

@@ -3382,4 +3382,72 @@ EN = {
     "OBS-Verbindung": "OBS connection",
     "Port und Passwort von OBS stehen unter Verbindungen › OBS-Verbindung.":
         "OBS port and password are under Connections › OBS connection.",
+    # 1.29 (user: "OBS-Aufnahmen mit guter Qualität"): recquality, the recording card
+    "Qualität: {word} – {mbps} Mbit/s bei {size}": "Quality: {word} – {mbps} Mbit/s at {size}",
+    "Qualität: Einstellungen prüfen": "Quality: check the settings",
+    "Qualität: gemessen wird während einer Aufnahme": "Quality: measured while recording",
+    "{words} (letzte Aufnahme)": "{words} (last recording)",
+    "gut": "good",
+    "knapp": "borderline",
+    "matschig": "mushy",
+    "Einstellungen prüfen": "check the settings",
+    "Qualität verbessern …": "Improve quality …",
+    "OBS-Werte zurücksetzen": "Restore OBS values",
+    "Aufnahmequalität": "Recording quality",
+    "In OBS einstellen": "Set in OBS",
+    "Empfohlen (in OBS einzustellen):": "Recommended (set in OBS):",
+    "Diese Werte lassen sich nur in OBS selbst einstellen – Fog Scout zeigt, wo.":
+        "These values can only be set in OBS itself – Fog Scout shows where.",
+    "Einstellen geht erst nach der Aufnahme.": "Settings can only be changed after the recording.",
+    "Fog Scout stellt in OBS ein (die alten Werte werden gemerkt):":
+        "Fog Scout sets in OBS (the old values are kept):",
+    "Die OBS-Werte von vor „In OBS einstellen“ wiederherstellen?":
+        "Restore the OBS values from before “Set in OBS”?",
+    "Nichts einzustellen.": "Nothing to set.",
+    "OBS nimmt gerade auf – Qualität erst nach der Aufnahme einstellen.":
+        "OBS is recording – change the quality after the recording.",
+    "In OBS eingestellt – OBS einmal neu starten, damit alle Werte sicher gelten.":
+        "Set in OBS – restart OBS once so every value surely applies.",
+    "OBS-Einstellungen zurückgesetzt.": "OBS settings restored.",
+    "OBS nimmt mit der Qualität „wie Stream“ bzw. „klein“ auf – „Kaum unterscheidbare Qualität“ ist viel schärfer.":
+        "OBS records with the quality “same as stream” or “small” – “Indistinguishable quality” is much sharper.",
+    "OBS skaliert das Bild herunter ({base} → {out}) – das macht es weich.":
+        "OBS scales the picture down ({base} → {out}) – that makes it soft.",
+    "OBS nimmt mit {fps} Bildern pro Sekunde auf – 60 wirken in Bewegung viel klarer.":
+        "OBS records at {fps} frames per second – 60 look much clearer in motion.",
+    "Der CPU-Encoder kommt nicht mit (übersprungene Bilder) – den Encoder der Grafikkarte nehmen.":
+        "The CPU encoder cannot keep up (skipped frames) – use the graphics card's encoder.",
+    "Die Bitrate ist für dieses Bild zu niedrig – die Ratensteuerung des Encoders auf CQP 18 stellen (siehe Anleitung).":
+        "The bitrate is too low for this picture – set the encoder's rate control to CQP 18 (see the steps).",
+    "Die Bitrate reicht knapp – mit CQP 18 bleibt das Bild auch in schnellen Szenen scharf.":
+        "The bitrate is just enough – with CQP 18 the picture stays sharp in fast scenes too.",
+    "Ausgabeauflösung = Basisauflösung ({size})": "Output resolution = base resolution ({size})",
+    "Bildrate 60": "Frame rate 60",
+    "Aufnahmequalität „Kaum unterscheidbare Qualität“": "Recording quality “Indistinguishable quality”",
+    "Encoder {name}": "Encoder {name}",
+    "Aufnahme nicht mehr herunterskalieren": "Stop rescaling the recording",
+    "OBS → Einstellungen → Ausgabe (Modus „Einfach“) → Aufnahme:":
+        "OBS → Settings → Output (mode “Simple”) → Recording:",
+    "Aufnahmequalität: „Kaum unterscheidbare Qualität, große Dateigröße“":
+        "Recording quality: “Indistinguishable quality, large file size”",
+    "Encoder: Hardware (NVENC/AMD/QSV), wenn vorhanden": "Encoder: hardware (NVENC/AMD/QSV) if available",
+    "Aufnahmeformat: MKV oder Hybrid-MP4": "Recording format: MKV or hybrid MP4",
+    "Video: Ausgabeauflösung = Basisauflösung, Bildrate 60": "Video: output resolution = base resolution, frame rate 60",
+    "OBS → Einstellungen → Ausgabe (Modus „Erweitert“) → Reiter „Aufnahme“:":
+        "OBS → Settings → Output (mode “Advanced”) → tab “Recording”:",
+    "Video-Encoder: NVIDIA NVENC H.264 oder HEVC (nicht „Stream-Encoder verwenden“)":
+        "Video encoder: NVIDIA NVENC H.264 or HEVC (not “Use stream encoder”)",
+    "Ausgabe neu skalieren: aus": "Rescale output: off",
+    "x264: Frequenzsteuerung CRF, Wert 18, Voreinstellung veryfast": "x264: rate control CRF, value 18, preset veryfast",
+    "Frequenzsteuerung: CQP, CQ-Level 18 (HEVC 20)": "Rate control: CQP, CQ level 18 (HEVC 20)",
+    "Voreinstellung: P5: Langsam (gute Qualität), Tuning: Hohe Qualität, Mehrfachdurchlauf: zwei Durchläufe (Viertelauflösung)":
+        "Preset: P5: Slow (good quality), tuning: high quality, multipass: two passes (quarter resolution)",
+    "Profil: high (HEVC: main), Keyframe-Intervall: 2 s": "Profile: high (HEVC: main), keyframe interval: 2 s",
+    "Danach eine kurze Runde aufnehmen – die Karte zeigt die neue Bitrate.":
+        "Then record a short round – the card shows the new bitrate.",
+    "Was die Aufnahme unscharf macht und wie OBS am besten eingestellt wird – was eine Anfrage setzen kann (Ausgabeauflösung, Bildrate, einfache Aufnahmequalität), stellt „In OBS einstellen“ ein, die alten Werte werden gemerkt.":
+        "What makes the recording blurry and how to set OBS up best – what a request can set (output resolution, "
+        "frame rate, simple recording quality) “Set in OBS” sets, the old values are kept.",
+    "Stellt die OBS-Werte von vor „In OBS einstellen“ wieder her.":
+        "Restores the OBS values from before “Set in OBS”.",
 }
