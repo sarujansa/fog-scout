@@ -1794,7 +1794,6 @@ EN = {
     "Eine Zeile je Runde, die gewählten Spalten mit „ · “ getrennt, ohne Kopfzeile – zum Einfügen in einen Chat.":
         "One line per round, the chosen columns separated by \" · \", no header – to paste into a chat.",
     "Verbindungen": "Connections",
-    "Verbindung": "Connection",
     "Ton": "Sound",
     "Aufräumen": "Clean-up",
     'Jede Runde mit OBS aufnehmen': 'Record every round with OBS',
@@ -3311,8 +3310,8 @@ EN = {
     "Runden · BP/h erst mit Match-Daten": "rounds · BP/h needs the match data",
     # 1.24.3 (phase 2): recordings, server, settings, log – states in words and colour, the next step
     "Verbindung prüfen …": "Check connection …",
-    "Öffnet Einstellungen → Aufnahmen: OBS-Verbindung (Port, Passwort) und „Verbindung testen“.":
-        "Opens Settings → Recordings: the OBS connection (port, password) and “Test connection”.",
+    "Öffnet Einstellungen → Verbindungen: OBS-Verbindung (Port, Passwort) und „Verbindung testen“.":
+        "Opens Settings → Connections: the OBS connection (port, password) and “Test connection”.",
     "{n} Marken": "{n} marks",
     "1 Marke": "1 mark",
     "Keine Aufnahme passt zu den Filtern oben.": "No recording matches the filters above.",
@@ -3380,4 +3379,8 @@ EN = {
     "Befehlspalette": "Command palette",
     "Suchen": "Search",
     "Vorschläge": "Suggestions",
+    # 1.28 (user): the connection to OBS on the tab "Verbindungen"
+    "OBS-Verbindung": "OBS connection",
+    "Port und Passwort von OBS stehen unter Verbindungen › OBS-Verbindung.":
+        "OBS port and password are under Connections › OBS connection.",
 }
