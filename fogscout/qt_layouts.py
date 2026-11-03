@@ -127,10 +127,11 @@ class TileGrid(_Layout):
     """Tiles of equal width: as many columns as fit with ``min_width`` each (at most ``columns``), the rest on
     the next lines – six tiles side by side in a wide window, two or three below each other in a narrow one."""
 
-    def __init__(self, parent=None, min_width=150, columns=6, spacing=12):
+    def __init__(self, parent=None, min_width=150, columns=6, spacing=12, stretch=True):
         super().__init__(parent, spacing)
         self.min_width = min_width
         self.columns = columns
+        self.stretch = stretch      # 1.24.7: False = few tiles keep the width of a full row, not half the page
 
     def minimumSize(self):
         items = self._shown()           # one row high, like FlowRow: heightForWidth gives the real height
@@ -146,6 +147,8 @@ class TileGrid(_Layout):
         """Columns for this width, evened out: four tiles 2 × 2 rather than 3 + 1, six 3 + 3 rather than 4 + 2."""
         n = len(self._shown())
         fit = max(1, (width + self._gap) // (self.min_width + self._gap))
+        if not self.stretch:
+            return max(1, min(self.columns, fit))
         cols = max(1, min(n or 1, self.columns, fit))
         rows = -(-max(n, 1) // cols)
         return -(-max(n, 1) // rows)

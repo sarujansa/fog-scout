@@ -105,6 +105,8 @@ class FactBox(QWidget):
     def show_fact(self, f):
         _set(self.title, f.title)
         _set(self.value, f.value)
+        if self.value.isHidden() == bool(f.value):      # 1.24.7: no value, no empty big line
+            self.value.setVisible(bool(f.value))
         _set(self.sub, f.sub)
         action = getattr(f, "action", "") if self._post else ""
         if action != self._action or (action and self.link.full_text() != f.action_label):

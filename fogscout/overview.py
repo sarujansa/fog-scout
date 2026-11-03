@@ -252,7 +252,15 @@ def switches(app, is_win: bool = True) -> list:
         out.append(Switch("youtube", _("YouTube-Upload"), bool(st.get("youtube_on", False))))
     for sw in out:                                             # 1.24: does it work now – and if not, why
         sw.level, sw.state = switch_state(app, sw.key, sw.on, is_win)
+        if sw.on and not sw.state:                             # 1.24.7 (visual QA): every box says something –
+            sw.state = _("an")                                 # no empty band, the row's boxes on one height
     return out
+
+
+def _setup_fact() -> Fact:
+    """The tile "Stats-Seite" while the match data were never set up. 1.24.7 (visual QA): no big "–" and a short
+    button – "Match-Daten einrichten …" was cut off at 1280 px; the title says what is set up."""
+    return Fact(_("Stats-Seite"), "", _("nicht eingerichtet"), action="official_setup", action_label=_("Einrichten …"))
 
 
 def today(app, now: float) -> tuple[list, str]:
@@ -266,8 +274,7 @@ def today(app, now: float) -> tuple[list, str]:
     if not d["count"]:                         # 1.8.75: one line instead of four tiles with "–" (user review)
         tiles = [Fact(_("Runden"), "0", _("Noch keine Runden heute"))]
         if not getattr(j, "matches", None):    # never set up – say where (it hides under "Mehr")
-            tiles.append(Fact(_("Stats-Seite"), "–", _("nicht eingerichtet"), action="official_setup",
-                              action_label=_("Match-Daten einrichten …")))
+            tiles.append(_setup_fact())
         return tiles + ([rec] if rec else []) + ([ask] if ask else []), ""
     rounds = Fact(_("Runden"), str(d["count"]), _("{k} Killer / {s} Survivor", k=d["killer"], s=d["survivor"]))
     farm = None
@@ -285,8 +292,7 @@ def today(app, now: float) -> tuple[list, str]:
     elif getattr(j, "matches", None):
         kills = None                           # 1.24 (phase 2): set up, nothing for today yet – no tile of "–"
     else:                                      # 1.2.15: never set up – say where; 1.24.1: the same tile as
-        kills = Fact(_("Stats-Seite"), "–", _("nicht eingerichtet"), action="official_setup",   # without rounds
-                     action_label=_("Match-Daten einrichten …"))
+        kills = _setup_fact()                                                                    # without rounds
     if s["survivor"]:
         esc = Fact(_("Entkommen"), f"{s['escaped']:.0%}",
                    _("{n} Survivor-Runden", n=s["survivor"]) + " · " + _("{n} normal", n=d["normal"]),

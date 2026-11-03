@@ -709,7 +709,7 @@ def test_dashboard_model():
     assert d.rows == ["Coal Tower"] and d.columns == ["The Nurse"]          # Oni: one round – no cell, no column
     assert d.cells == {("Coal Tower", "The Nurse"): (3.0, 2)}
     assert dashboard.build([], []).empty and dashboard.short_killer("The Nurse") == "Nurse"
-    assert dashboard.play_time(7200) == "2.0 h" and ":" in dashboard.play_time(600)
+    assert dashboard.play_time(7200) == "2,0 h" and ":" in dashboard.play_time(600)
 
 
 def test_the_dashboard_has_no_tile_that_would_only_say_nothing():
@@ -2135,7 +2135,7 @@ def test_each_feature_says_whether_it_works_now_and_what_is_missing():
         assert level and words                                                 # never a colour without words
     sw = {s.key: s for s in overview.switches(app)}
     assert (sw["detect"].level, sw["detect"].state) == ("err", "Fehler – Details im Log")
-    assert (sw["notify"].level, sw["notify"].state) == ("", "")
+    assert (sw["notify"].level, sw["notify"].state) == ("", "an")                # 1.24.7: on says "an"
 
 
 def test_the_feature_card_writes_the_state_under_each_box(qapp, keep):
@@ -2150,7 +2150,11 @@ def test_the_feature_card_writes_the_state_under_each_box(qapp, keep):
     labels = {w.key: lab for w, lab in zip(page.switches, page.switch_states) if not w.isHidden()}
     assert page.switch_card.findChild(type(labels["detect"]), None) is not None
     assert labels["detect"].text() == "wartet auf DBD" and labels["detect"].property("state") == "off"
-    assert not labels["detect"].isHidden() and labels["notify"].isHidden()
+    assert not labels["detect"].isHidden() and labels["notify"].text() == "an"   # 1.24.7: on says "an"
+    win.show()
+    qapp.processEvents()
+    box = next(w for w in page.switches if w.key == "notify")                     # under the box's text: the
+    assert labels["notify"].contentsMargins().left() == box.label.x()             # indent of WrapCheck's label
     app.game = object()
     app.settings["show_connection"] = True
     app.conn = SimpleNamespace(running=True, server=None, error="Mitschnitt beendet (Code 1).", ping_ms=None)
@@ -2651,7 +2655,7 @@ def test_the_navigation_shows_the_name_and_the_state_on_every_page(qapp, keep):
     ratio = win.devicePixelRatioF() or 1.0
     assert st.dot.pixmap().toImage() == qt_icons.pixmap("warning", colour, qt_theme.ICON["s"], ratio).toImage()
     assert st.dot.pixmap().toImage() != qt_icons.pixmap("record", colour, qt_theme.ICON["s"], ratio).toImage()
-    fm, width = st.text.fontMetrics(), qt_window.NAV_W - 46     # 1.24.6: a first word wider than the column
+    fm, width = st.text.fontMetrics(), qt_window.NAV_W - 58     # 1.24.6: a first word wider than the column (1.24.7: margins 26 + 10)
     win.show_status("err", "Bildschirmaufnahmeverbindungsfehlermeldung fehlgeschlagen: Zugriff verweigert")
     first = st.text.text().split("\n")[0]
     assert first.endswith("…") and fm.horizontalAdvance(first) <= width
@@ -2781,3 +2785,40 @@ def test_the_overview_draws_a_main_action_only_when_the_player_has_to_act():
     app = fake_app(current=("coal", 1), source="auto")
     app._unsure = {"shown": True, "label": "Coal Tower", "name": "COAL"}
     assert overview.overview_model(app, now, True).primary == "confirm"
+
+
+def test_the_overview_fixes_of_the_visual_qa(qapp, keep):
+    """1.24.7 (visual QA of phase 2): every fact of „Heute“ gets a tile (five fixed widgets dropped the sixth and
+    seventh); two week tiles keep the width of a full row; the tile „Stats-Seite“ has no big "–" and a short
+    button; the compass and the status sign sit on the column of the navigation's icons."""
+    from PySide6.QtCore import QRect
+    from PySide6.QtWidgets import QWidget
+    from fogscout import qt_window
+    from fogscout.qt_layouts import TileGrid
+    win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+    win.apply_theme(True, 1.0)
+    win.resize(1400, 900)
+    win.show()
+    o = overview.overview_model(fake_app(), time.time(), is_win=True)
+    o.today = [overview.Fact(f"T{i}", str(i)) for i in range(7)]
+    win.show_model(o)
+    qapp.processEvents()
+    page = win.overview
+    assert sum(not c.isHidden() for c in page.tile_cards) == 7
+    setup = overview._setup_fact()
+    assert setup.value == "" and setup.action_label == "Einrichten …"
+    o.today = [setup]
+    win.show_model(o)
+    assert page.tiles[0].value.isHidden() and not page.tiles[0].link.isHidden()
+    grid = TileGrid(min_width=170, columns=5, stretch=False)
+    holder = keep(QWidget())
+    holder.setLayout(grid)
+    for _i in range(2):
+        grid.addWidget(QWidget())
+    grid.setGeometry(QRect(0, 0, 1000, 200))
+    assert grid.itemAt(0).widget().width() == (1000 - 4 * 12) // 5
+    nav_icon_centre = qt_window.NAV_SIGN_X
+    brand = win.brand_icon
+    assert abs(brand.mapTo(win, brand.rect().center()).x() - nav_icon_centre) <= 1
+    dot = win.status_btn.dot
+    assert abs(dot.mapTo(win, dot.rect().center()).x() - nav_icon_centre) <= 1
