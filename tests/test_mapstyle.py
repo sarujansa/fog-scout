@@ -411,3 +411,19 @@ def test_tricksters_delusion_is_a_callout_map_like_the_others(tmp_path):
         assert not [s for s in stats[1:] if min(s[2], s[3]) >= 4 and s[4] >= 30], stats[1:][:5]
     for style in mapstyle.STYLES:
         assert mapstyle.styled_path(path, str(tmp_path), style=style) != path, style
+
+
+def test_the_style_cache_keeps_only_the_current_version_and_newest_source(tmp_path):
+    """1.25: prune removes our cached pictures of another STYLE_VERSION and older source states of the same picture
+    and style – nothing else (other names, other files) is touched."""
+    from fogscout import mapstyle
+    v = mapstyle.STYLE_VERSION
+    sub = tmp_path / "coal"
+    sub.mkdir()
+    keep = [f"coal-tower-200-5-v{v}.webp", f"coal-tower-200-5-grey-v{v}.webp", "notes.txt", "other.webp"]
+    drop = [f"coal-tower-100-5-v{v}.webp", f"coal-tower-200-5-v{v - 1}.webp", f"coal-tower-150-5-grey-v{v}.webp"]
+    for name in keep + drop:
+        (sub / name).write_bytes(b"x")
+    assert mapstyle.prune(str(tmp_path)) == len(drop)
+    assert sorted(p.name for p in sub.iterdir()) == sorted(keep)
+    assert mapstyle.prune(str(tmp_path / "missing")) == 0
