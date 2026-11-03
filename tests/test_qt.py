@@ -2822,3 +2822,30 @@ def test_the_overview_fixes_of_the_visual_qa(qapp, keep):
     assert abs(brand.mapTo(win, brand.rect().center()).x() - nav_icon_centre) <= 1
     dot = win.status_btn.dot
     assert abs(dot.mapTo(win, dot.rect().center()).x() - nav_icon_centre) <= 1
+
+
+def test_placeholders_grips_and_handles_are_readable_in_every_theme(qapp, keep):
+    """1.25 (audit): with `color` in the style sheet Qt drew placeholder text as the text colour at 50 % (3.3:1 in
+    light mode) – the sheet now names the dim colour; scroll handles, card grips and map bars use the token `handle`
+    (>= 3:1 on page and card, they were 1.1–2.8:1). Every theme, light/dark/OLED and an own colour."""
+    from PySide6.QtGui import QPalette
+    from fogscout import qt_window
+    try:
+        for key, custom in [(k, None) for k in qt_theme.THEMES] + [("custom", "#22ccaa")]:
+            for dark, oled in ((False, False), (True, False), (True, True)):
+                qt_theme.set_theme(key, oled, custom)
+                c = qt_theme.colours(dark)
+                for bg in (c["bg"], c["card"]):
+                    assert qt_theme.contrast(c["handle"], bg) >= qt_theme.HANDLE_CONTRAST, (key, dark, oled)
+                    assert qt_theme.contrast(c["dim"], bg) >= 4.5, (key, dark, oled)
+        qt_theme.set_theme("gold")
+        win = keep(qt_window.MainWindow(lambda a, arg=None: None))
+        win.apply_theme(False, 1.0)
+        win.show()
+        qapp.processEvents()
+        field = win.search                                   # styled by the window's sheet (sets `color`)
+        field.ensurePolished()
+        got = field.palette().color(QPalette.PlaceholderText)
+        assert got.name() == qt_theme.colours(False)["dim"] and got.alpha() == 255
+    finally:
+        qt_theme.set_theme("gold")

@@ -7,7 +7,7 @@ disk) and the tiles can be walked with the keyboard (arrows, Enter = big, Ctrl+E
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer
-from PySide6.QtGui import QImage, QPalette, QPixmap
+from PySide6.QtGui import QColor, QImage, QPalette, QPixmap
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu,
                                QPlainTextEdit, QPushButton, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QScrollArea,
                                QSizePolicy, QStackedWidget, QVBoxLayout, QWidget)
@@ -118,9 +118,10 @@ class RealmDelegate(QStyledItemDelegate):
         font.setBold(bool(o.state & QStyle.State_Selected))
         p.setFont(font)
         p.setPen(o.palette.color(QPalette.Text))
-        p.drawText(r, Qt.AlignVCenter | Qt.AlignLeft, p.fontMetrics().elidedText(name, Qt.ElideRight, r.width() - 36))
-        p.setPen(o.palette.color(QPalette.PlaceholderText))
-        p.drawText(r, Qt.AlignVCenter | Qt.AlignRight, count)
+        room = r.width() - (p.fontMetrics().horizontalAdvance(count) + 10 if count else 0)   # 1.25: only the count's
+        p.drawText(r, Qt.AlignVCenter | Qt.AlignLeft, p.fontMetrics().elidedText(name, Qt.ElideRight, room))  # width
+        p.setPen(QColor(qt_theme.colours(qt_theme.current_dark())["dim"]))   # 1.25: the theme's dim (≥ 4.5:1), not
+        p.drawText(r, Qt.AlignVCenter | Qt.AlignRight, count)                 # the placeholder role (3.3:1)
         p.restore()
 
     def sizeHint(self, opt, index):                 # as wide as the list: the count stays in sight

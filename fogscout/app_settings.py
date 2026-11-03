@@ -1127,7 +1127,8 @@ class SettingsTab:
 
     def _backup_text(self) -> str:
         count, day = backups.status(self.root_dir)
-        state = _("{n} Dateien, zuletzt {day}", n=count, day=day) if count else _("noch keine")
+        state = (_("{n} Dateien, zuletzt {day}", n=count, day=day) if count > 1 else       # 1.25: not "1 Dateien"
+                 _("1 Datei, zuletzt {day}", day=day) if count else _("noch keine"))
         return _("Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die "
                  "letzten {n} Stände je Datei; vor „Alle Runden löschen“ eine zusätzliche): {state}",
                  folder=backups.DIR, n=backups.KEEP, state=state)

@@ -122,7 +122,22 @@ def colours(dark: bool) -> dict:
         c.update(derive_accent(_custom, bool(dark), c["card"], c["bg"], c["nav"]))
     else:
         c.update(THEMES[_theme][1][bool(dark)])
+    c["handle"] = _handle(c)
     return c
+
+
+HANDLE_CONTRAST = 3.0     # 1.25: grips and scroll handles are controls – >= 3:1 on page and card (WCAG 1.4.11)
+
+
+def _handle(c: dict) -> str:
+    """1.25 (audit: scroll handles at 1.1–1.5:1, card grips 1.3:1 – invisible in light mode and OLED): the resting
+    colour of a grip, a scroll handle and a slider knob's edge – the dim text colour over the page, only as strong as
+    it must be to reach HANDLE_CONTRAST on both the page and a card (hover: the dim colour itself)."""
+    for step in range(30, 101, 5):
+        colour = blend(c["dim"], c["bg"], step / 100)
+        if all(contrast(colour, bg) >= HANDLE_CONTRAST for bg in (c["bg"], c["card"])):
+            return colour
+    return c["dim"]
 
 
 def norm_hex(text) -> str | None:
@@ -280,12 +295,14 @@ def stylesheet(dark: bool, zoom: float = 1.0) -> str:
         return f"{max(8, round(size * zoom))}px"
 
     return f"""
-* {{ font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', sans-serif; font-size: {px(TYPE['body'])}; color: {c['fg']}; }}
+* {{ font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', sans-serif; font-size: {px(TYPE['body'])}; color: {c['fg']};
+    placeholder-text-color: {c['dim']}; }}  /* 1.25: with `color` set, Qt drew placeholders as fg at 50 % (3.3:1) */
 QMainWindow, QWidget#page, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {{ background: {c['bg']}; }}
 QListWidget#nav {{ background: {c['nav']}; border: none; padding: 10px 6px; outline: 0; font-size: {px(TYPE['nav'])}; }}
 QListWidget#nav::item {{ padding: 8px 12px; border-radius: {RADIUS['m']}px; margin: 1px 0; color: {c['dim']};
     border-left: 3px solid transparent; }}  /* same place selected or not */
-QListWidget#nav::item:selected {{ background: {c['nav_sel']}; color: {c['accent']}; border-left: 3px solid {c['accent']}; }}
+QListWidget#nav::item:selected {{ background: {c['nav_sel']}; color: {c['accent']}; border-left: 3px solid {c['accent']};
+    border-top-left-radius: 0; border-bottom-left-radius: 0; }}  /* 1.25: a straight mark, not a "(" */
 QListWidget#nav::item:hover:!selected {{ background: {c['hover']}; color: {c['fg']}; }}
 QFrame[class="card"] {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: {RADIUS['xl']}px; }}
 QFrame[class="card"] QLabel {{ background: transparent; }}
@@ -309,7 +326,8 @@ QLabel[class="map"] {{ font-family: 'Fira Sans ExtraBold', 'Segoe UI'; font-size
 QLabel[class="h2"] {{ font-size: {px(TYPE['small'])}; font-weight: 700; color: {c['fg']}; letter-spacing: 0.8px; }}  /* 1.17: the accent marks state, not every title */
 QLabel[class="big"] {{ font-size: {px(TYPE['big'])}; font-weight: 700; color: {c['head']}; }}
 QDialog#message {{ background: {c['bg']}; }}  /* 1.8.44: App._ask/_inform */
-QTabWidget::pane {{ border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; top: -1px; }}
+QTabWidget::pane {{ border: none; border-top: 1px solid {c['border']}; top: -1px; }}  /* 1.25: a line under the tabs –
+   the rounded frame was drawn with open corners at 100/125 % and boxed cards a second time */
 QTabWidget#formtabs::pane {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: {RADIUS['xl']}px; top: -1px;
     border-top-left-radius: 0; }}
 QTabWidget#formtabs[found="true"]::pane {{ border: 1px solid {c['accent']}; }}
@@ -376,11 +394,12 @@ QProgressBar::chunk {{ background: {c['accent']}; border-radius: {RADIUS['bar']}
 QProgressBar#factbar {{ max-height: 4px; min-height: 4px; border-radius: {RADIUS['xs']}px; }}
 QProgressBar#factbar::chunk {{ background: {c['dim']}; border-radius: {RADIUS['xs']}px; }}  /* 1.17: ratio, not state */
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: {c['hover']}; border-radius: {RADIUS['s']}px; min-height: 30px; }}
+QScrollBar::handle:vertical {{ background: {c['handle']}; border-radius: {RADIUS['s']}px; min-height: 30px; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar[idle="true"]::handle:vertical {{ background: transparent; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}  /* 1.17: like the vertical one */
-QScrollBar::handle:horizontal {{ background: {c['hover']}; border-radius: {RADIUS['s']}px; min-width: 30px; }}
+QScrollBar::handle:horizontal {{ background: {c['handle']}; border-radius: {RADIUS['s']}px; min-width: 30px; }}
+QScrollBar::handle:hover, QScrollBar::handle:pressed {{ background: {c['dim']}; }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QTreeWidget {{ border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; padding: 4px; }}
 QTreeWidget::item {{ padding: 3px 6px; }}

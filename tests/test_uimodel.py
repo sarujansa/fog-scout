@@ -2566,7 +2566,7 @@ def test_the_history_is_copied_before_it_is_cleared(app_root):
             time.sleep(0.05)
         app._backup_done(backups.snapshot(str(app_root)))                       # nothing new: only the hint
         names = sorted(os.listdir(app_root / "backup"))
-        assert len(names) == 1 and names[0].startswith("rounds-") and "1 Dateien" in app.backup_var.get()
+        assert len(names) == 1 and names[0].startswith("rounds-") and "1 Datei," in app.backup_var.get()   # 1.25: not "1 Dateien"
         app._ask = lambda *a, **k: True
         app._stats_clear()
         names = sorted(os.listdir(app_root / "backup"))
