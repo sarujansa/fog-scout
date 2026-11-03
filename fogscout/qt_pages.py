@@ -4,7 +4,7 @@ a tab's structure (AutoPage), dialogs and the setup assistant.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPalette, QPen
+from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import (QBoxLayout, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QProgressBar,
                                QPushButton, QRadioButton, QScrollArea, QSizePolicy, QSlider, QStackedWidget,
                                QStyle, QStyleOptionSlider, QTabWidget, QVBoxLayout, QWidget)
@@ -807,7 +807,8 @@ class Grip(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(Qt.NoPen)
-        p.setBrush(self.palette().color(QPalette.PlaceholderText if self._hover else QPalette.Mid))
+        c = qt_theme.colours(qt_theme.current_dark())       # 1.25: the theme's grip colour (>= 3:1), not Mid (1.3:1)
+        p.setBrush(QColor(c["dim"] if self._hover else c["handle"]))
         for x in (5, 11):
             for y in (4, 9, 14):
                 p.drawEllipse(x - 1.5, y - 1.5, 3, 3)

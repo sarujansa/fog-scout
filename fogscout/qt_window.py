@@ -22,7 +22,7 @@ from .i18n import N_, _
 from .qt_app import FIRA, application          # 1.14.2: made before the heavy imports (splash)
 from .qt_common import (SLIDER_MAX, WheelGuard, guard_wheel, pixmap_from_pil, _label, _tip, _card, _set,
                         _scroll_page)
-from .qt_views import (FactBox, CHECKS, _check, Table, LogView, HotkeyButton, Chart, HEAT_RAMP, BAR_NEUTRAL,
+from .qt_views import (FactBox, CHECKS, _check, Table, LogView, HotkeyButton, Chart, HEAT_RAMP,
                        heat_colour, ink_on, MapBars, Heatmap, SwatchView, TilesView, DashboardView)
 from .qt_preview import (PREVIEW_NAMES, PreviewView)
 from .qt_maps import (TILE_W, TILE_H, TILE_PIC, ALL_MAPS, RECENT, MapTile, RealmDelegate, MapsPage)
@@ -53,7 +53,6 @@ __all__ = (
     'HotkeyButton',
     'Chart',
     'HEAT_RAMP',
-    'BAR_NEUTRAL',
     'heat_colour',
     'ink_on',
     'MapBars',
