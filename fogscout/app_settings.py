@@ -272,7 +272,14 @@ class SettingsTab:
         self.rec_on_var = ui.BooleanVar(value=bool(self.settings.get("rec_on", False)))
         self._reg("st.more.rec_on", ui.Checkbutton(rc, text=_("Jede Runde mit OBS aufnehmen"),
                                                     variable=self.rec_on_var, command=self._rec_setting)).pack(anchor="w")
-        rr = ui.Frame(rc)
+        self._reg("st.more.rec_link_hint", ui.Label(rc, text=_(
+            "Port und Passwort von OBS stehen unter Verbindungen › OBS-Verbindung."),
+            style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(4, 0))
+        # 1.28 (user: "warum ist OBS auf einer separaten Seite und nicht in Verbindungen"): the connection to OBS
+        # (port, password, test) is a card of its own on the tab "Verbindungen"; recording stays on "Aufnahmen"
+        oc = self._reg("st.more.obs", ui.LabelFrame(more, text=_("OBS-Verbindung"), padding=8))
+        oc.pack(fill="x", pady=(8, 0))
+        rr = ui.Frame(oc)
         rr.pack(fill="x", pady=(4, 0))
         self._reg("st.more.rec_port.label", ui.Label(rr, text=_("Port"))).pack(side="left")
         self.rec_port_var = ui.StringVar(value=str(self.settings.get("rec_port", obsrec.DEFAULT_PORT)))
@@ -411,6 +418,9 @@ class SettingsTab:
         self.rec_status_label = ui.level(self._reg("st.more.rec_status", ui.Label(   # 1.24.3: ok/warn/err colour
             rc, textvariable=self.rec_status_var, wraplength=420, style="Dim.TLabel")))
         self.rec_status_label.pack(anchor="w", pady=(4, 0))
+        self.obs_status_label = ui.level(self._reg("st.more.obs_status", ui.Label(   # 1.28: the same in "OBS-Verbindung"
+            oc, textvariable=self.rec_status_var, wraplength=420, style="Dim.TLabel")))
+        self.obs_status_label.pack(anchor="w", pady=(4, 0))
         self._reg("st.more.rec_text", ui.Label(rc, text=_(
             "OBS nimmt auf, das Programm sagt nur wann: Start beim Map-Banner, Stopp beim erkannten Rundenende, "
             "Datei nach Datum, Map und Killer benannt. Dafür in OBS unter Werkzeuge → WebSocket-Servereinstellungen "
@@ -784,7 +794,8 @@ class SettingsTab:
 
     def _rec_test(self):
         self.rec_status_var.set(_("Verbinde mit OBS …"))
-        ui.level(self.rec_status_label, "")
+        for label in (self.rec_status_label, self.obs_status_label):
+            ui.level(label, "")
         self.recorder.configure(self._rec_cfg())
         self.recorder.test()
 
@@ -792,7 +803,9 @@ class SettingsTab:
         """Recorder thread -> UI: status (text, ok) | started | saved | deleted."""
         if kind == "status":
             self.rec_status_var.set(d.get("text", ""))
-            ui.level(self.rec_status_label, rec_status_level(d.get("text", ""), d.get("ok", True), d.get("err", False)))
+            level = rec_status_level(d.get("text", ""), d.get("ok", True), d.get("err", False))
+            for label in (self.rec_status_label, self.obs_status_label):
+                ui.level(label, level)
             if not d.get("ok", True):
                 self._log(_("Aufnahme: {text}", text=d.get("text", "")), "Fehler")
         elif kind == "warn":                    # 1.4.1: OBS/drive missing when DBD starts, a broken file
@@ -894,11 +907,12 @@ class SettingsTab:
         if self.settings.get("rec_clip_notify", True):
             self.toast.show(title, text, seconds)
 
-    def _reveal_rec(self):
-        """Overview tile "Aufnahmen" → Settings, tab "Aufnahmen", the card "Aufnahmen mit OBS" lit up."""
+    def _reveal_rec(self, card="st.more.rec"):
+        """Overview tile "Aufnahmen" → Settings, tab "Aufnahmen", the card "Aufnahmen mit OBS" lit up; 1.28:
+        "Verbindung prüfen …" → the card "OBS-Verbindung" on the tab "Verbindungen"."""
         self.qt.show_page("settings")
         self._qt_refresh(force=True)
-        self.qt.reveal("settings", "st.more.rec")
+        self.qt.reveal("settings", card)
 
     # ---------------------------------------------------------- tray and autostart
     def _tray_start(self):

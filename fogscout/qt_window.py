@@ -243,10 +243,7 @@ SPECS = {
             ("st.tab.rec", N_("Aufnahmen"), (
                 # 1.4: OBS recordings – 1.8.90 in five groups (the card was 686 px of 24 controls)
                 ("card", "st.more.rec", (
-                    ("sub", N_("Verbindung")), ("check", "st.more.rec_on"),
-                    ("row", (("label", "st.more.rec_port.label"), ("entry", "st.more.rec_port"),
-                             ("label", "st.more.rec_pw.label"), ("entry", "st.more.rec_pw"),
-                             ("button", "st.more.rec_test"), ("stretch",))),
+                    ("sub", N_("Allgemein")), ("check", "st.more.rec_on"), ("hint", "st.more.rec_link_hint"),
                     ("row", (("button", "st.more.rec_dir"), ("hint", "st.more.rec_folder"))),
                     ("row", (("label", "st.more.rec_limit.label"), ("combo", "st.more.rec_limit"), ("stretch",))),
                     ("check", "st.more.rec_obs_start"),
@@ -270,6 +267,11 @@ SPECS = {
                              ("combo", "st.more.rec_farming_days"), ("stretch",))),
                     ("hint", "st.more.rec_ffmpeg"), ("hint", "st.more.rec_status"), ("hint", "st.more.rec_text"))),)),
             ("st.tab.links", N_("Verbindungen"), (
+                # 1.28 (user): the connection to OBS here, the recording settings stay on "Aufnahmen"
+                ("card", "st.more.obs", (("row", (("label", "st.more.rec_port.label"), ("entry", "st.more.rec_port"),
+                                                  ("label", "st.more.rec_pw.label"), ("entry", "st.more.rec_pw"),
+                                                  ("button", "st.more.rec_test"), ("stretch",))),
+                                         ("hint", "st.more.obs_status"))),
                 ("card", "st.more.discord", (("check", "st.more.dc_on"),                             # 1.7: Rich Presence
                                              ("row", (("label", "st.more.dc_id.label"), ("entry", "st.more.dc_id"),
                                                       ("button", "st.more.dc_test"), ("button", "st.more.dc_portal"),

@@ -203,7 +203,8 @@ class RecordingsTab:
         self.rec_mark_btn = ui.Button(crow, text=_("Marke setzen"), command=self._rec_card_mark_only, state="disabled")
         self.rec_mark_btn.pack(side="left", padx=(6, 0))
         # 1.24.3 (phase 2): OBS not reachable – the next step right here (the settings with "Verbindung testen")
-        self.rec_obs_btn = ui.Button(crow, text=_("Verbindung prüfen …"), command=self._reveal_rec)
+        self.rec_obs_btn = ui.Button(crow, text=_("Verbindung prüfen …"),
+                                    command=lambda: self._reveal_rec("st.more.obs"))
         # 1.11.14 (user picked "leere Zustände mit Handlung"): nothing recorded yet – the next step instead of an empty
         # table (the button while recording is off, the note while it is on)
         self.rec_setup_btn = ui.Button(f, text=_("Aufnahmen einrichten …"), command=self._reveal_rec)
