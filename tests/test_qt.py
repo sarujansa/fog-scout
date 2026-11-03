@@ -2849,3 +2849,22 @@ def test_placeholders_grips_and_handles_are_readable_in_every_theme(qapp, keep):
         assert got.name() == qt_theme.colours(False)["dim"] and got.alpha() == 255
     finally:
         qt_theme.set_theme("gold")
+
+
+def test_status_signs_are_drawn_glyphs_with_words(qapp, keep):
+    """1.25 (audit: ★ ⚑ ▶ were the window's last Unicode symbols): the model's _dbdms_signs columns get a delegate
+    that draws the glyphs; the cell keeps its text and says it in words as the tooltip."""
+    from fogscout import qt_views
+    assert qt_views.sign_words("★  ⚑2  ▶…") == "behalten (nie aufgeräumt) · 2 Marken · wartet auf den YouTube-Upload"
+    assert qt_views.sign_words("▶") == "auf YouTube" and qt_views.sign_words("") == ""
+    t = keep(qt_views.Table("rec", lambda *a: None))
+    cols = [("when", "Wann", "w"), ("status", "Status", "w")]
+    t.show_state({"columns": cols, "rows": [("a", 0, "", ["heute", "★  ⚑2"], [], True)], "signs": ["status"]})
+    assert isinstance(t.itemDelegateForColumn(1), qt_views.SignsDelegate) and t.itemDelegateForColumn(0) is None
+    assert t.topLevelItem(0).text(1) == "★  ⚑2"                        # sorting and copying keep the text
+    t.resize(300, 200)
+    t.show()
+    qapp.processEvents()
+    assert not t.grab().isNull()                                      # paints without error
+    t.show_state({"columns": cols + [("x", "X", "w")], "rows": [("a", 0, "", ["heute", "", ""], [], True)]})
+    assert t.itemDelegateForColumn(1) is None                         # a table without signs: plain cells

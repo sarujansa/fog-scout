@@ -3156,3 +3156,27 @@ def test_the_state_reaches_the_foot_of_the_navigation_on_every_page(app_root):
         assert app.qt.status_btn.text.text().replace("\n", " ").startswith("Im Match: Coal Tower")
     finally:
         app.quit()
+
+
+def test_the_page_warm_up_waits_while_the_user_clicks_or_types(app_root):
+    """1.25 (measured: a search in the maps page took up to 198 ms when the warm-up built a page in the same pass):
+    no warm-up step within WARM_QUIET_S of a click or key – it comes back later instead."""
+    import json
+    from fogscout import app_qt
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        built, later = [], []
+        app.qt.build_next = lambda: built.append(1) or False
+        app.root.after = lambda ms, fn, *a: later.append((ms, fn))
+        app._warm_queue = []
+        app._ui_refresh_t = time.monotonic()                     # a click just now
+        app._qt_warm()
+        assert built == [] and later and later[0][1] == app._qt_warm
+        assert later[0][0] == round(app_qt.WARM_QUIET_S * 1000)
+        app._ui_refresh_t = time.monotonic() - app_qt.WARM_QUIET_S - 1
+        app._qt_warm()
+        assert built == [1]                                     # quiet again: the step runs
+    finally:
+        app.quit()
