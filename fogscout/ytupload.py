@@ -645,7 +645,7 @@ class Uploader(threading.Thread):
                 self._say(_("YouTube: Google gab kein dauerhaftes Token – in der Cloud Console den OAuth-Client als "
                             "„Desktop“ anlegen und den Zustimmungsbildschirm veröffentlichen."), False)
                 return
-            self._tell("token", spotify.protect(tok.refresh))
+            self._keep_refresh(tok.refresh)
             self.state = "linked"
             self._say(self._linked_status(), True)
             if self.manage and self._has_manage():
@@ -654,6 +654,16 @@ class Uploader(threading.Thread):
             self._stop_login()
             self.state = "login_needed"
             self._say(_("YouTube: Anmeldung abgelaufen – noch einmal „Mit YouTube verbinden“ klicken."), False)
+
+    def _keep_refresh(self, refresh: str):
+        """1.28 (audit F2): the refresh token to the settings – encrypted, or (no DPAPI) only in memory for this
+        session; never stored as clear text."""
+        try:
+            self._tell("token", spotify.protect(refresh))
+            self._session_only = False
+        except spotify.CannotProtect:
+            self._session_only = True
+            self._say(self._linked_status(), True)
 
     def _access(self) -> str:
         """A valid access token (refreshed when due). Raises YouTubeError("auth") when the login is gone."""
@@ -672,7 +682,7 @@ class Uploader(threading.Thread):
             self._scopes = tok.scopes
         if tok.refresh and tok.refresh != self._refresh:
             self._refresh = tok.refresh
-            self._tell("token", spotify.protect(tok.refresh))
+            self._keep_refresh(tok.refresh)
         return tok.access
 
     # ---- playlists (1.11)
@@ -681,6 +691,8 @@ class Uploader(threading.Thread):
         return not self._scopes or SCOPE_MANAGE in self._scopes
 
     def _linked_status(self) -> str:
+        if getattr(self, "_session_only", False):          # 1.28: no DPAPI – the login is not stored
+            return _("YouTube: verbunden – nur bis zum Beenden, die Windows-Verschlüsselung ist nicht verfügbar.")
         if self.manage and not self._has_manage():
             return _("YouTube: verbunden – für Playlists einmal neu „Mit YouTube verbinden“ klicken.")
         return _("YouTube: verbunden")

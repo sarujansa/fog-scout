@@ -219,6 +219,21 @@ DEFAULTS = {
 }
 
 
+RECENT_KEPT = 8                         # palette.RECENT_KEPT (palette imports nothing from here)
+# 1.28 (audit F11): settings whose type the code relies on – a hand-edited "claude_on": "false" counted as on
+TYPED = {"claude_on": bool, "claude_editor": bool, "palette_recent": list}
+
+
+def _typed(key, value, default):
+    """A stored value of a TYPED setting with the expected type, else the default (palette_recent: strings only)."""
+    want = TYPED[key]
+    if want is bool:
+        return value if isinstance(value, bool) else copy.deepcopy(default)
+    if not isinstance(value, list):
+        return copy.deepcopy(default)
+    return [v for v in value if isinstance(v, str)][:RECENT_KEPT]
+
+
 def _merge(base: dict, override: dict) -> dict:
     out = copy.deepcopy(base)
     for k, v in (override if isinstance(override, dict) else {}).items():
@@ -226,6 +241,8 @@ def _merge(base: dict, override: dict) -> dict:
             if isinstance(v, dict):
                 out[k] = _merge(out[k], v)
             # 1.8.38: anything else where the defaults hold a dict ("overlay": null) keeps the defaults
+        elif base is DEFAULTS and k in TYPED:
+            out[k] = _typed(k, v, base.get(k))
         else:
             out[k] = v
     return out
@@ -242,13 +259,16 @@ def _version(raw: dict) -> int:
         return SETTINGS_VERSION
 
 
+# 1.28 (audit F10): not secret, but this PC's own and not for a file the user passes on: the YouTube queue holds
+# the upload session URIs (whoever has one can upload to it for a while) and file paths of the recordings folder
+EXPORT_SKIP = ("youtube_queue",)
 SECRET_KEYS = ("rec_password", "spotify_token", "youtube_client_secret", "youtube_token", "claude_key")   # 1.8.38: never in a backup
 
 
 def export_settings(data: dict, path: str) -> None:
-    """Backup of all settings (hotkeys, sizes/rotations per map, own map assignments …) – without the OBS password
-    and the Spotify token (SECRET_KEYS; an import keeps this PC's own anyway, LOCAL_KEYS)."""
-    data = {k: v for k, v in data.items() if k not in SECRET_KEYS}
+    """Backup of all settings (hotkeys, sizes/rotations per map, own map assignments …) – without the secrets
+    (SECRET_KEYS) and the YouTube queue (EXPORT_SKIP); an import keeps this PC's own anyway (LOCAL_KEYS)."""
+    data = {k: v for k, v in data.items() if k not in SECRET_KEYS and k not in EXPORT_SKIP}
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)

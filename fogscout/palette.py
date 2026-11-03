@@ -46,6 +46,7 @@ class Entry:
     arg: object = None
     alt: str = ""
     words: str = ""              # more to match against (other language, realm, killer …); not shown
+    static: bool = False         # 1.28: a fixed program text (i18n.is_program_text) – only such go to Claude
     _words: tuple = field(default=(), repr=False, compare=False)
 
     def prepare(self) -> "Entry":
