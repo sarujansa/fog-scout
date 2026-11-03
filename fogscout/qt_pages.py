@@ -1701,6 +1701,11 @@ class MessageBox(QDialog):
         self._open = True
         self.setAttribute(Qt.WA_ShowWithoutActivating, not activate)
         self.adjustSize()
+        # 1.29 (offscreen screenshot of the quality steps): adjustSize took the wrapped text's height for a wider
+        # line than WIDTH leaves it – the last line of a long text was cut off; the layout's height for the width
+        lay = self.layout()
+        lay.activate()
+        self.resize(self.WIDTH, max(self.height(), lay.totalHeightForWidth(self.WIDTH)))
         self.show()
         self.raise_()
         (self.cancel if risky else self.ok).setFocus()   # 1.23.1: also unactivated – Enter later = this button

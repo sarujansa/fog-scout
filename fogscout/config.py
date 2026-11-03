@@ -169,6 +169,7 @@ DEFAULTS = {
     "rec_early": True,                  # 1.6: start at the end of the loading screen (spawn), the banner names it
     "rec_instant": True,                # 1.6: F8 also saves the last seconds of the replay buffer as a clip
     "rec_clip_s": 30,
+    "rec_obs_before": {},               # 1.29: OBS's values before "In OBS einstellen" (recquality) – "Zurücksetzen"
     "rec_clip_notify": True,            # 1.8.13: a short notification for the F8 clip (also while DBD is in front)
     "rec_audio": True,                  # 1.6: set OBS's audio sources when DBD starts (user: only DBD + Discord)
     "rec_audio_dbd": True,
@@ -221,7 +222,7 @@ DEFAULTS = {
 
 RECENT_KEPT = 8                         # palette.RECENT_KEPT (palette imports nothing from here)
 # 1.28 (audit F11): settings whose type the code relies on – a hand-edited "claude_on": "false" counted as on
-TYPED = {"claude_on": bool, "claude_editor": bool, "palette_recent": list}
+TYPED = {"claude_on": bool, "claude_editor": bool, "palette_recent": list, "rec_obs_before": dict}
 
 
 def _typed(key, value, default):
@@ -279,7 +280,7 @@ def export_settings(data: dict, path: str) -> None:
 LOCAL_KEYS = ("setup_version", "setup_root", "qt_geometry", "official_dir", "layouts", "layout_key",
               "rec_volume", "rec_rel", "rec_folder", "rec_password", "spotify_token", "seen_version",
               "youtube_client_secret", "youtube_token", "youtube_queue", "youtube_quota", "shots_folder",
-              "editor_layout", "claude_key", "palette_recent")
+              "editor_layout", "claude_key", "palette_recent", "rec_obs_before")
 
 
 def reset_data(current: dict) -> dict:
