@@ -1624,20 +1624,27 @@ def test_the_settings_page_is_split_into_tabs_with_its_cards(qapp, keep):
                      "st.more.backup": "Allgemein", "st.more.folders": "Allgemein",
                      "st.detect": "Erkennung", "st.langs": "Erkennung", "st.more.own": "Erkennung", "st.notify": "Erkennung",
                      "st.hotkeys": "Hotkeys", "st.more.official": "Match-Daten", "st.more.farming": "Match-Daten",
-                     "st.more.rec": "Aufnahmen", "st.more.discord": "Verbindungen", "st.more.spotify": "Verbindungen",
+                     "st.more.rec": "Aufnahmen", "st.more.obs": "Verbindungen", "st.more.discord": "Verbindungen", "st.more.spotify": "Verbindungen",
                      "st.more.youtube": "Verbindungen", "st.more.claude": "Verbindungen"}                                                  # 1.10
     assert [col.ids() for col in page.columns] == [
         ["st.look", "st.start", "st.updates", "st.more.backup", "st.more.folders"],
         ["st.detect", "st.langs", "st.more.own", "st.notify"], ["st.hotkeys"],
-        ["st.more.official", "st.more.farming"], ["st.more.rec"], ["st.more.discord", "st.more.spotify", "st.more.youtube",
-                                                                  "st.more.claude"]]
+        ["st.more.official", "st.more.farming"], ["st.more.rec"],
+        ["st.more.obs", "st.more.discord", "st.more.spotify", "st.more.youtube", "st.more.claude"]]
     rec = page.controls["st.more.rec"][1]
     card = rec.parentWidget()
     while card is not None and card.property("class") != "card":
         card = card.parentWidget()
     from PySide6.QtWidgets import QLabel
     subs = [lbl.text() for lbl in card.findChildren(QLabel) if lbl.property("class") == "sub"]
-    assert subs == ["VERBINDUNG", "AUFNAHME", "TON", "CLIPS", "AUFRÄUMEN"]
+    assert subs == ["ALLGEMEIN", "AUFNAHME", "TON", "CLIPS", "AUFRÄUMEN"]
+    # 1.28 (user: "warum ist OBS nicht in Verbindungen"): port, password and the test sit in "OBS-Verbindung"
+    obs_tab = tw.widget([tw.tabText(i) for i in range(tw.count())].index("Verbindungen"))
+    rec_tab = tw.widget([tw.tabText(i) for i in range(tw.count())].index("Aufnahmen"))
+    for key in ("st.more.rec_port", "st.more.rec_pw", "st.more.rec_test", "st.more.obs_status"):
+        w = page.controls[key][1]
+        assert obs_tab.isAncestorOf(w) and not rec_tab.isAncestorOf(w), key
+    assert rec_tab.isAncestorOf(page.controls["st.more.rec_on"][1])
 
 
 def test_the_overlay_preview_and_its_tools_sit_side_by_side_on_a_wide_page(qapp, keep):
