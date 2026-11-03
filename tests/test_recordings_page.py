@@ -499,6 +499,9 @@ def test_obs_away_with_recordings_off_but_a_folder_keeps_the_next_step(app_root,
         app.settings.set("rec_on", False)
         app._rec_card_state({"connected": False, "error": "x"})
         assert app.rec_state_label._dbdms_level == "warn" and app.rec_obs_btn.winfo_manager()
+        assert str(app.rec_f8_btn.cget("state")) == "disabled"                    # 1.24.7: a clip needs OBS too
+        app._rec_card_state({"connected": True})
+        assert str(app.rec_f8_btn.cget("state")) == "normal"
         app._rec_event("status", {"text": "OBS hat die Anmeldung abgelehnt – Passwort falsch?", "ok": False,
                                   "err": True})
         assert app.rec_status_label._dbdms_level == "err"

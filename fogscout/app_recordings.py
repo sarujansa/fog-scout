@@ -678,7 +678,8 @@ class RecordingsTab:
             self.rec_pause_btn.configure(text=pause_text)
         for b, st in ((self.rec_start_btn, start_state), (self.rec_pause_btn, "normal" if ours else "disabled"),
                       (self.rec_mark_btn, "normal" if ours else "disabled"),
-                      (self.rec_f8_btn, "normal" if self.settings.get("rec_instant", True) else "disabled")):
+                      (self.rec_f8_btn, "normal" if self.settings.get("rec_instant", True) and not away
+                       else "disabled")):                  # 1.24.7 (visual QA): a clip needs OBS, like F9
             if str(b.cget("state")) != st:
                 b.configure(state=st)
 
