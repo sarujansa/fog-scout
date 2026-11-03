@@ -1137,6 +1137,10 @@ EN = {
     "behalten (nie aufgeräumt)": "kept (never cleaned up)",
     "wartet auf den YouTube-Upload": "waiting for the YouTube upload",
     "auf YouTube": "on YouTube",
+    "Karte im Spiel": "Map in the game",
+    "OBS läuft nicht, oder sein WebSocket-Server ist aus": "OBS is not running, or its WebSocket server is off",
+    "OBS antwortet nicht": "OBS does not answer",
+    "OBS hat die Verbindung getrennt": "OBS closed the connection",
     "noch keine": "none yet",
     "Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die letzten {n} Stände je Datei; vor „Alle Runden löschen“ eine zusätzliche): {state}":
         "Daily copy of rounds.jsonl and official.jsonl to {folder}/ (only on changes, the last {n} copies per file; one more before \"Delete all rounds\"): {state}",

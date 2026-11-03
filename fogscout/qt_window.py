@@ -99,6 +99,13 @@ PAGES = (("overview", N_("Übersicht")), ("maps", "Maps"), ("overlay", N_("Overl
          ("log", "Log"))          # 1.8.78: "Erkennung" went into the settings (cards) and the log ("Erweitert")
 
 
+HOTKEY_GROUPS = (                  # 1.25: the hotkeys tab in groups (keys and bindings unchanged)
+    (N_("Karte im Spiel"), ("toggle_overlay", "next_variant", "prev_map", "next_map", "edit_position",   # the grid
+                            "bigger", "smaller", "rotate_map", "next_floor")),    # fills by column: pairs stay together
+    (N_("Erkennung"), ("scan_now", "reject_map")),
+    (N_("Aufnahmen"), ("mark_clip", "record_toggle", "record_pause")))
+
+
 NAV_ICON = 18                     # px (logical): every icon of the navigation in the same box
 
 
@@ -218,12 +225,12 @@ SPECS = {
                     ("check", "st.bp_cap_notify"),
                     ("hint", "st.notify_text"), ("row", (("button", "st.notify_test"), ("stretch",))))))),
             ("st.tab.hotkeys", N_("Hotkeys"), (
-                ("card", "st.hotkeys", (
-                    ("grid", 2, tuple(("row", (("label", f"st.hk.{k}.label"), ("stretch",), ("hotkey", f"st.hk.{k}")))
-                                      for k in ("toggle_overlay", "next_variant", "scan_now", "prev_map", "next_map",
-                                                "bigger", "smaller", "edit_position", "rotate_map", "next_floor",
-                                                "reject_map", "mark_clip", "record_toggle", "record_pause"))),
-                    ("row", (("button", "st.hk_defaults"), ("hint", "st.hk_status"))))),)),
+                ("card", "st.hotkeys", tuple(                    # 1.25: in groups – 14 keys were one block
+                    part for title, keys in HOTKEY_GROUPS for part in (
+                        ("sub", title),
+                        ("grid", 2, tuple(("row", (("label", f"st.hk.{k}.label"), ("stretch",), ("hotkey", f"st.hk.{k}")))
+                                          for k in keys)))) + (
+                    ("row", (("button", "st.hk_defaults"), ("hint", "st.hk_status"))),)),)),
             ("st.tab.data", N_("Match-Daten"), (
                 ("card", "st.more.official", (("check", "st.more.off_open"), ("check", "st.more.off_notify"),
                                               ("row", (("button", "st.more.script"), ("button", "st.more.resave"),

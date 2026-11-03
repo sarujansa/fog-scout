@@ -56,6 +56,21 @@ def fmt_bytes(n: float) -> str:
     return f"{n / 1024:.0f} KB"
 
 
+CAUSES = {                     # 1.25: the card names the cause in words, not as a Python exception
+    "ConnectionRefusedError": N_("OBS läuft nicht, oder sein WebSocket-Server ist aus"),
+    "TimeoutError": N_("OBS antwortet nicht"),
+    "timeout": N_("OBS antwortet nicht"),
+    "ConnectionResetError": N_("OBS hat die Verbindung getrennt"),
+}
+
+
+def cause_words(cause: str) -> str:
+    """1.25 (audit: "Ursache: ConnectionRefusedError" on the recording card): the known causes in words; anything
+    else as it came (an OBS message is already words)."""
+    key = str(cause or "").strip()
+    return _(CAUSES[key]) if key in CAUSES else key
+
+
 def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: float | None = None,
                   last_clip=None) -> tuple[str, str, str]:
     """1.15 (pure): the recording card's three lines from the last ``obs_status`` event ``d`` (obsrec.Recorder._poll;
@@ -70,7 +85,7 @@ def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: fl
         head = _("OBS nicht erreichbar")
         if why.startswith(head):                   # 1.23: the recorder's message repeats title and advice –
             cause = why.rsplit("(", 1)[-1].rstrip(")") if why.endswith(")") else ""   # keep only the cause
-            why = _("Ursache: {cause}", cause=cause) if cause else ""
+            why = _("Ursache: {cause}", cause=cause_words(cause)) if cause else ""
         return _("OBS nicht erreichbar"), (_("OBS starten, WebSocket-Server einschalten, Port/Passwort prüfen (Einstellungen → "
                                               "Aufnahmen → Verbindung testen). {why}", why=why).strip()), ""
     rec, paused = bool(d.get("recording")), bool(d.get("paused"))
