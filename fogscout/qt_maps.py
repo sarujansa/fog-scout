@@ -7,7 +7,7 @@ disk) and the tiles can be walked with the keyboard (arrows, Enter = big, Ctrl+E
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer
-from PySide6.QtGui import QImage, QPalette, QPixmap
+from PySide6.QtGui import QColor, QImage, QPalette, QPixmap
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu,
                                QPlainTextEdit, QPushButton, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QScrollArea,
                                QSizePolicy, QStackedWidget, QVBoxLayout, QWidget)
@@ -16,7 +16,7 @@ from . import qt_theme, thumbs
 from .qt_layouts import FlowRow
 from .i18n import N_, _
 from .mapnotes import MAX_CHARS as NOTE_CHARS
-from .qt_common import pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page
+from .qt_common import pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page, set_glyph
 
 
 TILE_W, TILE_H = 150, 190          # px (logical) of a map tile on the maps page (1.2.18: + info line)
@@ -118,9 +118,10 @@ class RealmDelegate(QStyledItemDelegate):
         font.setBold(bool(o.state & QStyle.State_Selected))
         p.setFont(font)
         p.setPen(o.palette.color(QPalette.Text))
-        p.drawText(r, Qt.AlignVCenter | Qt.AlignLeft, p.fontMetrics().elidedText(name, Qt.ElideRight, r.width() - 36))
-        p.setPen(o.palette.color(QPalette.PlaceholderText))
-        p.drawText(r, Qt.AlignVCenter | Qt.AlignRight, count)
+        room = r.width() - (p.fontMetrics().horizontalAdvance(count) + 10 if count else 0)   # 1.25: only the count's
+        p.drawText(r, Qt.AlignVCenter | Qt.AlignLeft, p.fontMetrics().elidedText(name, Qt.ElideRight, room))  # width
+        p.setPen(QColor(qt_theme.colours(qt_theme.current_dark())["dim"]))   # 1.25: the theme's dim (≥ 4.5:1), not
+        p.drawText(r, Qt.AlignVCenter | Qt.AlignRight, count)                 # the placeholder role (3.3:1)
         p.restore()
 
     def sizeHint(self, opt, index):                 # as wide as the list: the count stays in sight
@@ -167,7 +168,7 @@ class MapsPage(QWidget):
         # another resize), made in a thread, kept on disk
         ratio = self.devicePixelRatioF()
         self._loader = thumbs.Loader((round((TILE_W - 24) * ratio), round((TILE_PIC - 8) * ratio)), cache_dir)
-        page, lay = _scroll_page("Maps", scroll=False)
+        page, lay = _scroll_page("Maps", scroll=False, page_key="maps")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(page)
@@ -218,10 +219,31 @@ class MapsPage(QWidget):
         steady_scroll(grid_page)
         inner = QWidget()
         inner.setObjectName("page")
-        self.grid_lay = QVBoxLayout(inner)
-        self.grid_lay.setContentsMargins(0, 0, 4, 0)
+        wrap = QVBoxLayout(inner)
+        wrap.setContentsMargins(0, 0, 4, 0)
+        wrap.setSpacing(0)
+        # 1.24.1 (phase 2): a search without a hit says so and offers the way back – not an empty grid
+        self.no_hits = QWidget()
+        nh = QVBoxLayout(self.no_hits)
+        nh.setContentsMargins(0, 8, 0, 8)
+        nh.setSpacing(8)
+        self.no_hits_text = _label("", wrap=True)
+        nh.addWidget(self.no_hits_text)
+        nh_row = QHBoxLayout()
+        self.no_hits_clear = QPushButton(_("Suche leeren"))
+        set_glyph(self.no_hits_clear, "close")
+        self.no_hits_clear.setToolTip(_tip("Suche leeren"))
+        self.no_hits_clear.clicked.connect(self.clear_search)
+        nh_row.addWidget(self.no_hits_clear)
+        nh_row.addStretch()
+        nh.addLayout(nh_row)
+        self.no_hits.setVisible(False)
+        wrap.addWidget(self.no_hits)
+        self.grid_lay = QVBoxLayout()
+        self.grid_lay.setContentsMargins(0, 0, 0, 0)
         self.grid_lay.setSpacing(10)
         self.grid_lay.addStretch()
+        wrap.addLayout(self.grid_lay, 1)
         grid_page.setWidget(inner)
         self.grid_scroll = grid_page
         self.stack.addWidget(grid_page)
@@ -231,7 +253,8 @@ class MapsPage(QWidget):
         cl.setContentsMargins(*qt_theme.PAD_CARD)
         cl.setSpacing(6)
         top = QHBoxLayout()
-        self.p_back = QPushButton("← " + _("Zurück"))
+        self.p_back = QPushButton(_("Zurück"))
+        set_glyph(self.p_back, "back")            # 1.24: a drawn arrow, not "←"
         self.p_back.setToolTip(_tip("Zurück"))
         self.p_back.clicked.connect(self.close_big)
         top.addWidget(self.p_back)
@@ -293,6 +316,11 @@ class MapsPage(QWidget):
     # ------------------------------------------------------------------ list of realms
     def _searched(self, text):
         self._post("search", text)
+
+    def clear_search(self):
+        """1.24.1: "Suche leeren" – the same as the field's own clear button (textChanged posts the search)."""
+        self.search.clear()
+        self.search.setFocus(Qt.OtherFocusReason)
 
     def _fill_realms(self):
         counts = {}
@@ -454,6 +482,12 @@ class MapsPage(QWidget):
             or (self._recent_flow is not None and self._recent_head.isHidden() == recent_mode)
         if changes:                                   # a refresh that changes nothing costs nothing
             self._grid_batch(apply)
+        empty = found is not None and bool(self._tiles) and not (found & self._tiles.keys())
+        if empty:
+            _set(self.no_hits_text, _("Keine Map passt zu „{text}“. Gesucht wird in Map- und Realm-Namen aller "
+                                      "Spielsprachen und in Abkürzungen.", text=self.search.text().strip()))
+        if self.no_hits.isHidden() == empty:
+            self.no_hits.setVisible(empty)
         self._mark_current()
         self._request_pictures()
 
@@ -544,7 +578,7 @@ class MapsPage(QWidget):
             target.setFocus(Qt.OtherFocusReason)
 
     # ------------------------------------------------------------------ right click (1.2.18)
-    MENU = (("show", N_("Anzeigen")), ("rotate", N_("Drehen ↻")),
+    MENU = (("show", N_("Anzeigen")), ("rotate", N_("Drehen")),
             ("size_reset", N_("Eigene Grösse und Drehung zurücksetzen")), ("picture", N_("Kartenbild ersetzen …")),
             ("note", N_("Notiz bearbeiten …")))
 

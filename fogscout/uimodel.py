@@ -272,6 +272,27 @@ def danger(w):
     return w
 
 
+def primary(w):
+    """1.24 (phase 2): the main action of a view – filled in the accent (Qt object name "primary"); at most one per
+    card, and never one that deletes (that is ``danger``)."""
+    w._dbdms_primary = True
+    return w
+
+
+def glyph(w, name: str):
+    """1.24 (phase 2): a drawn sign (qt_icons.GLYPHS) before a button's text – instead of Unicode signs like ↻ ▸ ✕.
+    May change later (a fold: chevron_right ↔ chevron_down)."""
+    w._dbdms_glyph = name
+    return w
+
+
+def level(w, value: str = ""):
+    """1.24.3 (phase 2): a label's state – "ok" | "warn" | "err" | "off" | "" (none) – drawn in the theme's state
+    colour (Qt property "state"). Only beside words that say the state too: colour is never the only sign."""
+    w._dbdms_level = value or ""
+    return w
+
+
 class Button(Widget):
     def invoke(self):
         cmd = self._opts.get("command")

@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import history, official
-from .i18n import _
+from .i18n import _, current as _language
 from .textnorm import fmt_duration
 
 MAPS_SHOWN = 10            # map bars: the most played
@@ -49,7 +49,8 @@ def play_time(seconds: float) -> str:
     """Play time of many rounds: "29.5 h" from an hour on (h:mm:ss reads like a clock time there)."""
     if seconds < 3600:
         return fmt_duration(seconds)
-    return f"{seconds / 3600:.1f} h"
+    txt = f"{seconds / 3600:.1f}"
+    return (txt.replace(".", ",") if _language() == "de" else txt) + " h"   # 1.24.7: "58,3 h" in German
 
 
 @dataclass
@@ -150,26 +151,27 @@ def tiles(rounds, pairs) -> list:
     o = official.summary([m for _r, m in pairs])
     ws = history.wait_summary(rounds)
     out = [Tile(_("Runden"), str(s["count"]), _("{time} gespielt", time=play_time(s["total"])))]
+    # 1.24.2 (phase 2 audit: four of eight tiles said "–" without match data): a value the selection does not
+    # have gets no tile – the statistics page says once what is missing and how to get it (App: stats_data_row)
     if o["killer"]:
         sub = _("4K: {n} von {total}", n=o["four"], total=o["killer"])
         if o["abandons"]:
             sub += " · " + _("{n}× Abandon", n=o["abandons"])
         out.append(Tile(_("Ø Kills"), f"{o['kills']:.2f}", sub, frac=o["kills"] / 4))
-    else:
-        out.append(Tile(_("Ø Kills"), sub=_("keine Killer-Runden mit Stats-Daten")))
     if o["survivor"]:
         out.append(Tile(_("Entkommen"), f"{o['escaped']:.0%}", _("{n} Survivor-Runden", n=o["survivor"]),
                         frac=o["escaped"]))
-    else:
-        out.append(Tile(_("Entkommen"), sub=_("keine Survivor-Runden mit Stats-Daten")))
-    out.append(Tile(_("Ø Rundendauer"), fmt_duration(s["avg"]) if s["count"] else "–"))
-    out.append(Tile(_("Ø Wartezeit"), fmt_duration(ws["avg"]) if ws["count"] else "–",
-                    _("Median {time}", time=fmt_duration(ws["median"])) if ws["count"] else ""))
-    out.append(Tile(_("Ø Bloodpoints"), _bp(o["bp"] / o["bp_matches"]) if o["bp_matches"] else "–",
-                    _("{n} Matches", n=o["bp_matches"]) if o["bp_matches"] else ""))
+    if s["count"]:
+        out.append(Tile(_("Ø Rundendauer"), fmt_duration(s["avg"])))
+    if ws["count"]:
+        out.append(Tile(_("Ø Wartezeit"), fmt_duration(ws["avg"]),
+                        _("Median {time}", time=fmt_duration(ws["median"]))))
+    if o["bp_matches"]:
+        out.append(Tile(_("Ø Bloodpoints"), _bp(o["bp"] / o["bp_matches"]), _("{n} Matches", n=o["bp_matches"])))
     rate = bp_rate(pairs)                                       # 1.6.3: what farming earns
-    out.append(Tile(_("Bloodpoints pro Stunde"), _bp(rate.per_hour) if rate.per_hour else "–",
-                    _("mit Wartezeit {bp}", bp=_bp(rate.per_hour_waiting)) if rate.per_hour_waiting else ""))
+    if rate.per_hour:
+        out.append(Tile(_("Bloodpoints pro Stunde"), _bp(rate.per_hour),
+                        _("mit Wartezeit {bp}", bp=_bp(rate.per_hour_waiting)) if rate.per_hour_waiting else ""))
     return out
 
 
@@ -217,7 +219,7 @@ def matrix(pairs, label=lambda k: k):
 def build(rounds, pairs, killer_label=lambda k: k) -> Dashboard:
     """``rounds``: the rounds the filters selected; ``pairs``: [(round, official match)] of those."""
     if not rounds:
-        return Dashboard(empty=_("Keine Runden in dieser Auswahl."))
+        return Dashboard(empty=_("Keine Runden in dieser Auswahl – „Filter zurücksetzen“ zeigt wieder alle."))
     d = Dashboard(tiles=tiles(rounds, pairs), maps=map_rows(rounds, pairs))
     d.maps_max = max((n for _m, n, _r in d.maps), default=1)
     d.rows, d.columns, d.cells = matrix(pairs, killer_label)

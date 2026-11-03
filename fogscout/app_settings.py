@@ -39,6 +39,18 @@ def read_password(stored) -> tuple[str, bool]:
     return s, True
 
 
+
+def rec_status_level(text: str, ok: bool, err: bool = False) -> str:
+    """1.24.3 (phase 2, pure): the colour of the OBS line under "Verbindung testen" – it was grey like a hint, the
+    error too. ok = green; a failure = red (1.24.5: the recorder marks them – ``err`` – a wrong password or "no
+    obs-websocket on this port" were amber before; the text check stays for the older wording); anything else not
+    ok (sound/picture source, buffer, drive) = amber. The words stay – colour is never the only sign."""
+    if ok:
+        return "ok"
+    if err or text.startswith(_("OBS nicht erreichbar")) or text.startswith(_("Fehler")):
+        return "err"
+    return "warn"
+
 class SettingsTab:
     # --------------------------------------------------------- tab: settings
     def _tab_settings(self):
@@ -395,8 +407,9 @@ class SettingsTab:
         ct.pack(side="left", padx=6)
         ct.bind("<<ComboboxSelected>>", lambda e: self._rec_setting())
         self.rec_status_var = ui.StringVar(value="")
-        self._reg("st.more.rec_status", ui.Label(rc, textvariable=self.rec_status_var, wraplength=420,
-                                                  style="Dim.TLabel")).pack(anchor="w", pady=(4, 0))
+        self.rec_status_label = ui.level(self._reg("st.more.rec_status", ui.Label(   # 1.24.3: ok/warn/err colour
+            rc, textvariable=self.rec_status_var, wraplength=420, style="Dim.TLabel")))
+        self.rec_status_label.pack(anchor="w", pady=(4, 0))
         self._reg("st.more.rec_text", ui.Label(rc, text=_(
             "OBS nimmt auf, das Programm sagt nur wann: Start beim Map-Banner, Stopp beim erkannten Rundenende, "
             "Datei nach Datum, Map und Killer benannt. Dafür in OBS unter Werkzeuge → WebSocket-Servereinstellungen "
@@ -736,6 +749,7 @@ class SettingsTab:
 
     def _rec_test(self):
         self.rec_status_var.set(_("Verbinde mit OBS …"))
+        ui.level(self.rec_status_label, "")
         self.recorder.configure(self._rec_cfg())
         self.recorder.test()
 
@@ -743,6 +757,7 @@ class SettingsTab:
         """Recorder thread -> UI: status (text, ok) | started | saved | deleted."""
         if kind == "status":
             self.rec_status_var.set(d.get("text", ""))
+            ui.level(self.rec_status_label, rec_status_level(d.get("text", ""), d.get("ok", True), d.get("err", False)))
             if not d.get("ok", True):
                 self._log(_("Aufnahme: {text}", text=d.get("text", "")), "Fehler")
         elif kind == "warn":                    # 1.4.1: OBS/drive missing when DBD starts, a broken file
@@ -856,14 +871,21 @@ class SettingsTab:
             self._log(_("Symbol im Infobereich nicht verfügbar ({error}) – Minimieren wie gewohnt.",
                         error=self.tray.error), "Fehler")
 
+    def _user_state(self):
+        """What the player reads about Fog Scout now (status.user_state): the tray's dot and – since 1.24 – the
+        foot of the window's navigation."""
+        m = self.catalog.maps.get(self.current[0]) if self.current else None
+        return status.user_state(self._worker_status, auto_detect=bool(self.settings.get("auto_detect", True)),
+                                 game_found=self.game is not None, simulate=bool(self.simulate),
+                                 has_map=self.overlay.has_map(), map_label=m.label(self.current[1]) if m else "",
+                                 visible_wanted=self.user_visible,
+                                 hidden_after_match=self.hidden_after_match, menu_paused=self.menu_paused)
+
     def _tray_tick(self):
         """1.3.6: the tray icon shows the state by a coloured dot (like the overview's status dot)."""
         if not self.tray.active:
             return
-        st = status.user_state(self._worker_status, auto_detect=bool(self.settings.get("auto_detect", True)),
-                               game_found=self.game is not None, simulate=bool(self.simulate),
-                               has_map=self.overlay.has_map(), visible_wanted=self.user_visible,
-                               hidden_after_match=self.hidden_after_match, menu_paused=self.menu_paused)
+        st = self._user_state()
         u = self._unsure
         self.tray.set_status(status.tray_dot(st, bool(u and u.get("shown")),
                                              self.game is not None or bool(self.simulate)),
@@ -1105,7 +1127,8 @@ class SettingsTab:
 
     def _backup_text(self) -> str:
         count, day = backups.status(self.root_dir)
-        state = _("{n} Dateien, zuletzt {day}", n=count, day=day) if count else _("noch keine")
+        state = (_("{n} Dateien, zuletzt {day}", n=count, day=day) if count > 1 else       # 1.25: not "1 Dateien"
+                 _("1 Datei, zuletzt {day}", day=day) if count else _("noch keine"))
         return _("Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die "
                  "letzten {n} Stände je Datei; vor „Alle Runden löschen“ eine zusätzliche): {state}",
                  folder=backups.DIR, n=backups.KEEP, state=state)
