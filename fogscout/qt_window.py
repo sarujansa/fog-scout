@@ -300,6 +300,8 @@ SPECS = {
                                             ("row", (("label", "st.more.cl_key.label"), ("entry", "st.more.cl_key"),
                                                      ("button", "st.more.cl_test"), ("button", "st.more.cl_clear"),
                                                      ("stretch",))),
+                                            ("row", (("button", "st.more.cl_keys"), ("button", "st.more.cl_billing"),
+                                                     ("stretch",))),                                  # 1.26.1
                                             ("hint", "st.more.cl_status"), ("hint", "st.more.cl_text"))))))),
     ),
 }
