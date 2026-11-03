@@ -314,7 +314,7 @@ def test_the_program_starts_shows_every_page_and_quits(app_root):
             assert (app.settings["color_theme"], app.settings["accent_custom"]) == ("custom", "#e0508f")
             assert app.swatches.current == "#e0508f" and app.theme_var.get() == "Eigene Farbe"
             order = app.settings["card_order"]["settings"]["0"]
-            assert order[0] == "st.more.folders"               # 1.8.90: the last card of the tab "Allgemein" first
+            assert order[0] == "st.more.backup"                # 1.8.90: the last card of the tab "Allgemein" first
             app._card_order_reset()                            # "Anordnung zurücksetzen"
             assert app.settings["card_order"] == {} and app.qt.forms["settings"].columns[0].ids()[0] == "st.look"
             for key in list(app.qt.dialogs):

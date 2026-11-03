@@ -587,7 +587,6 @@ EN = {
     "Beendet das Programm und startet es über start.bat neu – dabei wird das Update installiert.":
         "Closes the program and starts it again via start.bat – the update is installed on the way.",
     "Alle löschen": "Delete all",
-    "Ordner": "Folders",
     "Programmordner öffnen": "Open program folder",
     "Karten-Ordner öffnen": "Open maps folder",
     "liest nur Bildschirmpixel, sendet keine Eingaben ans Spiel.": "reads screen pixels only, sends no input to the game.",
