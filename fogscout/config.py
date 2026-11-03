@@ -210,6 +210,9 @@ DEFAULTS = {
     "youtube_playlist_clip": "",        # playlist id for clips …
     "youtube_playlist_round": "",       # … and for rounds ("" = none)
     "youtube_playlist_names": {},       # {id: title} as Google listed them (the two choices)
+    "claude_on": False,                 # 1.26: the search (command palette) may ask Claude – only on the user's pick
+    "claude_key": "",                   # the user's own Anthropic API key, DPAPI-protected (spotify.protect), PC-specific
+    "palette_recent": [],               # 1.26: ids of the palette's last picks (palette.RECENT_KEPT), PC-specific
     "sysinfo": "right",                 # system values at the top of a black bar: off | left | right | custom
     "sysinfo_pos": [1.0, 0.0],          # sysinfo = custom: 0..1 of the free space in the DBD window (x, y)
 }
@@ -238,7 +241,7 @@ def _version(raw: dict) -> int:
         return SETTINGS_VERSION
 
 
-SECRET_KEYS = ("rec_password", "spotify_token", "youtube_client_secret", "youtube_token")   # 1.8.38: never in a backup
+SECRET_KEYS = ("rec_password", "spotify_token", "youtube_client_secret", "youtube_token", "claude_key")   # 1.8.38: never in a backup
 
 
 def export_settings(data: dict, path: str) -> None:
@@ -255,7 +258,7 @@ def export_settings(data: dict, path: str) -> None:
 LOCAL_KEYS = ("setup_version", "setup_root", "qt_geometry", "official_dir", "layouts", "layout_key",
               "rec_volume", "rec_rel", "rec_folder", "rec_password", "spotify_token", "seen_version",
               "youtube_client_secret", "youtube_token", "youtube_queue", "youtube_quota", "shots_folder",
-              "editor_layout")
+              "editor_layout", "claude_key", "palette_recent")
 
 
 def reset_data(current: dict) -> dict:
