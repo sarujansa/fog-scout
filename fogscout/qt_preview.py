@@ -107,7 +107,7 @@ class PreviewView(QWidget):
         p.setPen(Qt.NoPen)
         p.setBrush(QColor("#2b3036"))
         p.drawRect(game)
-        p.setPen(QColor("#5c636d"))
+        p.setPen(QColor("#9aa1ab"))                # 1.25: 5.1:1 on the game picture (was 2.2:1)
         f = QFont(self.font())
         f.setPointSizeF(max(7.0, f.pointSizeF() * 0.9))
         p.setFont(f)
