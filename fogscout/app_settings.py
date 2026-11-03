@@ -857,6 +857,8 @@ class SettingsTab:
             self._rec_card_render()
         elif kind == "obs_status":              # 1.15: the recording card's live state
             self._rec_card_state(d)
+        elif kind == "obs_quality":             # 1.29: "In OBS einstellen" / "Zurücksetzen"
+            self._rec_quality_event(d)
 
     def record_toggle(self):
         """1.15: hotkey / card button – start an OBS recording by hand, or stop the one on air (a round's too)."""
