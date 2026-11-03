@@ -2857,6 +2857,7 @@ def test_status_signs_are_drawn_glyphs_with_words(qapp, keep):
     from fogscout import qt_views
     assert qt_views.sign_words("★  ⚑2  ▶…") == "behalten (nie aufgeräumt) · 2 Marken · wartet auf den YouTube-Upload"
     assert qt_views.sign_words("▶") == "auf YouTube" and qt_views.sign_words("") == ""
+    assert qt_views.sign_words("⚑1") == "1 Marke"                        # not "1 Marken"
     t = keep(qt_views.Table("rec", lambda *a: None))
     cols = [("when", "Wann", "w"), ("status", "Status", "w")]
     t.show_state({"columns": cols, "rows": [("a", 0, "", ["heute", "★  ⚑2"], [], True)], "signs": ["status"]})
