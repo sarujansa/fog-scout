@@ -24,6 +24,7 @@ log = logging.getLogger("fogscout")
 
 WARM_AFTER_MS = 300                  # 1.3.4: pages laid out once after the start (1.8.72: built here, so sooner)
 WARM_STEP_MS = 40                    # 1.8.72: pause between building two pages in the warm-up (each 20–70 ms)
+WARM_QUIET_S = 0.4                   # 1.25: no warm-up step this soon after a click or key (_ui_refresh_t)
 GEOMETRY_DELAY = 1.0          # s after the last move/resize before the size is saved
 QT_HOTKEYS = {"scan": "scan_now", "reject": "reject_map"}
 PREVIEW_PX = 900              # map preview on the maps page: picture scaled to fit this box first
@@ -163,7 +164,8 @@ def ui_state(w) -> dict:
                   menu=hasattr(w, "_dbdms_menu"),                         # 1.8.10: right-click actions
                   open=hasattr(w, "_dbdms_open"),                         # 1.23: double-click / Enter
                   see=getattr(w, "_see", None),                           # 1.17.1: scroll a row into view
-                  empty=getattr(w, "_dbdms_empty", ""))                   # 1.24.3: words when no row is shown
+                  empty=getattr(w, "_dbdms_empty", ""),                   # 1.24.3: words when no row is shown
+                  signs=list(getattr(w, "_dbdms_signs", ())))             # 1.25: ★ ⚑ ▶ drawn as glyphs
         return st
     if isinstance(w, ui.Scale):
         value = w.get()
@@ -327,6 +329,11 @@ class QtShell:
         next ones (measured: settings 112 → ~11 ms). 1.8.72: the pages are built here too, one per step with a
         pause between (WARM_STEP_MS) – the window showed only after all of them were built before."""
         if self.qt is None or self._quitting:
+            return
+        # 1.25 (measured: the maps search took up to 198 ms when a page was built in the same pass): while the user
+        # clicks or types, the warm-up waits – it is for later visits, the click is now
+        if time.monotonic() - self.__dict__.get("_ui_refresh_t", -1e9) < WARM_QUIET_S:
+            self.root.after(round(WARM_QUIET_S * 1000), self._qt_warm)
             return
         try:
             if self.qt.build_next():
