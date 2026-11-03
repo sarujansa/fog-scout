@@ -8,6 +8,7 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (QAbstractScrollArea, QAbstractSlider, QAbstractSpinBox, QApplication, QComboBox, QFrame,
                                QLabel, QScrollArea, QVBoxLayout, QWidget)
 
+from . import qt_theme           # 1.24.6: at module level – an import statement in set_glyph cost ~1.9 µs per call
 from .i18n import N_, _
 
 # 1.24 (phase 2, prompt_phase2.md): one line under each page's title – what the page is for
@@ -86,12 +87,11 @@ def set_glyph(w, name, primary=False, tone="fg"):
     kept as the property "glyph" (the search knows a closed fold by "chevron_right"). ``tone`` "dim": a quiet sign
     that turns to the accent with the keyboard focus (the rounds' ▶ on the overview). 1.24.5: what was asked is
     kept (``_glyph_args``) – refresh_glyphs draws signs made before the theme was known, or on another screen."""
-    from . import qt_theme
     ratio = w.devicePixelRatioF() or 1.0
     key = (name, bool(primary), tone, ratio, qt_theme.look_key())   # 1.24.5: no palette built just to compare
-    w._glyph_args = (name, bool(primary), tone)
     if w.__dict__.get("_glyph_key") == key:             # (getattr of a missing name on a Qt widget: 3.7 µs)
-        return
+        return                                          # (_glyph_args is part of the key – unchanged on a hit)
+    w._glyph_args = (name, bool(primary), tone)
     from PySide6.QtCore import QSize
     from PySide6.QtGui import QIcon
     from . import qt_icons

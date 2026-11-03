@@ -491,6 +491,21 @@ def test_a_table_the_filters_empty_says_so(app_root, tmp_path, monkeypatch):
         app.quit()
 
 
+def test_obs_away_with_recordings_off_but_a_folder_keeps_the_next_step(app_root, tmp_path, monkeypatch):
+    """1.24.6 (second review): with recording off but a folder set, F9 still records by hand – OBS away is amber
+    (not red, not silent) and "Verbindung prüfen …" stays; the App hands the recorder's err on to the OBS line."""
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    try:
+        app.settings.set("rec_on", False)
+        app._rec_card_state({"connected": False, "error": "x"})
+        assert app.rec_state_label._dbdms_level == "warn" and app.rec_obs_btn.winfo_manager()
+        app._rec_event("status", {"text": "OBS hat die Anmeldung abgelehnt – Passwort falsch?", "ok": False,
+                                  "err": True})
+        assert app.rec_status_label._dbdms_level == "err"
+    finally:
+        app.quit()
+
+
 def test_a_gif_clip_is_not_offered_to_youtube(app_root, tmp_path, monkeypatch):
     """A GIF of the clip editor had an enabled YouTube button and menu entry that did nothing, without a word."""
     app = _clips_app(app_root, tmp_path, monkeypatch)
@@ -607,7 +622,7 @@ def test_the_recording_card_text_follows_obs_state():
     assert rec_card_level({"connected": False}, True) == "err" and rec_card_level(rec, True) == "ok"
     assert rec_card_level(dict(rec, paused=True), True) == "warn"
     assert rec_card_level(dict(base, buffer=None), True) == "warn" and rec_card_level(base, True) == ""
-    assert rec_card_level({"connected": False}, True, rec_on=False) == ""     # 1.24.5: off on purpose – no error
+    assert rec_card_level({"connected": False}, True, rec_on=False) == "warn"  # 1.24.6: off – F9 still needs OBS
     assert "von OBS selbst gestartet" in rec_card_text(dict(rec, ours=False))[0]
     warn = rec_card_text(dict(rec, output_skipped=20, output_total=1000, render_skipped=1, render_total=1000))[2]
     assert "lässt Bilder aus (20 von 1000" in warn and "Rendern" not in warn   # 0.1 % rendering: no warning

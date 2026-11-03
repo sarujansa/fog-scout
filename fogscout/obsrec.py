@@ -1186,6 +1186,7 @@ class Recorder(threading.Thread):
         self._parts_t = 0.0          # 1.12 review: last look for clips left as ".tmp" (settle_parts)
         self._routed = None          # 1.8.23: sources OBS had on their own track (None = unknown / not routed)
         self._ready = False          # 1.8.41: OBS was set up for this DBD session (else retried every RECHECK_S)
+        self._reachable = None       # 1.24.6: the last connection to OBS worked (True), failed (False), none yet
         self._buffer_tried = False   # 1.8.42: we asked OBS to start its replay buffer (once per DBD/OBS session)
         self._buffer_check = False   # … and look on the next round whether it really runs
         self._next_check = 0.0
@@ -1325,7 +1326,7 @@ class Recorder(threading.Thread):
                     try:
                         step()
                     except ObsError as e:
-                        self._say(str(e), False)
+                        self._say(str(e), False, err=True)          # 1.24.6: e.g. StopRecord at the round end
                     except Exception:
                         log.exception("OBS-Aufnahme: %s", step.__name__)
                         self._say(_("Fehler in {step} – siehe Log.", step=step.__name__.strip("_")), False)
@@ -1404,11 +1405,13 @@ class Recorder(threading.Thread):
 
     @property
     def obs_ready(self) -> bool | None:
-        """1.24.5 (review): OBS set up for the running DBD (True), not (yet) – unreachable or still connecting
-        (False); None while DBD does not run (the recorder talks to OBS only then). Read by the overview."""
+        """1.24.5 (review): while DBD runs, whether the recorder's last connection to OBS worked (True) or failed
+        (False); None while DBD does not run or before the first try. 1.24.6 (second review): from ``_reachable``,
+        not ``_ready`` – that one only says "set up" (a settings change resets it while OBS stays connected) and is
+        not checked again without replay buffer or OBS overlay. Read by the overview."""
         if not self._game:
             return None
-        return bool(self._ready)
+        return self._reachable
 
     def _buffer_state(self, c):
         """True/False = OBS's replay buffer runs or not; None = not enabled in OBS's settings (1.8.32)."""
@@ -1420,7 +1423,13 @@ class Recorder(threading.Thread):
             raise
 
     def _client(self) -> ObsClient:
-        return ObsClient(self.cfg.port, self.cfg.password).connect()
+        try:
+            c = ObsClient(self.cfg.port, self.cfg.password).connect()
+        except ObsError:
+            self._reachable = False              # 1.24.6: every connection says whether OBS is there (obs_ready)
+            raise
+        self._reachable = True
+        return c
 
     def _mark(self):
         if self.active is None:
@@ -1798,14 +1807,14 @@ class Recorder(threading.Thread):
             if self._obs_open and not quiet:
                 self._warn(_("OBS ist offen, aber nicht erreichbar – in OBS unter Werkzeuge → "
                              "WebSocket-Servereinstellungen den Server aktivieren und Port/Passwort prüfen. ({error})",
-                             error=e))
+                             error=e), err=True)
             elif self._obs_started and not self._obs_late and time.time() >= self._obs_wait:
                 self._obs_late = True
                 self._warn(_("OBS wurde gestartet, ist aber nicht erreichbar – in OBS unter Werkzeuge → "
                              "WebSocket-Servereinstellungen den Server aktivieren und Port/Passwort prüfen. ({error})",
-                             error=e))
+                             error=e), err=True)
             elif not quiet and not self._obs_started:
-                self._warn(_("OBS läuft nicht – die Runden werden nicht aufgenommen. ({error})", error=e))
+                self._warn(_("OBS läuft nicht – die Runden werden nicht aufgenommen. ({error})", error=e), err=True)
             return
         self._ready = True
         try:
@@ -1829,8 +1838,9 @@ class Recorder(threading.Thread):
         finally:
             c.close()
 
-    def _warn(self, text):
-        self._say(text, False)
+    def _warn(self, text, err=False):
+        """``err`` (1.24.6): OBS away at DBD start is a failure (red in the settings), a missing drive a hint."""
+        self._say(text, False, err=err)
         self._post("warn", text=text)
 
     def _begin_early(self, meta):

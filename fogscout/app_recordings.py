@@ -133,11 +133,11 @@ def rec_card_level(d: dict | None, on: bool, rec_on: bool = True) -> str:
     """1.24.3 (phase 2, pure): the colour of the card's first line (ui.level) – the words say the same: off = "aus",
     err = OBS not reachable, ok = recording, warn = ready, but F8 has no buffer; "" = plain (waiting, ready).
     1.24.5 (review): recordings switched off on purpose (``rec_on`` False, a folder still set – the card still asks
-    OBS): OBS away is no error then."""
+    OBS): OBS away is no error then; 1.24.6 (second review): but recording by hand (F9) still needs it – amber."""
     if d is None:
         return "" if on else "off"
     if not d.get("connected"):
-        return "err" if rec_on else ""
+        return "err" if rec_on else "warn"
     if d.get("recording"):
         return "warn" if d.get("paused") else "ok"
     return "warn" if d.get("buffer", False) is None else ""
@@ -662,7 +662,7 @@ class RecordingsTab:
             self.rec_card.pack(fill="x", pady=(8, 0), after=self.rec_hint_label)
         elif not card and self.rec_card.winfo_manager():
             self.rec_card.pack_forget()
-        away = d is not None and not d.get("connected") and rec_on      # 1.24.5: no "Verbindung prüfen" when off
+        away = d is not None and not d.get("connected")     # 1.24.6: also with rec_on off – F9 still needs OBS
         if away and not self.rec_obs_btn.winfo_manager():
             self.rec_obs_btn.pack(side="left", padx=(6, 0))
         elif not away and self.rec_obs_btn.winfo_manager():

@@ -2646,6 +2646,15 @@ def test_the_navigation_shows_the_name_and_the_state_on_every_page(qapp, keep):
     win.show_status("err", long.strip())
     assert st.text.text().count("\n") <= 1 and st.text.text().endswith("…") and st._shown[-1] == "warning"
     assert long.strip() in st.toolTip()
+    from fogscout import qt_icons, qt_theme                   # 1.24.6: what is drawn, not only what was asked
+    colour = qt_theme.dot_colour("err", True)
+    ratio = win.devicePixelRatioF() or 1.0
+    assert st.dot.pixmap().toImage() == qt_icons.pixmap("warning", colour, qt_theme.ICON["s"], ratio).toImage()
+    assert st.dot.pixmap().toImage() != qt_icons.pixmap("record", colour, qt_theme.ICON["s"], ratio).toImage()
+    fm, width = st.text.fontMetrics(), qt_window.NAV_W - 46     # 1.24.6: a first word wider than the column
+    win.show_status("err", "Bildschirmaufnahmeverbindungsfehlermeldung fehlgeschlagen: Zugriff verweigert")
+    first = st.text.text().split("\n")[0]
+    assert first.endswith("…") and fm.horizontalAdvance(first) <= width
     win.show_status("wait", "Wartet auf das nächste Match")
     assert st._shown[-1] == "record"
     win.resize(900, 700)                                    # narrow: icons only
@@ -2653,6 +2662,9 @@ def test_the_navigation_shows_the_name_and_the_state_on_every_page(qapp, keep):
     assert win._nav_compact and st.text.isHidden() and not win.brand_name.isVisible()
     assert "Wartet auf das nächste Match" in st.toolTip()
     assert not win.overview.status_line.isHidden()          # 1.24.5: the overview says it in words again
+    win.show_model(overview.overview_model(fake_app(), time.time(), is_win=True))     # 1.24.6: and which words
+    line = win.overview.status_line
+    assert line.text() and "Wartet auf DBD" in line.text() and line.property("state") == ""
     win.resize(1280, 800)
     qapp.processEvents()
     assert win.overview.status_line.isHidden()
@@ -2665,7 +2677,7 @@ def test_signs_made_before_the_theme_follow_it_and_another_screen_scale(qapp, ke
     (Zurück, Suche leeren, the rounds' ▶) kept the dark colours in the light mode. apply_theme draws them again
     (qt_common.refresh_glyphs), and so does a change of the screen's pixel ratio (QEvent.DevicePixelRatioChange)."""
     from PySide6.QtCore import QEvent
-    from fogscout import qt_theme, qt_window
+    from fogscout import qt_common, qt_theme, qt_window
     win = keep(qt_window.MainWindow(lambda a, arg=None: None))
     back = win.maps.p_back
     dark = qt_theme.current_dark()
@@ -2677,9 +2689,17 @@ def test_signs_made_before_the_theme_follow_it_and_another_screen_scale(qapp, ke
         win.show_status("ok", "Coal Tower")
         drawn = win.status_btn._shown
         win.status_btn._shown = ("stale",)                    # what a screen change has to replace
-        type(qapp).sendEvent(win, QEvent(QEvent.DevicePixelRatioChange))
-        qapp.processEvents()
-        assert win.status_btn._shown == drawn and not win.brand_icon.pixmap().isNull()
+        calls = []                                            # 1.24.6: navigation icons and every glyph too
+        real_nav, real_refresh = win._nav_icons, qt_common.refresh_glyphs
+        win._nav_icons = lambda: (calls.append("nav"), real_nav())
+        qt_common.refresh_glyphs = lambda root: (calls.append("glyphs"), real_refresh(root))
+        back._glyph_key = None                                # a sign drawn for another screen
+        try:
+            type(qapp).sendEvent(win, QEvent(QEvent.DevicePixelRatioChange))
+            qapp.processEvents()
+        finally:
+            qt_common.refresh_glyphs = real_refresh
+        assert win.status_btn._shown == drawn and calls == ["nav", "glyphs"] and back._glyph_key is not None
     finally:
         win.apply_theme(dark, 1.0)
         win.allow_close = True
@@ -2714,6 +2734,21 @@ def test_a_model_button_can_be_the_main_action_and_carry_a_drawn_sign(qapp):
         assert w._glyph_key != key and not w.icon().isNull()
     finally:
         qt_theme.set_dark(dark)
+
+
+def test_a_model_label_level_reaches_the_qt_property(qapp):
+    """1.24.6 (second review): ui.level must end as the Qt property "state" the style sheet colours by – the tests
+    only read the model's attribute."""
+    from fogscout import uimodel as ui
+    from fogscout.app_qt import ui_state
+    from fogscout.qt_pages import make_control, show_control
+    lab = ui.level(ui.Label(ui.Frame(), text="OBS nicht erreichbar"), "err")
+    w, extra = make_control("label", str(lab), lambda *a: None)
+    show_control("label", w, extra, ui_state(lab))
+    assert w.property("state") == "err"
+    ui.level(lab, "")
+    show_control("label", w, extra, ui_state(lab))
+    assert w.property("state") == ""
 
 
 def test_every_page_says_what_it_is_for_under_its_title():
