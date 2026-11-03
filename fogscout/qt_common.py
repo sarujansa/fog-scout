@@ -75,9 +75,10 @@ def pixmap_from_pil(img: Image.Image, height: int, ratio: float = 1.0) -> QPixma
 ZWSP = "\u200b"
 
 
-def soft_wrap(text: str, run: int = 32) -> str:
+def soft_wrap(text: str, run: int = 16) -> str:
     """1.28 (audit F5): a zero-width space into every stretch longer than ``run`` characters without a space – a
-    word-wrapped QLabel can only break at spaces, so a long URL or a run of letters from outside widened the layout."""
+    word-wrapped QLabel can only break at spaces, so a long URL or a run of letters from outside widened the layout.
+    16, not 32: with the Windows font 32 wide letters took ~296 px, more than the editor's inspector (CI 1.28)."""
     out, n = [], 0
     for ch in str(text or ""):
         n = 0 if ch.isspace() else n + 1
