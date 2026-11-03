@@ -486,9 +486,9 @@ def test_the_flow_table_times_the_gaps_between_received_packets():
     assert [g[0] for g in tab.snapshot(106.5)[0]["gaps"]] == [104.0]           # the first one left the window
 
 
-def test_the_servers_gaps_count_once_and_a_stall_shows_live(tmp_path, monkeypatch):
-    """The helper lists a gap for 5 s, the program counts it once (take_gaps for the round); a gap ≥ LAG_LIVE_S or a
-    silent server makes lagging() true for LAG_HOLD_S; other partners' gaps do not count."""
+def test_the_servers_gaps_count_once_and_only_the_servers(tmp_path, monkeypatch):
+    """The helper lists a gap for 5 s, the program counts it once (take_gaps for the round); other partners' gaps
+    do not count; ``quiet`` is how long the server is silent now. 1.28.2: no live "stutters" state any more."""
     w, control, result = _watch(tmp_path, monkeypatch)
     w._rdns = {SERVER: ("eu-central-1", time.time())}
     other = {"ip": "52.9.9.9", "port": 9000, "pps": 5.0, "gaps": [[1000.0, 2.0]], "quiet": 0.0}
@@ -499,16 +499,15 @@ def test_the_servers_gaps_count_once_and_a_stall_shows_live(tmp_path, monkeypatc
 
     write(1000.0, [])
     w.poll(1000.2)
-    assert w.take_gaps() == [] and not w.lagging(1000.2)
+    assert w.take_gaps() == []
     write(1001.0, [[1000.9, 0.3]])
     w.poll(1001.2)
     write(1002.0, [[1000.9, 0.3], [1001.8, 0.9]])
     w.poll(1002.2)
     assert w.take_gaps() == [0.3, 0.9] and w.take_gaps() == []                 # each once
-    assert w.lagging(1002.2) and w.lagging(1001.8 + connwatch.LAG_HOLD_S)
-    assert not w.lagging(1001.8 + connwatch.LAG_HOLD_S + 0.1)
     write(1010.0, [], quiet=0.7)                                               # silent right now
     w.poll(1010.2)
-    assert w.lagging(1010.2) and abs(w.quiet - 0.9) < 1e-6
+    assert abs(w.quiet - 0.9) < 1e-6
+    assert not hasattr(w, "lagging") and not hasattr(connwatch, "LAG_LIVE_S")
     text = "\n".join(w.diag_lines(1011.0))
     assert "Aussetzer des Servers" in text and ": 2, längster 0.90 s" in text
