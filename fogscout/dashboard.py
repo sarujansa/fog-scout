@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import history, official
-from .i18n import _
+from .i18n import _, current as _language
 from .textnorm import fmt_duration
 
 MAPS_SHOWN = 10            # map bars: the most played
@@ -49,7 +49,8 @@ def play_time(seconds: float) -> str:
     """Play time of many rounds: "29.5 h" from an hour on (h:mm:ss reads like a clock time there)."""
     if seconds < 3600:
         return fmt_duration(seconds)
-    return f"{seconds / 3600:.1f} h"
+    txt = f"{seconds / 3600:.1f}"
+    return (txt.replace(".", ",") if _language() == "de" else txt) + " h"   # 1.24.7: "58,3 h" in German
 
 
 @dataclass

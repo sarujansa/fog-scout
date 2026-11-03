@@ -188,7 +188,8 @@ class StatsTab:
         # 1.24.2: no tile of "–" any more – once a line what is missing and, never set up, the way there
         self.stats_data_row = ui.Frame(box_d)
         self.stats_data_var = ui.StringVar(value="")
-        ui.Label(self.stats_data_row, textvariable=self.stats_data_var, wraplength=540).pack(anchor="w")
+        ui.Label(self.stats_data_row, textvariable=self.stats_data_var, style="Dim.TLabel",       # 1.24.7: a hint,
+                 wraplength=540).pack(anchor="w")                                                # like the others
         self.stats_data_btn = ui.Button(self.stats_data_row, text=_("Match-Daten einrichten …"),
                                         command=self._reveal_official)
         self.stats_data_btn.pack(anchor="w", pady=(4, 0))
@@ -716,7 +717,7 @@ class StatsTab:
                   "Entkommen und Bloodpoints.") if set_up else
                 _("Kills, Entkommen und Bloodpoints kommen von der Stats-Seite – dafür einmal die Match-Daten "
                   "einrichten."))
-            self.stats_data_row.pack(anchor="w", fill="x", after=after, pady=(6, 0))
+            self.stats_data_row.pack(anchor="w", fill="x", after=after, pady=(12, 0))    # 1.24.7: the cards' gap
             if set_up and self.stats_data_btn.winfo_manager():
                 self.stats_data_btn.pack_forget()
             elif not set_up and not self.stats_data_btn.winfo_manager():

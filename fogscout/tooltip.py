@@ -327,6 +327,8 @@ TIPS = {
                         "aussehen – dort markieren oder ignorieren.",
     "Match-Daten einrichten …": "Zu Einstellungen → Match-Daten → Offizielle Match-Daten: einmal das Userscript in den "
                                 "Browser, danach zählen Kills, Entkommen und Bloodpoints in der Statistik.",
+    "Einrichten …": "Zu Einstellungen → Match-Daten → Offizielle Match-Daten: einmal das Userscript in den Browser, "
+                    "danach zählen Kills, Entkommen und Bloodpoints in der Statistik.",
     "Weitere 100 Runden anzeigen": "Die Liste zeigt die neuesten 100 Runden der Auswahl; jeder Klick hängt 100 "
                                    "ältere an.",
     "Exportieren …": "Öffnet das Export-Fenster: Zeitraum (auch von–bis), Rolle, Killer, Map, Region, Spalten nach Wahl "
