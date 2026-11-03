@@ -47,8 +47,6 @@ PING_KEEP = 3          # shown value = median of the last pings (one slow packet
 PEAK_KEEP = 1800.0     # diagnostics: busiest partners of the last 30 min (the match is over when it is copied)
 PEAK_MAX = 8
 PORTS_EVERY = 2.0      # 1.11.6: DBD's UDP ports looked up again this often (a new match may open a new socket)
-LAG_LIVE_S = 0.5       # 1.11.9: the server silent this long (or such a gap a moment ago) → "Verbindung stockt"
-LAG_HOLD_S = 3.0       # … shown this long after the gap ended (the poll runs once a second)
 GAPS_KEPT = 500        # diagnostics: gaps of the server kept since the start
 UNKNOWN = "?"          # region of a game server that AWS does not tell (see AWS_GLOBAL_EC2)
 # EC2 address ranges AWS publishes with region "GLOBAL" (ip-ranges.json, service EC2, as of 2026-10-09): machines
@@ -234,7 +232,6 @@ class ConnectionWatch:
         self.quiet = None              # 1.11.9: seconds since the last packet from the server (None: no server)
         self._fresh = []               # gaps of the server (seconds) not handed out yet (take_gaps)
         self._gap_keys = collections.deque(maxlen=GAPS_KEPT)     # (ip, end) already counted (written 5× each)
-        self._last_big = 0.0           # end of the last gap ≥ LAG_LIVE_S
         self.gaps = collections.deque(maxlen=GAPS_KEPT)          # (end, seconds) of the server's gaps (diagnosis)
 
     @property
@@ -343,21 +340,11 @@ class ConnectionWatch:
             self._gap_keys.append(key)
             self._fresh.append(float(secs))
             self.gaps.append((float(end), float(secs)))
-            if secs >= LAG_LIVE_S:
-                self._last_big = max(self._last_big, float(end))
 
     def take_gaps(self) -> list:
         """The server's receive gaps (seconds) since the last call – for the round in progress."""
         out, self._fresh = self._fresh, []
         return out
-
-    def lagging(self, now: float | None = None) -> bool:
-        """The connection to the server stutters right now: silent ≥ LAG_LIVE_S, or such a gap ended within
-        LAG_HOLD_S."""
-        if not self.server:
-            return False
-        now = now or time.time()
-        return (self.quiet is not None and self.quiet >= LAG_LIVE_S) or now - self._last_big <= LAG_HOLD_S
 
     def _update_ports(self, now: float, hwnd) -> None:
         """1.11.6: DBD's own UDP ports, looked up every PORTS_EVERY s while its window is there."""
