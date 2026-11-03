@@ -34,7 +34,7 @@ class ServerTab:
         row = ui.Frame(f)
         row.pack(fill="x", pady=(6, 0))          # above the list (1.61): one sees them without scrolling
         self.srv_btns = [ui.Button(row, text=_("Ping messen"), command=self.srv_measure),
-                         ui.Button(row, text=_("Auswahl anwenden"), command=self.srv_apply),
+                         ui.primary(ui.Button(row, text=_("Auswahl anwenden"), command=self.srv_apply)),  # 1.24.3
                          ui.Button(row, text=_("Alles freigeben"), command=self.srv_release)]
         self.srv_btns[0].pack(side="left")
         self.srv_btns[1].pack(side="left", padx=6)
@@ -42,7 +42,8 @@ class ServerTab:
         self.srv_summary = ui.StringVar(value="")        # 1.2.19: "3 von 15 Regionen freigegeben"
         ui.Label(f, textvariable=self.srv_summary, style="Big.TLabel").pack(anchor="w", pady=(6, 0))
         self.srv_status = ui.StringVar(value="")
-        ui.Label(f, textvariable=self.srv_status, wraplength=430).pack(anchor="w", pady=(2, 0))
+        self.srv_status_label = ui.level(ui.Label(f, textvariable=self.srv_status, wraplength=430))   # 1.24.3
+        self.srv_status_label.pack(anchor="w", pady=(2, 0))
         self.srv_pending = ui.StringVar(value="")       # 1.23: ticked regions differ from the hosts file
         ui.Label(f, textvariable=self.srv_pending, style="Note.TLabel", wraplength=430).pack(anchor="w", pady=(2, 0))
         tf = ui.Frame(f)
@@ -233,7 +234,13 @@ class ServerTab:
         """Read the hosts file (no administrator rights needed)."""
         self.srv_state = regions.current_state()
         st = self.srv_state
-        if st.get("error"):
+        # 1.24.3 (phase 2): an unreadable hosts file is an error in red, and nothing can be applied or released
+        # until it reads again (Ping messen still works – it does not touch the file)
+        err = bool(st.get("error"))
+        ui.level(self.srv_status_label, "err" if err else "")
+        if not self._srv_busy:
+            self._srv_lock()
+        if err:
             self.srv_status.set(_("hosts-Datei nicht lesbar: {error}", error=st["error"]))
             self._srv_render()
             return
@@ -265,6 +272,7 @@ class ServerTab:
         self.srv_ping = {}
         self._srv_render()
         self.srv_status.set(_("Messe Ping zu den Serverregionen …"))
+        ui.level(self.srv_status_label, "")
         for b in self.srv_btns:
             b.state(["disabled"])
 
@@ -276,14 +284,23 @@ class ServerTab:
             self.events.put(("srv_ping", res))
         threading.Thread(target=work, daemon=True, name="ping").start()
 
+    def _srv_lock(self):
+        """1.24.5 (review): "Auswahl anwenden"/"Alles freigeben" only with a readable hosts file – also after a ping
+        or a job, which enable every button again ("Ping messen" never touches the file)."""
+        err = bool((self.srv_state or {}).get("error"))
+        for b in self.srv_btns[1:]:
+            b.state(["disabled"] if err else ["!disabled"])
+
     def _srv_ping_done(self, res):
         self._srv_busy = False
         self._srv_last_ping = time.time()
         for b in self.srv_btns:
             b.state(["!disabled"])
         if "_error" in res:
+            self._srv_lock()
             self._srv_render()
             self.srv_status.set(_("Ping fehlgeschlagen: {error}", error=res["_error"]))
+            ui.level(self.srv_status_label, "err")
             return
         self.srv_ping = res
         ok = {c: r["ms"] for c, r in res.items() if r.get("ms") is not None}
@@ -294,6 +311,7 @@ class ServerTab:
                 f"{_(regions.NAMES[c])} {ok[c]:.0f} ms" for c in best)))
         else:
             self.srv_status.set(_("Keine Region hat geantwortet (Internet/Firewall/VPN?)."))
+            ui.level(self.srv_status_label, "warn")                     # 1.24.5: a failure, said in amber too
 
     def srv_apply(self):
         if self._srv_busy:
@@ -337,6 +355,7 @@ class ServerTab:
         for b in self.srv_btns:
             b.state(["disabled"])
         self.srv_status.set(_("Warte auf Windows (Administratorrechte) …"))
+        ui.level(self.srv_status_label, "")
         hwnd = self._main_hwnd()
 
         def work():
@@ -364,3 +383,4 @@ class ServerTab:
             err = res.get("error") or _("unbekannter Fehler")
             self._log(_("Serverregionen: {text}", text=err), "System" if res.get("cancelled") else "Fehler")
             self.srv_status.set(err)
+            ui.level(self.srv_status_label, "" if res.get("cancelled") else "err")       # 1.24.3

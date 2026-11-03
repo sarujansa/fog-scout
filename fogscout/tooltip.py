@@ -140,6 +140,7 @@ TIPS = {
     "Anordnung zurücksetzen": "Stellt die Kästen auf allen Seiten, die Reiter-Reihen (Statistik, Overlay) und die "
                               "Navigation links wieder in die ursprüngliche Reihenfolge.",
     "Zurück": "Zurück zu den Karten des Realms (Esc).",
+    "Suche leeren": "Leert das Suchfeld und zeigt wieder alle Maps.",       # 1.24.1: maps page, search without a hit
     "Anzeigen": "Blendet die gewählte Map jetzt als Overlay ein – die Erkennung übernimmt beim nächsten Match "
                 "wieder.",
     "Killer setzen": "Setzt den Killer nur für die markierte Runde und zählt sie als Killer-Runde – z. B. wenn sie "
@@ -248,6 +249,7 @@ TIPS = {
                                                       "aus: Am PC des Nutzers lief der Rundenteil der zusammengefügten "
                                                       "Datei zu schnell. Klappt es nicht, bleiben beide Dateien liegen.",
     "Aufnahmen einrichten …": "Öffnet die Einstellungen für die Aufnahmen mit OBS (Ordner, Verbindung).",
+    "Verbindung prüfen …": "Öffnet Einstellungen → Aufnahmen: OBS-Verbindung (Port, Passwort) und „Verbindung testen“.",
     "Farming-Runden im Unterordner „Farming“ ablegen": "Runden, die das Programm als Farming erkennt (Crossplay aus "
                                                         "oder die Farming-Region), landen im Unterordner „Farming“ "
                                                         "des Aufnahmeordners statt zwischen den normalen Runden. "
@@ -304,7 +306,7 @@ TIPS = {
     "Clips-Ordner öffnen": "Öffnet den Ordner „Clips“ neben den Aufnahmen im Explorer.",
     "Clip bearbeiten …": "Öffnet den Clip-Editor für die markierte Aufnahme: Vorschau, Zeitleiste mit Marken, Start/Ende "
                         "setzen, Ausschnitt als MP4 in den Ordner „Clips“ speichern.",
-    "Drehen ↻": "Dreht die angezeigte Karte um 90° im Uhrzeigersinn (für jede Map gemerkt). Der Map-Name "
+    "Drehen": "Dreht die angezeigte Karte um 90° im Uhrzeigersinn (für jede Map gemerkt). Der Map-Name "
                 "darüber bleibt aufrecht, die Zahlen in der Karte drehen sich mit.",
     "Scannen": "Sucht sofort auf dem ganzen Bildschirm nach einem Map- oder Realm-Namen – falls die "
                "automatische Erkennung das Banner verpasst hat.",
@@ -315,7 +317,6 @@ TIPS = {
     "Verstanden": "Blendet die Karte „Neu seit …“ aus, bis die nächste neue Version kommt.",
     "Zuordnen …": "Der gelesene Name gehört zu einer vorhandenen Map (z. B. anders geschrieben)? Einmal "
                   "zuordnen – danach wird er automatisch erkannt.",
-    "✕": "Hinweis ausblenden.",
     "Falsch erkannt": "Die erkannte Map stimmt nicht: Karte ausblenden, Timer zurücksetzen, die Runde wird nicht "
                       "gezählt. Geht auch im Spiel mit dem Hotkey (Standard Strg+Alt+X).",
     "Stimmt": "Die Map stimmt – Hinweis „unsicher“ ausblenden.",
@@ -326,6 +327,8 @@ TIPS = {
                         "aussehen – dort markieren oder ignorieren.",
     "Match-Daten einrichten …": "Zu Einstellungen → Match-Daten → Offizielle Match-Daten: einmal das Userscript in den "
                                 "Browser, danach zählen Kills, Entkommen und Bloodpoints in der Statistik.",
+    "Einrichten …": "Zu Einstellungen → Match-Daten → Offizielle Match-Daten: einmal das Userscript in den Browser, "
+                    "danach zählen Kills, Entkommen und Bloodpoints in der Statistik.",
     "Weitere 100 Runden anzeigen": "Die Liste zeigt die neuesten 100 Runden der Auswahl; jeder Klick hängt 100 "
                                    "ältere an.",
     "Exportieren …": "Öffnet das Export-Fenster: Zeitraum (auch von–bis), Rolle, Killer, Map, Region, Spalten nach Wahl "

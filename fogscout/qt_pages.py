@@ -4,7 +4,7 @@ a tab's structure (AutoPage), dialogs and the setup assistant.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPalette, QPen
+from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import (QBoxLayout, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QProgressBar,
                                QPushButton, QRadioButton, QScrollArea, QSizePolicy, QSlider, QStackedWidget,
                                QStyle, QStyleOptionSlider, QTabWidget, QVBoxLayout, QWidget)
@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QBoxLayout, QComboBox, QDialog, QFrame, QGridLayo
 from . import qt_theme
 from .qt_layouts import FlowRow, TileGrid, WrapCheck
 from .i18n import N_, _
-from .qt_common import SLIDER_MAX, guard_wheel, pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page
+from .qt_common import SLIDER_MAX, guard_wheel, pixmap_from_pil, steady_scroll, _label, _tip, _card, _set, _scroll_page, page_head, set_glyph
 from .qt_views import FactBox, Table, LogView, HotkeyButton, Chart, SwatchView, TilesView, DashboardView
 from .qt_preview import PreviewView
 
@@ -75,7 +75,6 @@ class OverviewPage(QWidget):
         self.setObjectName("page")
         self._post = post
         self._thumb_rev = None
-        self._pill_style = None
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
@@ -90,14 +89,14 @@ class OverviewPage(QWidget):
         page.setContentsMargins(22, 18, 22, 18)
         page.setSpacing(12)                       # 1.11.14: like every other page (_scroll_page), was 14
 
-        top = FlowRow(spacing=12)                 # narrow window: the status goes below the title
-        top.right = 1
-        top.addWidget(_label(_("Übersicht"), "h1"))
-        self.pill = QLabel()
-        self.pill.setObjectName("pill")
-        self.pill.setMaximumWidth(520)
-        top.addWidget(self.pill)
-        page.addLayout(top)
+        # 1.24 (phase 2): title and purpose like every page – the state went to the foot of the navigation
+        # (MainWindow.show_status), where every page shows it; the pill here showed it on the overview only
+        page.addLayout(page_head(_("Übersicht"), "overview"))
+        # 1.24.5 (review): narrow window – the navigation shows only the state's sign; here the words again
+        self.status_line = _label(cls="dim", wrap=True)
+        self.status_line.setVisible(False)
+        self._status_now = ("idle", "")
+        page.addWidget(self.status_line)
 
         # the map on display: picture, name, values, actions
         card = _card()
@@ -132,9 +131,14 @@ class OverviewPage(QWidget):
         self.unknown_text = _label(cls="note", wrap=True)
         ul.addWidget(self.unknown_text, 1)
         for text, action in ((N_("Zuordnen …"), "assign"), (N_("Bild hinzufügen …"), "picture"),
-                             ("✕", "dismiss_unknown")):
-            ub = QPushButton(_(text))
-            ub.setToolTip(_tip(text))
+                             ("", "dismiss_unknown")):
+            ub = QPushButton(_(text) if text else "")
+            if action == "dismiss_unknown":       # 1.24: a drawn cross, not "✕"
+                set_glyph(ub, "close")
+                ub.setToolTip(_("Hinweis ausblenden."))
+                ub.setAccessibleName(_("Hinweis ausblenden."))
+            else:
+                ub.setToolTip(_tip(text))
             ub.clicked.connect(lambda _c=False, a=action: self._post(a))
             ul.addWidget(ub)
         info.addWidget(self.unknown)
@@ -143,8 +147,6 @@ class OverviewPage(QWidget):
         self.buttons = {}
         for key in ("scan", "choose", "rotate", "toggle", "reject", "confirm", "layout", "floor", "power"):
             b = QPushButton()
-            if key == "scan":
-                b.setObjectName("primary")
             b.clicked.connect(lambda _c=False, k=key: self._post(k))
             btns.addWidget(b)
             self.buttons[key] = b
@@ -158,10 +160,12 @@ class OverviewPage(QWidget):
         swl = QVBoxLayout(self.switch_card)
         swl.setContentsMargins(*qt_theme.PAD_CARD)
         swl.setSpacing(8)
-        swl.addWidget(_label(_("Schnell ein/aus").upper(), "h2"))
-        self.switch_row = FlowRow(spacing=18)
+        # 1.24 (phase 2): "Funktionen" – each box with what it does now below it (overview.switch_state)
+        swl.addWidget(_label(_("Funktionen").upper(), "h2"))
+        self.switch_row = FlowRow(spacing=22)
         swl.addLayout(self.switch_row)
         self.switches = []
+        self.switch_states = []                   # the words under each box (QLabel, property "state")
         self.switch_card.setVisible(False)
         page.addWidget(self.switch_card)
 
@@ -190,20 +194,11 @@ class OverviewPage(QWidget):
         self.today_note = _label(cls="dim")
         head.addWidget(self.today_note)
         page.addLayout(head)
-        tiles = TileGrid(min_width=170, columns=5)
+        self.today_grid = TileGrid(min_width=170, columns=5)
         self.tiles, self.tile_cards = [], []
-        for i in range(5):                        # 1.4.2: the fifth ("Aufnahmen") only while recording is on
-            t = _card()
-            tl = QVBoxLayout(t)
-            tl.setContentsMargins(*qt_theme.PAD_CARD)
-            box = FactBox(bar=True, post=post)
-            box.sub.setWordWrap(True)
-            tl.addWidget(box)
-            tiles.addWidget(t)
-            self.tiles.append(box)
-            self.tile_cards.append(t)
-            t.setVisible(i < 4)
-        page.addLayout(tiles)
+        for _i in range(4):                       # 1.24.7: more on demand (_today_tile) – up to seven facts
+            self._today_tile().setVisible(True)
+        page.addLayout(self.today_grid)
 
         # 1.8.83: this week against the last one – shown only once a week has rounds
         head = QHBoxLayout()
@@ -213,7 +208,7 @@ class OverviewPage(QWidget):
         self.week_note = _label(cls="dim", wrap=True)
         head.addWidget(self.week_note, 1)
         page.addLayout(head)
-        wgrid = TileGrid(min_width=170, columns=5)
+        wgrid = TileGrid(min_width=170, columns=5, stretch=False)   # 1.24.7: two tiles not half the page wide
         self.week_tiles, self.week_cards = [], []
         for _i in range(5):
             t = _card()
@@ -262,12 +257,27 @@ class OverviewPage(QWidget):
         page.addStretch()
 
     # ------------------------------------------------------------- update
+    def show_status_line(self, on: bool):
+        """1.24.5: the state in words under the title while the navigation is narrow (MainWindow._compact_nav)."""
+        if self.status_line.isHidden() == bool(on):
+            self.status_line.setVisible(bool(on))
+        if on:
+            self._status_paint()
+
+    def _status_paint(self):
+        kind, text = self._status_now
+        level = {"ok": "ok", "warn": "warn", "err": "err"}.get(kind, "")
+        if self.status_line.__dict__.get("_level") != level:
+            self.status_line._level = level
+            self.status_line.setProperty("state", level)
+            self.status_line.style().unpolish(self.status_line)
+            self.status_line.style().polish(self.status_line)
+        _set(self.status_line, text)
+
     def update_page(self, o, thumb=None, tips=None):
-        _set(self.pill, "●  " + o.status_text)
-        pill = qt_theme.pill_style(o.status_kind)
-        if pill != self._pill_style:                  # re-styling repaints: only on a change
-            self._pill_style = pill
-            self.pill.setStyleSheet(pill)
+        self._status_now = (o.status_kind, o.status_text)
+        if not self.status_line.isHidden():
+            self._status_paint()
         _set(self.map_name, o.map_label or _("Noch keine Map"))
         _set(self.map_line, o.map_line)
         _set(self.queue, o.queue)
@@ -296,11 +306,19 @@ class OverviewPage(QWidget):
             if a is not None:
                 _set(b, a[1])
                 b.setEnabled(a[0])
+                name = "primary" if key == o.primary else ""      # 1.24: the main action follows the state
+                if b.objectName() != name:
+                    b.setObjectName(name)
+                    b.style().unpolish(b)
+                    b.style().polish(b)
+                set_glyph(b, OVERVIEW_GLYPHS.get(key), primary=key == o.primary)
                 if tips:
                     tip = tips(key, a[1]) or ""
                     if b.toolTip() != tip:
                         b.setToolTip(tip)
         _set(self.today_note, o.today_note)
+        while len(self.tiles) < len(o.today):
+            self._today_tile()
         for i, (box, card) in enumerate(zip(self.tiles, self.tile_cards)):
             if i < len(o.today):
                 box.show_fact(o.today[i])
@@ -322,23 +340,65 @@ class OverviewPage(QWidget):
             self.days_chart.show_state({"data": days, "dark": getattr(o, "dark", True), "panels": ("rounds",)})
         self.days_card.setVisible(bool(days))
 
+    def _today_tile(self) -> QWidget:
+        """One tile of „Heute“ (1.24.7: made when needed – five fixed widgets dropped the sixth and seventh fact)."""
+        t = _card()
+        tl = QVBoxLayout(t)
+        tl.setContentsMargins(*qt_theme.PAD_CARD)
+        box = FactBox(bar=True, post=self._post)
+        box.sub.setWordWrap(True)
+        tl.addWidget(box)
+        self.today_grid.addWidget(t)
+        self.tiles.append(box)
+        self.tile_cards.append(t)
+        t.setVisible(False)
+        return t
+
     def _show_switches(self, switches):
         """The boxes follow the model: text, tooltip (by the German label, tooltip.TIPS), state – setChecked
         does not emit clicked, so only the user's click posts ("switch", (key, on))."""
         from .tooltip import tip_for_label
         while len(self.switches) < len(switches):
+            item = QWidget()
+            col = QVBoxLayout(item)
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setSpacing(0)
             w = WrapCheck()
             w.key = ""
             w.clicked.connect(lambda on, w=w: self._post("switch", (w.key, bool(on))))
-            self.switch_row.addWidget(w)
+            state = _label(cls="dim")                          # under the box's text, not under the box
+            pol = state.sizePolicy()                           # a box with nothing to say keeps the line: the
+            pol.setRetainSizeWhenHidden(True)                  # row's boxes stay on one height
+            state.setSizePolicy(pol)
+            col.addWidget(w)
+            col.addWidget(state)
+            self.switch_row.addWidget(item)
             self.switches.append(w)
+            self.switch_states.append(state)
+        look = (qt_theme.look_key(), qt_theme.current_zoom())
         for i, w in enumerate(self.switches):
             shown = i < len(switches)
-            if w.isHidden() == shown:
+            item = w.parentWidget()
+            if item.isHidden() == shown:
+                item.setVisible(shown)
+            if w.isHidden() == shown:                 # the box too: callers ask the box (isHidden)
                 w.setVisible(shown)
             if not shown:
                 continue
             sw = switches[i]
+            label = self.switch_states[i]
+            if label.__dict__.get("_look") != look:   # 1.24.7 (visual QA): the indent of the box's own text
+                label._look = look                      # (indicator + spacing of WrapCheck), not a fixed 27 px
+                label.setContentsMargins(w.box.sizeHint().width() + w.layout().spacing(), 0, 0, 0)
+            level = getattr(sw, "level", "")
+            if label.__dict__.get("_level") != level:            # 1.24.5: a Python attribute, not a property read
+                label._level = level
+                label.setProperty("state", level)
+                label.style().unpolish(label)
+                label.style().polish(label)
+            _set(label, getattr(sw, "state", ""))
+            if label.isHidden() == bool(getattr(sw, "state", "")):
+                label.setVisible(bool(getattr(sw, "state", "")))
             w.key = sw.key
             if w.text() != sw.label:
                 w.setText(sw.label)
@@ -430,7 +490,9 @@ class RoundRowView(QFrame):
         self.left.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)   # long names must not widen it
         lay.addWidget(self.left, 1)
         lay.addWidget(self.right)
-        self.play = QPushButton("▶")
+        self.play = QPushButton()
+        set_glyph(self.play, "play", tone="dim")  # 1.24: a drawn sign, not "▶"; 1.24.5: quiet like #rowplay was
+        self.play.setAccessibleName(_("Aufnahme dieser Runde öffnen"))
         self.play.setObjectName("rowplay")
         self.play.setCursor(Qt.PointingHandCursor)
         self.play.setFocusPolicy(Qt.TabFocus)
@@ -620,6 +682,10 @@ def make_control(kind, key, post):
     return w, extra
 
 
+# 1.24 (phase 2): the overview's buttons with a sign of their own (rotate, step on to the next layout/floor)
+OVERVIEW_GLYPHS = {"rotate": "rotate", "layout": "chevron_right", "floor": "chevron_right", "scan": "search"}
+
+
 def show_control(kind, w, extra, st):
     """Put a model widget's state (app_qt.ui_state) into its Qt control – never sends anything back."""
     if kind == "tab":                    # a tab of a hand-made page: hidden with its frame (extra = its body widget)
@@ -640,6 +706,19 @@ def show_control(kind, w, extra, st):
         w.setEnabled(st["enabled"])
     if st.get("danger") and w.objectName() != "danger":       # 1.12.3: the warning colour (style sheet)
         w.setObjectName("danger")
+        w.style().unpolish(w)
+        w.style().polish(w)
+    if st.get("primary") and w.objectName() != "primary":     # 1.24: the main action (ui.primary)
+        w.setObjectName("primary")
+        w.style().unpolish(w)
+        w.style().polish(w)
+    # 1.24.5 (measured): the caches are read from the widget's own __dict__ – getattr() of a name a PySide widget
+    # lacks searches Qt's meta data first (3.7 µs, every control on every refresh), a dict lookup costs 0.17 µs
+    if "glyph" in st or w.__dict__.get("_glyph_key"):
+        set_glyph(w, st.get("glyph"), primary=bool(st.get("primary")))
+    if "level" in st and w.__dict__.get("_level", "") != st["level"]:   # 1.24.3: ui.level – state colour
+        w._level = st["level"]                            # 1.24.5: compared in Python, not via a Qt property read
+        w.setProperty("state", st["level"])
         w.style().unpolish(w)
         w.style().polish(w)
     if st.get("tip") is not None and w.toolTip() != st["tip"]:
@@ -728,7 +807,8 @@ class Grip(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(Qt.NoPen)
-        p.setBrush(self.palette().color(QPalette.PlaceholderText if self._hover else QPalette.Mid))
+        c = qt_theme.colours(qt_theme.current_dark())       # 1.25: the theme's grip colour (>= 3:1), not Mid (1.3:1)
+        p.setBrush(QColor(c["dim"] if self._hover else c["handle"]))
         for x in (5, 11):
             for y in (4, 9, 14):
                 p.drawEllipse(x - 1.5, y - 1.5, 3, 3)
@@ -957,7 +1037,8 @@ class HostView(QWidget):
         pass
 
 
-SPLIT_FROM = 1080                 # px (logical): from this page width a "split" page shows its two columns beside
+SPLIT_FROM = 940                  # px (logical): from this page width a "split" page shows its two columns beside
+                                  # 1.24.2 (phase 2): was 1080 – a 1280-px window (page ~1036) had the tabs below the fold
 
 
 class SideBySide(QWidget):
@@ -1060,7 +1141,7 @@ class FormPage(QWidget, _Arranged):
         self.controls = {}                 # key -> (kind, widget, extra)
         self.columns = []
         self._tabsets = []
-        page, lay = _scroll_page(title)
+        page, lay = _scroll_page(title, page_key=page_key)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(page)
@@ -1316,7 +1397,7 @@ class AutoPage(QWidget, _Arranged):
         self._all = []
         self.columns = []
         fill = _fills(node) if node else False
-        page, lay = _scroll_page(title, scroll=not fill)
+        page, lay = _scroll_page(title, scroll=not fill, page_key=page_key)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(page)

@@ -8,7 +8,20 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (QAbstractScrollArea, QAbstractSlider, QAbstractSpinBox, QApplication, QComboBox, QFrame,
                                QLabel, QScrollArea, QVBoxLayout, QWidget)
 
-from .i18n import _
+from . import qt_theme           # 1.24.6: at module level – an import statement in set_glyph cost ~1.9 µs per call
+from .i18n import N_, _
+
+# 1.24 (phase 2, prompt_phase2.md): one line under each page's title – what the page is for
+PAGE_SUBTITLES = {
+    "overview": N_("Status, aktuelle Map und deine Runden auf einen Blick"),
+    "maps": N_("Alle Callout-Karten – ansehen, von Hand einblenden, eigene Bilder und Notizen"),
+    "overlay": N_("Was im Spiel erscheint, wo und wie gross"),
+    "stats": N_("Deine Runden, Kills und Wartezeiten – nur auf diesem PC gespeichert"),
+    "recordings": N_("Runden, Clips und Screenshots – abspielen, schneiden, aufräumen"),
+    "server": N_("Server-Regionen wählen und die Verbindung im Blick behalten"),
+    "settings": N_("Alles, was Fog Scout tut – suchen mit Strg+F"),
+    "log": N_("Was das Programm gemacht hat – zum Nachlesen und für die Fehlersuche"),
+}
 
 
 SLIDER_MAX = 420                  # px (logical): longest slider (overlay position, size, opacity)
@@ -68,6 +81,43 @@ def _label(text="", cls=None, wrap=False):
     return w
 
 
+def set_glyph(w, name, primary=False, tone="fg"):
+    """1.24 (phase 2): a drawn sign (qt_icons) on a button in the colours of the theme now – set again only when the
+    sign, the mode, the accent or the screen's pixel ratio changed (show_control runs on every refresh). The name is
+    kept as the property "glyph" (the search knows a closed fold by "chevron_right"). ``tone`` "dim": a quiet sign
+    that turns to the accent with the keyboard focus (the rounds' ▶ on the overview). 1.24.5: what was asked is
+    kept (``_glyph_args``) – refresh_glyphs draws signs made before the theme was known, or on another screen."""
+    ratio = w.devicePixelRatioF() or 1.0
+    key = (name, bool(primary), tone, ratio, qt_theme.look_key())   # 1.24.5: no palette built just to compare
+    if w.__dict__.get("_glyph_key") == key:             # (getattr of a missing name on a Qt widget: 3.7 µs)
+        return                                          # (_glyph_args is part of the key – unchanged on a hit)
+    w._glyph_args = (name, bool(primary), tone)
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QIcon
+    from . import qt_icons
+    c = qt_theme.colours(qt_theme.current_dark())
+    normal = c["on_accent"] if primary else c["dim"] if tone == "dim" else c["fg"]
+    w._glyph_key = key
+    w.setProperty("glyph", name or "")
+    if not name:
+        w.setIcon(QIcon())
+        return
+    w.setIcon(qt_icons.icon(name, normal, active=c["accent"] if tone == "dim" else None, disabled=c["fg_dis"],
+                            size=qt_theme.ICON["m"], ratio=ratio))
+    w.setIconSize(QSize(qt_theme.ICON["m"], qt_theme.ICON["m"]))
+
+
+def refresh_glyphs(root):
+    """1.24.5 (review): signs set once – on pages built before MainWindow.apply_theme (overview, maps) or before the
+    window moved to a screen with another scale – drawn again in the colours and pixel ratio of now. Called on a
+    theme change and on QEvent.DevicePixelRatioChange; the model's buttons follow on their own (show_control)."""
+    from PySide6.QtWidgets import QAbstractButton
+    for w in root.findChildren(QAbstractButton):
+        args = w.__dict__.get("_glyph_args")
+        if args and args[0]:
+            set_glyph(w, *args)
+
+
 def _tip(label: str) -> str:
     """Hover text of a button of the window itself (tooltip.TIPS, by German label)."""
     from .tooltip import tip_for_label
@@ -103,9 +153,21 @@ def steady_scroll(sa):
     return sa
 
 
-def _scroll_page(title, scroll=True):
+def page_head(title: str, page_key: str = "") -> QVBoxLayout:
+    """1.24: a page's title and the line under it (PAGE_SUBTITLES) – close together, apart from the page."""
+    head = QVBoxLayout()
+    head.setContentsMargins(0, 0, 0, 0)
+    head.setSpacing(2)
+    head.addWidget(_label(title, "h1"))
+    sub = PAGE_SUBTITLES.get(page_key)
+    if sub:
+        head.addWidget(_label(_(sub), "subtitle", wrap=True))
+    return head
+
+
+def _scroll_page(title, scroll=True, page_key=""):
     """(page, body layout): a page that scrolls as a whole, with its title on top (``scroll`` False: a page that
-    fits the window, its parts scroll on their own)."""
+    fits the window, its parts scroll on their own); 1.24: the page's purpose under the title (``page_key``)."""
     page = QWidget()
     page.setObjectName("page")
     outer = QVBoxLayout(page)
@@ -124,5 +186,5 @@ def _scroll_page(title, scroll=True):
     lay = QVBoxLayout(body)
     lay.setContentsMargins(22, 18, 22, 18)
     lay.setSpacing(12)
-    lay.addWidget(_label(title, "h1"))
+    lay.addLayout(page_head(title, page_key))
     return page, lay
