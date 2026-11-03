@@ -709,7 +709,7 @@ class StatsTab:
         # the role filter "Custom Games"); 1.24.6 (second review): linked custom games alone get their own sentence
         # instead of none (1.24.5) or a wrong one (1.24.4)
         if rounds and not pairs:
-            custom_linked = any(id(r) in c.off for r in rounds)
+            custom_linked = bool(c.off) and any(id(r) in c.off for r in rounds)   # 1.24.7: no links, no walk
             self.stats_data_var.set(
                 _("Kills, Entkommen und Bloodpoints zählen hier ohne Custom Games – die Rolle „Custom Games“ zeigt "
                   "sie.") if custom_linked else
