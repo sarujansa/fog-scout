@@ -219,6 +219,99 @@ def test_a_changed_setup_or_a_failed_start_keeps_the_program_running(update_fold
     assert app.quits == [] and "verändert" in app.status[-1]
 
 
+def test_the_setup_is_staged_into_the_admin_folder_and_checked_there(update_folder, tmp_path):
+    """1.34 (review S1): the download folder is the user's – the started file is a copy in the program folder's
+    "update", hashed while copying and read again before the caller gets it."""
+    folder, setup = update_folder
+    dest = tmp_path / "app" / "update"
+    with restart.staged_setup(str(setup), SUM, str(dest)) as staged:
+        assert staged == str(dest / setup.name) and open(staged, "rb").read() == SETUP
+        assert restart._file_sha256(staged) == SUM
+    assert os.listdir(dest) == [setup.name]
+    (dest / setup.name).write_bytes(b"older copy")                       # an older copy of the same name is replaced
+    with restart.staged_setup(str(setup), SUM.upper(), str(dest)) as staged:
+        assert open(staged, "rb").read() == SETUP
+
+
+def test_a_changed_setup_is_never_staged_and_leaves_nothing(update_folder, tmp_path):
+    folder, setup = update_folder
+    dest = tmp_path / "app" / "update"
+    setup.write_bytes(SETUP + b"!")
+    with pytest.raises(ValueError):
+        with restart.staged_setup(str(setup), SUM, str(dest)):
+            pytest.fail("a changed setup was handed out")
+    with pytest.raises(ValueError):
+        with restart.staged_setup(str(setup), "", str(dest)):
+            pytest.fail("no checksum, no setup")
+    assert os.listdir(dest) == []
+
+
+def test_the_installed_program_starts_the_copy_with_its_log_in_the_admin_folder(update_folder, tmp_path,
+                                                                                  monkeypatch):
+    from fogscout import app_settings, paths
+    folder, setup = update_folder
+    dest = tmp_path / "app" / "update"
+    monkeypatch.setattr(app_settings, "IS_WIN", True)
+    monkeypatch.setattr(paths, "app_update_dir", lambda: str(dest))
+    started = []
+
+    def shell_open(path, args):
+        started.append((path, args, open(path, "rb").read()))
+        return True
+    monkeypatch.setattr(restart, "_shell_open", shell_open)
+    app = _App(str(folder.parent.parent))
+    app.run(str(setup), SUM)
+    (path, args, data), = started
+    assert path == str(dest / setup.name) and data == SETUP
+    assert args[4] == f'/LOG="{os.path.join(str(dest), relupdate.LOG_FILE)}"'
+    assert app.quits == [True]
+
+
+def test_without_the_admin_folder_the_download_itself_is_started(update_folder, tmp_path, monkeypatch):
+    """Not elevated (PermissionError in Program Files): the old way – Windows asks itself and shows the file."""
+    from fogscout import app_settings, paths
+    folder, setup = update_folder
+    monkeypatch.setattr(app_settings, "IS_WIN", True)
+    monkeypatch.setattr(paths, "app_update_dir", lambda: str(tmp_path / "app" / "update"))
+
+    def denied(*a, **k):
+        raise PermissionError(13, "denied")
+    monkeypatch.setattr(restart, "staged_setup", denied)
+    started = []
+    monkeypatch.setattr(restart, "_shell_open", lambda path, args: started.append(path) or True)
+    app = _App(str(folder.parent.parent))
+    app.run(str(setup), SUM)
+    assert started == [str(setup)] and app.quits == [True]
+
+
+def test_a_failed_copy_keeps_the_program_running(update_folder, tmp_path, monkeypatch):
+    from fogscout import app_settings, paths
+    folder, setup = update_folder
+    monkeypatch.setattr(app_settings, "IS_WIN", True)
+    monkeypatch.setattr(paths, "app_update_dir", lambda: str(tmp_path / "app" / "update"))
+
+    def full(*a, **k):
+        raise OSError(28, "no space")
+    monkeypatch.setattr(restart, "staged_setup", full)
+    monkeypatch.setattr(restart, "_shell_open", lambda *a: pytest.fail("nothing may start"))
+    app = _App(str(folder.parent.parent))
+    app.run(str(setup), SUM)
+    assert app.quits == [] and "OSError" in app.status[-1] and app.logs[-1][0] == "Fehler"
+
+
+def test_the_admin_update_folder_exists_only_for_the_installed_program(tmp_path, monkeypatch):
+    from fogscout import paths
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    assert paths.app_update_dir() is None
+    exe = tmp_path / "FogScout.exe"
+    exe.write_bytes(b"")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    assert paths.app_update_dir() is None                               # the bare CI folder: no unins000.exe
+    (tmp_path / "unins000.exe").write_bytes(b"")
+    assert paths.app_update_dir() == os.path.join(str(tmp_path), "update")
+
+
 def test_the_update_helper_entry_is_gone(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["FogScout.exe", "--install-update", "x.exe", SUM])
     with pytest.raises(SystemExit) as stop:
@@ -291,10 +384,10 @@ def test_the_update_folder_is_cleaned_at_start_but_only_of_our_files(tmp_path):
     folder.mkdir(parents=True)
     for name in ("FogScout-Setup-1.33.exe", "FogScout-Setup-1.34.exe.part", "readme.txt", "other.exe.part"):
         (folder / name).write_bytes(b"x")
-    assert relupdate.clean_update_folder(str(tmp_path)) == 2
+    assert relupdate.clean_update_folder(str(folder)) == 2
     assert sorted(os.listdir(folder)) == ["other.exe.part", "readme.txt"]
     (folder / relupdate.LOG_FILE).write_text("log", encoding="utf-8")
-    relupdate.clean_update_folder(str(tmp_path))
+    relupdate.clean_update_folder(str(folder))
     assert (folder / relupdate.LOG_FILE).exists()                       # the setup's log stays for diagnosis
     assert relupdate.clean_update_folder(str(tmp_path / "none")) == 0
 

@@ -188,10 +188,10 @@ def download(rel: Release, data_dir: str, opener=None, progress=None) -> str:
     return final
 
 
-def clean_update_folder(data_dir: str) -> int:
+def clean_update_folder(folder: str) -> int:
     """1.33.1 (audit M-3): at the start of the installed program – a setup in the update folder was either installed
-    (this is the new version) or not wanted; only our own names go (setups and .part leftovers). Returns how many."""
-    folder = os.path.join(data_dir, UPDATE_DIR)
+    (this is the new version) or not wanted; only our own names go (setups and .part leftovers). Returns how many.
+    1.34: ``folder`` is the folder itself – the download folder in data_dir and the program folder's "update"."""
     gone = 0
     try:
         names = os.listdir(folder)
