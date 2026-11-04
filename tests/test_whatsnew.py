@@ -58,3 +58,30 @@ def test_the_real_history_ends_with_the_current_version():
     late = [r for r in rows if whatsnew.parse_version(r[0]) >= (1, 12)]
     assert late and all(r[2] and "Nutzer" not in r[2][:8] for r in late), [r[0] for r in late if not r[2]]
     assert whatsnew.news(open(path, encoding="utf-8").read(), rows[-2][0]) == [rows[-1]]
+
+
+def test_release_notes_are_the_versions_since_the_last_release():
+    """1.33.4: the GitHub release lists what is new since the release it replaces – the sentence, never the
+    background in parentheses, never cut."""
+    notes = whatsnew.release_notes(SAMPLE, "1.8.78", "1.8.73")
+    lines = notes.splitlines()
+    assert [ln.split("**")[1] for ln in lines] == ["Navigation 1.8.78", "Rechtsklick Gegner 1.8.74"]
+    assert lines[0].endswith("x" * 400) and "…" not in notes and "UI-Durchsicht" not in notes
+    assert lines[1] == "- **Rechtsklick Gegner 1.8.74**"                 # no sentence: the title alone
+    assert whatsnew.release_notes(SAMPLE, "1.8.72") == ("- **Maps-Seite und Start 1.8.72** – Die Maps-Seite lädt "
+                                                         "die Kacheln im Hintergrund.")
+    assert whatsnew.release_notes(SAMPLE, "1.8.72", "9.9") == whatsnew.release_notes(SAMPLE, "1.8.72")
+    assert whatsnew.release_notes(SAMPLE, "2.0", "1.8.72") == ""        # no row: no notes
+    assert len(whatsnew.release_notes(SAMPLE, "1.8.78", "1.8.72", limit=2).splitlines()) == 2
+
+
+def test_the_release_script_prints_the_notes_of_the_current_version():
+    import subprocess
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = subprocess.run([sys.executable, os.path.join(root, "tools", "release_notes.py"),
+                          os.path.join(root, "HISTORY.md"), __version__, ""], capture_output=True, text=True,
+                         check=True).stdout
+    assert out.startswith("- **") and f" {__version__}**" in out.splitlines()[0]
+    assert subprocess.run([sys.executable, os.path.join(root, "tools", "release_notes.py")],
+                          capture_output=True).returncode == 2

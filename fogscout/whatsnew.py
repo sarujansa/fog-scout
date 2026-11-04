@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 
 MAX_ROWS = 8          # the overview shows at most this many versions, the newest first
+RELEASE_ROWS = 20     # 1.33.4: at most this many versions in a GitHub release's notes
 DETAIL_CHARS = 240    # a longer background is cut with an ellipsis
 _VERSION = re.compile(r"\b(\d+\.\d+(?:\.\d+)*)\b")
 
@@ -23,8 +24,9 @@ def parse_version(text) -> tuple:
         return ()
 
 
-def entries(text: str) -> list:
-    """[(version, title, detail)] of every version row of the table text, in file order."""
+def entries(text: str, cut: int = DETAIL_CHARS) -> list:
+    """[(version, title, detail)] of every version row of the table text, in file order; ``detail`` cut at ``cut``
+    characters (0 = whole)."""
     out = []
     for line in text.splitlines():
         if not line.startswith("|"):
@@ -40,8 +42,8 @@ def entries(text: str) -> list:
         version = found[-1]
         title = title[:title.rfind(version)].strip(" –-")
         detail = _after_parentheses(rest) if _sep else ""
-        if len(detail) > DETAIL_CHARS:
-            detail = detail[:DETAIL_CHARS - 1].rstrip() + "…"
+        if cut and len(detail) > cut:
+            detail = detail[:cut - 1].rstrip() + "…"
         out.append((version, title or version, detail))
     return out
 
@@ -81,3 +83,19 @@ def load(path: str, seen: str, limit: int = MAX_ROWS) -> list:
     except OSError:
         return []
     return news(text, seen, limit)
+
+
+def release_notes(text: str, version: str, previous: str = "", limit: int = RELEASE_ROWS) -> str:
+    """1.33.4: the notes of the GitHub release of ``version`` (.github/workflows/build.yml, job ``release``) – the
+    version rows after ``previous`` (the release it replaces) up to ``version``, the newest first, as a Markdown list
+    of title and the sentence for the user (never the background in parentheses). Without ``previous`` or when the
+    table does not name it: only the row of ``version``. "" when the table has no row for ``version``."""
+    rows = entries(text, cut=0)
+    at = [i for i, r in enumerate(rows) if r[0] == version]
+    if not at:
+        return ""
+    end = at[-1]
+    before = [i for i, r in enumerate(rows[:end]) if r[0] == previous] if previous else []
+    start = before[-1] + 1 if before else end
+    picked = list(reversed(rows[start:end + 1]))[:limit]
+    return "\n".join(f"- **{title} {ver}**" + (f" – {detail}" if detail else "") for ver, title, detail in picked)

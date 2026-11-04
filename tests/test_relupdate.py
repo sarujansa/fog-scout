@@ -351,6 +351,12 @@ def test_only_a_push_to_main_publishes_and_only_that_job_may_write():
     assert len(re.findall(r"^ +contents: write$", wf, re.M)) == 1 and "    permissions:\n      contents: write" in release
     assert 'TAG: build-${{ github.run_number }}' in release and "sha256sum" in release and "--latest" in release
     assert "${{ github.event" not in release.split("run: |", 1)[1]           # no expression inside the script
+    # 1.33.4: notes from HISTORY.md (checkout without a token), then only older build-<N> releases are removed
+    assert "actions/checkout@11d5960a326750d5838078e36cf38b85af677262" in release
+    assert "persist-credentials: false" in release and "tools/release_notes.py" in release
+    assert 'gh release delete "$t" --cleanup-tag --yes' in release
+    assert '[[ "$t" =~ ^build-[0-9]+$ ]] && [ "$t" != "$TAG" ]' in release
+    assert release.index("gh release create") < release.index("gh release delete")   # the new one exists first
     assert relupdate.TAG.match("build-123") and relupdate.SETUP.match("FogScout-Setup-1.33.exe")
     assert "build-info.json" in wf and "GITHUB_RUN_NUMBER" in wf
     with open(os.path.join(ROOT, "installer", "fogscout.spec"), encoding="utf-8") as fh:
