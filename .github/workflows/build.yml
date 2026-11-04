@@ -64,6 +64,12 @@ jobs:
           if ($h.ExitCode -ne 2) { throw "--helper hostsedit: Code $($h.ExitCode) statt 2" }
           $size = (Get-ChildItem -Recurse "dist\FogScout" | Measure-Object -Sum Length).Sum / 1MB
           Write-Output ("Ordnergröße: {0:N0} MB" -f $size)
+          # 1.35.1: the largest files – what a smaller setup would have to start with (shown only)
+          Get-ChildItem -Recurse -File "dist\FogScout" | Sort-Object Length -Descending | Select-Object -First 12 |
+            ForEach-Object { Write-Output ("{0,7:N1} MB  {1}" -f ($_.Length / 1MB), $_.FullName.Substring((Resolve-Path "dist\FogScout").Path.Length + 1)) }
+          foreach ($gone in "_internal\PySide6\opengl32sw.dll", "_internal\PySide6\translations") {
+            if (Test-Path (Join-Path "dist\FogScout" $gone)) { throw "$gone ist noch im Ordner (installer/fogscout.spec UNUSED)" }
+          }
       - name: Inno Setup (fest, Prüfsumme)
         shell: pwsh
         env:
