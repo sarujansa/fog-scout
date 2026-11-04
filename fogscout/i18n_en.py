@@ -1353,8 +1353,6 @@ EN = {
         'Claude',
     'Im Clip-Editor Claude nutzen':
         'Use Claude in the clip editor',
-    'Claude: Key eingetragen, Claude ist in Suche und Editor aus.':
-        'Claude: key entered, Claude is off in the search and the editor.',
     'Mit Claude bearbeiten':
         'Edit with Claude',
     'z. B. erste 10 s weg, ab 0:40 doppelt so schnell, als Short':
@@ -3532,4 +3530,84 @@ EN = {
         "Ends the setup and opens the Server page – tick the regions there in which DBD should look for matches.",
     "Öffnet den Ordner mit Einstellungen, Runden, Log und Sicherungen im Explorer.":
         "Opens the folder with the settings, rounds, log and backups in Explorer.",
+    'Aus – in Einstellungen › Verbindungen › Claude „Bilder im Bild-Editor an Claude schicken“ einschalten und einen API-Key eintragen.':
+        'Off – switch on “Send pictures in the image editor to Claude” under Settings › Connections › Claude and enter an API key.',
+    'Ausschnitt ausserhalb des Bildes':
+        'crop outside the picture',
+    'Bereich unkenntlich machen ({x} %, {y} %)':
+        'Hide an area ({x} %, {y} %)',
+    'Bilder im Bild-Editor an Claude schicken':
+        'Send pictures in the image editor to Claude',
+    'Bilder können Spielernamen zeigen – sie gehen nur auf deinen Klick „Vorschlagen“ an Claude, verkleinert und nur im Speicher; bereits zensierte Bereiche bleiben zensiert. Statistik-Fragen senden nur Zähler und Quoten je Rolle, Killer, Map, Region und Tageszeit – keine einzelne Runde, keine Namen von Spielern.':
+        'Pictures can show player names – they go to Claude only when you click “Suggest”, scaled down and only in memory; areas already censored stay censored. Statistics questions send only counts and rates per role, killer, map, region and time of day – no single round, no player names.',
+    'Claude hat keine Antwort gegeben.':
+        'Claude gave no answer.',
+    'Claude zur Statistik fragen: „{q}“':
+        'Ask Claude about the statistics: “{q}”',
+    'Claude: Key eingetragen, Claude ist überall aus.':
+        'Claude: key entered, Claude is off everywhere.',
+    'Das Bild hat sich inzwischen geändert – bitte neu vorschlagen.':
+        'The picture has changed meanwhile – please suggest again.',
+    'Das Bild kann Spielernamen zeigen – es geht nur auf Klick an Claude (api.anthropic.com), verkleinert und nur im Speicher.':
+        'The picture can show player names – it goes to Claude (api.anthropic.com) only on a click, scaled down and only in memory.',
+    'Das Bild lässt sich nicht für Claude verkleinern.':
+        'The picture cannot be scaled down for Claude.',
+    'Das Standbild liess sich nicht lesen – nichts gesendet.':
+        'The still could not be read – nothing was sent.',
+    'Die Statistik liess sich nicht zusammenfassen – Details im Log.':
+        'The statistics could not be summed up – details in the log.',
+    'Drehung ohne Winkel':
+        'turn without an angle',
+    'Farbe ohne Werte':
+        'colour without values',
+    'Farbe: Helligkeit {b} %, Kontrast {c} %, Sättigung {s} %':
+        'Colour: brightness {b} %, contrast {c} %, saturation {s} %',
+    'In der Suche Statistik-Fragen an Claude stellen':
+        'Ask Claude statistics questions in the search',
+    'Kasten ausserhalb des Bildes':
+        'box outside the picture',
+    'Kippen':
+        'Flip vertically',
+    'Noch keine Runden – Claude hätte nichts zum Auswerten.':
+        'No rounds yet – Claude would have nothing to look at.',
+    'Schickt deine Bitte und das Bild, wie es hier zu sehen ist (bereits zensierte Bereiche bleiben zensiert), an Claude; nichts wird geändert, bevor du übernimmst.':
+        'Sends your wish and the picture as shown here (areas already censored stay censored) to Claude; nothing changes before you apply it.',
+    'Schickt die Frage und Zähler/Quoten deiner Runden an Claude – keine einzelne Runde, keine Namen':
+        'Sends the question and counts/rates of your rounds to Claude – no single round, no names',
+    'Schickt zusätzlich das Bild an der Abspielposition (verkleinert, bereits zensierte Bereiche bleiben zensiert) – damit kann Claude z. B. Namen zensieren. Das Bild kann Spielernamen zeigen.':
+        'Also sends the picture at the play head (scaled down, areas already censored stay censored) – so Claude can, for example, censor names. The picture can show player names.',
+    'Spiegeln':
+        'Mirror',
+    'Spiegeln ohne Richtung':
+        'mirror without a direction',
+    'Standbild mitsenden':
+        'Send a still along',
+    'Standbilder aus Aufnahmen im Clip-Editor an Claude schicken':
+        'Send stills from recordings in the clip editor to Claude',
+    'Um {deg}° drehen':
+        'Turn by {deg}°',
+    'Vergisst den Vorschlag; das Bild bleibt, wie es ist.':
+        'Forgets the suggestion; the picture stays as it is.',
+    'Zensur nur mit Standbild':
+        'censoring only with a still',
+    'Zensur: {style}':
+        'Censoring: {style}',
+    'Zuschneiden auf {w} × {h} %':
+        'Crop to {w} × {h} %',
+    'unbekannte Art der Zensur':
+        'unknown kind of censoring',
+    'unbekannter Schritt':
+        'unknown step',
+    'z. B. Spielernamen verpixeln, auf 16:9 zuschneiden, etwas heller':
+        'e.g. pixelate player names, crop to 16:9, a bit brighter',
+    'zu viele Kästen':
+        'too many boxes',
+    'Zeigt im Bild-Editor den Reiter „Claude“: Du schreibst, was mit dem Bild passieren soll (Namen verpixeln, zuschneiden, heller), und auf „Vorschlagen“ gehen Bitte und Bild verkleinert an Claude. Das Bild kann Spielernamen zeigen; bereits zensierte Bereiche bleiben zensiert.':
+        'Shows the “Claude” tab in the image editor: you write what should happen to the picture (pixelate names, crop, brighter), and on “Suggest” your wish and the scaled-down picture go to Claude. The picture can show player names; areas already censored stay censored.',
+    'Erlaubt im grossen Clip-Editor das Häkchen „Standbild mitsenden“: dann geht das Bild an der Abspielposition mit, und Claude kann z. B. Namen zensieren. Das Bild kann Spielernamen zeigen.':
+        'Allows the “Send a still along” tick in the big clip editor: the picture at the play head then goes along, and Claude can, for example, censor names. The picture can show player names.',
+    'Zeigt in der Suche (Strg+F) die Zeile „Claude zur Statistik fragen“. Gesendet werden deine Frage und Zähler/Quoten deiner Runden je Rolle, Killer, Map, Region und Tageszeit – keine einzelne Runde, keine Namen von Spielern.':
+        'Shows the row “Ask Claude about the statistics” in the search (Ctrl+F). Sent are your question and counts/rates of your rounds per role, killer, map, region and time of day – no single round, no player names.',
+    'Start: Fenster bereit nach {total} s seit Programmstart (davon {before} s bis Python).':
+        'Start: window ready {total} s after the program started ({before} s of it until Python).',
 }

@@ -557,6 +557,8 @@ class RecordingsTab:
         win = ImageWindow(path, self._shot_edit_dir(), on_saved=self._shot_saved, log=self._log,
                           dark=bool(self.settings.get("dark_mode", True)),
                           qss=getattr(self.qt, "_qss", "") if self.qt is not None else "")
+        win.claude_key = self._claude_image_key                                # 1.35: „Mit Claude bearbeiten“
+        win._claude_refresh()
         self._clip_windows_prune()
         self._clip_windows.append(win)
         win.show()
@@ -1660,6 +1662,7 @@ class RecordingsTab:
         win.on_saved = lambda out: self._clip_saved(r, out, win)              # 1.8.13: into the clips list
         if hasattr(win, "claude_key"):                                         # 1.27: „Mit Claude bearbeiten“
             win.claude_key = self._claude_editor_key
+            win.claude_frame = lambda: bool(self.settings.get("claude_frame", False))   # 1.35: a still may go along
             win._claude_refresh()
         return win
 
