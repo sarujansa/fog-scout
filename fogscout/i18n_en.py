@@ -599,6 +599,8 @@ EN = {
     "Programm schliesst sich und installiert das Update …": "The program closes and installs the update …",
     "Das Update wurde nicht gestartet: Die Setup-Datei hat sich seit dem Download verändert oder fehlt. Bitte das Update noch einmal laden.":
         "The update was not started: the setup file changed since the download or is missing. Please download the update once more.",
+    "Das Update wurde nicht gestartet: Die Setup-Datei liess sich nicht sicher bereitstellen ({error}). Bitte das Update noch einmal laden.":
+        "The update was not started: the setup file could not be put in place safely ({error}). Please download the update again.",
     "Das Setup konnte nicht gestartet werden (Abfrage nach Administratorrechten abgebrochen?). Erneut versuchen oder das Setup selbst starten:\n{path}":
         "The setup could not be started (administrator prompt cancelled?). Try again or start the setup yourself:\n{path}",
     "Neustart nicht möglich: {error}": "Restart not possible: {error}",

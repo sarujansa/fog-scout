@@ -1157,8 +1157,10 @@ class SettingsTab:
         """1.33: the installed program looks for a new release once after the start – if "Beim Start nach Updates
         suchen" is on (start.bat does its own check before the program starts)."""
         if frozen():                              # 1.33.1 (audit M-3): the setup of the last update is not needed
-            from . import relupdate
-            relupdate.clean_update_folder(self.data_dir)
+            from . import paths, relupdate
+            relupdate.clean_update_folder(os.path.join(self.data_dir, relupdate.UPDATE_DIR))
+            if paths.app_update_dir():            # 1.34: and its copy in the program folder
+                relupdate.clean_update_folder(paths.app_update_dir())
         if frozen() and self.settings.get("auto_update", True):
             self.root.after(self.RELEASE_CHECK_DELAY_MS, lambda: self.check_update(quiet=True))
 
@@ -1233,8 +1235,25 @@ class SettingsTab:
             self.upd_status.set(msg)
             self._log(msg, "Fehler")
             return
-        log = os.path.join(folder, relupdate.LOG_FILE)
-        if not IS_WIN or not restart._shell_open(path, relupdate.install_args(log)):
+        # 1.34 (review S1): the download folder is the user's – started is a copy in the program folder's "update"
+        # (Program Files: administrators only), hashed there and held against changes until Windows has it
+        from . import paths
+        dest = paths.app_update_dir()
+        if dest:
+            try:
+                with restart.staged_setup(path, sha256, dest) as staged:
+                    started = self._release_start(staged, os.path.join(dest, relupdate.LOG_FILE))
+            except PermissionError:
+                dest = None                           # not elevated: Windows asks itself (UAC shows the file)
+            except (OSError, ValueError) as e:
+                msg = _("Das Update wurde nicht gestartet: Die Setup-Datei liess sich nicht sicher bereitstellen "
+                        "({error}). Bitte das Update noch einmal laden.", error=e.__class__.__name__)
+                self.upd_status.set(msg)
+                self._log(msg, "Fehler")
+                return
+        if not dest:
+            started = self._release_start(path, os.path.join(folder, relupdate.LOG_FILE))
+        if not started:
             msg = _("Das Setup konnte nicht gestartet werden (Abfrage nach Administratorrechten abgebrochen?). "
                     "Erneut versuchen oder das Setup selbst starten:\n{path}", path=path)
             self.upd_status.set(msg)
@@ -1242,6 +1261,10 @@ class SettingsTab:
             return
         self._log(_("Programm schliesst sich und installiert das Update …"), "System")
         self.quit()
+
+    def _release_start(self, setup: str, log: str) -> bool:
+        from . import relupdate, restart
+        return IS_WIN and restart._shell_open(setup, relupdate.install_args(log))
 
     def _round_running(self) -> bool:
         """1.8.63: a round is open (map detected, no end yet) or OBS records – no restart for an update now."""
