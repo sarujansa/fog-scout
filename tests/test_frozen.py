@@ -87,17 +87,17 @@ def test_from_start_bat_the_restart_is_unchanged():
 
 
 def test_the_taskbar_button_of_the_packaged_program_starts_the_exe(packaged):
-    assert autostart.relaunch_command() == f'"{EXE}"'
+    assert autostart.relaunch_command() == f'"{EXE}"'      # not installed (the CI folder): no task to run
 
 
-def test_the_packaged_program_sets_up_no_start_bat_task_and_checks_no_git(packaged, monkeypatch):
-    """The scheduled tasks and shortcuts run start.bat – the installer sets up its own (stage 4); git fetch needs a
-    checkout – updates come with stage 5."""
+def test_the_packaged_program_renews_its_own_tasks_and_checks_no_git(packaged, monkeypatch):
+    """1.32: the installed .exe renews its tasks like start.bat did (they start the .exe – autostart.app_root); git
+    fetch needs a checkout – updates come with stage 5."""
     from fogscout import app_settings
     calls, events = [], []
-    monkeypatch.setattr(app_settings.autostart, "ensure", lambda *a, **k: calls.append("ensure"))
+    monkeypatch.setattr(app_settings.autostart, "ensure", lambda root, *a: calls.append(("ensure", root)))
     monkeypatch.setattr(app_settings.autostart, "ensure_autostart", lambda *a, **k: calls.append("auto"))
-    monkeypatch.setattr(app_settings.autostart, "task_exists", lambda name: False)
+    monkeypatch.setattr(app_settings.autostart, "task_exists", lambda name: True)
     monkeypatch.setattr(app_settings, "is_admin", lambda: True)
     monkeypatch.setattr(app_settings, "IS_WIN", True)
 
@@ -117,9 +117,10 @@ def test_the_packaged_program_sets_up_no_start_bat_task_and_checks_no_git(packag
 
     fake = Fake()
     fake._setup_then_read_autostart()
-    assert "ensure" not in calls and "auto" not in calls
+    assert ("ensure", ROOT) in calls and "auto" in calls
     (kind, exists, can_change, info), = events
-    assert kind == "autostart" and can_change is False and "Installer" in info
+    assert kind == "autostart" and exists is True and can_change is True
+    calls.clear()
     fake.check_update()
     assert "GitHub" in fake.upd_status.v and calls == []             # nothing fetched, button untouched
 
@@ -163,4 +164,4 @@ def test_the_exe_is_built_and_checked_in_ci():
     assert "--only-binary=:all:" in wf
     assert "installer/fogscout.spec" in wf and "--selftest" in wf and '"--helper", "hostsedit"' in wf
     assert "retention-days: 14" in wf
-    assert "release" not in wf.lower().replace("no release", "")    # stage 3 publishes nothing
+    assert "contents: write" not in wf and "gh release" not in wf and "action-gh-release" not in wf   # nothing published

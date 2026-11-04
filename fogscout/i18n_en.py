@@ -11,6 +11,9 @@ EN = {
     "Fog Scout konnte nicht neu gestartet werden: Die alte Kopie läuft noch im Hintergrund.\n\nIm Task-Manager unter „Details“ „{exe}“ (Fog Scout) beenden und das Programm neu starten.":
         "Fog Scout could not restart: the old copy is still running in the background.\n\nEnd “{exe}” (Fog Scout) in Task Manager under “Details” and start the program again.",
     "Start fehlgeschlagen:": "Start failed:",
+    "Fog Scout wurde bisher über start.bat genutzt:\n{folder}\n\nEinstellungen, Runden, Match-Daten, Sicherungen und eigene Kartenbilder in die installierte Version übernehmen? Der alte Ordner bleibt unverändert.":
+        "Fog Scout was used through start.bat until now:\n{folder}\n\nTake over settings, rounds, match data, backups and own map pictures into the installed version? The old folder stays unchanged.",
+    "Übernahme fehlgeschlagen: {error}": "Takeover failed: {error}",
     "Kein Windows: Fenstersuche, Hotkeys und Click-Through sind nur unter Windows aktiv.":
         "Not Windows: window search, hotkeys and click-through only work on Windows.",
     "Bereit. {n} Maps geladen, Spielsprachen: {langs}.": "Ready. {n} maps loaded, game languages: {langs}.",
@@ -611,8 +614,10 @@ EN = {
     "Autostart mit Windows fehlgeschlagen: {error}": "Starting with Windows could not be set up: {error}",
     "Fehlgeschlagen: {error}": "Failed: {error}",
     "Nur unter Windows.": "Windows only.",
-    "In dieser Ausgabe noch nicht einstellbar – den Autostart richtet später der Installer ein.":
-        "Not adjustable in this edition yet – the installer will set up the autostart later.",
+    "Tipp: Fog Scout über die Verknüpfung im Startmenü starten – dann läuft es ohne Windows-Abfrage mit den nötigen Rechten.":
+        "Tip: start Fog Scout with the shortcut in the Start menu – then it runs with the rights it needs, without a Windows prompt.",
+    "Änderbar, wenn das Programm über die Verknüpfung im Startmenü gestartet wurde.":
+        "Can be changed when the program was started with the shortcut in the Start menu.",
     "Tipp: Einmal als Administrator starten (Rechtsklick auf start.bat → „Als Administrator ausführen“) – dann "
     "richtet das Programm die Desktop-Verknüpfung ein, die künftig ohne Windows-Abfrage startet.":
         "Tip: start once as administrator (right-click start.bat → “Run as administrator”) – the program then sets "
