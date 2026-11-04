@@ -132,6 +132,26 @@ def _qt() -> str:
     return app.platformName()
 
 
+def _launch() -> str:
+    """1.33.3: what another program would get from the packaged program – Windows' DLL search, no bundle in PATH, no
+    Qt folders of ours (OBS, started by Fog Scout, had loaded _internal\\msvcp140.dll and held it)."""
+    from . import launch
+    bundle = launch.bundle_dir()
+    if not bundle:
+        return "aus dem Quellcode"
+    before = launch.dll_directory()
+    with launch.clean_process():
+        during = launch.dll_directory()
+        env = dict(os.environ)
+    left = [p for p in env.get("PATH", "").split(os.pathsep) if launch._inside(p, bundle)]
+    qt = [k for k in launch.QT_VARS if k in env and launch._inside(env[k].split(os.pathsep)[0], bundle)]
+    if during or left or qt:
+        raise RuntimeError(f"DLL-Suche {during!r}, PATH {left}, Qt {qt}")
+    if launch.dll_directory() != before:
+        raise RuntimeError("DLL-Suche danach nicht zurückgesetzt")
+    return "Bundle bei Fog Scout" if before else "ohne eigene DLL-Suche"
+
+
 def run(root: str) -> dict:
     from . import __version__
     from .paths import frozen
@@ -144,6 +164,7 @@ def run(root: str) -> dict:
     c.run("OCR", lambda: _ocr(root))
     c.run("ffmpeg", _ffmpeg)
     c.run("Qt", _qt)
+    c.run("Programme starten", _launch)
     return {"ok": not c.failed, "version": __version__, "frozen": frozen(), "root": root,
             "passed": c.passed, "failed": c.failed}
 

@@ -35,10 +35,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import webbrowser
 from dataclasses import asdict, dataclass
 
-from . import spotify
+from . import launch, spotify
 from .i18n import N_, _
 from .textnorm import fmt_duration
 
@@ -449,7 +448,7 @@ class Uploader(threading.Thread):
     def __init__(self, post, opener=None):
         super().__init__(name="youtube", daemon=True)
         self._post = post
-        self._open = opener or webbrowser.open
+        self._open = opener or launch.open_url
         self.cmds = queue.Queue()
         self.on = False                   # clips go up by themselves (the queue is worked either way)
         self.client_id, self.secret = "", ""

@@ -9,10 +9,9 @@ import logging
 import os
 import threading
 import time
-import webbrowser
 from types import SimpleNamespace
 
-from . import builds, dashboard, history, mapnotes, official, records, regions, sysinfo
+from . import builds, dashboard, history, launch, mapnotes, official, records, regions, sysinfo
 from . import uimodel as ui
 from .capture import foreground_root, is_game_window
 from .i18n import N_, _
@@ -1790,7 +1789,7 @@ class StatsTab:
     def _official_open(self, after_game):
         """Open the stats page in the browser; the userscript then saves the matches (download folder)."""
         try:
-            webbrowser.open(official.URL)
+            launch.open_url(official.URL)
         except Exception as e:
             self._log(_("Stats-Seite konnte nicht geöffnet werden: {error}", error=e), "Fehler")
             return
@@ -1802,7 +1801,7 @@ class StatsTab:
         """1.8.46: the stats page with the request for the structure of its answer (userscript from version 2):
         field names and types only – to decide which further fields are worth taking."""
         try:
-            webbrowser.open(official.URL + official.STRUCTURE_HASH)
+            launch.open_url(official.URL + official.STRUCTURE_HASH)
         except Exception as e:
             self._log(_("Stats-Seite konnte nicht geöffnet werden: {error}", error=e), "Fehler")
             return
@@ -1818,7 +1817,7 @@ class StatsTab:
         """1.8.52: the stats page with the request to save its matches once more although none is new (userscript
         from version 4) – after a new install or a lost file; before, only the browser console could do that."""
         try:
-            webbrowser.open(official.URL + official.RESAVE_HASH)
+            launch.open_url(official.URL + official.RESAVE_HASH)
         except Exception as e:
             self._log(_("Stats-Seite konnte nicht geöffnet werden: {error}", error=e), "Fehler")
             return

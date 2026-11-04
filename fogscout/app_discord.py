@@ -2,9 +2,8 @@
 ``discordrpc.Presence`` thread (from the 250-ms tick) and its status line."""
 from __future__ import annotations
 
-import webbrowser
 
-from . import discordrpc
+from . import discordrpc, launch
 from . import uimodel as ui
 from .i18n import _
 from .lobby import killer_label
@@ -33,7 +32,7 @@ class DiscordPresence:
         self._reg("st.more.dc_id", ui.Entry(row, textvariable=self.dc_id_var, width=22)).pack(side="left", padx=6)
         self._reg("st.more.dc_test", ui.Button(row, text=_("Discord testen"), command=self._discord_test)).pack(side="left")
         self._reg("st.more.dc_portal", ui.Button(row, text=_("Developer-Portal öffnen"),
-                                                  command=lambda: webbrowser.open(PORTAL))).pack(side="left", padx=(6, 0))
+                                                  command=lambda: launch.open_url(PORTAL))).pack(side="left", padx=(6, 0))
         self.dc_killer_var = ui.BooleanVar(value=bool(self.settings.get("discord_killer", True)))
         self._reg("st.more.dc_killer", ui.Checkbutton(dc, text=_("Killer in Discord anzeigen"),
                                                        variable=self.dc_killer_var, command=self._discord_setting)).pack(anchor="w", pady=(4, 0))
