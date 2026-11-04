@@ -210,7 +210,9 @@ def test_the_installer_goes_to_program_files_for_everyone_and_keeps_the_data():
     assert f"MutexName = '{restart.MUTEX_NAME}'" in iss and "CheckForMutexes(MutexName)" in iss
     assert 'Parameters: "--install-tasks"' in iss and 'Parameters: "--remove-tasks"' in iss
     assert "skipifsilent" in iss and '/run /tn ""Fog Scout""' in iss          # first start through the task
-    assert "{localappdata}" not in iss.lower() and "[UninstallDelete]" not in iss   # the data folder stays
+    assert "{localappdata}" not in iss.lower()                                  # the data folder stays
+    deleted = re.findall(r'^Type: (\w+); Name: "([^"]+)"$', iss.split("[UninstallDelete]", 1)[1].split("[", 1)[0], re.M)
+    assert deleted == [("files", "{app}\\update\\*"), ("dirifempty", "{app}\\update")]   # 1.34: only the setup copy
     assert "[InstallDelete]" not in iss and "filesandordirs" not in iss and "\nAppMutex=" not in iss   # 1.33.2
     assert "..\\build\\fogscout\\fogscout.ico" in iss                          # written by the spec (workpath)
 
@@ -322,5 +324,7 @@ def test_the_same_person_still_gets_tasks_and_shortcuts(monkeypatch):
 
 def test_the_uninstaller_never_touches_the_data_folder():
     iss = _iss()
-    assert "[UninstallDelete]" not in iss and "{localappdata}" not in iss.lower() and "{userappdata}" not in iss.lower()
+    assert "{localappdata}" not in iss.lower() and "{userappdata}" not in iss.lower()
+    section = iss.split("[UninstallDelete]", 1)[1].split("\n[", 1)[0]          # 1.34: only {app}\update
+    assert all(n.startswith("{app}\\update") for n in re.findall(r'Name: "([^"]+)"', section))
     assert "FogScout" not in autostart.uninstall_script().replace("Fog Scout", "")

@@ -267,6 +267,6 @@ Gemeinsamer Angriffsweg: Fog Scout läuft über seine Aufgabe erhöht, ohne Abfr
 | S9 | Klein | Nur `relupdate` lehnte http-Weiterleitungen ab; urllib reicht `Authorization` an jeden Weiterleitungs-Host weiter | `net.py` `SafeRedirect` für alle Web-Clients |
 
 **Offen:**
-- S1 (Mittel-hoch): Das Update-Setup wird aus `%LOCALAPPDATA%` gestartet; zwischen Prüfung und Start kann es getauscht werden. Behebung kommt in 1.34.
+- S1 (Mittel-hoch): Das Update-Setup wird aus `%LOCALAPPDATA%` gestartet; zwischen Prüfung und Start kann es getauscht werden. **Behoben in 1.34:** `restart.staged_setup` kopiert es nach `<Programmordner>\update` (`paths.app_update_dir`, nur Admins schreiben), hasht beim Kopieren und unter einem Handle mit Freigabe nur „lesen“ erneut und hält den Handle bis nach `ShellExecuteW`; Log und Arbeitsordner dort. Rest: läuft Fog Scout ausnahmsweise nicht erhöht (`PermissionError`), bleibt der alte Weg – dann fragt Windows selbst per UAC.
 - S7: Signatur der Updates.
 - `git` in `update.py` wird per PATH gefunden; betrifft nur den Betrieb über start.bat.
