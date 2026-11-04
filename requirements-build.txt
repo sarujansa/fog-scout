@@ -1,0 +1,9 @@
+# Nur für den Bau der .exe (1.31, installer/fogscout.spec, GitHub Actions auf Windows) – start.bat installiert diese
+# Datei nie. Alle Versionen fest wie in requirements.txt (Wächter test_every_package_is_pinned_to_a_tested_version);
+# packaging kommt aus requirements.txt. Neue Version: Build + Selbsttest der .exe in CI müssen grün sein.
+pyinstaller==6.22.3                 # GPL-2.0 mit Ausnahme für gebaute Programme (Bootloader), BSD-Teile
+pyinstaller-hooks-contrib==2026.9
+altgraph==0.17.5                    # von pyinstaller
+pefile==2024.8.26                   # von pyinstaller (Windows)
+pywin32-ctypes==0.2.3               # von pyinstaller (Windows)
+setuptools==84.2.1                  # von pyinstaller

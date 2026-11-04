@@ -6,10 +6,10 @@ text in the code is here and that the placeholders match.
 
 EN = {
     # ------------------------------------------------------------------ start
-    "Fog Scout läuft bereits, reagiert aber nicht (oder ist gerade beim Beenden).\n\nKurz warten und nochmal starten. Hilft das nicht: im Task-Manager unter „Details“ „pythonw.exe“ (Fog Scout) beenden.":
-        "Fog Scout is already running but does not answer (or is just closing).\n\nWait a moment and start it again. If that does not help: end “pythonw.exe” (Fog Scout) in Task Manager under “Details”.",
-    "Fog Scout konnte nicht neu gestartet werden: Die alte Kopie läuft noch im Hintergrund.\n\nIm Task-Manager unter „Details“ „pythonw.exe“ (Fog Scout) beenden und das Programm neu starten.":
-        "Fog Scout could not restart: the old copy is still running in the background.\n\nEnd “pythonw.exe” (Fog Scout) in Task Manager under “Details” and start the program again.",
+    "Fog Scout läuft bereits, reagiert aber nicht (oder ist gerade beim Beenden).\n\nKurz warten und nochmal starten. Hilft das nicht: im Task-Manager unter „Details“ „{exe}“ (Fog Scout) beenden.":
+        "Fog Scout is already running but does not answer (or is just closing).\n\nWait a moment and start it again. If that does not help: end “{exe}” (Fog Scout) in Task Manager under “Details”.",
+    "Fog Scout konnte nicht neu gestartet werden: Die alte Kopie läuft noch im Hintergrund.\n\nIm Task-Manager unter „Details“ „{exe}“ (Fog Scout) beenden und das Programm neu starten.":
+        "Fog Scout could not restart: the old copy is still running in the background.\n\nEnd “{exe}” (Fog Scout) in Task Manager under “Details” and start the program again.",
     "Start fehlgeschlagen:": "Start failed:",
     "Kein Windows: Fenstersuche, Hotkeys und Click-Through sind nur unter Windows aktiv.":
         "Not Windows: window search, hotkeys and click-through only work on Windows.",
@@ -577,6 +577,8 @@ EN = {
     "Jetzt nach Updates suchen": "Check for updates now",
     "Aktualisieren und neu starten": "Update and restart",
     "Suche nach Updates …": "Checking for updates …",
+    "Diese Ausgabe sucht noch nicht selbst nach Updates – neue Versionen gibt es auf GitHub.":
+        "This edition does not look for updates by itself yet – new versions are on GitHub.",
     "Neustart nicht möglich: {error}": "Restart not possible: {error}",
     "Nur unter Windows: bitte das Programm über start.bat neu starten.": "Windows only: please restart the program via start.bat.",
     "Programm startet neu und installiert das Update …": "The program restarts and installs the update …",
@@ -609,6 +611,8 @@ EN = {
     "Autostart mit Windows fehlgeschlagen: {error}": "Starting with Windows could not be set up: {error}",
     "Fehlgeschlagen: {error}": "Failed: {error}",
     "Nur unter Windows.": "Windows only.",
+    "In dieser Ausgabe noch nicht einstellbar – den Autostart richtet später der Installer ein.":
+        "Not adjustable in this edition yet – the installer will set up the autostart later.",
     "Tipp: Einmal als Administrator starten (Rechtsklick auf start.bat → „Als Administrator ausführen“) – dann "
     "richtet das Programm die Desktop-Verknüpfung ein, die künftig ohne Windows-Abfrage startet.":
         "Tip: start once as administrator (right-click start.bat → “Run as administrator”) – the program then sets "
