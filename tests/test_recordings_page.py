@@ -863,6 +863,7 @@ def test_the_card_rates_the_recording_quality_and_a_click_sets_only_what_obs_tak
         app.rec_quality_open()                                     # advanced, nothing a request can set: steps only
         title, text, retry = app._qt_question[:3]
         assert retry is None and "CQP" in text and not applied
+        assert "Einschätzung aus Bitrate" in text                  # review F-07: an estimate, not a measurement
         app._rec_card_state(dict(base, recording=False, width=1920, height=1080))
         app.rec_quality_open()
         title, text, retry, ok_text = app._qt_question[:4]
@@ -904,5 +905,41 @@ def test_an_option_that_needs_the_one_above_is_greyed_out_while_that_is_off(app_
         app._rec_setting()
         assert str(reg["st.more.rec_game"].cget("state")) == "normal"
         assert str(reg["st.more.rec_clip"].cget("state")) == "readonly"
+    finally:
+        app.quit()
+
+
+def test_the_obs_snapshot_is_saved_when_taken_and_cleared_and_kept_when_the_restore_fails(app_root, tmp_path,
+                                                                                         monkeypatch):
+    """Review F-04: the values from before "In OBS einstellen" (rec_obs_before) are the only way back – setting and
+    clearing them asks for a save at once (a crash before the next save lost them); the same values again write
+    nothing; a restore that fails in OBS (no "done" event) keeps the snapshot, and so does the file."""
+    import json
+    from fogscout import obsrec
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    saves = []
+    monkeypatch.setattr(app, "_save_soon", lambda: saves.append(1))
+    try:
+        before = {"video": {"outputWidth": 1920, "outputHeight": 1080}}
+        app._rec_event("obs_quality", {"before": before})
+        assert app.settings.get("rec_obs_before") == before and len(saves) == 1
+        app._rec_event("obs_quality", {"before": before})               # nothing new: no second write
+        assert len(saves) == 1
+        app._rec_event("obs_quality", {"done": True, "restore": False})  # "In OBS einstellen" done: nothing to write
+        assert len(saves) == 1 and app.settings.get("rec_obs_before") == before
+        # a restore OBS refuses: the recorder posts no "done" – the snapshot stays, in memory and on disk
+        posted = []
+        rec = obsrec.Recorder(lambda kind, **d: posted.append((kind, d)))
+        rec.cfg = obsrec.Config(on=True, port=1)                         # nothing listens there: OBS away
+        with pytest.raises(obsrec.ObsError):
+            rec._quality(dict(before, restore=True))
+        assert not any(kind == "obs_quality" for kind, _d in posted)
+        for kind, d in posted:                                            # whatever it said reaches the app
+            app._rec_event(kind, d)
+        assert app.settings.get("rec_obs_before") == before and len(saves) == 1
+        app.settings.save()
+        assert json.load(open(app.settings.path, encoding="utf-8"))["rec_obs_before"] == before
+        app._rec_event("obs_quality", {"done": True, "restore": True})   # a restore that worked
+        assert app.settings.get("rec_obs_before") == {} and len(saves) == 2
     finally:
         app.quit()

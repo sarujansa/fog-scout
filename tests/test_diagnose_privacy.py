@@ -25,7 +25,7 @@ def test_another_programs_window_is_named_by_its_kind_never_its_title(monkeypatc
 
 
 def test_the_home_folder_is_shortened_to_a_tilde(monkeypatch):
-    home = os.path.join(os.sep, "home", "saru")
+    home = os.path.join(os.sep, "home", "testuser")
     monkeypatch.setattr(os.path, "expanduser", lambda p: home if p == "~" else p)
     assert diagnose.home_short(os.path.join(home, "Downloads")) == "~" + os.sep + "Downloads"
     assert diagnose.home_short(home) == "~"

@@ -15,7 +15,8 @@ RUNTIME = re.compile(r"(^|/)(settings\.json(\.broken)?|(fogscout|dbdmapscout)\.l
                      r"(fogscout|dbdmapscout)-matches.*\.json|(fogscout|dbdmapscout)-structure\.json)$|"
                      r"(^|/)(debug|user_maps|cache|backup|\.venv)/")
 SECRET = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|"
-                    r"github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}")
+                    r"github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|"
+                    r"sk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_-]{40,}")      # review F-02: the user's own Claude key
 TEXT = (".py", ".js", ".md", ".bat", ".txt", ".json", ".yml", ".yaml", ".cfg", ".toml", ".ini")
 
 
@@ -42,6 +43,18 @@ def test_no_tracked_text_file_holds_a_key_or_token():
                 if SECRET.search(line):
                     found.append(f"{p}:{n}")                # the place only, never the value
     assert found == []
+
+
+def test_an_anthropic_key_is_recognised_but_not_the_prefix_in_texts():
+    """Review F-02: askclaude stores the user's own API key (sk-ant-…) – one pasted into a tracked file must be
+    caught. The synthetic key is put together here at run time, so no line of this file matches itself; the
+    prefix alone, as the program's texts name it, and a cut-off key are no alarm."""
+    head = "sk-" + "ant-"
+    assert SECRET.search(head + "api03-" + "A" * 80 + "-x_Q")
+    assert SECRET.search("key = '" + head + "admin01-" + "b" * 48 + "'")
+    for harmless in (head, head + "api03-", "beginnt mit " + head + ".", head + "api03-" + "x" * 12,
+                     "(" + head + "…)"):
+        assert not SECRET.search(harmless), harmless
 
 
 def test_every_package_is_pinned_to_a_tested_version():

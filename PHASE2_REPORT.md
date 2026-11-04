@@ -1,5 +1,7 @@
 # Fog Scout – Phase 2: Produkt-Redesign 1.24 bis 1.24.7 (Abschlussbericht)
 
+> **Historische Momentaufnahme** (Stand laut Dokument: 3. November 2026, PR #299). Die Angaben zu Version, offenen Punkten und Merge-Status gelten für diesen Tag; spätere Änderungen stehen in `HISTORY.md`.
+
 Auftrag: `prompt_phase2.md` („Entwicklungsphase 2: Produkt-Redesign, moderne Benutzeroberfläche, UX und gezielte Funktionsentwicklung“), acht Arbeitspakete.
 Stand: 3. November 2026, Zweig `claude/funny-feynman-gt5t6n`, Pull Request sarujansa/fog-scout#299 – **nicht gemergt**, der Merge bleibt Saru vorbehalten.
 
