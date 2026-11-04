@@ -247,11 +247,16 @@ def main():
     ap.add_argument("--restart", action="store_true", help=argparse.SUPPRESS)   # helper of the update button
     ap.add_argument("--no-update", action="store_true", help=argparse.SUPPRESS)  # with --restart: plain restart
     ap.add_argument("--selftest", metavar="RESULT", help=argparse.SUPPRESS)      # 1.31: CI checks the packaged .exe
+    ap.add_argument("--install-update", metavar="SETUP", help=argparse.SUPPRESS)  # 1.33: helper of the update
     args = ap.parse_args()
 
     if args.selftest:
         from .selftest import main as selftest
         sys.exit(selftest(ROOT, args.selftest))
+
+    if args.install_update:                     # 1.33: the update helper – never the program itself
+        from .restart import wait_and_install
+        sys.exit(0 if wait_and_install(args.install_update) else 1)
 
     if args.restart:
         from .restart import wait_and_start

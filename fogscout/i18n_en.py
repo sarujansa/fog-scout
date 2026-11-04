@@ -580,8 +580,23 @@ EN = {
     "Jetzt nach Updates suchen": "Check for updates now",
     "Aktualisieren und neu starten": "Update and restart",
     "Suche nach Updates …": "Checking for updates …",
-    "Diese Ausgabe sucht noch nicht selbst nach Updates – neue Versionen gibt es auf GitHub.":
-        "This edition does not look for updates by itself yet – new versions are on GitHub.",
+    "Beim Start nach Updates suchen": "Check for updates at start",
+    "Laden und Installieren nur nach deiner Bestätigung; das Setup wird per SHA-256 geprüft":
+        "downloaded and installed only after you confirm; the setup is checked with SHA-256",
+    "Update-Prüfung fehlgeschlagen: {error}": "Update check failed: {error}",
+    "Kein Update – Version {version} (Build {build}) ist aktuell.": "No update – version {version} (build {build}) is current.",
+    "Update verfügbar: {old} → {new} (Build {build}).": "Update available: {old} → {new} (build {build}).",
+    "Lade Update …": "Downloading update …",
+    "Lade Update … {pct} %": "Downloading update … {pct} %",
+    "Update nicht geladen: {error}": "Update not downloaded: {error}",
+    "Update {version} (Build {build}) geladen und geprüft.": "Update {version} (build {build}) downloaded and checked.",
+    "Update installieren": "Install update",
+    "Fog Scout {version} (Build {build}) ist geladen und per SHA-256 geprüft. Jetzt installieren? Das Programm schliesst sich und startet danach neu.":
+        "Fog Scout {version} (build {build}) is downloaded and checked with SHA-256. Install it now? The program closes and starts again afterwards.",
+    "Installieren": "Install",
+    "Update gesperrt: eine Runde läuft oder ein Clip wird gespeichert. Danach noch einmal auf „Aktualisieren und neu starten“ klicken.":
+        "Update blocked: a round is running or a clip is being saved. Click “Update and restart” again afterwards.",
+    "Programm schliesst sich und installiert das Update …": "The program closes and installs the update …",
     "Neustart nicht möglich: {error}": "Restart not possible: {error}",
     "Nur unter Windows: bitte das Programm über start.bat neu starten.": "Windows only: please restart the program via start.bat.",
     "Programm startet neu und installiert das Update …": "The program restarts and installs the update …",
@@ -589,8 +604,10 @@ EN = {
     "und neu starten“.":
         "Asks GitHub whether there is a new version (only on this click). It is installed only with “Update and "
         "restart”.",
-    "Beendet das Programm und startet es über start.bat neu – dabei wird das Update installiert.":
-        "Closes the program and starts it again via start.bat – the update is installed on the way.",
+    "Beendet das Programm und startet es über start.bat neu – dabei wird das Update installiert. Die installierte Version lädt das Setup, prüft es per SHA-256 und fragt vor dem Installieren.":
+        "Closes the program and starts it again through start.bat – which installs the update. The installed version downloads the setup, checks it with SHA-256 and asks before installing.",
+    "Fragt nach jedem Start einmal GitHub, ob es ein neues Release gibt. Geladen und installiert wird nur nach deinem Klick und einer Rückfrage.":
+        "Asks GitHub once after every start whether there is a new release. Downloading and installing only happen after your click and a confirmation.",
     "Alle löschen": "Delete all",
     "Datenordner öffnen": "Open data folder",
     "Karten-Ordner öffnen": "Open maps folder",

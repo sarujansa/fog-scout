@@ -173,6 +173,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                         "{names}.", names=", ".join(self._secrets_plain)), "Fehler")
         self._srv_refresh(log_summary=True)
         self._show_update_status()
+        self._release_check_at_start()          # 1.33: the installed program – a new release? (only looks)
         self._news_check()                      # 1.8.79: "Neu seit …" on the overview after an update
         self._backup_start()                    # 1.8.80: daily copy of rounds.jsonl/official.jsonl → backup/
         if self.settings.get("show_connection"):
@@ -913,6 +914,12 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._conn_started(ev[1])
         elif isinstance(ev, tuple) and ev[0] == "upd_check":
             self._update_checked(*ev[1:])
+        elif isinstance(ev, tuple) and ev[0] == "status_upd":
+            self.upd_status.set(ev[1])
+        elif isinstance(ev, tuple) and ev[0] == "upd_ready":
+            self._release_ready(*ev[1:])
+        elif isinstance(ev, tuple) and ev[0] == "upd_failed":
+            self._release_failed(ev[1])
         elif isinstance(ev, tuple) and ev[0] == "srv_job":
             self._srv_job_done(ev[1], ev[2])
         elif isinstance(ev, tuple) and ev[0] == "ui":
