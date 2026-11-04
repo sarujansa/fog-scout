@@ -744,8 +744,40 @@ def frame_pad(style: str, text_h: int) -> int:
     return int(PAD * u) if style in SURFACES else 0
 
 
+MAP_BASES_KEPT = 4                      # 1.34.1 (review P1): map cards without their timer digits
+_MAP_BASES: dict = {}
+
+
 def map_card(body, name: str, realm: str, timer: str, note: str, record: str, server: str, ping, status,
              text_h: int, style: str, accent=None, rec=None, lines_top: bool = False, memo=()) -> Image.Image:
+    """The map window in ``style`` – see _map_card_base. 1.34.1 (review P1): the card without the timer's digits is
+    kept (``_MAP_BASES``, by everything but the digits – their widest shape stays in the key, it sets the field);
+    each second only the timer is drawn on a copy and the shadow added, as for the music card (``_BODIES``)."""
+    status, memo = tuple(status or ()), tuple(memo or ())
+    try:
+        key = (id(body) if body is not None else None, body.size if body is not None else None, name, realm,
+               _widest(timer) if timer else "", note, record, server, ping, status, int(text_h), style, accent, rec,
+               bool(lines_top), memo)
+        hash(key)
+    except TypeError:                                    # an unhashable accent: drawn whole, as before
+        key = None
+    hit = _MAP_BASES.get(key) if key is not None else None
+    if hit is None:
+        hit = _map_card_base(body, name, realm, timer, note, record, server, ping, status, text_h, style, accent,
+                             rec, lines_top, memo) + (body,)   # (the map kept: its id stays unique while cached)
+        if key is not None:
+            _MAP_BASES[key] = hit
+            while len(_MAP_BASES) > MAP_BASES_KEPT:
+                _MAP_BASES.pop(next(iter(_MAP_BASES)))
+    base, spot, tf, u, _body = hit
+    im = base.copy()
+    if spot is not None:
+        _text(im, spot[0], spot[1], timer, tf, WHITE)
+    return _finish(im, style, u)
+
+
+def _map_card_base(body, name, realm, timer, note, record, server, ping, status, text_h, style, accent, rec,
+                   lines_top, memo):
     """The map window in ``style``: ``body`` = the map picture without its drawn name (None: the lines alone –
     the info element – or the waiting card with ``status`` lines); ``name``/``realm`` for the header; ``timer``
     big, ``note`` (amber chip), ``record`` and ``server`` + ``ping`` as chips below a hairline; ``text_h`` sizes
@@ -754,7 +786,8 @@ def map_card(body, name: str, realm: str, timer: str, note: str, record: str, se
     no chip. ``lines_top`` (1.8.34, user: "mit der Map kombinieren, oben oder unten"): timer and chips between the
     header and the map instead of below it. ``memo`` (1.8.54): lines of the own note on the map, below the chips.
     One drawing for every modern style (1.8.27), the surface comes from
-    SURFACES."""
+    SURFACES. Returns (card without the timer's digits and without its shadow, (x, y) of the
+    timer or None, timer font, unit)."""
     from .overlay_win32 import INFO_WARN, REC_DOT, ping_colour
     u = max(0.25, text_h / MAP_U)
     acc = accent_rgba(accent)
@@ -817,7 +850,7 @@ def map_card(body, name: str, realm: str, timer: str, note: str, record: str, se
                        (int(6 * u) if head else 0) + int(10 * u)))
     h = pad + sum(bh + g for _k, bh, g in blocks) + pad
     im = _frame(w, h, style, u)
-    y = pad
+    y, spot = pad, None
     for kind, bh, g in blocks:
         y += g
         if kind == "realm":                          # 1.8.40 (user: "über der Map der name soll mittig sein"):
@@ -830,8 +863,7 @@ def map_card(body, name: str, realm: str, timer: str, note: str, record: str, se
             _hairline(im, pad, w - pad, y - g // 2)
             im.alpha_composite(body, ((w - body.width) // 2, y))
         elif kind == "timer":
-            x = (w - field_w) / 2 if body is not None else pad
-            _text(im, x, y - int(6 * u), timer, tf, WHITE)
+            spot = ((w - field_w) / 2 if body is not None else pad, y - int(6 * u))
         elif kind.startswith("status"):
             f, t, c = lines[int(kind[6:])]
             _text(im, (w - _width(f, t)) / 2, y, t, f, c)
@@ -845,4 +877,4 @@ def map_card(body, name: str, realm: str, timer: str, note: str, record: str, se
                 _hairline(im, pad, w - pad, y - g // 2)
             im.alpha_composite(row_pic, ((w - row_pic.width) // 2 if body is not None else pad, y))
         y += bh
-    return _finish(im, style, u)
+    return im, spot, tf, u

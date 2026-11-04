@@ -510,37 +510,75 @@ def premultiplied_bgra_numpy(img: Image.Image) -> bytes:
     return out.tobytes()
 
 
-def push_layered(hwnd, data: bytes, w: int, h: int, pos, opacity: float) -> str:
-    """Show premultiplied BGRA pixels in a layered window at ``pos``; returns an error text or ""."""
-    screen = _u.GetDC(None)
-    mem = _g.CreateCompatibleDC(screen)
-    bmi = BITMAPINFO()
-    bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
-    bmi.bmiHeader.biWidth = w
-    bmi.bmiHeader.biHeight = -h                   # top-down rows
-    bmi.bmiHeader.biPlanes = 1
-    bmi.bmiHeader.biBitCount = 32
-    bits = ctypes.c_void_p()
-    hbmp = _g.CreateDIBSection(screen, ctypes.byref(bmi), 0, ctypes.byref(bits), None, 0)
-    err = ""
-    try:
-        if not hbmp or not bits.value:
+class LayeredSurface:
+    """1.34.1 (review P1): the memory DC and DIB section of one layered window, kept while its size stays – before,
+    every push (once a second for the timer, every 30 ms while fading) made and freed both. The pixels are copied
+    only when they are other bytes than last time: a fade pushes the same picture with another opacity."""
+
+    def __init__(self):
+        self._dc = self._bmp = self._old = None
+        self._bits, self._size, self._data = 0, None, None
+
+    def push(self, hwnd, data: bytes, w: int, h: int, pos, opacity: float) -> str:
+        """Show premultiplied BGRA pixels in the layered window ``hwnd`` at ``pos``; returns an error text or ""."""
+        try:
+            if self._dc is None or self._size != (w, h):
+                self.free()
+                self._make(w, h)
+            if data is not self._data:
+                ctypes.memmove(self._bits, data, min(len(data), w * h * 4))
+                self._data = data
+            screen = _u.GetDC(None)
+            try:
+                blend = BLENDFUNCTION(0, 0, max(1, min(255, int(round(opacity * 255)))), 1)
+                ok = _u.UpdateLayeredWindow(hwnd, screen, ctypes.byref(wintypes.POINT(int(pos[0]), int(pos[1]))),
+                                            ctypes.byref(wintypes.SIZE(w, h)), self._dc,
+                                            ctypes.byref(wintypes.POINT(0, 0)), 0, ctypes.byref(blend), ULW_ALPHA)
+            finally:
+                _u.ReleaseDC(None, screen)
+            return "" if ok else f"UpdateLayeredWindow Fehler {ctypes.get_last_error()}"
+        except OSError as e:
+            self.free()
+            return str(e)
+
+    def _make(self, w: int, h: int) -> None:
+        screen = _u.GetDC(None)
+        try:
+            dc = _g.CreateCompatibleDC(screen)
+            if not dc:
+                raise OSError(f"CreateCompatibleDC fehlgeschlagen (Fehler {ctypes.get_last_error()})")
+            bmi = BITMAPINFO()
+            bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            bmi.bmiHeader.biWidth = w
+            bmi.bmiHeader.biHeight = -h               # top-down rows
+            bmi.bmiHeader.biPlanes = 1
+            bmi.bmiHeader.biBitCount = 32
+            bits = ctypes.c_void_p()
+            bmp = _g.CreateDIBSection(screen, ctypes.byref(bmi), 0, ctypes.byref(bits), None, 0)
+        finally:
+            _u.ReleaseDC(None, screen)
+        if not bmp or not bits.value:
+            if bmp:
+                _g.DeleteObject(bmp)
+            _g.DeleteDC(dc)
             raise OSError(f"CreateDIBSection fehlgeschlagen (Fehler {ctypes.get_last_error()})")
-        ctypes.memmove(bits.value, data, len(data))
-        old = _g.SelectObject(mem, hbmp)
-        blend = BLENDFUNCTION(0, 0, max(1, min(255, int(round(opacity * 255)))), 1)
-        ok = _u.UpdateLayeredWindow(hwnd, screen, ctypes.byref(wintypes.POINT(int(pos[0]), int(pos[1]))),
-                                    ctypes.byref(wintypes.SIZE(w, h)), mem,
-                                    ctypes.byref(wintypes.POINT(0, 0)), 0, ctypes.byref(blend), ULW_ALPHA)
-        if not ok:
-            err = f"UpdateLayeredWindow Fehler {ctypes.get_last_error()}"
-        _g.SelectObject(mem, old)
-    finally:
-        if hbmp:
-            _g.DeleteObject(hbmp)
-        _g.DeleteDC(mem)
-        _u.ReleaseDC(None, screen)
-    return err
+        self._dc, self._bmp, self._bits, self._size = dc, bmp, bits.value, (w, h)
+        self._old = _g.SelectObject(dc, bmp)
+
+    def free(self) -> None:
+        if self._dc is not None:
+            _g.SelectObject(self._dc, self._old)
+            _g.DeleteObject(self._bmp)
+            _g.DeleteDC(self._dc)
+        self._dc = self._bmp = self._old = None
+        self._bits, self._size, self._data = 0, None, None
+
+
+def _surface(win) -> LayeredSurface:
+    s = win.__dict__.get("_surface")
+    if s is None:
+        s = win._surface = LayeredSurface()
+    return s
 
 
 def render_hud(rows, height: int) -> Image.Image:
@@ -1119,8 +1157,8 @@ class HudWindow:
         pos = (int(x), int(y), round(self.opacity, 3))
         if pos != self._pos:
             self._pos = pos
-            err = push_layered(self._hwnd, self._data, self.size[0], self.size[1], pos[:2],
-                               self.opacity * self.fade)
+            err = _surface(self).push(self._hwnd, self._data, self.size[0], self.size[1], pos[:2],
+                                      self.opacity * self.fade)
             if err:
                 self.last_error = err
         flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
@@ -1145,8 +1183,8 @@ class HudWindow:
             return
         self.fade = fade
         if self._shown and self._data and self._pos:
-            err = push_layered(self._hwnd, self._data, self.size[0], self.size[1], self._pos[:2],
-                               self.opacity * fade)
+            err = _surface(self).push(self._hwnd, self._data, self.size[0], self.size[1], self._pos[:2],
+                                      self.opacity * fade)
             if err:
                 self.last_error = err
 
@@ -1162,6 +1200,7 @@ class HudWindow:
             _u.DestroyWindow(self._hwnd)
         except Exception:
             pass
+        _surface(self).free()
 
 
 REC_DOT = (229, 83, 75, 255)      # 1.4.1: theme.DOT "err" red
@@ -1708,7 +1747,7 @@ class Win32Overlay(PictureOverlay):
         if not self._prepared:
             return
         data, w, h, _ = self._prepared[self._frame_i]
-        err = push_layered(self._hwnd, data, w, h, pos or self._pos or (0, 0), self.opacity * self.fade)
+        err = _surface(self).push(self._hwnd, data, w, h, pos or self._pos or (0, 0), self.opacity * self.fade)
         if err:
             self.last_error = err
 
@@ -1740,6 +1779,7 @@ class Win32Overlay(PictureOverlay):
 
     def _destroy_window(self):
         _u.DestroyWindow(self._hwnd)
+        _surface(self).free()
 
     def hwnd(self) -> int:
         return self._hwnd

@@ -126,3 +126,25 @@ def test_lying_on_the_ground_is_no_loading_screen():
     ob = w.observe(f)
     assert ob.loading and ob.static and ob.reason is None
     assert not is_dark(_full("spectate.jpg"))
+
+
+def test_the_dark_share_from_every_4th_pixel_is_the_whole_regions_share():
+    """1.34.1 (review P7): is_dark reads every 4th pixel each way – on pictures of dark and lit areas, noise and
+    fine stripes the share stays within 2 points of the full region's, and the real pictures keep their answer."""
+    import cv2
+    import numpy as np
+    from fogscout import detector
+    rng = np.random.default_rng(1341)
+    for _ in range(40):
+        frame = rng.integers(0, 40, (1440, 3440, 3), dtype=np.uint8)
+        y, x = rng.integers(0, 1000), rng.integers(0, 3000)
+        frame[y:y + rng.integers(50, 600), x:x + rng.integers(50, 1500)] = rng.integers(60, 255)
+        if rng.random() < 0.5:
+            frame[:, ::3] = 200                                       # thin bright stripes
+        g = cv2.cvtColor(detector._region(frame, 0.0, 0.0, 1.0, 0.70), cv2.COLOR_BGR2GRAY)
+        full = float((g < 12).mean())
+        part = float((np.ascontiguousarray(g[::4, ::4]) < 12).mean())
+        assert abs(full - part) <= 0.02
+    for name, dark in (("loading.jpg", True), ("spectate.jpg", False)):
+        img = cv2.resize(cv2.imread(os.path.join(DATA, name)), (3440, 1440))
+        assert detector.is_dark(img) is dark
