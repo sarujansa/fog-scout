@@ -19,12 +19,12 @@ def _spans(parts):
 
 def test_describe_shows_numbers_only_never_paths_or_names():
     st = _state(Part(10, 40), Part(100, 110, speed=2.0), Part(50, 50, hold=2.0),
-                sources=["C:/Users/saru/Videos/2026-11-03 Coal Tower II - The Nurse.mkv"], fade_out=1.0)
+                sources=["C:/Users/TestUser/Videos/2026-11-03 Coal Tower II - The Nurse.mkv"], fade_out=1.0)
     d = ec.describe(st, "exact", marks=[12.0, 3.5])
     assert d["length"] == 30 + 5 + 2 and [c["from"] for c in d["clips"]] == [0, 30, 35]
     assert d["clips"][1]["speed"] == 2.0 and d["clips"][2]["still"] is True and d["marks"] == [3.5, 12.0]
     text = ec.content("erste 10 s weg", st, "exact", [3.5])
-    assert "Coal" not in text and "Nurse" not in text and "Videos" not in text and "saru" not in text
+    assert "Coal" not in text and "Nurse" not in text and "Videos" not in text and "TestUser" not in text
     assert "erste 10 s weg" in text and json.loads(text.split("\n")[1])["fade_out"] == 1.0
 
 

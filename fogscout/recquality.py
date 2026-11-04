@@ -7,12 +7,16 @@ Measured: the bitrate of the recording on air (GetRecordStatus outputBytes / out
 MUSHY_BPP it smears; HEVC/AV1 do the same with EFFICIENT × as many bits.
 
 What a click can set (obs-websocket 5): the output size and frame rate (SetVideoSettings), and in OBS's simple
-output mode the recording quality and encoder (SetProfileParameter, QUALITY_KEYS only); in the advanced mode the
-rescale switch. The advanced mode's encoder settings (rate control, CQP, bitrate) live in OBS's recordEncoder.json –
-no request sets them, so steps() tells the user where to click."""
+output mode the recording quality (SetProfileParameter, QUALITY_KEYS only); in the advanced mode the rescale switch.
+The encoder is never switched by a click (review F-03): an installed NVIDIA driver does not prove that OBS offers
+NVENC, and obs-websocket 5 has no request that lists the encoders – steps() names the switch instead. The advanced
+mode's encoder settings (rate control, CQP, bitrate) live in OBS's recordEncoder.json – no request sets them, so
+steps() tells the user where to click, per encoder family (encoder_family).
+
+The verdict is an estimate from the parameters (bitrate per pixel, resolution, frame rate, codec), not a measurement
+of the picture: content, motion, the encoder's preset and the source change what the same bitrate looks like."""
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 
 from .i18n import _
@@ -27,7 +31,7 @@ TARGET_FPS = 60
 SKIP_SHARE = 0.01               # more skipped frames than this: the encoder cannot keep up
 
 SIMPLE_BEST = "HQ"              # simple mode: "Kaum unterscheidbare Qualität" (Stream/Small/HQ/Lossless)
-SIMPLE_NVENC = "nvenc"          # simple mode's NVENC H.264 – only when an NVIDIA driver is installed
+
 
 @dataclass
 class Verdict:
@@ -89,10 +93,22 @@ def _skips(d) -> bool:
     return total > 0 and int(d.get("output_skipped") or 0) / total > SKIP_SHARE
 
 
-def nvidia_present() -> bool:
-    """An NVIDIA driver is installed (nvml.dll in System32 – the file is only looked at, never loaded here)."""
-    root = os.environ.get("SystemRoot", r"C:\Windows")
-    return os.name == "nt" and os.path.isfile(os.path.join(root, "System32", "nvml.dll"))
+def encoder_family(encoder: str) -> str:
+    """Review F-03: "nvenc" / "amf" / "qsv" / "cpu" (x264) / "unknown" for the encoder OBS reports – a raw profile name
+    ("jim_nvenc", "h264_texture_amf", "obs_qsv11_v2", "amd", "qsv", "obs_x264" …) or a label (obsrec.encoder_label),
+    any capitalisation. Unknown names (and "none" = the stream encoder) get neutral steps, never a brand's."""
+    label = encoder_label((encoder or "").strip()).lower()
+    if not label:
+        return "unknown"
+    if label.startswith("nvenc"):
+        return "nvenc"
+    if label.startswith("amd amf"):
+        return "amf"
+    if label.startswith("quick sync"):
+        return "qsv"
+    if label.startswith("x264"):
+        return "cpu"                       # x265/AV1 on the CPU: neutral steps – the x264 values do not fit them
+    return "unknown"
 
 
 def verdict(d: dict) -> Verdict:
@@ -144,7 +160,7 @@ def verdict(d: dict) -> Verdict:
     return v
 
 
-def plan(d: dict, nvidia: bool = False) -> dict:
+def plan(d: dict) -> dict:
     """What a click would change: {"video": {SetVideoSettings fields} or absent, "profile": [(cat, name, value)]}.
     Empty = nothing a request can improve (the advanced mode's encoder settings are steps() for the user)."""
     if not d or not d.get("connected"):
@@ -161,8 +177,6 @@ def plan(d: dict, nvidia: bool = False) -> dict:
     if _simple(d):
         if (d.get("quality") or "").lower() in ("stream", "small"):
             prof.append(("SimpleOutput", "RecQuality", SIMPLE_BEST))
-        if nvidia and (d.get("encoder_raw") or "").lower().startswith("x264"):
-            prof.append(("SimpleOutput", "RecEncoder", SIMPLE_NVENC))
     elif _rescaled(d):
         prof.append(("AdvOut", "RecRescale", "false"))
     prof = [p for p in prof if p[:2] in QUALITY_KEYS]           # never more than a click may write
@@ -182,8 +196,6 @@ def plan_lines(p: dict) -> list:
     for cat, name, value in p.get("profile") or ():
         if name == "RecQuality":
             lines.append(_("Aufnahmequalität „Kaum unterscheidbare Qualität“"))
-        elif name == "RecEncoder":
-            lines.append(_("Encoder {name}", name=encoder_label(value)))
         elif name == "RecRescale":
             lines.append(_("Aufnahme nicht mehr herunterskalieren"))
     return lines
@@ -197,17 +209,38 @@ def steps(mode: str, encoder: str = "") -> list:
                 _("Encoder: Hardware (NVENC/AMD/QSV), wenn vorhanden"),
                 _("Aufnahmeformat: MKV oder Hybrid-MP4"),
                 _("Video: Ausgabeauflösung = Basisauflösung, Bildrate 60")]
-    cpu = "(CPU)" in encoder_label(encoder) or "x264" in (encoder or "").lower()
-    rows = [_("OBS → Einstellungen → Ausgabe (Modus „Erweitert“) → Reiter „Aufnahme“:"),
-            _("Video-Encoder: NVIDIA NVENC H.264 oder HEVC (nicht „Stream-Encoder verwenden“)"),
-            _("Ausgabe neu skalieren: aus")]
-    if cpu:
-        rows += [_("x264: Frequenzsteuerung CRF, Wert 18, Voreinstellung veryfast")]
-    else:
-        rows += [_("Frequenzsteuerung: CQP, CQ-Level 18 (HEVC 20)"),
+    family = encoder_family(encoder)
+    rows = [_("OBS → Einstellungen → Ausgabe (Modus „Erweitert“) → Reiter „Aufnahme“:")]
+    if family == "nvenc":
+        rows += [_("Video-Encoder: NVIDIA NVENC H.264 oder HEVC (nicht „Stream-Encoder verwenden“)"),
+                 _("Ausgabe neu skalieren: aus"),
+                 _("Frequenzsteuerung: CQP, CQ-Level 18 (HEVC 20)"),
                  _("Voreinstellung: P5: Langsam (gute Qualität), Tuning: Hohe Qualität, Mehrfachdurchlauf: zwei "
                    "Durchläufe (Viertelauflösung)"),
                  _("Profil: high (HEVC: main), Keyframe-Intervall: 2 s")]
+    elif family == "amf":
+        rows += [_("Video-Encoder: AMD HW H.264 oder HEVC (nicht „Stream-Encoder verwenden“)"),
+                 _("Ausgabe neu skalieren: aus"),
+                 _("Frequenzsteuerung: CQP, QP-Werte 18 (HEVC 20)"),
+                 _("Voreinstellung: Qualität"),
+                 _("Profil: high (HEVC: main), Keyframe-Intervall: 2 s")]
+    elif family == "qsv":
+        rows += [_("Video-Encoder: QuickSync H.264 oder HEVC (nicht „Stream-Encoder verwenden“)"),
+                 _("Ausgabe neu skalieren: aus"),
+                 _("Frequenzsteuerung: ICQ (oder CQP), Wert 18"),
+                 _("Target Usage: TU1 bis TU4 – kleiner = bessere Qualität"),
+                 _("Profil: high (HEVC: main), Keyframe-Intervall: 2 s")]
+    elif family == "cpu":
+        rows += [_("Video-Encoder: der Grafikkarten-Encoder (NVENC, AMF oder QuickSync), wenn OBS einen anbietet – "
+                   "sonst x264"),
+                 _("Ausgabe neu skalieren: aus"),
+                 _("x264: Frequenzsteuerung CRF, Wert 18, Voreinstellung veryfast")]
+    else:
+        rows += [_("Video-Encoder: einen eigenen wählen (nicht „Stream-Encoder verwenden“), am besten den der "
+                   "Grafikkarte, wenn OBS einen anbietet"),
+                 _("Ausgabe neu skalieren: aus"),
+                 _("Frequenzsteuerung: gleichbleibende Qualität (CQP, CQ, ICQ oder CRF) um 18 statt einer festen "
+                   "niedrigen Bitrate")]
     rows += [_("Aufnahmeformat: MKV oder Hybrid-MP4"),
              _("Video: Ausgabeauflösung = Basisauflösung, Bildrate 60"),
              _("Danach eine kurze Runde aufnehmen – die Karte zeigt die neue Bitrate.")]
