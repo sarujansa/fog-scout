@@ -943,3 +943,23 @@ def test_the_obs_snapshot_is_saved_when_taken_and_cleared_and_kept_when_the_rest
         assert app.settings.get("rec_obs_before") == {} and len(saves) == 2
     finally:
         app.quit()
+
+
+def test_the_setup_assistant_sets_up_obs_and_leads_to_the_server_page(app_root, tmp_path, monkeypatch):
+    """1.30 (user: "bei erstmaliger Installation soll man angewiesen werden, alles einzurichten"): the assistant's
+    OBS step works on the same settings as Einstellungen → Verbindungen; its last step's "Serverregionen
+    auswählen …" ends the assistant for good and opens the server page."""
+    from fogscout.app_qt import ui_act
+    app = _clips_app(app_root, tmp_path, monkeypatch)
+    try:
+        app.settings.set("welcome_seen", False)
+        app.qt.show_setup(True)
+        reg = app._qt_reg
+        assert {"st.more.rec_port", "srv.conn", "setup.server"} <= set(reg)
+        ui_act(reg["st.more.rec_port"], "4456")                          # typed in the assistant
+        assert app.settings.get("rec_port") == 4456
+        reg["setup.server"].invoke()
+        assert app.settings.get("welcome_seen") is True
+        assert not app.qt._setup_on and app.qt.current_key() == "server"
+    finally:
+        app.quit()
