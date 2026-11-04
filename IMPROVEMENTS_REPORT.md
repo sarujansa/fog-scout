@@ -1,5 +1,7 @@
 # Fog Scout – Optimierung 1.22.3 bis 1.23.1 (Abschlussbericht)
 
+> **Historische Momentaufnahme** (Stand laut Dokument: 2. November 2026, PR #298). Die Angaben zu Version, offenen Punkten und Merge-Status gelten für diesen Tag; spätere Änderungen stehen in `HISTORY.md`.
+
 Auftrag: `prompt.md` (umfassende Produkt-, UI/UX-, Funktions- und Performance-Optimierung, Phasen 0–10).
 Stand: 2. November 2026, Zweig `claude/funny-feynman-gt5t6n`, Pull Request sarujansa/fog-scout#298 (nicht gemergt – Saru merged).
 

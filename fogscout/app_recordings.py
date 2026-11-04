@@ -743,6 +743,9 @@ class RecordingsTab:
 
     def _rec_quality_text(self, v, d) -> str:
         parts = [v.words]
+        if v.words:                            # review F-07: an estimate from parameters, not a picture measurement
+            parts[0] += "\n" + _("Einschätzung aus Bitrate, Auflösung, Bildrate und Codec – Bildinhalt, Bewegung, "
+                                  "Encoder-Voreinstellung und Quelle beeinflussen das Ergebnis.")
         if v.hints:
             parts.append("\n".join("• " + h for h in v.hints))
         steps = recquality.steps(d.get("mode", ""), d.get("encoder_raw") or d.get("encoder") or "")
@@ -755,7 +758,7 @@ class RecordingsTab:
         the question "In OBS einstellen" – OK writes only that (Recorder.apply_quality), never during a recording."""
         d = dict(self._obs_state or {})
         v = self._rec_quality_verdict()
-        p = recquality.plan(d, nvidia=recquality.nvidia_present())
+        p = recquality.plan(d)
         text = self._rec_quality_text(v, d)
         if not p:
             self._inform(_("Aufnahmequalität"), text + "\n\n" + _("Diese Werte lassen sich nur in OBS selbst "
@@ -795,10 +798,14 @@ class RecordingsTab:
             prof.update({tuple(p[:2]): list(p) for p in (old.get("profile") or [])})
             if prof:
                 merged["profile"] = list(prof.values())
-            self.settings.set("rec_obs_before", merged)
+            if merged != old:                  # review F-04: on disk soon – a crash must not lose the way back
+                self.settings.set("rec_obs_before", merged)
+                self._save_soon()
         elif d.get("done"):
-            if d.get("restore"):
+            # only a successful restore posts "done" with restore – a failed one (ObsError) keeps the snapshot
+            if d.get("restore") and self.settings.get("rec_obs_before"):
                 self.settings.set("rec_obs_before", {})
+                self._save_soon()
             self._rec_quality_last = None
             self._rec_card_poll_now()
         self._rec_card_render()

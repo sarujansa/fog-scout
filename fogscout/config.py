@@ -268,8 +268,10 @@ SECRET_KEYS = ("rec_password", "spotify_token", "youtube_client_secret", "youtub
 
 def export_settings(data: dict, path: str) -> None:
     """Backup of all settings (hotkeys, sizes/rotations per map, own map assignments …) – without the secrets
-    (SECRET_KEYS) and the YouTube queue (EXPORT_SKIP); an import keeps this PC's own anyway (LOCAL_KEYS)."""
-    data = {k: v for k, v in data.items() if k not in SECRET_KEYS and k not in EXPORT_SKIP}
+    (SECRET_KEYS), the YouTube queue (EXPORT_SKIP) and (review F-01) this PC's own values
+    (LOCAL_KEYS: folders, setup path, window geometry …): read_backup never takes them from a file anyway, so in a
+    shared backup they only told others about this PC. Old backups that still hold them import as before."""
+    data = {k: v for k, v in data.items() if k not in SECRET_KEYS and k not in EXPORT_SKIP and k not in LOCAL_KEYS}
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
