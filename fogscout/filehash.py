@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import threading
 
 from . import fsops, paths
+
+log = logging.getLogger(__name__)
 
 CHUNK = 4 << 20
 QFP_BYTES = 1 << 20
@@ -227,8 +230,8 @@ class Hasher(threading.Thread):
             for on_done in dones:
                 try:
                     on_done(result)
-                except Exception:
-                    pass
+                except Exception:                     # 1.34.2 (review W1): the next waiter still gets its answer
+                    log.exception("Hash fertig: Fehler beim Weitergeben")
 
     def hash_now(self, path, on_progress=None, allow_placeholder=False) -> dict:
         """The work of one job, also callable directly (tests)."""
