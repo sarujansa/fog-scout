@@ -69,16 +69,22 @@ log = logging.getLogger("fogscout")
 class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, SpotifyUpNext, YouTubeUpload, LobbyInfo,
           Hotkeys, SettingsTab, PaletteMixin,
           SysInfo, OverlayPlacement, LayoutMemory, OverlayTab, QtShell):
-    def __init__(self, root_dir: str, simulate: str | None = None, start_in_tray: bool = False, progress=None):
+    def __init__(self, root_dir: str, simulate: str | None = None, start_in_tray: bool = False, progress=None,
+                 data_dir: str | None = None):
         self.root_dir = root_dir
+        # 1.30.1 (.exe, stage 2): the program's own files (maps, models, HISTORY.md) stay in root_dir; everything it
+        # writes (settings, rounds, log, cache, backups, own pictures, debug) goes to data_dir – the same folder from
+        # start.bat, the per-user folder for the installed program (paths.data_root)
+        self.data_dir = data_dir or root_dir
         self.simulate = simulate
         self._progress = progress or (lambda fraction, text: None)     # 1.14.2: the splash screen's steps
-        self.settings = Settings(os.path.join(root_dir, "settings.json"))
+        self.settings = Settings(os.path.join(self.data_dir, "settings.json"))
         i18n.set_language(self.settings.get("ui_language", "auto"))
         self._secrets_plain = self._secrets_upgrade()     # 1.28: "plain:" → encrypted, before anything reads them
         self._joined_preload()           # 1.16.2: the statistics files are parsed while the window is built
         self._progress(0.3, _("Lade Maps …"))
-        self.catalog = Catalog(root_dir, self.settings["languages"], self.settings.get("user_aliases"))
+        self.catalog = Catalog(root_dir, self.settings["languages"], self.settings.get("user_aliases"),
+                               data_dir=self.data_dir)
         self._unknown = None             # (name text, realm text) of the last banner that matched no map
         self.events: queue.Queue = queue.Queue()
         self._quitting = False
@@ -88,7 +94,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         if IS_WIN:
             try:
                 from .icon import ensure_ico
-                ensure_ico(root_dir)             # the taskbar button shows this icon (1.9.1: renewed per version)
+                ensure_ico(self.data_dir)             # the taskbar button shows this icon (1.9.1: renewed per version)
             except OSError:
                 pass
 
@@ -148,7 +154,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._style_warm()
 
         self._progress(0.58, _("Starte Erkennung …"))
-        self.worker = DetectionWorker(root_dir, self.settings, self.catalog, self.events, simulate=simulate)
+        self.worker = DetectionWorker(root_dir, self.settings, self.catalog, self.events, simulate=simulate,
+                                      data_dir=self.data_dir)
         self.toast.on_rect = lambda r: setattr(self.worker, "toast_rect", r)    # 1.8.13: never read as the game
         self.worker.start()
         self.hotkeys = self._start_hotkeys()
@@ -627,7 +634,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         except Exception as e:  # pragma: no cover
             text = f"Diagnose fehlgeschlagen: {e}"
         try:
-            with open(os.path.join(self.root_dir, "diagnose.txt"), "w", encoding="utf-8") as fh:
+            with open(os.path.join(self.data_dir, "diagnose.txt"), "w", encoding="utf-8") as fh:
                 fh.write(text)
         except OSError:
             pass
@@ -731,7 +738,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         path, shown = self.catalog.image_path(map_id, variant)
         style = self.settings["overlay"].get("map_style", "classic")
         if path and style in mapstyle.STYLES:                                                  # 1.8.16: + floors
-            styled = mapstyle.styled_path(path, os.path.join(self.root_dir, STYLE_CACHE), False, style)
+            styled = mapstyle.styled_path(path, os.path.join(self.data_dir, STYLE_CACHE), False, style)
             if styled == path and request:
                 self._style_request(path, style)
             path = styled
@@ -744,7 +751,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         if (path, style) in asked:
             return
         asked.add((path, style))
-        cache = os.path.join(self.root_dir, STYLE_CACHE)
+        cache = os.path.join(self.data_dir, STYLE_CACHE)
 
         def run():
             if mapstyle.styled_path(path, cache, True, style) != path:
@@ -755,7 +762,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         """1.22.1: a picture just added – every map style made at once in a thread (~1–2 s each), so switching the
         style later shows it straight away; ``_style_ready`` once per style made. The style chosen now comes first;
         a style asked for meanwhile (``_style_request``) is not made a second time."""
-        cache = os.path.join(self.root_dir, STYLE_CACHE)
+        cache = os.path.join(self.data_dir, STYLE_CACHE)
         now = self.settings["overlay"].get("map_style", "classic")
         styles = sorted(mapstyle.STYLES, key=lambda s: s != now)
         self.__dict__.setdefault("_style_asked", set()).update((path, s) for s in styles)
@@ -781,7 +788,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             return
         paths = sorted({p for m in self.catalog.maps.values() for v in m.variants   # 1.22.1: own pictures too
                         for p in [self.catalog.image_path(m.id, v)[0]] if p})
-        cache = os.path.join(self.root_dir, STYLE_CACHE)
+        cache = os.path.join(self.data_dir, STYLE_CACHE)
         stop = lambda: self.settings["overlay"].get("map_style", "classic") != style   # noqa: E731
 
         def run():
@@ -1472,7 +1479,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                            == os.path.normcase(os.path.abspath(path))), None)
             if getattr(self, "_picture_from_unknown", False):
                 self._hide_unknown()
-        rel = os.path.relpath(path, self.root_dir)
+        rel = os.path.relpath(path, self.data_dir)
         if map_id is None:
             self._log(_("Kartenbild gespeichert: {path}", path=rel), "Overlay")
             return
@@ -1488,7 +1495,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self.show_map(self.current[0], self.current[1], self.source or "manual", keep_timer=True)
 
     def _reload_catalog(self):
-        self.catalog = Catalog(self.root_dir, self.settings["languages"], self.settings.get("user_aliases"))
+        self.catalog = Catalog(self.root_dir, self.settings["languages"], self.settings.get("user_aliases"),
+                               data_dir=self.data_dir)
         self.worker.set_catalog(self.catalog)
         self._fill_list()
         self._show_aliases()
@@ -1514,7 +1522,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
     def _langs_changed(self):
         langs = [c for c, _ in LANGS if self.lang_vars[c].get()] or ["en"]
         self.settings.set("languages", langs)
-        self.catalog = Catalog(self.root_dir, langs, self.settings.get("user_aliases"))
+        self.catalog = Catalog(self.root_dir, langs, self.settings.get("user_aliases"), data_dir=self.data_dir)
         self.worker.set_catalog(self.catalog)
         self._fill_list()
         self._save_soon()
@@ -1598,7 +1606,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 self.srv_measure()
 
     def _open_logfile(self):
-        self._open(os.path.join(self.root_dir, "fogscout.log"))
+        self._open(os.path.join(self.data_dir, "fogscout.log"))
 
     def _open(self, path):
         try:
