@@ -50,7 +50,10 @@ class _PROPVARIANT(ctypes.Structure):             # only the VT_LPWSTR case; siz
 
 def start_menu_link(name: str = "Fog Scout.lnk") -> str:
     """Where the setup puts the Start menu shortcut (the one Windows pins for the running window)."""
-    return os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs", name)
+    from .paths import known_folder
+    programs = known_folder("Programs") or os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
+                                                        "Start Menu", "Programs")
+    return os.path.join(programs, name)
 
 
 def set_process_app_id() -> bool:

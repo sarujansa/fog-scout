@@ -64,7 +64,8 @@ def valid_key(key: str) -> bool:
 def _opener():
     global OPENER
     if OPENER is None:
-        OPENER = urllib.request.build_opener()        # honours the system proxy like every urllib call
+        from .net import opener                    # 1.33.5 (S9): https-only redirects, no token to another host
+        OPENER = opener()
     return OPENER
 
 

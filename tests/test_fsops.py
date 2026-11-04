@@ -185,6 +185,7 @@ ALLOWED = {                       # (module, function) → calls it may make
     ("fsops", "create_exclusive"): {"os.rename"},
     ("fsops", "rename_fallback"): {"os.rename"},
     ("fsops", "discard_tmp"): {"os.remove"},
+    ("fsops", "delete_inside"): {"os.remove"},   # 1.33.5: POSIX, after every part below the folder was checked
     ("fsops", "delete"): {"os.unlink"},
     ("filehash", "_save_cache"): {"os.replace"},
     ("project", "save"): {"os.replace"},  # format 1 (Strg+S of 1.16–1.18); the editor moves to projectsave in 1.18.1

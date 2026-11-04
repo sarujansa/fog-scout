@@ -36,6 +36,71 @@ def user_data_dir() -> str | None:
     return os.path.join(base, APP_DIR) if base else None
 
 
+# 1.33.5 (review S5): the program runs elevated through its task – a normal program of the same user can set
+# variables like %ProgramFiles%, %SystemRoot% or %COMSPEC% for it (HKCU\Environment). Folders of Windows itself
+# therefore come from Windows, never from the environment; the constants are only the answer outside Windows.
+KNOWN_FOLDERS = {"ProgramFiles": "{905e63b6-c1bf-494e-b29c-65b732d3d21a}",
+                 "Programs": "{A77F5D77-2E2B-44C3-A6A2-ABA601054A51}"}       # Start menu → Programs of this user
+
+
+def windows_dir() -> str:
+    """C:\\Windows – GetWindowsDirectoryW."""
+    return _win_dir("GetWindowsDirectoryW") or r"C:\Windows"
+
+
+def system_dir() -> str:
+    """C:\\Windows\\System32 – GetSystemDirectoryW."""
+    return _win_dir("GetSystemDirectoryW") or r"C:\Windows\System32"
+
+
+def system_exe(*parts: str) -> str:
+    """A program of Windows by its full path (``system_exe("schtasks.exe")``) – never found through PATH or the
+    current folder."""
+    import ntpath                                        # a Windows path also where tests run elsewhere
+    return ntpath.join(system_dir(), *parts)
+
+
+def _win_dir(fn: str) -> str:
+    if sys.platform != "win32":
+        return ""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        n = getattr(ctypes.WinDLL("kernel32"), fn)(buf, len(buf))
+        return buf.value if 0 < n < len(buf) else ""
+    except Exception:
+        return ""
+
+
+def known_folder(name: str) -> str:
+    """A folder Windows names (``KNOWN_FOLDERS``) – SHGetKnownFolderPath; "" when unknown or outside Windows."""
+    guid = KNOWN_FOLDERS.get(name)
+    if sys.platform != "win32" or not guid:
+        return ""
+    try:
+        import ctypes
+        import uuid
+        from ctypes import wintypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD),
+                        ("Data4", ctypes.c_ubyte * 8)]
+        u = uuid.UUID(guid)
+        g = GUID(u.time_low, u.time_mid, u.time_hi_version, (ctypes.c_ubyte * 8)(*u.bytes[8:]))
+        out = ctypes.c_wchar_p()
+        shell = ctypes.WinDLL("shell32")
+        shell.SHGetKnownFolderPath.argtypes = [ctypes.POINTER(GUID), wintypes.DWORD, wintypes.HANDLE,
+                                               ctypes.POINTER(ctypes.c_wchar_p)]
+        if shell.SHGetKnownFolderPath(ctypes.byref(g), 0, None, ctypes.byref(out)) != 0:
+            return ""
+        try:
+            return out.value or ""
+        finally:
+            ctypes.WinDLL("ole32").CoTaskMemFree(out)
+    except Exception:
+        return ""
+
+
 def frozen() -> bool:
     """1.30.1 (.exe, stage 2): running as the packaged program (PyInstaller sets ``sys.frozen``), not from a source
     checkout via start.bat."""
