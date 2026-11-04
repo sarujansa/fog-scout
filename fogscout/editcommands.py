@@ -20,7 +20,8 @@ MAX_REQUEST = 400                # characters of the user's wish sent at most
 MAX_TITLE = 80                   # characters of a short's title
 MAX_SUB = 120                    # characters of one subtitle
 EPS = 0.05                       # seconds: edges this close count as the same moment
-KINDS = ("cut", "keep", "speed", "split", "hold", "fade", "mode", "short_title", "subtitle")
+KINDS = ("cut", "keep", "speed", "split", "hold", "fade", "mode", "short_title", "subtitle", "censor")
+MAX_BOXES = 20                   # 1.35: censor boxes in one edit at most
 
 SYSTEM = ("You are the editing assistant of a clip editor for Dead by Daylight gameplay recordings. You get the "
           "current edit as JSON (all times are seconds of the finished clip, the 'output time') and the user's "
@@ -31,7 +32,10 @@ SYSTEM = ("You are the editing assistant of a clip editor for Dead by Daylight g
           "fade(in,out) seconds of fade-in/out, each one of " + ", ".join(f"{f:g}" for f in clipedit.FADES)
           + "; mode(value) export mode, one of " + ", ".join(clipedit.MODES) + " ('shorts' = vertical 9:16 for "
           "YouTube Shorts/TikTok); short_title(text) and subtitle(from,to,text) only for mode shorts. Use 'marks' "
-          "(moments the player marked with F8) when the wish refers to marked moments. If the wish cannot be done "
+          "(moments the player marked with F8) when the wish refers to marked moments. Only when a picture of the "
+          "recording is attached: censor(x,y,w,h) hides an area of the whole recording (player names, chat, friend "
+          "lists), as fractions 0–1 of that picture (x, y = top left corner) – make the box generously larger than "
+          "the text. If the wish cannot be done "
           "with these operations, return no operations and say why. Write 'summary' as one short sentence in the "
           "language of the wish.")
 
@@ -40,7 +44,9 @@ _OP = {"type": "object", "additionalProperties": False, "required": ["op"],
                       "from": {"type": "number"}, "to": {"type": "number"}, "at": {"type": "number"},
                       "factor": {"type": "number"}, "seconds": {"type": "number"},
                       "in": {"type": "number"}, "out": {"type": "number"},
-                      "value": {"type": "string"}, "text": {"type": "string"}}}
+                      "value": {"type": "string"}, "text": {"type": "string"},
+                      "x": {"type": "number"}, "y": {"type": "number"},
+                      "w": {"type": "number"}, "h": {"type": "number"}}}
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary", "ops"],
           "properties": {"summary": {"type": "string"}, "ops": {"type": "array", "items": _OP}}}
 
@@ -64,9 +70,12 @@ def describe(state: sequence.EditState, mode: str, marks=()) -> dict:
     return out
 
 
-def content(wish: str, state: sequence.EditState, mode: str, marks=()) -> str:
+def content(wish: str, state: sequence.EditState, mode: str, marks=(), picture: bool = False) -> str:
+    """1.35: ``picture`` = a still of the recording goes along (the user's switch) – said, so Claude may censor."""
     import json
-    return ("Current edit:\n" + json.dumps(describe(state, mode, marks), ensure_ascii=False)
+    seen = ("\n\nAttached: a still of the recording at the play head (censored areas already hidden)."
+            if picture else "\n\nNo picture is attached.")
+    return ("Current edit:\n" + json.dumps(describe(state, mode, marks), ensure_ascii=False) + seen
             + "\n\nWish: " + str(wish or "").strip()[:MAX_REQUEST])
 
 
@@ -102,7 +111,22 @@ def _valid_fade(v) -> bool:
     return v is not None and any(abs(v - f) <= 1e-3 for f in clipedit.FADES)
 
 
-def apply(state: sequence.EditState, ops, mode: str):
+def _box(op: dict):
+    """1.35: a censor box (fractions) cut to the picture, None when it lies outside or is empty."""
+    vals = [_num(op, k) for k in ("x", "y", "w", "h")]
+    if None in vals:
+        return None
+    x, y, w, h = vals
+    if w <= 0 or h <= 0 or x >= 1 or y >= 1 or x + w <= 0 or y + h <= 0:
+        return None
+    x0, y0 = max(0.0, x), max(0.0, y)
+    w, h = min(1.0, x + w) - x0, min(1.0, y + h) - y0
+    if w < 0.005 or h < 0.005:
+        return None
+    return [round(x0, 4), round(y0, 4), round(w, 4), round(h, 4)]
+
+
+def apply(state: sequence.EditState, ops, mode: str, picture: bool = False):
     """(new state, new mode, done, skipped) – ``done``/``skipped`` are (op, (German key, values)) for the list in the
     editor. 1.28 (audit B1–B5): every invalid value is refused, never moved to a limit; an operation that would change
     nothing is "skipped: keine Änderung", never "done"; ``new mode`` is None unless a valid ``mode`` operation set it
@@ -121,6 +145,20 @@ def apply(state: sequence.EditState, ops, mode: str):
         mode_now = new_mode or mode
         if kind not in KINDS:
             skipped.append((op, (N_("unbekannte Aktion"), {})))
+            continue
+        if kind == "censor":                             # 1.35: only with a still – else Claude cannot see where
+            box = _box(op) if picture else None
+            if not picture:
+                skipped.append((op, (N_("Zensur nur mit Standbild"), {})))
+            elif box is None:
+                skipped.append((op, (N_("Kasten ausserhalb des Bildes"), {})))
+            elif len(new.boxes) >= MAX_BOXES:
+                skipped.append((op, (N_("zu viele Kästen"), {})))
+            else:
+                new.boxes.append(box)
+                new.censor_on = True
+                done.append((op, (N_("Bereich unkenntlich machen ({x} %, {y} %)"),
+                                  {"x": int(round(box[0] * 100)), "y": int(round(box[1] * 100))})))
             continue
         if kind in ("cut", "keep", "speed"):
             a, b = _num(op, "from"), _num(op, "to")

@@ -11,7 +11,7 @@ from __future__ import annotations
 import threading
 import time
 
-from . import askclaude, i18n, launch, overview, palette, spotify
+from . import askclaude, i18n, launch, overview, palette, spotify, statsclaude
 from . import uimodel as ui
 from .i18n import _
 
@@ -117,6 +117,10 @@ class PaletteMixin:
     def _claude_ready(self) -> bool:
         return bool(self.settings.get("claude_on", False)) and askclaude.valid_key(self._claude_key())
 
+    def _claude_stats_ready(self) -> bool:
+        """1.35: the search may also ask Claude about the summed-up round values."""
+        return bool(self.settings.get("claude_stats", False)) and askclaude.valid_key(self._claude_key())
+
     def _claude_key(self) -> str:
         """The key in use: one typed this session that could not be stored encrypted (1.28), else the stored one."""
         return getattr(self, "_claude_session_key", "") or spotify.unprotect(self.settings.get("claude_key", "") or "")
@@ -137,7 +141,7 @@ class PaletteMixin:
         if action == "palette_open":
             self._qt_event("search_open")             # the pages filled, the window's search index new
             self.qt.palette_entries(self._palette_build(), recent=self.settings.get("palette_recent") or [],
-                                    claude=self._claude_ready())
+                                    claude=self._claude_ready(), stats=self._claude_stats_ready())
         elif action == "palette_pick":
             entry_id, alt = arg
             e = getattr(self, "_palette_by_id", {}).get(entry_id)
@@ -149,6 +153,8 @@ class PaletteMixin:
             self._palette_run(e, bool(alt))
         elif action == "palette_ask":
             self._palette_ask(str(arg or ""))
+        elif action == "palette_ask_stats":
+            self._palette_ask_stats(str(arg or ""))
 
     def _palette_run(self, e, alt: bool):
         q = self.qt
@@ -200,6 +206,24 @@ class PaletteMixin:
             return
         self._asker().ask(key, question, catalogue)
 
+    def _palette_ask_stats(self, question: str):
+        """1.35: a statistics question – the question and statsclaude.summary (counts and rates per group, never a
+        single round, never a name) go to Claude once; the answer comes back as plain text."""
+        if not question.strip() or not self._claude_stats_ready():
+            return
+        try:
+            j = self._joined()
+            data = statsclaude.summary(j.rounds, j.off)
+        except Exception:
+            import logging
+            logging.getLogger("fogscout").exception("Claude: Statistik zusammenfassen")
+            self.qt.palette.show_error(_("Die Statistik liess sich nicht zusammenfassen – Details im Log."))
+            return
+        if not data.get("rounds"):
+            self.qt.palette.show_error(_("Noch keine Runden – Claude hätte nichts zum Auswerten."))
+            return
+        self._asker().ask_stats(self._claude_key(), question, data)
+
     def _asker(self):
         a = getattr(self, "asker", None)
         if a is None:                         # started on the first question only
@@ -215,7 +239,9 @@ class PaletteMixin:
         p = getattr(getattr(self, "qt", None), "palette", None)
         if p is None or not p.isVisible() or p.field.text().strip() != str(data.get("question", "")).strip():
             return                            # closed or typed on meanwhile: the answer is stale
-        if kind == "answer":
+        if kind == "stats":                                 # 1.35: a statistics answer – plain text, no rows
+            p.show_answer(data.get("answer", "") or _("Claude hat keine Antwort gegeben."), [])
+        elif kind == "answer":
             ids = getattr(self, "_claude_ids", {})          # 1.28: the opaque ids back to the entries
             p.show_answer(data.get("answer", ""), [ids[i] for i in data.get("ids") or [] if i in ids])
         else:
@@ -243,6 +269,25 @@ class PaletteMixin:
         self._reg("st.more.cl_editor", ui.Checkbutton(cc, text=_("Im Clip-Editor Claude nutzen"),
                                                        variable=self.cl_editor_var,
                                                        command=self._claude_setting)).pack(anchor="w")
+        # 1.35 (user's release of 3.11.2026): pictures and summed-up round values – one switch per function
+        self.cl_image_var = ui.BooleanVar(value=bool(self.settings.get("claude_image", False)))
+        self._reg("st.more.cl_image", ui.Checkbutton(cc, text=_("Bilder im Bild-Editor an Claude schicken"),
+                                                      variable=self.cl_image_var,
+                                                      command=self._claude_setting)).pack(anchor="w")
+        self.cl_frame_var = ui.BooleanVar(value=bool(self.settings.get("claude_frame", False)))
+        self._reg("st.more.cl_frame", ui.Checkbutton(cc, text=_("Standbilder aus Aufnahmen im Clip-Editor an Claude "
+                                                                "schicken"),
+                                                      variable=self.cl_frame_var,
+                                                      command=self._claude_setting)).pack(anchor="w")
+        self.cl_stats_var = ui.BooleanVar(value=bool(self.settings.get("claude_stats", False)))
+        self._reg("st.more.cl_stats", ui.Checkbutton(cc, text=_("In der Suche Statistik-Fragen an Claude stellen"),
+                                                      variable=self.cl_stats_var,
+                                                      command=self._claude_setting)).pack(anchor="w")
+        self._reg("st.more.cl_privacy", ui.Label(cc, text=_(
+            "Bilder können Spielernamen zeigen – sie gehen nur auf deinen Klick „Vorschlagen“ an Claude, verkleinert "
+            "und nur im Speicher; bereits zensierte Bereiche bleiben zensiert. Statistik-Fragen senden nur Zähler "
+            "und Quoten je Rolle, Killer, Map, Region und Tageszeit – keine einzelne Runde, keine Namen von "
+            "Spielern."), style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(2, 0))
         row = ui.Frame(cc)
         row.pack(fill="x", pady=(4, 0))
         self._reg("st.more.cl_key.label", ui.Label(row, text=_("API-Key"))).pack(side="left")
@@ -286,10 +331,14 @@ class PaletteMixin:
         if save:
             self.settings.set("claude_on", bool(self.cl_on_var.get()))
             self.settings.set("claude_editor", bool(self.cl_editor_var.get()))
+            for k, var in (("claude_image", self.cl_image_var), ("claude_frame", self.cl_frame_var),
+                           ("claude_stats", self.cl_stats_var)):
+                self.settings.set(k, bool(var.get()))
             if key != self._claude_loaded:        # 1.28 (audit F2b): a switch never overwrites the stored key
                 self._claude_store(key)
             self._save_soon()
-        on = self.cl_on_var.get() or self.cl_editor_var.get()
+        on = any(v.get() for v in (self.cl_on_var, self.cl_editor_var, self.cl_image_var, self.cl_frame_var,
+                                   self.cl_stats_var))
         stored = self.settings.get("claude_key", "") or ""
         if not key and stored and not spotify.unprotect(stored):
             self.cl_status_var.set(_("Claude: Der gespeicherte Key ist auf diesem PC nicht lesbar – bitte neu "
@@ -301,11 +350,11 @@ class PaletteMixin:
         else:
             words = self._claude_stored_words()
             text = (_("Claude: Key eingetragen.") if on
-                    else _("Claude: Key eingetragen, Claude ist in Suche und Editor aus."))
+                    else _("Claude: Key eingetragen, Claude ist überall aus."))
             self.cl_status_var.set(text + (" " + _("({how})", how=words) if words else ""))
         q = getattr(self, "qt", None)
         if q is not None and hasattr(q, "palette_entries"):
-            q.palette_entries(q._palette_entries, claude=self._claude_ready())
+            q.palette_entries(q._palette_entries, claude=self._claude_ready(), stats=self._claude_stats_ready())
 
     def _claude_store(self, key: str):
         """Writes a newly typed key encrypted; without the Windows encryption it is kept for this session only and
@@ -354,9 +403,17 @@ class PaletteMixin:
         key = self._claude_key()
         return key if self.settings.get("claude_editor", False) and askclaude.valid_key(key) else ""
 
+    def _claude_image_key(self) -> str:
+        """1.35: the key for the screenshot editor – "" while the user has not allowed pictures there."""
+        key = self._claude_key()
+        return key if self.settings.get("claude_image", False) and askclaude.valid_key(key) else ""
+
     def _claude_diag(self) -> str:
         """For the diagnosis: on/off, a key set, counts – never the key, never a question."""
         a = getattr(self, "asker", None)
         return (f"Claude: Suche an={bool(self.settings.get('claude_on'))}, "
-                f"Editor an={bool(self.settings.get('claude_editor'))}, Key gesetzt={bool(self._claude_key())}, "
+                f"Editor an={bool(self.settings.get('claude_editor'))}, "
+                f"Bilder an={bool(self.settings.get('claude_image'))}, "
+                f"Standbilder an={bool(self.settings.get('claude_frame'))}, "
+                f"Statistik an={bool(self.settings.get('claude_stats'))}, Key gesetzt={bool(self._claude_key())}, "
                 + (a.diag_line() if a is not None else "noch nicht gefragt"))
