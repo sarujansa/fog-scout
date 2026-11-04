@@ -179,9 +179,66 @@ def run_helper(argv) -> int:
     return helper.main([argv[0] + ".py", *argv[1:]])
 
 
+def _autostart_wanted(data: str) -> bool:
+    """The user's choice in settings.json (default on) – a reinstall keeps an autostart that was switched off."""
+    import json
+    try:
+        with open(os.path.join(data, "settings.json"), encoding="utf-8") as fh:
+            return json.load(fh).get("autostart", True) is not False
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
+def install_tasks() -> int:
+    """1.32 (.exe, stage 4): ``FogScout.exe --install-tasks`` – run by the installer with administrator rights. Notes a
+    start.bat installation the task "Fog Scout" ran until now (takeover, offered at the first start), then points the
+    tasks and the Start menu/desktop shortcuts at the .exe; the logon task unless autostart was switched off."""
+    from . import autostart, takeover
+    data = _data()
+    takeover.record(data, takeover.task_folder(autostart.TASK))
+    ok, _msg = autostart.install(ROOT)
+    if ok and _autostart_wanted(data):
+        ok, _msg = autostart.set_autostart(ROOT, True)
+    return 0 if ok else 1
+
+
+def remove_tasks() -> int:
+    """1.32: ``FogScout.exe --remove-tasks`` – the uninstaller: tasks and shortcuts go, the data folder stays."""
+    from . import autostart
+    return 0 if autostart.uninstall()[0] else 1
+
+
+def offer_takeover(data: str, ask=None) -> list:
+    """1.32: the first start of the .exe without own settings – copy a start.bat installation's data on request
+    (takeover.py; asked once, the original only read). ``ask(text) -> bool`` for tests. Returns what was copied."""
+    from . import takeover
+    folder = takeover.pending(data)
+    if not folder:
+        return []
+    text = _("Fog Scout wurde bisher über start.bat genutzt:\n{folder}\n\nEinstellungen, Runden, Match-Daten, "
+             "Sicherungen und eigene Kartenbilder in die installierte Version übernehmen? Der alte Ordner bleibt "
+             "unverändert.", folder=folder)
+    copied = []
+    try:
+        if (ask or _ask_yes_no)(text):
+            copied = takeover.copy(folder, data)
+    finally:
+        takeover.finish(data)
+    return copied
+
+
+def _ask_yes_no(text: str) -> bool:
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    return ctypes.windll.user32.MessageBoxW(None, text, "Fog Scout", 0x4 | 0x20) == 6     # MB_YESNO|QUESTION, IDYES
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--helper":      # before anything else: runs with administrator rights
         sys.exit(run_helper(sys.argv[2:]))
+    if len(sys.argv) == 2 and sys.argv[1] in ("--install-tasks", "--remove-tasks"):   # 1.32: the installer
+        sys.exit(install_tasks() if sys.argv[1] == "--install-tasks" else remove_tasks())
     ap = argparse.ArgumentParser(prog="fogscout")
     ap.add_argument("--simulate", help="Screenshots statt Bildschirm verwenden (Datei oder Ordner)")
     ap.add_argument("--test", nargs="+", help="Nur testen: Screenshots auswerten und Ergebnis ausgeben")
@@ -211,7 +268,17 @@ def main():
     i18n.init_from_settings(os.path.join(data, "settings.json"))
     if not _single_instance():
         return
+    taken = []
+    if data != ROOT:                              # 1.32: the installed program – a start.bat installation to take over
+        try:
+            taken = offer_takeover(data)
+        except OSError as e:
+            _message(_("Übernahme fehlgeschlagen: {error}", error=e), error=True)
+        if taken:
+            i18n.init_from_settings(os.path.join(data, "settings.json"))     # the taken-over language
     _setup_logging(data)
+    if taken:
+        logging.getLogger("fogscout").info("Aus der start.bat-Installation übernommen: %s", ", ".join(taken))
     _log_thread_deaths()
     from .capture import enable_dpi_awareness
     enable_dpi_awareness()
