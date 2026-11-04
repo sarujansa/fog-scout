@@ -4,7 +4,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# (no QT_QPA_PLATFORM here: set at collection it made the whole run offscreen – test_windows needs real windows)
 
 ALLOWED = {}            # name -> classes that define it on purpose (none today); say why when adding one
 
