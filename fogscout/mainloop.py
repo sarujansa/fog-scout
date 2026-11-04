@@ -135,19 +135,6 @@ class MainLoop:
         g = s.geometry()
         return round(g.width() * s.devicePixelRatio()), round(g.height() * s.devicePixelRatio())
 
-    def virtual_screen(self) -> tuple[int, int, int, int]:
-        """(x, y, w, h) of all screens together."""
-        if IS_WIN:
-            try:
-                import ctypes
-                u = ctypes.windll.user32
-                return (int(u.GetSystemMetrics(76)), int(u.GetSystemMetrics(77)), int(u.GetSystemMetrics(78)),
-                        int(u.GetSystemMetrics(79)))
-            except Exception:
-                pass
-        w, h = self.screen_size()
-        return 0, 0, w, h
-
     def mainloop(self):
         return self.qapp.exec()
 

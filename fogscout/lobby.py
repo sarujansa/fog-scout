@@ -528,9 +528,6 @@ class QueueTracker:
         self.state, self.search_start, self._starts, self.role, self._killers = "idle", None, [], None, {}
         self._cross = {}
 
-    def searching_since(self, t: float) -> float | None:
-        return t - self.search_start if self.state == "search" and self.search_start is not None else None
-
     def take(self, t: float, max_age: float = 900.0) -> Found | None:
         """The lobby that led to the match now starting (once)."""
         f, self.found = self.found, None

@@ -132,3 +132,28 @@ def test_the_thread_delivers_results_and_survives_a_bad_callback(tmp_path):
         assert done.wait(30) and got[0]["kind"] == "done"
     finally:
         h.stop()
+
+
+def test_a_failing_answer_is_logged_and_the_next_waiter_still_gets_its_own(tmp_path, caplog):
+    """1.34.2 (review W1): a window's callback that raises was swallowed without a trace – now it is in the log, and
+    the other window waiting for the same file still gets the hash."""
+    path = tmp_path / "r.mkv"
+    _file(path, 4096)
+    h = filehash.Hasher(filehash.Cache(str(tmp_path / "c")), retry_s=0)
+    got = threading.Event()
+    answers = []
+
+    def broken(result):
+        raise RuntimeError("window already closed")
+
+    h.request(str(path), broken)
+    h.request(str(path), lambda r: (answers.append(r), got.set()))
+    with caplog.at_level("ERROR", logger="fogscout.filehash"):
+        h.start()
+        try:
+            assert got.wait(30)
+        finally:
+            h.stop()
+            h.join(10)
+    assert answers[0]["kind"] == "ok" or answers[0].get("sha256")
+    assert any("Hash fertig" in r.getMessage() and r.exc_info for r in caplog.records)

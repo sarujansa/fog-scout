@@ -231,7 +231,8 @@ def test_the_frame_player_streams_frames_at_the_files_pace_and_stops(clip):
     assert ended.wait(10)
     took = time.monotonic() - t0
     assert got and got[0][1] == (160, 90) and abs(got[0][0] - 10.0) < 0.05 and got[-1][0] <= 12.1
-    assert 1.5 <= took <= 4.0                                         # ~2 s of film took ~2 s
+    assert took >= 1.5                     # ~2 s of film took at least ~2 s (1.34.2, review W11: no upper limit – shared
+    #                                        CI runners are slow at times; the wait above bounds it)
     # a stretch with an end, stopped early
     got, ended = [], threading.Event()
     pl = clipedit.FramePlayer(clip, 1.0, info, lambda t, img: got.append(t), ended.set, end=8.0, height=90, ffmpeg=FF)

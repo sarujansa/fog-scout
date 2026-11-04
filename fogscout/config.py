@@ -272,10 +272,8 @@ def export_settings(data: dict, path: str) -> None:
     (LOCAL_KEYS: folders, setup path, window geometry …): read_backup never takes them from a file anyway, so in a
     shared backup they only told others about this PC. Old backups that still hold them import as before."""
     data = {k: v for k, v in data.items() if k not in SECRET_KEYS and k not in EXPORT_SKIP and k not in LOCAL_KEYS}
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2, ensure_ascii=False)
-    os.replace(tmp, path)
+    from . import fsops                       # 1.34.2 (review W8): fsync'ed, no half or leftover file
+    fsops.write_atomic(path, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
 
 
 # per-PC values that must not come along from a backup (other folder / other machine)
