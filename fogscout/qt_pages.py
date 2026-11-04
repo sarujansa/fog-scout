@@ -23,7 +23,7 @@ THUMB_H = 170                     # px (logical) of the map picture on the overv
 SETUP_W = 820                     # px (logical): widest step of the setup assistant
 
 
-# The setup assistant on the first start (1.60, user's wish): three steps of controls that are also on the pages
+# The setup assistant on the first start (1.60, user's wish): steps of controls that are also on the pages
 # (same keys – the same widgets of the UI model). ("note", text) = an explaining line of the step itself.
 GAME_LANGS = ("en", "de", "fr", "es", "es-MX", "it", "pl", "pt-BR", "tr")   # app.LANGS (test: the same)
 
@@ -53,12 +53,18 @@ SETUP = (
         ("sub", N_("Systemwerte")),              # 1.8.2: "Position" alone did not say what it places
         ("row", (("label", "ov.sysinfo.label"), ("combo", "ov.sysinfo"), ("stretch",))),
         ("check", "ov.today"), ("check", "ov.media"))),
-    (N_("Tasten und Start"), (
+    (N_("Tasten"), (
         ("note", N_("Die wichtigsten Tasten – zum Ändern draufklicken und die neue Kombination drücken. Alle "
                     "Tasten findest du später unter Einstellungen.")),
         ("grid", 1, tuple(("row", (("label", f"st.hk.{k}.label"), ("stretch",), ("hotkey", f"st.hk.{k}")))
-                          for k in SETUP_HOTKEYS)),
-        ("check", "st.autostart"), ("check", "st.lobby_notify"))),
+                          for k in SETUP_HOTKEYS)))),
+    # 1.30 (user: "bei erstmaliger Installation soll man angewiesen werden, alles einzurichten"): start, recording,
+    # connections and server got steps of their own – the same controls as on the settings/server pages
+    (N_("Start und Meldungen"), (
+        ("note", N_("Fog Scout kann mit Windows starten und still im Infobereich (neben der Uhr) warten, bis DBD "
+                    "läuft. Die Lobby-Meldung sagt dir mit einem Ton, wenn ein Match gefunden wurde.")),
+        ("check", "st.autostart"), ("hint", "st.autostart_info"), ("check", "st.tray"),
+        ("check", "st.lobby_notify"), ("check", "st.notify_background_only"))),
     # 1.2.15: the stats-page link was only deep in the settings; new users never found it
     (N_("Match-Daten"), (
         ("note", N_("Kills, Entkommen und Bloodpoints deiner Runden kommen von stats.deadbydaylight.com – geladen "
@@ -66,6 +72,51 @@ SETUP = (
                     "Match-Daten → Offizielle Match-Daten).")),
         ("row", (("button", "setup.script"), ("button", "setup.open_site"), ("stretch",))),
         ("check", "setup.off_notify"), ("check", "setup.off_open"), ("hint", "setup.off_text"))),
+    (N_("Aufnahmen mit OBS"), (
+        ("note", N_("Optional: OBS Studio nimmt jede Runde auf, Fog Scout sagt OBS nur, wann. Ohne OBS einfach "
+                    "„Weiter“.")),
+        ("note", N_("1. In OBS: Werkzeuge → WebSocket-Servereinstellungen → „WebSocket-Server aktivieren“ anhaken; "
+                    "unter „Verbindungsinformationen anzeigen“ stehen Port und Passwort.")),
+        ("note", N_("2. Port und Passwort hier eintragen und „Verbindung testen“.")),
+        ("row", (("label", "st.more.rec_port.label"), ("entry", "st.more.rec_port"),
+                 ("label", "st.more.rec_pw.label"), ("entry", "st.more.rec_pw"),
+                 ("button", "st.more.rec_test"), ("stretch",))),
+        ("hint", "st.more.obs_status"),
+        ("note", N_("3. Einen Ordner für die Aufnahmen wählen und die Aufnahmen einschalten.")),
+        ("row", (("button", "st.more.rec_dir"), ("hint", "st.more.rec_folder"))),
+        ("check", "st.more.rec_on"), ("check", "st.more.rec_obs_start"),
+        ("note", N_("Wie scharf OBS aufnimmt, zeigt danach die Karte „Aufnahme“ auf der Seite Aufnahmen – dort "
+                    "auch „Qualität verbessern …“.")))),
+    (N_("Verbindungen"), (
+        ("note", N_("Alles hier ist freiwillig und lässt sich später unter Einstellungen → Verbindungen "
+                    "einrichten. Jede Verbindung braucht eine eigene App-ID bzw. einen eigenen Key von dir – "
+                    "„Erklärung“ sagt, wo es sie gibt.")),
+        ("sub", N_("Discord")), ("check", "st.more.dc_on"),
+        ("row", (("label", "st.more.dc_id.label"), ("entry", "st.more.dc_id"), ("button", "st.more.dc_portal"),
+                 ("stretch",))),
+        ("fold", N_("Erklärung"), (("hint", "st.more.dc_text"),)),
+        ("sub", N_("Spotify")), ("check", "st.more.sp_on"),
+        ("row", (("label", "st.more.sp_id.label"), ("entry", "st.more.sp_id"), ("button", "st.more.sp_dash"),
+                 ("button", "st.more.sp_login"), ("stretch",))),
+        ("fold", N_("Erklärung"), (("hint", "st.more.sp_text"),)),
+        ("sub", N_("YouTube")), ("check", "st.more.yt_on"),
+        ("row", (("label", "st.more.yt_id.label"), ("entry", "st.more.yt_id"),
+                 ("label", "st.more.yt_secret.label"), ("entry", "st.more.yt_secret"),
+                 ("button", "st.more.yt_file"), ("stretch",))),
+        ("row", (("button", "st.more.yt_login"), ("stretch",))),
+        ("fold", N_("Erklärung"), (("hint", "st.more.yt_text"), ("row", (("button", "st.more.yt_console"),
+                                                                       ("stretch",))))),
+        ("sub", N_("Claude")), ("check", "st.more.cl_on"), ("check", "st.more.cl_editor"),
+        ("row", (("label", "st.more.cl_key.label"), ("entry", "st.more.cl_key"), ("button", "st.more.cl_test"),
+                 ("button", "st.more.cl_keys"), ("stretch",))),
+        ("fold", N_("Erklärung"), (("hint", "st.more.cl_text"),)))),
+    (N_("Server"), (
+        ("note", N_("Fog Scout kann anzeigen, mit welchem Spielserver DBD verbunden ist (Region und Ping, auch "
+                    "im Overlay) – dafür fragt Windows einmal nach Administratorrechten.")),
+        ("check", "srv.conn"),
+        ("note", N_("Auf der Seite Server lässt sich ausserdem festlegen, in welchen Regionen DBD Matches sucht. "
+                    "Das ist freiwillig.")),
+        ("row", (("button", "setup.server"), ("stretch",))))),
 )
 
 

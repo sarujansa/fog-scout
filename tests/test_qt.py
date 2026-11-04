@@ -793,9 +793,21 @@ def test_setup_assistant_goes_through_its_steps(qapp, keep):
     s.next.click()
     s.next.click()
     assert s.steps.currentIndex() == 2 and s.next.text() == "Weiter"
-    s.next.click()                                            # 1.2.15: step 4 "Match-Daten" (stats page link)
-    assert s.steps.currentIndex() == 3 and s.next.text() == "Fertig"
+    s.next.click()                                            # 1.30: step 4 "Start und Meldungen"
+    s.next.click()                                            # 1.2.15: "Match-Daten" (stats page link)
+    assert s.steps.currentIndex() == 4 and s.next.text() == "Weiter"
     assert qt_window.page_keys("setup") >= {"setup.script", "setup.open_site", "setup.off_notify"}
+    # 1.30 (user: "bei erstmaliger Installation … alles einrichten"): OBS, connections and the server follow
+    assert [qt_window.SETUP[i][0] for i in range(len(qt_window.SETUP))] == [
+        "Sprache", "Overlay", "Tasten", "Start und Meldungen", "Match-Daten", "Aufnahmen mit OBS", "Verbindungen",
+        "Server"]
+    assert qt_window.page_keys("setup") >= {"st.autostart", "st.tray", "st.more.rec_port", "st.more.rec_pw",
+                                            "st.more.rec_test", "st.more.rec_dir", "st.more.rec_on",
+                                            "st.more.dc_on", "st.more.sp_login", "st.more.yt_login",
+                                            "st.more.cl_key", "srv.conn", "setup.server"}
+    for _i in range(3):
+        s.next.click()
+    assert s.steps.currentIndex() == 7 and s.next.text() == "Fertig"
     s.next.click()
     s.skip.click()
     assert [posted.get_nowait()[0] for _i in range(2)] == ["setup_done", "setup_done"]

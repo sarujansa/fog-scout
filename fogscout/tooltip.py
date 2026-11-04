@@ -268,6 +268,8 @@ TIPS = {
                              "Anfrage setzen kann (Ausgabeauflösung, Bildrate, einfache Aufnahmequalität), stellt "
                              "„In OBS einstellen“ ein, die alten Werte werden gemerkt.",
     "OBS-Werte zurücksetzen": "Stellt die OBS-Werte von vor „In OBS einstellen“ wieder her.",
+    "Serverregionen auswählen …": "Beendet die Einrichtung und öffnet die Seite Server – dort die Regionen anhaken, in "
+                                  "denen DBD Matches suchen soll.",
     "Verbindung prüfen …": "Öffnet Einstellungen → Verbindungen: OBS-Verbindung (Port, Passwort) und „Verbindung testen“.",
     "Farming-Runden im Unterordner „Farming“ ablegen": "Runden, die das Programm als Farming erkennt (Crossplay aus "
                                                         "oder die Farming-Region), landen im Unterordner „Farming“ "
