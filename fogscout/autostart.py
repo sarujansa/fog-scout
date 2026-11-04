@@ -88,7 +88,11 @@ def remove_old_script() -> str:
 
 
 def relaunch_command() -> str:
-    """1.9.1: what the taskbar runs for a pinned button of the window – the same as the shortcuts (the task)."""
+    """1.9.1: what the taskbar runs for a pinned button of the window – the same as the shortcuts (the task).
+    1.31: the packaged program has no task yet (the installer sets it up, stage 4) – its own .exe."""
+    from .paths import frozen
+    if frozen():
+        return f'"{sys.executable}"'
     system_root = (os.environ.get("SystemRoot") or r"C:\Windows").rstrip("\\/")
     return f'"{system_root}\\System32\\schtasks.exe" /run /tn "{TASK}"'
 
