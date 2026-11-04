@@ -104,13 +104,13 @@ def _single_instance() -> bool:
     """Only one running copy (a second one could not register the hotkeys)."""
     if sys.platform != "win32":
         return True
-    from .restart import MUTEX_NAME, ask_running_copy_to_show
+    from .restart import MUTEX_NAME, ask_running_copy_to_show, process_name
     if not _claim_mutex(MUTEX_NAME):
         if ask_running_copy_to_show():            # 1.65.1: the running copy brings its window to the front
             return False
         _message(_("Fog Scout läuft bereits, reagiert aber nicht (oder ist gerade beim Beenden).\n\n"
                    "Kurz warten und nochmal starten. Hilft das nicht: im Task-Manager unter „Details“ "
-                   "„pythonw.exe“ (Fog Scout) beenden."))
+                   "„{exe}“ (Fog Scout) beenden.", exe=process_name()))
         return False
     return True
 
@@ -163,7 +163,25 @@ def _log_thread_deaths():
     threading.excepthook = hook
 
 
+HELPER_MODULES = ("hostsedit", "netwatch")      # = regions.HELPERS (test_frozen)
+
+
+def run_helper(argv) -> int:
+    """1.31 (.exe, stage 3): ``FogScout.exe --helper <name> <file> <file>`` – the packaged program has no loose .py
+    files, so the elevated helpers (regions.helper_command) are the program itself with this first argument. Only the
+    two helpers, only their own two file arguments; nothing else of the program starts (no window, no mutex, no log)."""
+    if not argv or argv[0] not in HELPER_MODULES:
+        return 2
+    if argv[0] == "hostsedit":
+        from . import hostsedit as helper
+    else:
+        from . import netwatch as helper
+    return helper.main([argv[0] + ".py", *argv[1:]])
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--helper":      # before anything else: runs with administrator rights
+        sys.exit(run_helper(sys.argv[2:]))
     ap = argparse.ArgumentParser(prog="fogscout")
     ap.add_argument("--simulate", help="Screenshots statt Bildschirm verwenden (Datei oder Ordner)")
     ap.add_argument("--test", nargs="+", help="Nur testen: Screenshots auswerten und Ergebnis ausgeben")
@@ -171,7 +189,12 @@ def main():
     ap.add_argument("--tray", action="store_true", help="im Infobereich starten (Autostart mit Windows)")
     ap.add_argument("--restart", action="store_true", help=argparse.SUPPRESS)   # helper of the update button
     ap.add_argument("--no-update", action="store_true", help=argparse.SUPPRESS)  # with --restart: plain restart
+    ap.add_argument("--selftest", metavar="RESULT", help=argparse.SUPPRESS)      # 1.31: CI checks the packaged .exe
     args = ap.parse_args()
+
+    if args.selftest:
+        from .selftest import main as selftest
+        sys.exit(selftest(ROOT, args.selftest))
 
     if args.restart:
         from .restart import wait_and_start

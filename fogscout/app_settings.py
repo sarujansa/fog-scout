@@ -13,6 +13,7 @@ from . import uimodel as ui
 from .capture import IS_WIN, foreground_root, is_game_window
 from . import autostart
 from .connwatch import is_admin
+from .paths import frozen
 from .i18n import N_, _
 from .app_hotkeys import HOTKEY_LABELS
 from .textnorm import fmt_duration
@@ -1040,8 +1041,12 @@ class SettingsTab:
 
     def _setup_then_read_autostart(self):
         """Thread: create/renew task, icon and shortcuts if needed, and the logon task unless autostart was
-        switched off (only as administrator, no prompt), then read the autostart state for the settings tab."""
-        if IS_WIN and is_admin():
+        switched off (only as administrator, no prompt), then read the autostart state for the settings tab.
+        1.31: not for the packaged program – the task and the shortcuts start start.bat; the installer sets up its own
+        (stage 4)."""
+        if frozen():
+            pass
+        elif IS_WIN and is_admin():
             try:
                 res = autostart.ensure(self.root_dir, self.settings.get("setup_version"),
                                        self.settings.get("setup_root"))
@@ -1080,6 +1085,11 @@ class SettingsTab:
         if not IS_WIN:
             self.events.put(("autostart", None, False, _("Nur unter Windows.")))
             return
+        if frozen():
+            self.events.put(("autostart", autostart.task_exists(autostart.TASK_AUTO), False,
+                             _("In dieser Ausgabe noch nicht einstellbar – den Autostart richtet später der Installer "
+                               "ein.")))
+            return
         exists = autostart.task_exists(autostart.TASK_AUTO)
         admin = is_admin()
         info = ("" if admin else _("Änderbar, wenn das Programm über die Desktop-Verknüpfung gestartet wurde "
@@ -1114,6 +1124,10 @@ class SettingsTab:
     def check_update(self):
         """Button: ask GitHub (git fetch) whether there is something new – only on this click."""
         from . import update
+        if frozen():                              # 1.31: no git checkout – updates come with the installer (stage 5)
+            self.upd_status.set(_("Diese Ausgabe sucht noch nicht selbst nach Updates – neue Versionen gibt es auf "
+                                  "GitHub."))
+            return
         self.upd_btn.state(["disabled"])
         self.upd_apply_btn.pack_forget()
         self.upd_status.set(_("Suche nach Updates …"))
