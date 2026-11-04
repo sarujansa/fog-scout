@@ -78,7 +78,7 @@ def test_the_statistics_files_are_parsed_once_in_a_thread_at_start(tmp_path):
     from types import SimpleNamespace
     from fogscout import official
     from fogscout.app_stats import StatsTab
-    host = SimpleNamespace(root_dir=str(tmp_path))
+    host = SimpleNamespace(root_dir=str(tmp_path), data_dir=str(tmp_path))
     host._hist_path = lambda: StatsTab._hist_path(host)
     host._official_path = lambda: StatsTab._official_path(host)
     path = host._hist_path()
