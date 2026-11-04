@@ -1222,15 +1222,26 @@ class SettingsTab:
         if not self._quit_phase1(lambda: self._release_install(path, sha256)):
             self.upd_status.set(_("Update wartet: Editor-Projekte werden gesichert …"))
             return
-        from . import restart
-        try:
-            ok = restart.spawn_installer(path, sha256)
-        except OSError as e:
-            self.upd_status.set(_("Neustart nicht möglich: {error}", error=e))
+        # 1.33.2 (Saru's update 1.33 → 1.33.1 broke the installation): no helper from the program folder any more –
+        # it held FogScout.exe/python312.dll while the setup replaced them. The program checks the setup again,
+        # starts it itself and quits; the setup waits for the program's mutex (installer/fogscout.iss).
+        from . import relupdate, restart
+        folder = os.path.join(self.data_dir, relupdate.UPDATE_DIR)
+        if not restart.setup_still_ours(path, sha256, folder):
+            msg = _("Das Update wurde nicht gestartet: Die Setup-Datei hat sich seit dem Download verändert oder "
+                    "fehlt. Bitte das Update noch einmal laden.")
+            self.upd_status.set(msg)
+            self._log(msg, "Fehler")
             return
-        if ok:
-            self._log(_("Programm schliesst sich und installiert das Update …"), "System")
-            self.quit()
+        log = os.path.join(folder, relupdate.LOG_FILE)
+        if not IS_WIN or not restart._shell_open(path, relupdate.install_args(log)):
+            msg = _("Das Setup konnte nicht gestartet werden (Abfrage nach Administratorrechten abgebrochen?). "
+                    "Erneut versuchen oder das Setup selbst starten:\n{path}", path=path)
+            self.upd_status.set(msg)
+            self._log(msg, "Fehler")
+            return
+        self._log(_("Programm schliesst sich und installiert das Update …"), "System")
+        self.quit()
 
     def _round_running(self) -> bool:
         """1.8.63: a round is open (map detected, no end yet) or OBS records – no restart for an update now."""
