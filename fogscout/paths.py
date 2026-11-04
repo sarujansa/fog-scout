@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import sys
 
 from . import fsops
 
@@ -33,6 +34,26 @@ def user_data_dir() -> str | None:
         return forced
     base = _qt_location() or os.environ.get("LOCALAPPDATA") or ""
     return os.path.join(base, APP_DIR) if base else None
+
+
+def frozen() -> bool:
+    """1.30.1 (.exe, stage 2): running as the packaged program (PyInstaller sets ``sys.frozen``), not from a source
+    checkout via start.bat."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def data_root(program_root: str) -> str:
+    """1.30.1 (.exe, stage 2): where the program's own runtime files live – settings.json, rounds.jsonl,
+    official.jsonl, the log, crash files, cache/, backup/, user_maps/, debug/. From a source checkout (start.bat) the
+    program folder, exactly as before; the packaged program sits in Program Files (read-only, shared by every user),
+    so there it is the per-user data folder. Created when missing."""
+    if not frozen():
+        return program_root
+    path = user_data_dir()
+    if not path:
+        raise OSError("no per-user data folder (LOCALAPPDATA) for the settings")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def ensure(sub: str = "") -> str | None:

@@ -458,7 +458,7 @@ TIPS = {
                           "gleich danach an.",
     "Alle löschen": "Alle eigenen Map-Zuordnungen löschen (die Namen werden dann wieder als unbekannt "
                     "gemeldet).",
-    "Programmordner öffnen": "Öffnet den Ordner des Programms im Explorer.",
+    "Datenordner öffnen": "Öffnet den Ordner mit Einstellungen, Runden, Log und Sicherungen im Explorer.",
     "Karten-Ordner öffnen": "Öffnet den Ordner mit den mitgelieferten Kartenbildern.",
     # dialogs
     "Bild wählen …": "PNG, JPG, WebP oder GIF auswählen – zum Beispiel ein Original mit Hintergrund.",

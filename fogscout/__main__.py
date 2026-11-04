@@ -13,15 +13,25 @@ from .i18n import _
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _setup_logging():
-    from .rename import migrate
-    moved = migrate(ROOT)                      # 1.9: crash files/log/icon of the old name, before the log opens
+def _data() -> str:
+    """1.30.1 (.exe, stage 2): where the runtime files go – ROOT from start.bat (as before), the per-user data folder
+    for the installed program (paths.data_root)."""
+    from .paths import data_root
+    return data_root(ROOT)
+
+
+def _setup_logging(data=None):
+    data = data or _data()
+    moved = []
+    if data == ROOT:                           # only a source checkout ever had the old name's files
+        from .rename import migrate
+        moved = migrate(ROOT)                  # 1.9: crash files/log/icon of the old name, before the log opens
     logging.basicConfig(
-        filename=os.path.join(ROOT, "fogscout.log"), filemode="w", level=logging.INFO,
+        filename=os.path.join(data, "fogscout.log"), filemode="w", level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s", encoding="utf-8")
     if moved:
         logging.getLogger("fogscout").info("Alte Dateien von DbD Map Scout übernommen: %s", ", ".join(moved))
-    _enable_crash_log()
+    _enable_crash_log(data)
 
 
 _crash_fh = None
@@ -174,21 +184,22 @@ def main():
 
     from .appid import set_process_app_id
     set_process_app_id()                          # before the first window: own taskbar button and icon
-    i18n.init_from_settings(os.path.join(ROOT, "settings.json"))
+    data = _data()
+    i18n.init_from_settings(os.path.join(data, "settings.json"))
     if not _single_instance():
         return
-    _setup_logging()
+    _setup_logging(data)
     _log_thread_deaths()
     from .capture import enable_dpi_awareness
     enable_dpi_awareness()
     splash = None
     if not args.tray:                             # 1.14.2: the splash screen – not for the silent start in the tray
         from .splash import start as splash_start
-        splash = splash_start(ROOT, __version__)
+        splash = splash_start(data, __version__)
     try:
         from .app import App
         app = App(ROOT, simulate=args.simulate, start_in_tray=args.tray,
-                  progress=splash.progress if splash is not None else None)
+                  progress=splash.progress if splash is not None else None, data_dir=data)
         if splash is not None:
             splash.finish()                       # fades while the window comes up (App.run pumps the events)
         app.exit_watchdog = True                  # a quit that hangs ends the process anyway
@@ -204,7 +215,7 @@ def main():
     # process now. Settings are saved in App.quit; a thread that does not stop (tray icon, window capture)
     # or a hang while Python shuts down would keep the process – and its single-instance mutex – alive.
     logging.getLogger("fogscout").info("Beendet.")
-    _crash_log_clear()
+    _crash_log_clear(data)
     logging.shutdown()
     os._exit(0)
 
