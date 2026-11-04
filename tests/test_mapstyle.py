@@ -72,7 +72,7 @@ def test_the_dark_picture_is_made_once_and_then_taken_from_the_cache(tmp_path, m
 
 def _fake_app(appmod, cat, tmp_path, style):
     import queue
-    fake = types.SimpleNamespace(catalog=cat, root_dir=str(tmp_path), settings={"overlay": {"map_style": style}},
+    fake = types.SimpleNamespace(catalog=cat, root_dir=str(tmp_path), data_dir=str(tmp_path), settings={"overlay": {"map_style": style}},
                                  events=queue.Queue())
     fake._style_request = lambda path, st: appmod.App._style_request(fake, path, st)
     fake._style_ready = types.SimpleNamespace(__name__="_style_ready")            # only posted, never called here

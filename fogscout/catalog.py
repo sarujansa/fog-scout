@@ -63,12 +63,13 @@ class Hypothesis:
 
 
 class Catalog:
-    def __init__(self, root: str, languages=("en", "de"), aliases=None):
+    def __init__(self, root: str, languages=("en", "de"), aliases=None, data_dir: str | None = None):
         """``aliases``: the user's own assignments {map_id: [banner text, ...]} (settings.json),
-        added to the aliases from maps.json."""
+        added to the aliases from maps.json. ``data_dir`` (1.30.1): where the user's own pictures (user_maps/) are –
+        the program folder when not given."""
         self.root = root
         self.maps_dir = os.path.join(root, "maps")
-        self.user_dir = os.path.join(root, USER_DIR)
+        self.user_dir = os.path.join(data_dir or root, USER_DIR)
         self.languages = [l for l in languages] or ["en"]
         self.maps: dict[str, MapEntry] = {}
         self.realms: dict[str, dict] = {}

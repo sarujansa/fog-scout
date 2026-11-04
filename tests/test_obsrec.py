@@ -1040,7 +1040,7 @@ def test_an_unreadable_globe_crop_is_kept_for_a_look(tmp_path):
     import numpy as np
     from types import SimpleNamespace
     from fogscout import worker
-    fake = SimpleNamespace(root_dir=str(tmp_path))
+    fake = SimpleNamespace(root_dir=str(tmp_path), data_dir=str(tmp_path))      # 1.30.1: debug/ in the data folder
     img = np.zeros((20, 40, 3), dtype=np.uint8)
     for i in range(worker.GLOBE_KEPT + 3):
         worker.DetectionWorker._save_globe(fake, img, "cancel")

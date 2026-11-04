@@ -521,7 +521,7 @@ class RecordingsTab:
         from .qt_gallery import ShotGallery
         gallery = host.content if isinstance(host.content, ShotGallery) else None
         if gallery is None:
-            gallery = ShotGallery(os.path.join(self.root_dir, SHOT_THUMBS),
+            gallery = ShotGallery(os.path.join(self.data_dir, SHOT_THUMBS),
                                   dark=bool(self.settings.get("dark_mode", True)), on_pick=self._shot_pick,
                                   on_open=self._shot_edit,
                                   on_menu=lambda pos: self._context_menu(self._shot_menu_items(), pos,
@@ -1641,7 +1641,7 @@ class RecordingsTab:
         else:
             from .qt_editor import EditorWindow as Window
             extra.update(media=self._media_items, on_open=self._editor_open,
-                         cache_dir=os.path.join(self.root_dir, "cache", "clipthumbs"),
+                         cache_dir=os.path.join(self.data_dir, "cache", "clipthumbs"),
                          layout=self.settings.get("editor_layout") or {},
                          autosave=bool(self.settings.get("editor_autosave", True)),     # 1.18.1
                          round_t=(getattr(r, "t", 0.0) or None))
