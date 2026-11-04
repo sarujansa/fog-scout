@@ -18,8 +18,9 @@ class ServerTab:
         conn = ui.LabelFrame(f, text=_("Verbundener Spielserver"), padding=8)
         conn.pack(fill="x")
         self.conn_show_var = ui.BooleanVar(value=bool(self.settings.get("show_connection")))
-        ui.Checkbutton(conn, text=_("Anzeigen, mit welchem Server DBD verbunden ist"),
-                        variable=self.conn_show_var, command=self._conn_toggled).pack(anchor="w")
+        self._reg("srv.conn", ui.Checkbutton(conn, text=_("Anzeigen, mit welchem Server DBD verbunden ist"),  # 1.30: also
+                                             variable=self.conn_show_var, command=self._conn_toggled)  # in the setup
+                  ).pack(anchor="w")
         self.conn_tab_var = ui.StringVar(value="")
         ui.Label(conn, textvariable=self.conn_tab_var, style="Big.TLabel", wraplength=540).pack(anchor="w", pady=(2, 0))
         ui.Label(conn, text=_("Zeigt Region und Ping des Spielservers, auch im Overlay (braucht "
