@@ -38,6 +38,19 @@ def test_the_process_age_is_this_process_only_and_plausible():
         assert starttime.process_age_s() >= age
 
 
+def test_a_failing_reading_never_stops_the_start(monkeypatch):
+    """1.35 (CI on Windows): GetProcessTimes without argtypes raised ctypes.ArgumentError in __main__ – any error
+    of the reading gives None."""
+    import builtins
+
+    def broken(*a, **kw):
+        raise RuntimeError("no reading")
+    monkeypatch.setattr(builtins, "open", broken)
+    monkeypatch.setattr(starttime.ctypes, "WinDLL", broken, raising=False)
+    assert starttime.process_age_s() is None
+    assert starttime.StartClock().before is None
+
+
 def test_the_self_check_reports_the_start_times(tmp_path):
     from fogscout import selftest
     c = starttime.StartClock(before=0.4)
