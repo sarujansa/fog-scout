@@ -29,6 +29,9 @@ datas = [
     (os.path.join(PACKAGE, "fonts"), os.path.join("fogscout", "fonts")),
     (os.path.join(PACKAGE, "matchexport.user.js"), "fogscout"),
 ]
+# 1.33: build number/version/commit for the update check (relupdate.own_build) – written by CI before the build
+if os.path.isfile(os.path.join(ROOT, "build-info.json")):
+    datas.append((os.path.join(ROOT, "build-info.json"), "."))
 datas += collect_data_files("imageio_ffmpeg", subdir="binaries")   # obsrec.ffmpeg_exe: only this ffmpeg, never PATH
 
 # every module of the program (many are imported only inside functions), winrt's namespace packages (their .pyd

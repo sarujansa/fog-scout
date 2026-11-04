@@ -3,7 +3,10 @@
 # models, fonts, ffmpeg, OCR, Qt) and its helper entry, and keeps the folder as a run artifact for 14 days.
 # 1.32 (stage 4): compiles the installer (installer/fogscout.iss, Inno Setup – downloaded from its GitHub release,
 # SHA-256 checked), installs it silently, checks tasks, shortcut and the installed .exe, uninstalls it again and keeps
-# the setup as a run artifact. No release, no signing, nothing published – that comes with stage 5.
+# the setup as a run artifact.
+# 1.33 (stage 5): on a push to main (a merge) the job "release" publishes that setup as a GitHub release – tag
+# build-<run number>, the setup and its .sha256; the program's update check reads the latest one (fogscout/
+# relupdate.py). Only this job may write (contents: write); pull requests never reach it. Unsigned for now.
 # Actions are pinned to the full commit SHA of their tag (the tag is in the comment), as in tests.yml.
 name: Build
 
@@ -35,6 +38,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --only-binary=:all: -r requirements.txt -r requirements-build.txt
           python -m pip install --only-binary=:all: --no-deps -r requirements-extra.txt
+      - name: Build-Nummer für die Update-Prüfung
+        shell: pwsh
+        run: |
+          $version = python -c "import fogscout; print(fogscout.__version__)"
+          $info = @{ build = [int]$env:GITHUB_RUN_NUMBER; version = $version; commit = $env:GITHUB_SHA } | ConvertTo-Json -Compress
+          [IO.File]::WriteAllText("build-info.json", $info)
+          Get-Content build-info.json
       - name: PyInstaller
         run: python -m PyInstaller --noconfirm --clean installer/fogscout.spec
       - name: Selbsttest der .exe
@@ -83,7 +93,7 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP "Fog Scout & Co"
           $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$dir`"" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Setup: Code $($p.ExitCode)" }
-          foreach ($f in "FogScout.exe", "unins000.exe", "_internal\maps.json") {
+          foreach ($f in "FogScout.exe", "unins000.exe", "_internal\maps.json", "_internal\build-info.json") {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "nach der Installation fehlt $f" }
           }
           $task = Get-ScheduledTask -TaskName "Fog Scout" -ErrorAction Stop
@@ -117,3 +127,36 @@ jobs:
           path: dist/FogScout-Setup-*.exe
           retention-days: 14
           if-no-files-found: error
+
+  release:
+    name: release
+    needs: exe
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7.0.0
+        with:
+          name: FogScout-Setup-${{ github.sha }}
+          path: setup
+      - name: GitHub-Release mit Setup und Prüfsumme
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: build-${{ github.run_number }}
+          RUN: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "$TAG gibt es schon (erneuter Lauf)"; exit 0; fi
+          cd setup
+          setup=$(ls FogScout-Setup-*.exe)
+          [ "$(ls FogScout-Setup-*.exe | wc -l)" -eq 1 ]
+          version=${setup#FogScout-Setup-}; version=${version%.exe}
+          sha256sum "$setup" | awk '{print $1 "  " $2}' > "$setup.sha256"
+          sum=$(cut -d' ' -f1 "$setup.sha256")
+          printf 'Fog Scout %s (Build %s), Commit %s\n\nSHA-256 von %s: %s\n\nNicht signiert: Windows SmartScreen fragt beim ersten Start (Weitere Informationen → Trotzdem ausführen). Was neu ist, steht in HISTORY.md.\n' \
+            "$version" "$RUN" "$GITHUB_SHA" "$setup" "$sum" > notes.md
+          gh release create "$TAG" "$setup" "$setup.sha256" --target "$GITHUB_SHA" \
+            --title "Fog Scout $version (Build $RUN)" --notes-file notes.md --latest
