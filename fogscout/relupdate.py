@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
@@ -47,6 +48,7 @@ class Release:
     size: int
     sha_url: str
     digest: str = ""                 # GitHub's own "sha256:…" of the asset, when listed
+    sha256: str = ""                 # 1.33.1: the checked SHA-256 after download() – the install helper checks it again
 
 
 def own_build(root: str) -> dict:
@@ -91,8 +93,17 @@ def parse_release(data: dict) -> Release:
                    sha["browser_download_url"], digest[len("sha256:"):])
 
 
+class _HttpsOnly(urllib.request.HTTPRedirectHandler):
+    """1.33.1 (audit M-2): follow redirects (GitHub sends release downloads to its storage host) only to https."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not str(newurl).lower().startswith("https://"):
+            raise urllib.error.URLError(f"Weiterleitung ohne HTTPS abgelehnt: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _opener():
-    return urllib.request.build_opener()
+    return urllib.request.build_opener(_HttpsOnly)
 
 
 def _get(url: str, opener, limit: int) -> bytes:
@@ -165,6 +176,7 @@ def download(rel: Release, data_dir: str, opener=None, progress=None) -> str:
         if os.path.exists(final):
             os.remove(final)
         os.rename(tmp, final)
+        rel.sha256 = want
     except BaseException:
         try:
             os.remove(tmp)
@@ -173,12 +185,31 @@ def download(rel: Release, data_dir: str, opener=None, progress=None) -> str:
         raise
     for name in os.listdir(folder):                 # older setups and leftovers: only our own names
         path = os.path.join(folder, name)
-        if path != final and (SETUP.match(name) or name.endswith(".exe.part")):
+        if path != final and (SETUP.match(name) or (name.endswith(".exe.part") and SETUP.match(name[:-5]))):
             try:
                 os.remove(path)
             except OSError:
                 pass
     return final
+
+
+def clean_update_folder(data_dir: str) -> int:
+    """1.33.1 (audit M-3): at the start of the installed program – a setup in the update folder was either installed
+    (this is the new version) or not wanted; only our own names go (setups and .part leftovers). Returns how many."""
+    folder = os.path.join(data_dir, UPDATE_DIR)
+    gone = 0
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return 0
+    for name in names:
+        if SETUP.match(name) or (name.endswith(".exe.part") and SETUP.match(name[:-len(".part")])):
+            try:
+                os.remove(os.path.join(folder, name))
+                gone += 1
+            except OSError:
+                pass
+    return gone
 
 
 def install_args() -> list[str]:

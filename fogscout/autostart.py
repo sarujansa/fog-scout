@@ -230,10 +230,83 @@ def install(root: str):
     return True, _("Verknüpfung erstellt: {path}", path=links[-1])
 
 
+def same_user(a: str, b: str) -> bool:
+    """1.33.1 (audit H-4): two account names (DOMAIN\\user) are the same account – Windows ignores case. Only the user
+    part counts: the domain of a local or Microsoft account can be spelled differently by the two Windows functions,
+    and a false "different" would cost a normal installation its tasks."""
+    def user(name):
+        return name.strip().rsplit("\\", 1)[-1].casefold()
+    return bool(a) and bool(b) and user(a) == user(b)
+
+
+def session_user() -> str:
+    """DOMAIN\\user of the Windows session this process runs in (the person at the screen) – "" if unknown. Only
+    account information of the session (WTSQuerySessionInformationW), no process is opened."""
+    if not IS_WIN:
+        return ""
+    import ctypes
+    from ctypes import wintypes
+    wts = ctypes.WinDLL("wtsapi32", use_last_error=True)
+    wts.WTSQuerySessionInformationW.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_int,
+                                                ctypes.POINTER(wintypes.LPWSTR), ctypes.POINTER(wintypes.DWORD)]
+    wts.WTSQuerySessionInformationW.restype = wintypes.BOOL
+    wts.WTSFreeMemory.argtypes = [ctypes.c_void_p]
+
+    def query(kind):
+        buf, size = wintypes.LPWSTR(), wintypes.DWORD()
+        if not wts.WTSQuerySessionInformationW(None, 0xFFFFFFFF, kind, ctypes.byref(buf), ctypes.byref(size)):
+            return ""
+        try:
+            return buf.value or ""
+        finally:
+            wts.WTSFreeMemory(buf)
+    user, domain = query(5), query(7)                 # WTSUserName, WTSDomainName; WTS_CURRENT_SESSION
+    return f"{domain}\\{user}" if user else ""
+
+
+def process_user() -> str:
+    """DOMAIN\\user this process runs as (with a UAC prompt answered by another administrator: that administrator)."""
+    if not IS_WIN:
+        return ""
+    import ctypes
+    from ctypes import wintypes
+    sec = ctypes.WinDLL("secur32", use_last_error=True)
+    size = wintypes.ULONG(512)
+    buf = ctypes.create_unicode_buffer(size.value)
+    if not sec.GetUserNameExW(2, buf, ctypes.byref(size)):        # NameSamCompatible
+        return ""
+    return buf.value
+
+
+def for_session_user(session=None, process=None) -> bool:
+    """1.33.1 (audit H-4): may --install-tasks set up tasks and shortcuts here? Only when the installer runs as the
+    person at the screen. With another administrator's credentials in the UAC prompt the process is that
+    administrator: tasks, shortcuts and the data folder would land in the wrong account. Unknown = assume yes (the
+    behaviour before; never worse)."""
+    s = session_user() if session is None else session
+    p = process_user() if process is None else process
+    return not (s and p) or same_user(s, p)
+
+
+def common_shortcut_script(exe: str) -> str:
+    """PowerShell: a Start menu shortcut for all users straight to the .exe (no task – used when the installer ran
+    under another administrator's account, H-4)."""
+    return "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        f"$lnk = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) {_q(LINK_NAME)}",
+        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)",
+        f"$s.TargetPath = {_q(os.path.abspath(exe))}",
+        f"$s.WorkingDirectory = {_q(os.path.dirname(os.path.abspath(exe)))}",
+        f"$s.IconLocation = {_q(os.path.abspath(exe) + ',0')}",
+        f"$s.Description = {_q('Fog Scout - Map-Overlay fuer Dead by Daylight')}",
+        "$s.Save()", "Write-Output $lnk"])
+
+
 def uninstall_script() -> str:
-    """1.32: PowerShell that removes both tasks and both shortcuts (the uninstaller, ``--remove-tasks``)."""
+    """1.32: PowerShell that removes both tasks and both shortcuts (the uninstaller, ``--remove-tasks``); 1.33.1 also
+    the all-users shortcut of H-4."""
     lines = [remove_script(TASK), remove_script(TASK_AUTO)]
-    for folder in ("Desktop", "Programs"):
+    for folder in ("Desktop", "Programs", "CommonPrograms"):
         lines.append(f"$lnk = Join-Path ([Environment]::GetFolderPath({_q(folder)})) {_q(LINK_NAME)}")
         lines.append("if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force }")
     return "\n".join(lines)
