@@ -205,13 +205,13 @@ def test_the_installer_goes_to_program_files_for_everyone_and_keeps_the_data():
     iss = _iss()
     assert "DefaultDirName={autopf}\\Fog Scout" in iss and "PrivilegesRequired=admin" in iss
     assert re.search(r"^AppId=\{\{[0-9A-F-]{36}\}$", iss, re.M)              # never change: upgrades find it
-    assert "AppMutex=Local\\FogScout.SingleInstance" in iss
     from fogscout import restart
     assert restart.MUTEX_NAME == "Local\\FogScout.SingleInstance"
+    assert f"MutexName = '{restart.MUTEX_NAME}'" in iss and "CheckForMutexes(MutexName)" in iss
     assert 'Parameters: "--install-tasks"' in iss and 'Parameters: "--remove-tasks"' in iss
     assert "skipifsilent" in iss and '/run /tn ""Fog Scout""' in iss          # first start through the task
     assert "{localappdata}" not in iss.lower() and "[UninstallDelete]" not in iss   # the data folder stays
-    assert 'Name: "{app}\\_internal"' in iss and "Type: filesandordirs" in iss
+    assert "[InstallDelete]" not in iss and "filesandordirs" not in iss and "\nAppMutex=" not in iss   # 1.33.2
     assert "..\\build\\fogscout\\fogscout.ico" in iss                          # written by the spec (workpath)
 
 

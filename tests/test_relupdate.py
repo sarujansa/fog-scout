@@ -146,76 +146,90 @@ def update_folder(tmp_path, monkeypatch):
     return folder, setup
 
 
-def test_the_helper_installs_only_our_checked_setup_after_the_program_ended(update_folder, tmp_path):
+def test_the_setup_is_checked_again_right_before_it_starts(update_folder):
+    """Audit H-3 (1.33.2: in the program itself): a setup changed or gone since the download is never started."""
     folder, setup = update_folder
-    states, launched, failed = iter([True, True, False]), [], []
-    assert restart.wait_and_install(str(setup), SUM, running=lambda: next(states),
-                                    launch=lambda path, args: launched.append((path, args)) or True,
-                                    failed=lambda *a: failed.append(a))
-    assert launched == [(str(setup), ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/update=1"])] and failed == []
-    elsewhere = tmp_path / "FogScout-Setup-1.33.exe"
+    assert restart.setup_still_ours(str(setup), SUM, str(folder))
+    assert restart.setup_still_ours(str(setup), SUM.upper(), str(folder))
+    assert not restart.setup_still_ours(str(setup), "", str(folder))
+    assert not restart.setup_still_ours(str(setup), "0" * 64, str(folder))
+    elsewhere = folder.parent / setup.name                 # same bytes, but not in the update folder
     elsewhere.write_bytes(SETUP)
-    other = folder / "evil.exe"
-    other.write_bytes(b"x")
-    for path in (elsewhere, other):                                           # not ours: nothing runs, nothing said
-        assert not restart.wait_and_install(str(path), SUM, running=lambda: False,
-                                            launch=lambda *a: pytest.fail("started"),
-                                            failed=lambda *a: pytest.fail("not ours – no message, no restart"))
+    assert not restart.setup_still_ours(str(elsewhere), SUM, str(folder))
+    other = folder / "evil.exe"                            # in the folder, but not our setup name
+    other.write_bytes(SETUP)
+    assert not restart.setup_still_ours(str(other), SUM, str(folder))
+    setup.write_bytes(SETUP + b"!")
+    assert not restart.setup_still_ours(str(setup), SUM, str(folder))
+    setup.unlink()
+    assert not restart.setup_still_ours(str(setup), SUM, str(folder))
 
 
-@pytest.mark.parametrize("case", ["changed", "missing", "no_sum", "wrong_sum"])
-def test_a_setup_that_changed_after_the_download_is_never_started(update_folder, case):
-    """Audit H-3: the helper hashes the setup again right before the start – a file changed (or gone) since the
-    download is refused, the user told, Fog Scout started again."""
+class _App:
+    """Just what SettingsTab._release_install touches."""
+
+    def __init__(self, data_dir):
+        from fogscout import app_settings
+        self.cls = app_settings.SettingsTab
+        self.data_dir = data_dir
+        self.status, self.logs, self.quits = [], [], []
+        self.upd_status = type("V", (), {"set": lambda _s, v: self.status.append(v)})()
+
+    def run(self, path, sha):
+        fake = self
+        obj = type("F", (self.cls,), {
+            "__init__": lambda s: None, "_round_running": lambda s: False, "_clips_saving": lambda s: [],
+            "_quit_phase1": lambda s, then: True, "quit": lambda s: fake.quits.append(True),
+            "_log": lambda s, msg, kind="": fake.logs.append((kind, msg))})()
+        obj.data_dir, obj.upd_status = self.data_dir, self.upd_status
+        obj._release_install(path, sha)
+
+
+def test_the_program_starts_the_checked_setup_itself_and_only_then_quits(update_folder, monkeypatch):
+    """1.33.2 (Saru: after the update 1.33 → 1.33.1 python312.dll was gone): no helper from the program folder –
+    it held the files the setup replaces. The program starts the setup itself with a log, then quits; the setup
+    waits for the program's mutex (installer/fogscout.iss)."""
+    from fogscout import app_settings
     folder, setup = update_folder
-    sha = SUM
-    if case == "changed":
-        setup.write_bytes(SETUP + b"!")
-    elif case == "missing":
-        setup.unlink()
-    elif case == "no_sum":
-        sha = ""
-    else:
-        sha = "0" * 64
-    failed = []
-    assert not restart.wait_and_install(str(setup), sha, running=lambda: False,
-                                        launch=lambda *a: pytest.fail("started"),
-                                        failed=lambda path, why: failed.append(why))
-    assert failed == ["checksum"]
+    monkeypatch.setattr(app_settings, "IS_WIN", True)
+    started = []
+    monkeypatch.setattr(restart, "_shell_open", lambda path, args: started.append((path, args)) or True)
+    app = _App(str(folder.parent.parent))
+    app.run(str(setup), SUM)
+    (path, args), = started
+    assert path == str(setup) and args[:4] == ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/update=1"]
+    assert args[4] == f'/LOG="{os.path.join(str(folder), relupdate.LOG_FILE)}"'
+    assert app.quits == [True]
+    assert not hasattr(restart, "wait_and_install") and not hasattr(restart, "spawn_installer")
 
 
-def test_a_setup_windows_could_not_start_is_said_and_fog_scout_comes_back(update_folder, monkeypatch):
-    """Audit H-2: ShellExecuteW returned ≤ 32 (declined administrator prompt, blocked file) – before, the program was
-    gone without a word. Now a message names the setup, and Fog Scout starts again so the user can retry."""
+def test_a_changed_setup_or_a_failed_start_keeps_the_program_running(update_folder, monkeypatch):
+    """Audit H-2/H-3: nothing is started from a changed file; when Windows cannot start the setup (declined prompt)
+    Fog Scout stays open, says so with the path and can retry – it never quits into nothing."""
+    from fogscout import app_settings
     folder, setup = update_folder
-    failed = []
-    assert not restart.wait_and_install(str(setup), SUM, running=lambda: False, launch=lambda *a: False,
-                                        failed=lambda path, why: failed.append((path, why)))
-    assert failed == [(str(setup), "start")]
-    shown, started = [], []
-    monkeypatch.setattr(restart, "relaunch", lambda: started.append(True))
-    import types
-    fake = types.SimpleNamespace(windll=types.SimpleNamespace(user32=types.SimpleNamespace(
-        MessageBoxW=lambda h, text, title, flags: shown.append(text))))
-    monkeypatch.setitem(sys.modules, "ctypes", fake)
-    restart._install_failed(str(setup), "start")
-    assert started == [True] and str(setup) in shown[0]
+    monkeypatch.setattr(app_settings, "IS_WIN", True)
+    monkeypatch.setattr(restart, "_shell_open", lambda path, args: False)
+    app = _App(str(folder.parent.parent))
+    app.run(str(setup), SUM)
+    assert app.quits == [] and str(setup) in app.status[-1] and app.logs[-1][0] == "Fehler"
+    monkeypatch.setattr(restart, "_shell_open", lambda *a: pytest.fail("a changed setup was started"))
+    setup.write_bytes(b"changed")
+    app.run(str(setup), SUM)
+    assert app.quits == [] and "verändert" in app.status[-1]
 
 
-def test_the_update_helper_runs_before_the_program_with_the_checksum(monkeypatch):
-    import fogscout.restart as r
-    seen = []
-    monkeypatch.setattr(r, "wait_and_install", lambda path, sha: seen.append((path, sha)) or True)
-    monkeypatch.setattr(sys, "argv", ["FogScout.exe", "--install-update", "C:\\x\\FogScout-Setup-1.33.exe", SUM])
+def test_the_update_helper_entry_is_gone(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["FogScout.exe", "--install-update", "x.exe", SUM])
     with pytest.raises(SystemExit) as stop:
         entry.main()
-    assert stop.value.code == 0 and seen == [("C:\\x\\FogScout-Setup-1.33.exe", SUM)]
+    assert stop.value.code == 2                                         # argparse: unknown argument
 
 
 def test_the_checked_checksum_travels_with_the_download(tmp_path):
     rel = relupdate.parse_release(_release())
     relupdate.download(rel, str(tmp_path), opener=FakeGitHub())
-    assert rel.sha256 == SUM                                             # handed to restart.spawn_installer
+    assert rel.sha256 == SUM                                             # checked again before the start
 
 
 def test_a_redirect_to_plain_http_is_refused():
@@ -277,6 +291,9 @@ def test_the_update_folder_is_cleaned_at_start_but_only_of_our_files(tmp_path):
         (folder / name).write_bytes(b"x")
     assert relupdate.clean_update_folder(str(tmp_path)) == 2
     assert sorted(os.listdir(folder)) == ["other.exe.part", "readme.txt"]
+    (folder / relupdate.LOG_FILE).write_text("log", encoding="utf-8")
+    relupdate.clean_update_folder(str(tmp_path))
+    assert (folder / relupdate.LOG_FILE).exists()                       # the setup's log stays for diagnosis
     assert relupdate.clean_update_folder(str(tmp_path / "none")) == 0
 
 
@@ -314,11 +331,15 @@ def test_only_one_download_and_no_check_while_it_runs(monkeypatch):
     assert not f._release_busy
 
 
-def test_the_setup_starts_fog_scout_again_only_after_an_update():
+def test_the_setup_starts_fog_scout_again_after_an_update_finished_or_not():
     with open(os.path.join(ROOT, "installer", "fogscout.iss"), encoding="utf-8") as fh:
         iss = fh.read()
     assert "Check: IsUpdate" in iss and "{param:update|0}" in iss
-    assert relupdate.install_args()[-1] == "/update=1"
+    assert relupdate.install_args()[-1] == "/update=1" and relupdate.install_args("x.log")[-1] == '/LOG="x.log"'
+    code = iss[iss.index("\n[Code]"):]
+    assert "procedure DeinitializeSetup" in code and "IsUpdate and (not Installed)" in code     # M-6
+    assert "CurStep = ssPostInstall" in code and "UpdateWaitMs = 60000" in code
+    assert "function InitializeUninstall" in code and "WizardSilent" in code
 
 
 def test_only_a_push_to_main_publishes_and_only_that_job_may_write():

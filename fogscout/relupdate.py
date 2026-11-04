@@ -8,8 +8,9 @@ The program asks GitHub (``API`` – the latest release of this repository, noth
 "Jetzt nach Updates suchen" or, if "Beim Start Updates suchen" is on, once after the start. Downloading the setup
 needs the click "Aktualisieren und neu starten"; the file must come from this repository's release download path,
 stay under ``MAX_BYTES`` and match the SHA-256 the release states (the ``.sha256`` asset and, when GitHub lists one,
-the asset's own digest). Installing needs one more confirmation; then ``FogScout.exe --install-update <setup>`` waits
-until the program has ended and starts the setup (restart.wait_and_install). Nothing is sent but the requests, no
+the asset's own digest). Installing needs one more confirmation; then (1.33.2) the program checks the setup once more, starts
+it itself and quits – the setup waits for the program to end (installer/fogscout.iss, InitializeSetup). Until 1.33.1 a
+helper ran from the program folder and could hold the files the setup replaces. Nothing is sent but the requests, no
 account, no token, nothing about the user.
 """
 from __future__ import annotations
@@ -212,7 +213,14 @@ def clean_update_folder(data_dir: str) -> int:
     return gone
 
 
-def install_args() -> list[str]:
+LOG_FILE = "setup.log"
+
+
+def install_args(log: str | None = None) -> list[str]:
     """Setup parameters for an update: progress only, no questions, Fog Scout starts again afterwards (/update=1 →
-    installer/fogscout.iss [Run])."""
-    return ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/update=1"]
+    installer/fogscout.iss [Run]/DeinitializeSetup). 1.33.2: ``log`` = Inno Setup's own log (cache/update/setup.log)
+    – what went wrong is readable afterwards."""
+    args = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/update=1"]
+    if log:
+        args.append(f'/LOG="{log}"')
+    return args
