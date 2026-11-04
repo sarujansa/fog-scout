@@ -1,0 +1,5 @@
+# 1.34.2 (review W2): the tools of the checks, pinned like the program's packages – only CI and a developer's
+# machine install them (start.bat never does). pip itself: PIP_VERSION in tests/test_repo_hygiene.py.
+pytest==9.2.0
+pyflakes==4.1.0
+pytest-timeout==2.4.0

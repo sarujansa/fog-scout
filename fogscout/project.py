@@ -9,7 +9,7 @@ import os
 import time
 from dataclasses import replace
 
-from . import annotate, clipedit
+from . import annotate, clipedit, fsops
 from .clipedit import Part, SPEEDS
 from .sequence import EditState
 
@@ -139,11 +139,9 @@ def from_dict(d, duration: float = 0.0) -> tuple[EditState, dict] | None:
 def save(path: str, data: dict) -> bool:
     """Write ``data`` (tmp + replace); False when the folder cannot be written."""
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=1, ensure_ascii=False)
-        os.replace(tmp, path)
+        text = json.dumps(data, indent=1, ensure_ascii=False)    # 1.34.2 (review W8): before any file is made –
+        os.makedirs(os.path.dirname(path), exist_ok=True)         # an unwritable value left a .tmp behind
+        fsops.write_atomic(path, text.encode("utf-8"))
         return True
     except (OSError, TypeError, ValueError):
         return False
