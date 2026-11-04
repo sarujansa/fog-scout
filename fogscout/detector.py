@@ -805,11 +805,6 @@ class OutOfMatchWatcher:
         ob.ms = (time.perf_counter() - t0) * 1000
         return ob
 
-    # kept for older callers / tests
-    def _reason(self, frame):
-        ob = self.observe(frame)
-        return ob.reason, ob.sure
-
     def _chains_in(self, img, frame_h, lo, hi, min_letters):
         L = 0.3338 * frame_h * 16 / 9
         return _chains(_components(_text_mask(img, L)), lo * frame_h, hi * frame_h, img.shape[1],

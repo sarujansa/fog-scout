@@ -18,7 +18,7 @@ rem Eine abgebrochene Ersteinrichtung (kein installed.ok) neu beginnen, z. B. mi
 if exist "%VENV%" rd /s /q "%VENV%"
 %PY% -m venv "%VENV%"
 if errorlevel 1 goto nopython
-"%VENV%\Scripts\python.exe" -m pip install --only-binary=:all: --upgrade pip
+"%VENV%\Scripts\python.exe" -m pip install --only-binary=:all: pip==26.2.1
 "%VENV%\Scripts\python.exe" -m pip install --only-binary=:all: -r requirements.txt
 if errorlevel 1 goto piperror
 echo ok> "%VENV%\installed.ok"

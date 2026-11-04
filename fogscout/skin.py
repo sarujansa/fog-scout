@@ -194,24 +194,6 @@ def _widest(timer: str) -> str:
     return re.sub(r"\d", "0", timer or "")
 
 
-def _caps(im, x, y, text, size, fill, u):
-    """Small capitals with wide tracking (headers of "line", labels)."""
-    f = inter("Medium", size)
-    return _text(im, x, y, text.upper(), f, fill, 3 * u)
-
-
-def _values_width(values, font, gap) -> float:
-    return sum(_width(font, t) for t, _c in values) + gap * max(0, len(values) - 1)
-
-
-def _values_right(im, right, y, values, font, gap):
-    x = right
-    for text, colour in reversed(values):
-        x -= _width(font, text)
-        _text(im, x, y, text, font, colour)
-        x -= gap
-
-
 def _dot(d, x, y, r, colour):
     d.ellipse((x - r, y - r, x + r, y + r), fill=colour)
 
