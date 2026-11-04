@@ -56,6 +56,14 @@ Source: "..\dist\FogScout\*"; DestDir: "{app}"; Flags: ignoreversion recursesubd
 Filename: "{app}\FogScout.exe"; Parameters: "--install-tasks"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Fog Scout: Aufgabenplanung und Verknüpfungen …"
 ; started through its task: elevated without a second Windows prompt, like every later start
 Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""Fog Scout"""; Flags: runhidden nowait postinstall skipifsilent; Description: "{cm:LaunchProgram,Fog Scout}"
+; 1.33: an update from the program (/update=1, relupdate.install_args) runs silently – start Fog Scout again
+Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""Fog Scout"""; Flags: runhidden nowait; Check: IsUpdate
 
 [UninstallRun]
 Filename: "{app}\FogScout.exe"; Parameters: "--remove-tasks"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveTasks"
+
+[Code]
+function IsUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:update|0}') = '1';
+end;

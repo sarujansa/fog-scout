@@ -430,7 +430,10 @@ TIPS = {
     "Jetzt nach Updates suchen": "Fragt GitHub, ob es eine neue Version gibt (nur bei diesem Klick). Installiert "
                                  "wird erst mit „Aktualisieren und neu starten“.",
     "Aktualisieren und neu starten": "Beendet das Programm und startet es über start.bat neu – dabei wird das "
-                                     "Update installiert.",
+                                     "Update installiert. Die installierte Version lädt das Setup, prüft es per "
+                                     "SHA-256 und fragt vor dem Installieren.",
+    "Beim Start nach Updates suchen": "Fragt nach jedem Start einmal GitHub, ob es ein neues Release gibt. Geladen "
+                                      "und installiert wird nur nach deinem Klick und einer Rückfrage.",
     "Als Montage öffnen …": "Öffnet die markierten Runden bzw. Clips nacheinander im grossen Editor – als eine "
                              "Montage (mehrere markieren: Strg- oder Umschalt-Klick).",
     "Alle Runden löschen …": "Löscht alle gespeicherten Runden (Datei rounds.jsonl) – nach einer Rückfrage, "
