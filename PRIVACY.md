@@ -2,11 +2,12 @@
 
 *English version below.*
 
-Fog Scout ist ein Open-Source-Programm für Windows, das lokal auf deinem PC läuft. Es gibt keinen Server, kein Konto, keine Telemetrie und keine Werbung. Alles, was das Programm speichert (Einstellungen, Rundenverlauf, Statistik), liegt in seinem eigenen Ordner auf deinem PC. Dieses Dokument nennt alles, was das Programm nach aussen sendet – jeder Punkt ist einzeln abschaltbar oder nur auf deinen Klick aktiv.
+Fog Scout ist ein Open-Source-Programm für Windows, das lokal auf deinem PC läuft. Es gibt keinen Server, kein Konto, keine Telemetrie und keine Werbung. Alles, was das Programm speichert (Einstellungen, Rundenverlauf, Statistik), liegt auf deinem PC – beim Start über `start.bat` im Programmordner, als installiertes Programm in `%LOCALAPPDATA%\FogScout`. Dieses Dokument nennt alles, was das Programm nach aussen sendet – jeder Punkt ist einzeln abschaltbar oder nur auf deinen Klick aktiv.
 
 | Funktion | Wohin | Was | Wann |
 |---|---|---|---|
-| Updates | GitHub (`github.com`) | `git fetch` dieses Repositorys | Beim Start (abschaltbar) und auf Klick „Jetzt nach Updates suchen“ |
+| Updates (Start über `start.bat`) | GitHub (`github.com`) | `git fetch` dieses Repositorys | Beim Start (abschaltbar) und auf Klick „Jetzt nach Updates suchen“ |
+| Updates (installiertes Programm, seit 1.33) | GitHub (`api.github.com`, Release-Downloads von `github.com` und dessen Speicher-Host) | Abfrage des neuesten Releases dieses Repositorys; das Setup und seine Prüfsumme werden erst nach deinem Klick „Aktualisieren und neu starten“ geladen. Gesendet wird nur die Anfrage selbst (mit der Kennung `FogScout-updater`), kein Konto, keine Daten über dich | Einmal nach dem Start (abschaltbar: „Beim Start nach Updates suchen“) und auf Klick |
 | Tab „Server“ | AWS GameLift (`amazonaws.com`, `api.aws`) | Ping (ICMP oder UDP-Beacon), DNS-Auflösung | Nur im Tab „Server“ bzw. solange „Verbunden mit“ läuft |
 | Offizielle Match-Daten | Keine eigene Verbindung | Dein Browser lädt mit einem Userscript die Match-Daten, die stats.deadbydaylight.com dir selbst anzeigt, als Datei in den Download-Ordner; das Programm liest nur diese Datei | Nur mit dem Userscript, das du selbst installierst |
 | OBS | Nur `127.0.0.1` (dein eigener PC) | Befehle an OBS Studio über obs-websocket | Nur mit eingeschalteter Aufnahme |
@@ -43,11 +44,12 @@ Fragen und Hinweise: über die Issues dieses Repositorys (<https://github.com/sa
 
 # Privacy Policy – Fog Scout
 
-Fog Scout is an open-source program for Windows that runs locally on your PC. There is no server, no account, no telemetry and no advertising. Everything the program stores (settings, round history, statistics) lives in its own folder on your PC. This document lists everything the program sends anywhere – each item can be switched off on its own or is active only when you click.
+Fog Scout is an open-source program for Windows that runs locally on your PC. There is no server, no account, no telemetry and no advertising. Everything the program stores (settings, round history, statistics) stays on your PC – in the program folder when started through `start.bat`, in `%LOCALAPPDATA%\FogScout` for the installed program. This document lists everything the program sends anywhere – each item can be switched off on its own or is active only when you click.
 
 | Feature | Where to | What | When |
 |---|---|---|---|
-| Updates | GitHub (`github.com`) | `git fetch` of this repository | At start (can be disabled) and on "Check for updates now" |
+| Updates (started through `start.bat`) | GitHub (`github.com`) | `git fetch` of this repository | At start (can be disabled) and on "Check for updates now" |
+| Updates (installed program, since 1.33) | GitHub (`api.github.com`, release downloads from `github.com` and its storage host) | A request for this repository's latest release; the setup and its checksum are only downloaded after your click "Update and restart". Only the request itself is sent (identified as `FogScout-updater`), no account, no data about you | Once after the start (can be disabled: "Check for updates at start") and on click |
 | "Server" tab | AWS GameLift (`amazonaws.com`, `api.aws`) | Ping (ICMP or UDP beacon), DNS lookups | Only in the "Server" tab or while "Connected to" runs |
 | Official match data | No connection of its own | Your browser, with a userscript, saves the match data that stats.deadbydaylight.com shows you as a file in your download folder; the program only reads that file | Only with the userscript you install yourself |
 | OBS | Only `127.0.0.1` (your own PC) | Commands to OBS Studio over obs-websocket | Only with recording enabled |
