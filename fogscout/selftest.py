@@ -152,27 +152,35 @@ def _launch() -> str:
     return "Bundle bei Fog Scout" if before else "ohne eigene DLL-Suche"
 
 
-def run(root: str) -> dict:
+def run(root: str, clock=None) -> dict:
+    """1.35: ``clock`` (starttime.StartClock of __main__) – the result says how long the .exe took to reach Python
+    and to import every module (the bulk of a real start's loading), so CI shows Windows numbers for every build."""
+    import time
     from . import __version__
     from .paths import frozen
     c = Checks()
     c.run("Dateien", lambda: _files(root))
     c.run("Kartenbilder", lambda: _map_pictures(root))
     c.run("Bibliotheken", _libraries)
+    t0 = time.perf_counter()
     c.run("Module", _modules)
+    modules_ms = round((time.perf_counter() - t0) * 1000)
     c.run("Telemetrie aus", _telemetry)
     c.run("OCR", lambda: _ocr(root))
     c.run("ffmpeg", _ffmpeg)
     c.run("Qt", _qt)
     c.run("Programme starten", _launch)
+    start = {"modules_ms": modules_ms}
+    if clock is not None and clock.before is not None:
+        start["python_ms"] = round(clock.before * 1000)
     return {"ok": not c.failed, "version": __version__, "frozen": frozen(), "root": root,
-            "passed": c.passed, "failed": c.failed}
+            "passed": c.passed, "failed": c.failed, "start": start}
 
 
-def main(root: str, out: str) -> int:
+def main(root: str, out: str, clock=None) -> int:
     """Write the result to ``out`` (a windowed .exe has no console); 0 = everything there."""
     try:
-        res = run(root)
+        res = run(root, clock)
     except Exception as e:                                  # the check itself broke: still a result file
         res = {"ok": False, "failed": [f"Selbsttest: {type(e).__name__}: {e}"], "passed": []}
     with open(out, "w", encoding="utf-8") as fh:
