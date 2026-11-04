@@ -34,6 +34,36 @@ def test_parse_rejects_other_packets():
     assert netwatch.parse(b"\x45\0\0") is None                                    # truncated
 
 
+def test_the_helpers_receive_path_counts_exactly_what_parse_and_add_count():
+    """1.34.1 (review P2): the helper reads into one buffer and drops non-UDP at its first bytes – the flow table
+    it fills is the one parse() + add() fill, for UDP both ways, TCP, fragments, IPv6, LAN, other hosts' packets,
+    ignored ports and short reads; a later, shorter packet in the same buffer is read by its own length."""
+    pkts = []
+    for i in range(400):
+        t = 100.0 + i * 0.07
+        pkts += [(t, packet(LOCAL, SERVER, 50000, 7777)), (t, packet(SERVER, LOCAL, 7777, 50000, ihl=6))]
+        if i % 3 == 0:
+            pkts += [(t, packet(LOCAL, SERVER, 50000, 443, proto=6)), (t, packet(LOCAL, "52.1.2.3", 5, 6, frag=8)),
+                     (t, b"\x60" + b"\0" * 40), (t, packet("10.0.0.5", LOCAL, 9999, 50001)),
+                     (t, packet("8.8.8.8", "1.1.1.1", 53, 53)), (t, packet(LOCAL, "9.9.9.9", 50002, 53)),
+                     (t, b"\x45\0\0")]
+        if i % 10 == 0:                                       # 0.7 s apart: gaps the detection must see
+            pkts.append((t + 0.01, packet("52.1.2.3", LOCAL, 3000, 50003, payload=b"")))
+    old, new = netwatch.FlowTable(), netwatch.FlowTable()
+    buf = bytearray(65535)
+    buf[:] = b"\xff" * len(buf)                               # stale bytes of an earlier packet behind each one
+    for t, pkt in pkts:
+        p = netwatch.parse(pkt)
+        if p:
+            old.add(t, LOCAL, p)
+        buf[:len(pkt)] = pkt
+        netwatch.feed(new, t, socket.inet_aton(LOCAL), LOCAL, buf, len(pkt))
+    snap = new.snapshot(127.0)
+    assert json.dumps(old.snapshot(127.0)) == json.dumps(snap)
+    assert {f["ip"] for f in snap} == {SERVER, "52.1.2.3"}   # no TCP, LAN, foreign or ignored-port partner
+    assert any(f["gaps"] for f in snap)
+
+
 def feed(table, t0, seconds, pps, remote=SERVER, port=7777, both=True):
     for i in range(int(seconds * pps)):
         t = t0 + i / pps
@@ -207,6 +237,7 @@ class _FakeSocketModule:
     SIO_RCVALL, RCVALL_OFF = 0x98000001, 0
     timeout = TimeoutError
     inet_ntoa = staticmethod(socket.inet_ntoa)
+    inet_aton = staticmethod(socket.inet_aton)
 
     def __init__(self, fail_mode=None):
         self.ioctls, self.fail_mode = [], fail_mode
@@ -230,6 +261,7 @@ class _FakeSocketModule:
                     raise OSError(10022, "invalid argument")
 
             def recv(self, n): raise TimeoutError
+            def recv_into(self, buf): raise TimeoutError
         return S()
 
 

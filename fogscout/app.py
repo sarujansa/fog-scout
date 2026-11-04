@@ -1102,7 +1102,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
     def _game_rect(self):
         now = time.time()
         if now - self._game_checked > 1.0:
-            self.game = find_game_window()
+            self.game = find_game_window(self.game)   # 1.34.1 (P4): the known window checked first
             self._game_checked = now
             self._note_window()
         if self.game and not self.game.minimized and self.game.width > 100:

@@ -882,6 +882,28 @@ def test_space_counts_the_index_and_the_drive(tmp_path):
     assert obsrec.space(None).folder == "" and obsrec.space(None).count == 0
 
 
+def test_space_reads_the_index_only_when_it_changed(tmp_path, monkeypatch):
+    """1.34.1 (review P6): the recorder asks every 10 s – an unchanged index is not parsed again; a rewrite (even of
+    the same size: save_index replaces the file) is; the drive is asked each time."""
+    folder = str(tmp_path)
+    obsrec.save_index(folder, [obsrec.Recording(t=5.0, file="a.mkv", size=100)])
+    reads = []
+    real = obsrec.load_index
+    monkeypatch.setattr(obsrec, "load_index", lambda f: reads.append(f) or real(f))
+    first = obsrec.space(folder)
+    again = obsrec.space(folder)
+    assert len(reads) == 1 and (again.count, again.used, again.oldest) == (first.count, first.used, first.oldest)
+    assert again.t >= first.t
+    obsrec.save_index(folder, [obsrec.Recording(t=6.0, file="b.mkv", size=100, marks=[2.0])])   # same size
+    changed = obsrec.space(folder)
+    assert len(reads) == 2 and changed.oldest == 6.0 and changed.marked == 1
+    handed = obsrec.space(folder, [obsrec.Recording(t=1.0, file="c.mkv", size=7)])
+    assert handed.used == 7 and len(reads) == 2                  # recs handed in: counted, never kept
+    assert obsrec.space(folder).used == 100 and len(reads) == 2
+    os.remove(os.path.join(folder, obsrec.INDEX))
+    assert obsrec.space(folder).count == 0 and len(reads) == 3
+
+
 def test_the_f8_hotkey_and_the_overview_tile_exist():
     import inspect
     from types import SimpleNamespace
