@@ -21,7 +21,7 @@ from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
                                QProgressBar, QPushButton, QSizePolicy, QSlider, QVBoxLayout, QWidget)
 
-from . import annotate, clipedit, encoders, imageedit, obsrec, qt_theme
+from . import annotate, clipedit, encoders, imageedit, launch, obsrec, qt_theme
 from .i18n import N_, _
 from .qt_common import guard_wheel
 from .qt_layouts import FlowRow
@@ -2094,7 +2094,7 @@ class ClipBase(QWidget):
         if not self._last_out:
             return
         if os.name == "nt":
-            subprocess.Popen(["explorer", "/select,", os.path.normpath(self._last_out)])   # noqa: S603,S607
+            launch.show_in_folder(self._last_out)
         else:
             self.status.setText(self._last_out)
 
@@ -2102,7 +2102,7 @@ class ClipBase(QWidget):
         try:
             os.makedirs(self.clips_dir, exist_ok=True)
             if os.name == "nt":
-                os.startfile(self.clips_dir)                     # noqa: S606 – opens Explorer
+                launch.open_path(self.clips_dir)                 # opens Explorer (1.33.3: without the bundle)
             else:
                 self.status.setText(self.clips_dir)
         except OSError as e:

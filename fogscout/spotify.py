@@ -31,10 +31,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import webbrowser
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+from . import launch
 from .i18n import _
 
 log = logging.getLogger(__name__)
@@ -452,7 +452,7 @@ class SpotifyLink(threading.Thread):
     def __init__(self, post, opener=None):
         super().__init__(name="spotify", daemon=True)
         self._post = post
-        self._open = opener or webbrowser.open
+        self._open = opener or launch.open_url
         self.cmds = queue.Queue()
         self.on, self.client_id = False, ""
         self.active = False

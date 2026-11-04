@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import threading
 import time
-import webbrowser
 
-from . import askclaude, i18n, overview, palette, spotify
+from . import askclaude, i18n, launch, overview, palette, spotify
 from . import uimodel as ui
 from .i18n import _
 
@@ -260,9 +259,9 @@ class PaletteMixin:
         row2 = ui.Frame(cc)                       # 1.26.1: straight to the Anthropic Console's pages
         row2.pack(fill="x", pady=(4, 0))
         self._reg("st.more.cl_keys", ui.Button(row2, text=_("API-Key holen"),
-                                                command=lambda: webbrowser.open(askclaude.CONSOLE_KEYS))).pack(side="left")
+                                                command=lambda: launch.open_url(askclaude.CONSOLE_KEYS))).pack(side="left")
         self._reg("st.more.cl_billing", ui.Button(row2, text=_("Guthaben aufladen"),
-                                                   command=lambda: webbrowser.open(askclaude.CONSOLE_BILLING))
+                                                   command=lambda: launch.open_url(askclaude.CONSOLE_BILLING))
                   ).pack(side="left", padx=(6, 0))
         self.cl_status_var = ui.StringVar(value="")
         self._reg("st.more.cl_status", ui.Label(cc, textvariable=self.cl_status_var, wraplength=420,

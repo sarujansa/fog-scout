@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCh
                                QHBoxLayout, QLabel, QLineEdit, QListWidget, QProgressBar, QPushButton, QScrollArea, QScrollBar, QSizePolicy, QSlider, QSplitter,
                                QToolButton, QVBoxLayout, QWidget)
 
-from . import annotate, clipedit, imageedit, medialib, obsrec, project, qt_icons, qt_theme, sequence
+from . import annotate, clipedit, imageedit, launch, medialib, obsrec, project, qt_icons, qt_theme, sequence
 from .i18n import N_, _
 from .editorclaude import ClaudeMixin
 from .editormontage import MontageMixin
@@ -1429,9 +1429,8 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
         self._montage_add(item.path, list(getattr(item, "marks", None) or []))
 
     def _show_file(self, path):
-        import subprocess
         if os.name == "nt" and os.path.exists(path):
-            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])   # noqa: S603,S607
+            launch.show_in_folder(path)
         else:
             self.status.setText(path)
 
