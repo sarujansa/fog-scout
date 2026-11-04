@@ -252,3 +252,21 @@ OBS lud deshalb die C++-Laufzeit aus Fog Scouts Ordner und hielt sie fest. Sehr 
 **Bewusst nicht umgesetzt:** Vor einem Update Prozesse mit Modulen aus dem Programmordner suchen. Das bräuchte `OpenProcess` auf fremde Prozesse, also auch auf das Spiel, und verstößt damit gegen eine harte Regel.
 
 **Rest:** Ein OBS, das noch von 1.33.2 oder älter gestartet wurde, hält die Datei weiter, bis es beendet wird. Das Setup meldet dann „Zugriff verweigert“; OBS schließen und „Try again“ wählen. Ein stilles Update bricht in diesem Fall ab, und Fog Scout startet wieder (`DeinitializeSetup`). Dateien, die bis dahin schon kopiert waren, bleiben dabei neu, der Rest alt. Zwischen benachbarten Builds mit denselben festen Paketversionen ist das voraussichtlich lauffähig; geprüft ist es nicht. Das Setup aus den Releases von Hand repariert es.
+
+## Nachtrag 1.33.5 – Projekt-Durchsicht, Sicherheit Paket 1
+
+Gemeinsamer Angriffsweg: Fog Scout läuft über seine Aufgabe erhöht, ohne Abfrage. Ein normales Programm desselben Nutzers könnte steuern, was Fog Scout als Administrator löscht, schreibt, startet oder lädt. Alle Befunde wurden nur im Code gelesen und unter Linux getestet; die Windows-Teile prüft der CI-Job `windows`.
+
+| ID | Schwere | Befund | Fix 1.33.5 |
+|---|---|---|---|
+| S2 | Mittel | Aufräumen der Aufnahmen löschte als Admin, was der nutzerbeschreibbare Index nannte. Eine Junction im Ordner führte hinaus. | `fsops.delete_inside`: Handle ohne Reparse-Folgen, echter Pfad muss im Ordner liegen, Löschen am Handle |
+| S3 | Mittel (praktisch niedrig) | Discord-Pipe ohne Identitätsschutz und ohne Lese-Timeout | `SECURITY_IDENTIFICATION`, `PeekNamedPipe` bis `TIMEOUT` |
+| S4/S5 | Mittel | Windows-Ordner aus Umgebungsvariablen (für erhöhte Aufgaben vom Nutzer setzbar), Programme per blossem Namen (u. a. `nvml.dll` per `CDLL`, `$env:SystemRoot` in der Aufgabe) | `paths.system_dir`/`known_folder`/`system_exe`, Wächter `tests/test_elevated.py` |
+| S6 | Niedrig | Admin-Helfer schrieben in eine vom Nutzer angelegte Ergebnisdatei, auch wenn sie ein Link war | `open_plain_for_write`/`_open_result`: kein Link, Linkzahl 1 |
+| S8 | Niedrig | `SetDllDirectoryW(None)` nahm kurz den aktuellen Ordner in die DLL-Suche | `SetDllDirectoryW("")` |
+| S9 | Klein | Nur `relupdate` lehnte http-Weiterleitungen ab; urllib reicht `Authorization` an jeden Weiterleitungs-Host weiter | `net.py` `SafeRedirect` für alle Web-Clients |
+
+**Offen:**
+- S1 (Mittel-hoch): Das Update-Setup wird aus `%LOCALAPPDATA%` gestartet; zwischen Prüfung und Start kann es getauscht werden. Behebung kommt in 1.34.
+- S7: Signatur der Updates.
+- `git` in `update.py` wird per PATH gefunden; betrifft nur den Betrieb über start.bat.

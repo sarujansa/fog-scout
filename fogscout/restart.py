@@ -24,7 +24,8 @@ WAIT_S = 60.0                                   # the helper waits this long for
 def start_command() -> str:
     """cmd line that runs start.bat minimised – run in the program folder (cwd). 1.8.45: the folder is not on
     the command line: cmd reads "&" in it as a second command and expands "%…%"."""
-    comspec = os.environ.get("COMSPEC", "cmd.exe")
+    from .paths import system_exe
+    comspec = system_exe("cmd.exe")                # 1.33.5 (review S5): never %COMSPEC% – the user's environment
     return f'"{comspec}" /c start "" /min cmd /c .\\start.bat'
 
 

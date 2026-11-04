@@ -25,7 +25,12 @@ from .i18n import _
 
 IS_WIN = sys.platform == "win32"
 PIPES = 10                 # Discord tries discord-ipc-0 … -9
-TIMEOUT = 3.0              # seconds to wait for an answer (Linux socket; the Windows pipe blocks)
+TIMEOUT = 3.0              # seconds to wait for an answer (Linux socket; Windows pipe since 1.33.5: _wait_data)
+# 1.33.5 (review S3): the pipe is opened with SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION – whoever serves
+# "discord-ipc-N" (anybody can, when Discord is not running) may learn who we are, never act as this elevated process
+GENERIC_RW, OPEN_EXISTING = 0x80000000 | 0x40000000, 3
+SECURITY_SQOS_PRESENT, SECURITY_IDENTIFICATION = 0x00100000, 0x00010000
+POLL_S = 0.02
 RETRY_S = 20.0             # try to reach Discord again this often
 MIN_GAP_S = 2.0            # never two updates closer than this (Discord allows ~5 in 20 s)
 MAX_CHARS = 128            # Discord's limit for details/state
@@ -49,13 +54,61 @@ def ipc_paths() -> list:
     return out
 
 
+def _kernel32():
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                              wintypes.DWORD, wintypes.HANDLE]
+    k.CreateFileW.restype = wintypes.HANDLE
+    k.PeekNamedPipe.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD, wintypes.LPVOID,
+                                ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID]
+    k.PeekNamedPipe.restype = wintypes.BOOL
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    return k
+
+
+def _open_pipe(path: str):
+    """The pipe opened for reading and writing, identification only (no impersonation); OSError when nobody serves it."""
+    import ctypes
+    import msvcrt
+    k = _kernel32()
+    h = k.CreateFileW(path, GENERIC_RW, 0, None, OPEN_EXISTING, SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, None)
+    if h is None or h in (-1, 2 ** 64 - 1, 2 ** 32 - 1):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        fd = msvcrt.open_osfhandle(h, 0)
+    except BaseException:
+        k.CloseHandle(h)
+        raise
+    return os.fdopen(fd, "r+b", buffering=0)
+
+
+def _wait_data(f, timeout: float = TIMEOUT):
+    """Windows: until the pipe has data to read (a read would block forever on a server that never answers)."""
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+    k, h = _kernel32(), msvcrt.get_osfhandle(f.fileno())
+    end = time.monotonic() + timeout
+    while True:
+        avail = wintypes.DWORD()
+        if not k.PeekNamedPipe(h, None, 0, None, ctypes.byref(avail), None):
+            raise IpcError("connection closed")
+        if avail.value:
+            return
+        if time.monotonic() >= end:
+            raise IpcError("timeout")
+        time.sleep(POLL_S)
+
+
 class Ipc:
     """One connection to the Discord client: handshake and framed JSON (little-endian op + length)."""
 
     def __init__(self, path: str):
         self._f = self._s = None
         if IS_WIN:
-            self._f = open(path, "r+b", buffering=0)       # the named pipe as a file; blocks until Discord answers
+            self._f = _open_pipe(path)                      # the named pipe as a file; reads wait at most TIMEOUT
         else:
             self._s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self._s.settimeout(TIMEOUT)
@@ -70,6 +123,8 @@ class Ipc:
     def _read(self, n: int) -> bytes:
         buf = b""
         while len(buf) < n:
+            if self._f is not None:
+                _wait_data(self._f)
             part = self._f.read(n - len(buf)) if self._f is not None else self._s.recv(n - len(buf))
             if not part:
                 raise IpcError("connection closed")

@@ -83,7 +83,7 @@ def test_obs_and_explorer_get_the_clean_environment(tmp_path, monkeypatch):
     launch.show_in_folder("C:/Aufnahmen/a.mp4")
     (obs, kw1), (exp, kw2) = calls
     assert obs == ["obs64.exe", "--minimize-to-tray"] and kw1["cwd"] == "C:/obs" and kw1["creationflags"] == 8
-    assert exp[:2] == ["explorer", "/select,"]
+    assert exp[0].lower().endswith("explorer.exe") and exp[0] != "explorer.exe" and exp[1] == "/select,"  # full path
     assert kw1["env"]["PATH"] == "keep" and kw2["env"]["PATH"] == "keep"
 
 

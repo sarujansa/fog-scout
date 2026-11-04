@@ -262,6 +262,161 @@ def rename_fallback(src: str, dst: str):
     os.rename(src, dst)
 
 
+# ---- 1.33.5 (review S2/S6): the program runs elevated – a file another, normal program can point at (an index line,
+# a helper's result file) is opened without following links, checked, and acted on through that same handle.
+FILE_READ_ATTRIBUTES, FILE_SHARE_ALL = 0x0080, 0x7
+FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS = 0x00200000, 0x02000000
+FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT = 0x10, 0x400
+FILE_ATTRIBUTE_TAG_INFO_CLASS = 9
+
+
+class NotInside(PermissionError):
+    """The path leaves the folder, goes through a link/junction, or is not a plain file – nothing was done."""
+
+
+def _k32_more():
+    k = _k32()
+    if not getattr(k, "_fogscout_more", False):
+        from ctypes import wintypes
+        k.GetFileInformationByHandleEx.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+        k.GetFileInformationByHandleEx.restype = wintypes.BOOL
+        k.GetFinalPathNameByHandleW.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+        k.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+        k.GetFileInformationByHandle.argtypes = [wintypes.HANDLE, wintypes.LPVOID]
+        k.GetFileInformationByHandle.restype = wintypes.BOOL
+        k._fogscout_more = True
+    return k
+
+
+def _open_handle(path: str, access: int, share: int, flags: int):
+    h = _k32().CreateFileW(path, access, share, None, OPEN_EXISTING, flags, None)
+    if _invalid(h):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return h
+
+
+def _attributes(h) -> int:
+    from ctypes import wintypes
+
+    class FILE_ATTRIBUTE_TAG_INFO(ctypes.Structure):
+        _fields_ = [("FileAttributes", wintypes.DWORD), ("ReparseTag", wintypes.DWORD)]
+    info = FILE_ATTRIBUTE_TAG_INFO()
+    if not _k32_more().GetFileInformationByHandleEx(h, FILE_ATTRIBUTE_TAG_INFO_CLASS, ctypes.byref(info),
+                                                     ctypes.sizeof(info)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return info.FileAttributes
+
+
+def _final_path(h) -> str:
+    buf = ctypes.create_unicode_buffer(32768)
+    n = _k32_more().GetFinalPathNameByHandleW(h, buf, len(buf), 0)
+    if not n or n >= len(buf):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return buf.value
+
+
+def _link_count(h) -> int:
+    from ctypes import wintypes
+
+    class BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
+        _fields_ = [("dwFileAttributes", wintypes.DWORD), ("ftCreationTime", wintypes.FILETIME),
+                    ("ftLastAccessTime", wintypes.FILETIME), ("ftLastWriteTime", wintypes.FILETIME),
+                    ("dwVolumeSerialNumber", wintypes.DWORD), ("nFileSizeHigh", wintypes.DWORD),
+                    ("nFileSizeLow", wintypes.DWORD), ("nNumberOfLinks", wintypes.DWORD),
+                    ("nFileIndexHigh", wintypes.DWORD), ("nFileIndexLow", wintypes.DWORD)]
+    info = BY_HANDLE_FILE_INFORMATION()
+    if not _k32_more().GetFileInformationByHandle(h, ctypes.byref(info)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return info.nNumberOfLinks
+
+
+def _folder_final(folder: str) -> str:
+    """The real path of ``folder`` (Windows) – the folder itself may be a link the user chose."""
+    h = _open_handle(folder, FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, FILE_FLAG_BACKUP_SEMANTICS)
+    try:
+        return _final_path(h)
+    finally:
+        _k32().CloseHandle(h)
+
+
+def _inside_text(folder: str, path: str) -> list:
+    """The parts of ``path`` below ``folder`` – NotInside when it is not below it."""
+    try:
+        rel = os.path.relpath(os.path.abspath(path), os.path.abspath(folder))
+    except ValueError:                                       # another drive (Windows)
+        raise NotInside(errno.EPERM, "not inside the folder", path) from None
+    parts = rel.split(os.sep)
+    if rel in (".", "") or os.path.isabs(rel) or ".." in parts:
+        raise NotInside(errno.EPERM, "not inside the folder", path)
+    return parts
+
+
+def _posix_plain(folder: str, parts: list) -> str:
+    """POSIX: no part below ``folder`` is a symlink, the last one is a regular file; its path."""
+    import stat
+    cur = os.path.abspath(folder)
+    for i, part in enumerate(parts):
+        cur = os.path.join(cur, part)
+        st = os.lstat(cur)                                   # FileNotFoundError like os.remove
+        if stat.S_ISLNK(st.st_mode) or (i == len(parts) - 1 and not stat.S_ISREG(st.st_mode)):
+            raise NotInside(errno.EPERM, "a link or not a plain file", cur)
+    return cur
+
+
+def delete_inside(folder: str, path: str) -> None:
+    """Delete the plain file ``path`` – only when it really lies inside ``folder``: no part below the folder may be a
+    link or junction, and the file itself is not one either. Windows: opened without following reparse points, the
+    real path checked against the folder's, deleted through that handle (FileDispositionInfo) – a part swapped for a
+    junction in between changes nothing. Raises like ``os.remove`` (FileNotFoundError, PermissionError while a
+    player has it open) and NotInside when it is not ours to delete."""
+    parts = _inside_text(folder, path)
+    if not WIN:
+        os.remove(_posix_plain(folder, parts))
+        return
+    from ctypes import wintypes
+    root = os.path.normcase(_folder_final(folder)).rstrip("\\")
+    h = _open_handle(path, DELETE | FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, FILE_FLAG_OPEN_REPARSE_POINT)
+    try:
+        if _attributes(h) & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY):
+            raise NotInside(errno.EPERM, "a link or not a plain file", path)
+        if not os.path.normcase(_final_path(h)).startswith(root + "\\"):
+            raise NotInside(errno.EPERM, "not inside the folder", path)
+
+        class FILE_DISPOSITION_INFO(ctypes.Structure):
+            _fields_ = [("DeleteFile", wintypes.BOOLEAN)]
+        info = FILE_DISPOSITION_INFO(True)
+        if not _k32().SetFileInformationByHandle(h, FILE_DISPOSITION_INFO_CLASS, ctypes.byref(info),
+                                                 ctypes.sizeof(info)):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        _k32().CloseHandle(h)
+
+
+def open_plain_for_write(path: str):
+    """A text file another (normal) process created for us – a helper's result file – opened for writing only if it
+    is a plain file with one name: not a link or junction, no second hard link (that could be a system file).
+    Truncated after the check; NotInside when it is none of that. Returns a text file object."""
+    if WIN:
+        import msvcrt
+        h = _open_handle(path, GENERIC_WRITE | FILE_READ_ATTRIBUTES, 0x1, FILE_FLAG_OPEN_REPARSE_POINT)
+        try:
+            if _attributes(h) & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY) or _link_count(h) != 1:
+                raise NotInside(errno.EPERM, "a link or not a plain file", path)
+            fd = msvcrt.open_osfhandle(h, os.O_WRONLY)
+        except BaseException:
+            _k32().CloseHandle(h)
+            raise
+    else:
+        import stat
+        fd = os.open(path, os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0))   # a symlink: ELOOP
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+            os.close(fd)
+            raise NotInside(errno.EPERM, "a link or not a plain file", path)
+    os.ftruncate(fd, 0)
+    return os.fdopen(fd, "w", encoding="utf-8")
+
+
 def delete_verified(path: str, sha256: str, size: int) -> bool:
     """Delete ``path`` only if its full SHA-256 and size are ``sha256``/``size`` – checked and deleted under one
     exclusive handle on Windows. False (nothing deleted) when the content differs; PermissionError while another
