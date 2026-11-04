@@ -460,6 +460,10 @@ class SettingsTab:
         self._reg("setup.off_open", ui.Checkbutton(sx, text=_("Stats-Seite öffnen, wenn DBD beendet wird"),
                                                     variable=self.off_open_var,
                                                     command=self._official_setting)).pack(anchor="w")
+        # 1.30 (user: "bei erstmaliger Installation soll man angewiesen werden, alles einzurichten"): the last step
+        # of the assistant leads to the server page – the regions are a table there, not a single switch
+        self._reg("setup.server", ui.Button(sx, text=_("Serverregionen auswählen …"),
+                                             command=self._setup_to_server)).pack(side="left")
         self._reg("setup.off_text", ui.Label(sx, text=_("Einmal einrichten: Tampermonkey im Browser installieren, „Userscript kopieren“ und dort "
                              "als neues Skript einfügen und speichern, auf stats.deadbydaylight.com anmelden. Chrome/"
                              "Edge: in den Details der Erweiterung „Allow User Scripts“ einschalten, sonst läuft "
@@ -493,6 +497,14 @@ class SettingsTab:
                   style="Dim.TLabel", wraplength=430))
         self.version_label.pack(anchor="w", pady=(10, 0))
         return outer
+
+    def _setup_to_server(self):
+        """1.30: the assistant's "Serverregionen auswählen …" – the assistant counts as done, the server page opens."""
+        self.settings.set("welcome_seen", True)
+        self._save_soon()
+        if self.qt is not None:
+            self.qt.show_setup(False)
+            self.qt.show_page("server")
 
     def _export_settings(self, path=None):
         if path is None:                            # the window asks for the file and calls again
