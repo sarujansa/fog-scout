@@ -1,0 +1,57 @@
+# 1.31 (.exe, stage 3): builds Fog Scout as a Windows folder app with PyInstaller (installer/fogscout.spec) on every
+# pull request and push to main, runs the packaged program's self-check (FogScout.exe --selftest: modules, maps,
+# models, fonts, ffmpeg, OCR, Qt) and its helper entry, and keeps the folder as a run artifact for 14 days.
+# No release, no signing, nothing published – that comes with stages 4 and 5.
+# Actions are pinned to the full commit SHA of their tag (the tag is in the comment), as in tests.yml.
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  exe:
+    name: exe
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Pakete (wie start.bat, nur Wheels) und PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --only-binary=:all: -r requirements.txt -r requirements-build.txt
+          python -m pip install --only-binary=:all: --no-deps -r requirements-extra.txt
+      - name: PyInstaller
+        run: python -m PyInstaller --noconfirm --clean installer/fogscout.spec
+      - name: Selbsttest der .exe
+        shell: pwsh
+        env:
+          DBDMS_DATA_DIR: ${{ runner.temp }}\fogscout-data
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "selftest.json"
+          $p = Start-Process -FilePath "dist\FogScout\FogScout.exe" -ArgumentList "--selftest", "`"$out`"" -Wait -PassThru
+          if (Test-Path $out) { Get-Content $out } else { Write-Output "keine Ergebnisdatei" }
+          if ($p.ExitCode -ne 0) { throw "Selbsttest fehlgeschlagen (Code $($p.ExitCode))" }
+          # the elevated helpers are the .exe itself; without its two files a helper only prints usage (code 2)
+          $h = Start-Process -FilePath "dist\FogScout\FogScout.exe" -ArgumentList "--helper", "hostsedit" -Wait -PassThru
+          if ($h.ExitCode -ne 2) { throw "--helper hostsedit: Code $($h.ExitCode) statt 2" }
+          $size = (Get-ChildItem -Recurse "dist\FogScout" | Measure-Object -Sum Length).Sum / 1MB
+          Write-Output ("Ordnergröße: {0:N0} MB" -f $size)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: FogScout-${{ github.sha }}
+          path: dist/FogScout
+          retention-days: 14
+          if-no-files-found: error

@@ -263,13 +263,12 @@ def run_job(job: dict, hwnd: int | None = None, timeout: float = 90.0) -> dict:
         json.dump(job, fh)
     fd, res_f = tempfile.mkstemp(prefix="fogscout-result-", suffix=".json")
     os.close(fd)
-    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hostsedit.py")
     try:
         exit_code = None
         if not IS_WIN:                              # tests: no elevation, DBDMS_HOSTS_FILE points to a copy
             exit_code = hostsedit.main(["hostsedit.py", job_f, res_f])
         else:
-            res, exit_code = _run_elevated(script, job_f, res_f, timeout, hwnd)
+            res, exit_code = _run_elevated("hostsedit", job_f, res_f, timeout, hwnd)
             if res is not None:
                 return res
         try:
@@ -295,10 +294,29 @@ def _python_exe() -> str:
     return exe
 
 
-def _run_elevated(script, job_f, res_f, timeout, hwnd=None):
+# 1.31 (.exe, stage 3): the two helpers that run with administrator rights. From start.bat each is its own script
+# (pythonw.exe -I -S hostsedit.py …); the packaged program has no loose .py files, so it starts itself with
+# ``--helper <name>`` (__main__.run_helper) – only these names, the arguments are the job/result files.
+HELPERS = ("hostsedit", "netwatch")
+
+
+def helper_command(name: str, args) -> tuple[str, str]:
+    """(file, parameters) for ShellExecuteEx: what Windows starts with administrator rights for helper ``name``."""
+    if name not in HELPERS:
+        raise ValueError(f"unknown helper: {name}")
+    from .paths import frozen
+    quoted = " ".join(f'"{a}"' for a in args)
+    if frozen():
+        return sys.executable, f"--helper {name} {quoted}".rstrip()
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), name + ".py")
+    # -I -S: isolated, no site-packages / .pth files – the helpers need the standard library only
+    return _python_exe(), f'-I -S "{script}" {quoted}'.rstrip()
+
+
+def _run_elevated(helper, job_f, res_f, timeout, hwnd=None):
     """Start the helper with "runas" (UAC prompt) and wait.
     Returns (error dict or None, exit code)."""
-    proc, err = start_elevated(script, [job_f, res_f], hwnd)
+    proc, err = start_elevated(helper, [job_f, res_f], hwnd)
     if err:
         return err, None
     k32 = _kernel32()
@@ -336,8 +354,8 @@ def close_handle(proc) -> None:
         _kernel32().CloseHandle(proc)
 
 
-def start_elevated(script, args, hwnd=None):
-    """Start one of our helper scripts with "runas" (UAC prompt), without waiting.
+def start_elevated(helper, args, hwnd=None):
+    """Start one of our helpers (a name of HELPERS) with "runas" (UAC prompt), without waiting.
     Returns (process handle, None) or (None, error dict); the caller closes the handle."""
     class SHELLEXECUTEINFOW(ctypes.Structure):
         _fields_ = [("cbSize", wintypes.DWORD), ("fMask", ctypes.c_ulong), ("hwnd", wintypes.HWND),
@@ -354,9 +372,7 @@ def start_elevated(script, args, hwnd=None):
     sei.fMask = 0x40 | 0x100                        # SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC
     sei.hwnd = hwnd or None                         # UAC prompt belongs to our window (comes to the front)
     sei.lpVerb = "runas"
-    sei.lpFile = _python_exe()
-    # -I -S: isolated, no site-packages / .pth files – the helpers need the standard library only
-    sei.lpParameters = "-I -S " + " ".join(f'"{a}"' for a in [script, *args])
+    sei.lpFile, sei.lpParameters = helper_command(helper, args)
     sei.nShow = 0                                   # SW_HIDE
     if not shell.ShellExecuteExW(ctypes.byref(sei)):
         err = ctypes.get_last_error()

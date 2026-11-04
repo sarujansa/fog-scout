@@ -261,8 +261,7 @@ class ConnectionWatch:
                                     daemon=True, name="netwatch")
             proc.start()
         else:
-            script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "netwatch.py")
-            proc, err = regions.start_elevated(script, [control, result], hwnd)
+            proc, err = regions.start_elevated("netwatch", [control, result], hwnd)
             if err:
                 _remove(control, result)
                 return err

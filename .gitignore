@@ -26,3 +26,7 @@ fogscout.ico
 fogscout-*.ico
 dbdmapscout.ico
 cache/
+
+# PyInstaller (installer/fogscout.spec, 1.31)
+/build/
+/dist/
