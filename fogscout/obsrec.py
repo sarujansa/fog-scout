@@ -164,7 +164,9 @@ def profile_keys(mode: str) -> dict:
 
 
 # 1.29 (user: "Prüfen + Anleitung + auf Klick einstellen"): the only profile values a click may write (recquality,
-# Recorder.apply_quality) – the simple mode's recording quality and encoder, the advanced mode's rescale switch.
+# Recorder.apply_quality) – the simple mode's recording quality, the advanced mode's rescale switch. Review F-03: a
+# click no longer switches the encoder (an NVIDIA driver does not prove OBS offers NVENC); RecEncoder stays listed
+# only so "Zurücksetzen" can put back a 1.29 snapshot that holds it.
 QUALITY_KEYS = (("SimpleOutput", "RecQuality"), ("SimpleOutput", "RecEncoder"), ("AdvOut", "RecRescale"))
 
 
