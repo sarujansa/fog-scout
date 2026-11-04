@@ -26,6 +26,12 @@ def process_age_s() -> float | None:
             from ctypes import wintypes
             k32 = ctypes.WinDLL("kernel32", use_last_error=True)
             k32.GetCurrentProcess.restype = wintypes.HANDLE
+            ft = ctypes.POINTER(wintypes.FILETIME)
+            # the pseudo handle is -1 as a pointer-wide int: without argtypes ctypes passes a C int and overflows
+            k32.GetProcessTimes.argtypes = (wintypes.HANDLE, ft, ft, ft, ft)
+            k32.GetProcessTimes.restype = wintypes.BOOL
+            k32.GetSystemTimeAsFileTime.argtypes = (ft,)
+            k32.GetSystemTimeAsFileTime.restype = None
             created, exited, kernel, user = (wintypes.FILETIME() for _i in range(4))
             if not k32.GetProcessTimes(k32.GetCurrentProcess(), ctypes.byref(created), ctypes.byref(exited),
                                        ctypes.byref(kernel), ctypes.byref(user)):
@@ -41,7 +47,7 @@ def process_age_s() -> float | None:
         with open("/proc/uptime", encoding="ascii") as fh:
             uptime = float(fh.read().split()[0])
         return max(0.0, uptime - int(fields[19]) / os.sysconf("SC_CLK_TCK"))   # field 22: starttime
-    except (OSError, ValueError, IndexError, AttributeError):
+    except Exception:                 # a measurement never stops the start (ctypes.ArgumentError, OSError …)
         return None
 
 
