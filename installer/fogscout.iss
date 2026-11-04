@@ -1,4 +1,4 @@
-; 1.32 (.exe, stage 4): installer for Fog Scout (Inno Setup, compiled in GitHub Actions – .github/workflows/build.yml):
+﻿; 1.32 (.exe, stage 4): installer for Fog Scout (Inno Setup, compiled in GitHub Actions – .github/workflows/build.yml):
 ;     ISCC.exe /DAppVersion=<version> installer\fogscout.iss
 ; after PyInstaller (installer/fogscout.spec) built dist\FogScout. Result: dist\FogScout-Setup-<version>.exe.
 ;
@@ -37,17 +37,17 @@ UninstallDisplayName=Fog Scout
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-; the running program holds this mutex (fogscout/restart.py MUTEX_NAME): Setup asks to close it first
-AppMutex=Local\FogScout.SingleInstance
+; 1.33.2: no AppMutex - a silent update aborted while Fog Scout was still closing. InitializeSetup in the code
+; section waits for the program's mutex (fogscout/restart.py MUTEX_NAME); an installation by hand asks to close it.
 CloseApplications=no
 
 [Languages]
 Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 Name: "en"; MessagesFile: "compiler:Default.isl"
 
-[InstallDelete]
-; a newer build may drop files – never mix two versions' libraries
-Type: filesandordirs; Name: "{app}\_internal"
+; 1.33.2: no InstallDelete of {app}\_internal any more - Inno Setup does not bring deleted files back when the setup
+; is aborted, and an update broken off midway (a file still in use) left a program without python312.dll. Every file
+; of the new version replaces the old one; at worst unused files of an older version stay behind.
 
 [Files]
 Source: "..\dist\FogScout\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -63,7 +63,76 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""Fog Scout"""; Flags: run
 Filename: "{app}\FogScout.exe"; Parameters: "--remove-tasks"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveTasks"
 
 [Code]
+const
+  MutexName = 'Local\FogScout.SingleInstance';   { fogscout/restart.py MUTEX_NAME }
+  UpdateWaitMs = 60000;
+
+var
+  Installed: Boolean;
+
 function IsUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:update|0}') = '1';
 end;
+
+{ 1.33.2: wait for Fog Scout to end - an update from the program quits it right after starting this setup; by hand
+  the user is asked to close it (Retry/Cancel) }
+function WaitForProgram(Interactive: Boolean): Boolean;
+var
+  Waited: Integer;
+begin
+  Waited := 0;
+  while CheckForMutexes(MutexName) do
+  begin
+    if Interactive then
+    begin
+      if MsgBox(CustomMessage('FogScoutRunning'), mbError, MB_RETRYCANCEL) <> IDRETRY then
+      begin
+        Result := False;
+        Exit;
+      end;
+    end
+    else
+    begin
+      if Waited >= UpdateWaitMs then
+      begin
+        Result := False;
+        Exit;
+      end;
+      Sleep(250);
+      Waited := Waited + 250;
+    end;
+  end;
+  Result := True;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Installed := False;
+  Result := WaitForProgram((not IsUpdate) and (not WizardSilent));
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := WaitForProgram(not UninstallSilent);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    Installed := True;
+end;
+
+{ 1.33.2 (M-6): an update that did not finish starts Fog Scout again anyway - nothing was deleted beforehand, the
+  program that was there still runs }
+procedure DeinitializeSetup();
+var
+  Code: Integer;
+begin
+  if IsUpdate and (not Installed) then
+    Exec(ExpandConstant('{sys}\schtasks.exe'), '/run /tn "Fog Scout"', '', SW_HIDE, ewNoWait, Code);
+end;
+
+[CustomMessages]
+de.FogScoutRunning=Fog Scout läuft noch. Bitte beenden (Infobereich: Rechtsklick auf das Symbol, dann Beenden) und danach Wiederholen wählen.
+en.FogScoutRunning=Fog Scout is still running. Please close it (notification area: right-click the icon, then Exit) and choose Retry.
