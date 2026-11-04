@@ -470,6 +470,7 @@ def test_a_result_screen_without_a_role_is_kept_for_the_diagnosis(tmp_path, monk
     from fogscout import worker
     w = worker.DetectionWorker.__new__(worker.DetectionWorker)
     w.root_dir, w.role_misses = str(tmp_path), collections.deque(maxlen=5)
+    w.data_dir = w.root_dir                                  # 1.30.1: debug pictures go to the data folder
     monkeypatch.setattr(worker, "RESULT_MISSES_KEPT", 2)
     stamps = iter(["20261022-140000", "20261022-140100", "20261022-140200"])
     monkeypatch.setattr(worker.time, "strftime", lambda fmt, *a: next(stamps) if "%Y" in fmt else "14:00:00")
@@ -484,6 +485,7 @@ def _retry_worker(tmp_path, debug=False):
     from fogscout import worker
     w = worker.DetectionWorker.__new__(worker.DetectionWorker)
     w.root_dir, w.role_misses, w.posted = str(tmp_path), collections.deque(maxlen=5), []
+    w.data_dir = w.root_dir                                  # 1.30.1: debug pictures go to the data folder
     w.settings = {"save_debug_images": debug}
     w.post = lambda kind, **d: w.posted.append((kind, d))
     w._report = lambda where, text: (_ for _ in ()).throw(AssertionError(text))
