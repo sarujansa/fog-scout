@@ -1434,7 +1434,6 @@ EN = {
     'Schritt {n} von {total}': 'Step {n} of {total}',
     'Sprache': 'Language',
     'Sprache dieses Programms:': 'Language of this program:',
-    'Tasten und Start': 'Keys and start',
     'Weiter': 'Next',
     'Zurück': 'Back',
     'Überspringen': 'Skip',
@@ -3471,4 +3470,33 @@ EN = {
     "Einschätzung aus Bitrate, Auflösung, Bildrate und Codec – Bildinhalt, Bewegung, Encoder-Voreinstellung und Quelle beeinflussen das Ergebnis.":
         "An estimate from bitrate, resolution, frame rate and codec – picture content, motion, the encoder preset and "
         "the source change the result.",
+    # 1.30: the setup assistant's new steps (start, OBS, connections, server)
+    "Tasten": "Keys",
+    "Start und Meldungen": "Start and notifications",
+    "Fog Scout kann mit Windows starten und still im Infobereich (neben der Uhr) warten, bis DBD läuft. Die Lobby-Meldung sagt dir mit einem Ton, wenn ein Match gefunden wurde.":
+        "Fog Scout can start with Windows and wait quietly in the notification area (next to the clock) until DBD "
+        "runs. The lobby notification tells you with a sound when a match was found.",
+    "Optional: OBS Studio nimmt jede Runde auf, Fog Scout sagt OBS nur, wann. Ohne OBS einfach „Weiter“.":
+        "Optional: OBS Studio records every round, Fog Scout only tells OBS when. Without OBS just “Next”.",
+    "1. In OBS: Werkzeuge → WebSocket-Servereinstellungen → „WebSocket-Server aktivieren“ anhaken; unter „Verbindungsinformationen anzeigen“ stehen Port und Passwort.":
+        "1. In OBS: Tools → WebSocket Server Settings → tick “Enable WebSocket server”; “Show Connect Info” shows "
+        "port and password.",
+    "2. Port und Passwort hier eintragen und „Verbindung testen“.":
+        "2. Enter port and password here and click “Test connection”.",
+    "3. Einen Ordner für die Aufnahmen wählen und die Aufnahmen einschalten.":
+        "3. Choose a folder for the recordings and switch recording on.",
+    "Wie scharf OBS aufnimmt, zeigt danach die Karte „Aufnahme“ auf der Seite Aufnahmen – dort auch „Qualität verbessern …“.":
+        "How sharp OBS records is shown afterwards by the card “Recording” on the Recordings page – with “Improve "
+        "quality …” there too.",
+    "Alles hier ist freiwillig und lässt sich später unter Einstellungen → Verbindungen einrichten. Jede Verbindung braucht eine eigene App-ID bzw. einen eigenen Key von dir – „Erklärung“ sagt, wo es sie gibt.":
+        "Everything here is optional and can be set up later under Settings → Connections. Each connection needs an "
+        "app ID or key of your own – “Explanation” says where to get it.",
+    "Fog Scout kann anzeigen, mit welchem Spielserver DBD verbunden ist (Region und Ping, auch im Overlay) – dafür fragt Windows einmal nach Administratorrechten.":
+        "Fog Scout can show which game server DBD is connected to (region and ping, also in the overlay) – Windows "
+        "asks for administrator rights once for it.",
+    "Auf der Seite Server lässt sich ausserdem festlegen, in welchen Regionen DBD Matches sucht. Das ist freiwillig.":
+        "On the Server page you can also choose in which regions DBD looks for matches. That is optional.",
+    "Serverregionen auswählen …": "Choose server regions …",
+    "Beendet die Einrichtung und öffnet die Seite Server – dort die Regionen anhaken, in denen DBD Matches suchen soll.":
+        "Ends the setup and opens the Server page – tick the regions there in which DBD should look for matches.",
 }
