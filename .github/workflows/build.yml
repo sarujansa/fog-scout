@@ -1,7 +1,9 @@
 # 1.31 (.exe, stage 3): builds Fog Scout as a Windows folder app with PyInstaller (installer/fogscout.spec) on every
 # pull request and push to main, runs the packaged program's self-check (FogScout.exe --selftest: modules, maps,
 # models, fonts, ffmpeg, OCR, Qt) and its helper entry, and keeps the folder as a run artifact for 14 days.
-# No release, no signing, nothing published – that comes with stages 4 and 5.
+# 1.32 (stage 4): compiles the installer (installer/fogscout.iss, Inno Setup – downloaded from its GitHub release,
+# SHA-256 checked), installs it silently, checks tasks, shortcut and the installed .exe, uninstalls it again and keeps
+# the setup as a run artifact. No release, no signing, nothing published – that comes with stage 5.
 # Actions are pinned to the full commit SHA of their tag (the tag is in the comment), as in tests.yml.
 name: Build
 
@@ -49,9 +51,69 @@ jobs:
           if ($h.ExitCode -ne 2) { throw "--helper hostsedit: Code $($h.ExitCode) statt 2" }
           $size = (Get-ChildItem -Recurse "dist\FogScout" | Measure-Object -Sum Length).Sum / 1MB
           Write-Output ("Ordnergröße: {0:N0} MB" -f $size)
+      - name: Inno Setup (fest, Prüfsumme)
+        shell: pwsh
+        env:
+          INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe
+          INNO_SHA256: 8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP "innosetup.exe"
+          Invoke-WebRequest -Uri $env:INNO_URL -OutFile $exe
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          if ($hash -ne $env:INNO_SHA256) { throw "Inno Setup: Prüfsumme $hash passt nicht" }
+          $dir = Join-Path $env:RUNNER_TEMP "inno"
+          $p = Start-Process -FilePath $exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/CURRENTUSER", "/DIR=`"$dir`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Inno Setup: Installation Code $($p.ExitCode)" }
+          $iscc = Get-ChildItem -Path $dir -Recurse -Filter ISCC.exe | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe nicht gefunden" }
+          "ISCC=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Installer bauen
+        shell: pwsh
+        run: |
+          $version = python -c "import fogscout; print(fogscout.__version__)"
+          "FOGSCOUT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & $env:ISCC "/DAppVersion=$version" installer\fogscout.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC: Code $LASTEXITCODE" }
+      - name: Installer ausprobieren (still installieren, prüfen, deinstallieren)
+        shell: pwsh
+        env:
+          DBDMS_DATA_DIR: ${{ runner.temp }}\fogscout-data
+        run: |
+          $setup = "dist\FogScout-Setup-$env:FOGSCOUT_VERSION.exe"
+          $dir = Join-Path $env:RUNNER_TEMP "Fog Scout & Co"
+          $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$dir`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Setup: Code $($p.ExitCode)" }
+          foreach ($f in "FogScout.exe", "unins000.exe", "_internal\maps.json") {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "nach der Installation fehlt $f" }
+          }
+          $task = Get-ScheduledTask -TaskName "Fog Scout" -ErrorAction Stop
+          if ($task.Actions[0].Execute -ne (Join-Path $dir "FogScout.exe")) { throw "Aufgabe startet $($task.Actions[0].Execute)" }
+          $auto = Get-ScheduledTask -TaskName "Fog Scout (Autostart)" -ErrorAction Stop
+          if ($auto.Actions[0].Arguments -ne "--tray") { throw "Autostart-Argumente: $($auto.Actions[0].Arguments)" }
+          if ($task.Principal.RunLevel -ne "Highest") { throw "Aufgabe ohne höchste Rechte" }
+          $lnk = Join-Path ([Environment]::GetFolderPath("Programs")) "Fog Scout.lnk"
+          if (-not (Test-Path $lnk)) { throw "Startmenü-Verknüpfung fehlt" }
+          $out = Join-Path $env:RUNNER_TEMP "selftest-installed.json"
+          $s = Start-Process -FilePath (Join-Path $dir "FogScout.exe") -ArgumentList "--selftest", "`"$out`"" -Wait -PassThru
+          Get-Content $out
+          if ($s.ExitCode -ne 0) { throw "Selbsttest der installierten .exe: Code $($s.ExitCode)" }
+          $u = Start-Process -FilePath (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "Deinstallation: Code $($u.ExitCode)" }
+          Start-Sleep -Seconds 3      # the uninstaller removes itself through a copy that ends a moment later
+          if (Get-ScheduledTask -TaskName "Fog Scout" -ErrorAction SilentlyContinue) { throw "Aufgabe nach der Deinstallation noch da" }
+          if (Test-Path $lnk) { throw "Verknüpfung nach der Deinstallation noch da" }
+          if (Test-Path (Join-Path $dir "FogScout.exe")) { throw "FogScout.exe nach der Deinstallation noch da" }
+          $size = (Get-Item $setup).Length / 1MB
+          Write-Output ("Setup: {0:N0} MB" -f $size)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: FogScout-${{ github.sha }}
           path: dist/FogScout
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: FogScout-Setup-${{ github.sha }}
+          path: dist/FogScout-Setup-*.exe
           retention-days: 14
           if-no-files-found: error

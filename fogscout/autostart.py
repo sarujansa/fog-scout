@@ -15,6 +15,10 @@ updates and packages keep working, and the minimised console closes again (start
 leave it open). 1.8.45: the folder is never part of the command line – cmd would read "&" in it as a second
 command and expand "%…%" (the working directory is not parsed).
 
+1.32 (.exe, stage 4): the installed program (``paths.installed()``) has the same tasks and shortcuts, but they run
+FogScout.exe directly (``--tray`` at logon) in its own folder – no cmd, no console; the installer creates them with
+``FogScout.exe --install-tasks`` and removes them with ``--remove-tasks`` on uninstall.
+
 Both shortcuts carry the program's AppUserModelID (appid.py). The Start menu one is needed for pinning
 the running window: Windows looks for a shortcut with that ID there (not on the desktop) and pins it –
 without one it pins .venv\\Scripts\\pythonw.exe (Python icon, starts nothing).
@@ -46,18 +50,37 @@ def _q(s: str) -> str:
     return "'" + str(s).replace("'", "''") + "'"
 
 
-def task_script(root: str, name: str, at_logon: bool) -> str:
-    """PowerShell that (re)creates one task for the current user, run level highest."""
+def frozen_exe() -> str | None:
+    """1.32: the packaged program's .exe (the tasks start it directly), None from start.bat."""
+    from .paths import frozen
+    return sys.executable if frozen() else None
+
+
+def app_root(root: str) -> str:
+    """The folder the tasks and shortcuts start in: the program folder from start.bat, the .exe's folder when packaged
+    (root_dir is its _internal folder there)."""
+    exe = frozen_exe()
+    return os.path.dirname(os.path.abspath(exe)) if exe else root
+
+
+def task_script(root: str, name: str, at_logon: bool, exe: str | None = None) -> str:
+    """PowerShell that (re)creates one task for the current user, run level highest. ``exe`` (1.32): the packaged
+    program, started directly in its folder."""
     root = os.path.abspath(root)
-    # "start" alone would run the .bat with cmd /K – its (minimised) console would stay open afterwards.
-    # Explicit cmd /c closes it. 1.8.45: start.bat by its name in the working directory (-WorkingDirectory,
-    # which start passes on) – a folder with "&" or "%" on the command line broke the task.
-    arg = '/c start "" /min cmd /c .\\start.bat' + (" tray" if at_logon else "")
+    if exe:
+        action = f"$a = New-ScheduledTaskAction -Execute {_q(os.path.abspath(exe))}" + \
+            (f" -Argument {_q('--tray')}" if at_logon else "") + f" -WorkingDirectory {_q(root)}"
+    else:
+        # "start" alone would run the .bat with cmd /K – its (minimised) console would stay open afterwards.
+        # Explicit cmd /c closes it. 1.8.45: start.bat by its name in the working directory (-WorkingDirectory,
+        # which start passes on) – a folder with "&" or "%" on the command line broke the task.
+        arg = '/c start "" /min cmd /c .\\start.bat' + (" tray" if at_logon else "")
+        action = (f"$a = New-ScheduledTaskAction -Execute \"$env:SystemRoot\\System32\\cmd.exe\" -Argument {_q(arg)} "
+                  f"-WorkingDirectory {_q(root)}")
     lines = [
         "$ErrorActionPreference = 'Stop'",
         "$user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name",
-        f"$a = New-ScheduledTaskAction -Execute \"$env:SystemRoot\\System32\\cmd.exe\" -Argument {_q(arg)} "
-        f"-WorkingDirectory {_q(root)}",
+        action,
         "$p = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest",
         "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
         "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew",
@@ -89,9 +112,9 @@ def remove_old_script() -> str:
 
 def relaunch_command() -> str:
     """1.9.1: what the taskbar runs for a pinned button of the window – the same as the shortcuts (the task).
-    1.31: the packaged program has no task yet (the installer sets it up, stage 4) – its own .exe."""
-    from .paths import frozen
-    if frozen():
+    1.31: a packaged program that was not installed (the folder from CI) has no task – its own .exe."""
+    from .paths import frozen, installed
+    if frozen() and not installed():
         return f'"{sys.executable}"'
     system_root = (os.environ.get("SystemRoot") or r"C:\Windows").rstrip("\\/")
     return f'"{system_root}\\System32\\schtasks.exe" /run /tn "{TASK}"'
@@ -142,7 +165,7 @@ def task_exists(name: str) -> bool:
 
 def set_autostart(root: str, on: bool):
     """Create or remove the logon task (needs administrator rights). Returns (ok, message)."""
-    ok, out = powershell(task_script(root, TASK_AUTO, True) if on else remove_script(TASK_AUTO))
+    ok, out = powershell(task_script(app_root(root), TASK_AUTO, True, frozen_exe()) if on else remove_script(TASK_AUTO))
     return ok, out
 
 
@@ -166,7 +189,7 @@ def needs_setup(saved_version, saved_root, root: str, task_present: bool) -> boo
 def ensure(root: str, saved_version, saved_root):
     """Called at program start when running as administrator. Returns None (nothing to do) or
     (ok, message). Also renews the logon task if the user switched autostart on earlier."""
-    if not IS_WIN or not needs_setup(saved_version, saved_root, root, task_exists(TASK)):
+    if not IS_WIN or not needs_setup(saved_version, saved_root, app_root(root), task_exists(TASK)):
         return None
     had_auto = task_exists(TASK_AUTO) or task_exists(OLD_TASK_AUTO)    # 1.9: before install removes the old one
     ok, msg = install(root)
@@ -179,17 +202,22 @@ def ensure(root: str, saved_version, saved_root):
 
 def install(root: str):
     """Icon, on-demand task, desktop and Start menu shortcut. Returns (ok, message)."""
-    try:
-        icon = icon_mod.ensure_ico(root)
-    except OSError:
-        icon = ""
+    exe = frozen_exe()
+    root = app_root(root)
+    if exe:                                         # 1.32: the .exe carries the icon; Program Files stays untouched
+        icon = exe
+    else:
+        try:
+            icon = icon_mod.ensure_ico(root)
+        except OSError:
+            icon = ""
     powershell(remove_old_script())                 # 1.9: the old name's tasks and shortcuts (best effort) …
-    for old in icon_mod.OLD_FILES:                  # … and the icons only they showed (1.9.1: also 1.9's file)
+    for old in () if exe else icon_mod.OLD_FILES:   # … and the icons only they showed (1.9.1: also 1.9's file)
         try:
             os.remove(os.path.join(root, old))
         except OSError:
             pass
-    ok, out = powershell(task_script(root, TASK, False))
+    ok, out = powershell(task_script(root, TASK, False, exe))
     if not ok:
         return False, _("Aufgabe konnte nicht angelegt werden: {error}", error=out)
     links = []
@@ -200,6 +228,20 @@ def install(root: str):
         set_link_app_id(out)      # same ID as the program: pinned shortcut and window share one button
         links.append(out)
     return True, _("Verknüpfung erstellt: {path}", path=links[-1])
+
+
+def uninstall_script() -> str:
+    """1.32: PowerShell that removes both tasks and both shortcuts (the uninstaller, ``--remove-tasks``)."""
+    lines = [remove_script(TASK), remove_script(TASK_AUTO)]
+    for folder in ("Desktop", "Programs"):
+        lines.append(f"$lnk = Join-Path ([Environment]::GetFolderPath({_q(folder)})) {_q(LINK_NAME)}")
+        lines.append("if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force }")
+    return "\n".join(lines)
+
+
+def uninstall():
+    """Remove tasks and shortcuts. Returns (ok, output)."""
+    return powershell(uninstall_script())
 
 
 def main(argv) -> int:
