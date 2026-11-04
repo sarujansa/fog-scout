@@ -207,3 +207,31 @@ Am Installer-Skript, an der Spec und an den Workflows wurde nichts geändert.
   1. Diese Fixes durch CI (Windows-Build und Installer-Test) bringen.
   2. Die Checkliste in Abschnitt 11 auf echtem Windows durchgehen, inklusive eines Updates von Build N auf N+1.
   3. Entscheiden, ob M-6 (Neustart nach gescheitertem Setup) und die Signierung in 1.34 sollen.
+
+## Nachtrag 1.33.2 – C-1 nach der Freigabe auf echtem Windows gefunden
+
+| ID | Schwere | Befund |
+|---|---|---|
+| C-1 | Critical | **Ein Update zerstörte die Installation.** Saru hat Build 6 (1.33) installiert und über „Aktualisieren und neu starten“ auf Build 9 (1.33.1) aktualisiert. Danach startete Fog Scout nicht von selbst, und beim Start von Hand kam „Failed to load Python DLL '…\_internal\python312.dll'“. |
+
+**Ursache (aus dem Code abgeleitet; ein Setup-Log gab es noch nicht):**
+- Der Update-Helfer `FogScout.exe --install-update` lief aus dem Programmordner und hielt genau die Dateien, die das Setup ersetzt (`FogScout.exe`, `python312.dll`, Qt-DLLs).
+- Das Setup löschte zuerst `{app}\_internal` (`[InstallDelete]`) und kopierte dann. Das stille Setup brach an einer gesperrten Datei ab.
+- Inno Setup stellt per `[InstallDelete]` Gelöschtes beim Abbruch nicht wieder her. Ausserdem brach `AppMutex` das stille Setup ab, wenn das Programm noch lief.
+
+M-6 hatte das Risiko eines gescheiterten Setups gesehen, aber zu niedrig eingestuft. CI hatte nie ein Update über eine bestehende Installation getestet. Beides ist eine Lücke dieses Audits.
+
+**Fix in 1.33.2:**
+1. Kein Helfer mehr. Das Programm prüft die SHA-256 und den Ordner unmittelbar vor dem Start (`restart.setup_still_ours`), startet das Setup selbst und beendet sich erst dann. Scheitert der Start, bleibt es offen.
+2. Das Setup wartet selbst auf das Programmende (Mutex, `[Code] WaitForProgram`). Bei einem Update geschieht das still bis 60 s, von Hand mit Wiederholen/Abbrechen. `AppMutex` ist entfernt.
+3. Es wird nichts mehr vorher gelöscht (kein `[InstallDelete]`). Ein abgebrochenes Setup lässt die alte, lauffähige Version stehen.
+4. Fog Scout startet auch nach einem abgebrochenen Update wieder (`DeinitializeSetup`, erledigt damit M-6).
+5. Das Setup schreibt ein Log nach `%LOCALAPPDATA%\FogScout\cache\update\setup.log`.
+6. CI (`build.yml`, Schritt „Installer ausprobieren“) prüft jetzt zusätzlich:
+   - ein Update, während der Mutex gehalten wird: Das Setup muss warten und danach durchlaufen;
+   - ein Update mit gesperrter `python3*.dll`: `FogScout.exe`, die DLL und `maps.json` müssen danach noch da sein, und der Selbsttest muss grün sein.
+
+**Grenzen:**
+- Der Weg 1.33.1 → 1.33.2 läuft noch über den alten Helfer von 1.33.1. 1.33.2 muss deshalb einmal von Hand installiert werden; erst Updates ab 1.33.2 nutzen den neuen Weg.
+- Eine schon beschädigte Installation repariert das Setup aus den Releases, von Hand ausgeführt.
+- Echtes Windows mit einem echten Update von Build N auf N+1 bleibt die offene Prüfung.
