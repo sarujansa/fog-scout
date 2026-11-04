@@ -7,6 +7,7 @@ in use when pip updates it), then runs start.bat, which installs the update as o
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -188,6 +189,67 @@ def setup_still_ours(path: str, sha256: str, folder: str) -> bool:
         return len(sha256) == 64 and os.path.isfile(path) and _file_sha256(path) == sha256.lower()
     except OSError:
         return False
+
+
+COPY_CHUNK = 1 << 20
+
+
+@contextlib.contextmanager
+def staged_setup(path: str, sha256: str, dest: str):
+    """1.34 (review S1): the checked setup copied into ``dest`` – the program folder's ``update``, where only
+    administrators write – hashed while copying, and (Windows) held open there with share mode "read" until the
+    caller has started it: nobody can change or delete it between the check and the start. Yields its path.
+    ValueError when the copy is not the release's file; PermissionError/OSError when ``dest`` cannot be written
+    (then nothing is left there)."""
+    import hashlib
+    from . import fsops
+    name = os.path.basename(path)
+    os.makedirs(dest, exist_ok=True)
+    final = os.path.join(dest, name)
+    tmp = fsops.tmp_name(final)
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as src, open(tmp, "xb") as out:
+            for block in iter(lambda: src.read(COPY_CHUNK), b""):
+                h.update(block)
+                out.write(block)
+            out.flush()
+            os.fsync(out.fileno())
+        if len(sha256) != 64 or h.hexdigest() != sha256.lower():
+            raise ValueError("setup changed since the download")
+        os.replace(tmp, final)                       # an older copy of the same version goes: the folder is ours
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+    lock = _hold_for_start(final)
+    try:
+        if _file_sha256(final) != sha256.lower():    # read again while nobody else can write it
+            raise ValueError("setup changed after the copy")
+        yield final
+    finally:
+        if lock is not None:
+            lock()
+
+
+def _hold_for_start(path: str):
+    """Windows: a handle with share mode READ – others may read and run the file, never write, rename or delete it.
+    Returns the function that lets go; None elsewhere."""
+    if not IS_WIN:
+        return None
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                              wintypes.DWORD, wintypes.HANDLE]
+    k.CreateFileW.restype = wintypes.HANDLE
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    h = k.CreateFileW(path, 0x80000000, 0x1, None, 3, 0x80, None)     # GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING
+    if h is None or h in (-1, 2 ** 64 - 1, 2 ** 32 - 1):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return lambda: k.CloseHandle(h)
 
 
 def _shell_open(path: str, args: list) -> bool:

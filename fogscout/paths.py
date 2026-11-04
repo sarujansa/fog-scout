@@ -107,6 +107,15 @@ def frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def app_update_dir() -> str | None:
+    """1.34 (review S1): where the installed program starts an update setup from – ``<program folder>\\update``.
+    The program folder is in Program Files, so only administrators can write there; the download folder in
+    %LOCALAPPDATA% is the user's. None when not installed (the bare CI folder, start.bat)."""
+    if not installed():
+        return None
+    return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "update")
+
+
 def installed() -> bool:
     """1.32 (.exe, stage 4): the packaged program was set up by its installer (Inno Setup leaves unins000.exe next to
     the .exe) – the scheduled tasks then exist; the bare folder from CI has none."""
