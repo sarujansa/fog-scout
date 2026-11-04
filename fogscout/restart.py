@@ -193,9 +193,11 @@ def _shell_open(path: str, args: list) -> bool:
     """ShellExecute "open": the setup asks for administrator rights itself when this process has none. True when
     Windows started it (ShellExecuteW returns a value above 32; below = error, e.g. the prompt was declined)."""
     import ctypes
+    from .launch import clean_process
     shell = ctypes.windll.shell32
     shell.ShellExecuteW.restype = ctypes.c_void_p
-    rc = shell.ShellExecuteW(None, "open", path, " ".join(args), os.path.dirname(path), 1)
+    with clean_process():                    # 1.33.3: the setup gets Windows' DLL search, not the bundle's
+        rc = shell.ShellExecuteW(None, "open", path, " ".join(args), os.path.dirname(path), 1)
     return int(rc or 0) > 32
 
 
