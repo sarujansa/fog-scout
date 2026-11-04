@@ -1,4 +1,4 @@
-"""Restart through start.bat after "Aktualisieren und neu starten".
+"""Restart through start.bat after "Aktualisieren und neu starten" (the packaged program: its own .exe again).
 
 The program starts a small helper (``python -m fogscout --restart``) and quits. The helper waits
 until the program has really ended (its single-instance mutex is gone – so no package file is still
@@ -28,7 +28,21 @@ def start_command() -> str:
     return f'"{comspec}" /c start "" /min cmd /c .\\start.bat'
 
 
-def helper_args(python: str | None = None, update: bool = True) -> list:
+def process_name() -> str:
+    """The name Task Manager shows for the program: pythonw.exe from start.bat, the .exe itself when packaged."""
+    return os.path.basename(sys.executable.replace("\\", "/")) if _frozen() else "pythonw.exe"
+
+
+def _frozen() -> bool:
+    from .paths import frozen
+    return frozen()
+
+
+def helper_args(python: str | None = None, update: bool = True, frozen: bool | None = None) -> list:
+    """1.31 (.exe, stage 3): the packaged program is its own helper (``FogScout.exe --restart``) and has no
+    start.bat that could install an update – it always restarts plainly."""
+    if _frozen() if frozen is None else frozen:
+        return [python or sys.executable, "--restart", "--no-update"]
     return [python or sys.executable, "-m", "fogscout", "--restart"] + ([] if update else ["--no-update"])
 
 
@@ -127,9 +141,10 @@ def ask_running_copy_to_show(name: str = SHOW_EVENT, wait: float = SHOW_ACK_S, s
 
 
 def wait_and_start(root: str, timeout: float = WAIT_S, running=None, run=None, update: bool = True,
-                   stuck=None) -> bool:
+                   stuck=None, frozen: bool | None = None) -> bool:
     """Helper process: wait for the program to end, then run start.bat. ``running``/``run`` for tests.
-    ``update`` False: a plain restart – start.bat's update follows the user's setting."""
+    ``update`` False: a plain restart – start.bat's update follows the user's setting. The packaged program
+    (1.31) starts its own .exe again instead, never with an update."""
     running = running or _program_running
     deadline = time.time() + timeout
     while running():
@@ -143,6 +158,10 @@ def wait_and_start(root: str, timeout: float = WAIT_S, running=None, run=None, u
     env.pop("DBDMS_UPDATED", None)       # left by start.bat after an earlier update: would skip this one
     run = run or (lambda cmd, env: subprocess.Popen(cmd, cwd=root, env=env,
                                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)))
+    if _frozen() if frozen is None else frozen:
+        env.pop("DBDMS_FORCE_UPDATE", None)
+        run([sys.executable], env)                              # a list: no shell, the path is never parsed
+        return True
     run(start_command(), env)
     return True
 
@@ -154,7 +173,7 @@ def _stuck_message():
         from .i18n import _
         ctypes.windll.user32.MessageBoxW(None, _(
             "Fog Scout konnte nicht neu gestartet werden: Die alte Kopie läuft noch im Hintergrund.\n\n"
-            "Im Task-Manager unter „Details“ „pythonw.exe“ (Fog Scout) beenden und das Programm neu "
-            "starten."), "Fog Scout", 0x30)
+            "Im Task-Manager unter „Details“ „{exe}“ (Fog Scout) beenden und das Programm neu "
+            "starten.", exe=process_name()), "Fog Scout", 0x30)
     except Exception:
         pass
