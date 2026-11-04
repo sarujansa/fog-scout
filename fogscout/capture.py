@@ -152,6 +152,7 @@ class GameWindow:
     outer: tuple | None = None           # window incl. title bar and frame, as DWM draws it
     window: tuple | None = None          # GetWindowRect (outer + invisible resize borders)
     monitor: tuple | None = None         # work area of the window's monitor (without taskbar)
+    scanned: float = 0.0                 # 1.34.1: time.monotonic() of the full search that found it
 
     @property
     def rect(self):
@@ -229,15 +230,33 @@ def window_geometry(hwnd):
     return tuple(out)
 
 
-def find_game_window() -> GameWindow | None:
+FULL_SCAN_S = 10.0           # 1.34.1 (review P4): a known DBD window is only checked; all windows this often
+
+
+def find_game_window(known: GameWindow | None = None) -> GameWindow | None:
     """The DBD window: Unreal Engine window class + title "DeadByDaylight".
 
     Only window-manager information is used (title, class, position). The game
     process itself is never opened. If several windows qualify, the one in the
-    foreground wins, otherwise the biggest.
+    foreground wins, otherwise the biggest. 1.34.1 (review P4): ``known`` = the
+    caller's last answer – while it is still a visible DBD window it is measured
+    again without going through every window (App and worker asked 2× a second);
+    the full search runs when it is gone and at least every FULL_SCAN_S (a second
+    DBD window, another one in front).
     """
     if not IS_WIN:
         return None
+    now = time.monotonic()
+    scanned = getattr(known, "scanned", None)
+    if known is not None and scanned is not None and now - scanned < FULL_SCAN_S:
+        try:
+            alive = bool(user32.IsWindow(known.hwnd)) and is_game_window(known.hwnd)
+        except Exception:
+            alive = False
+        if alive:
+            client = _client_rect(known.hwnd)
+            if client is not None:
+                return _game_window(known.hwnd, client, bool(user32.IsIconic(known.hwnd)), scanned)
     hits = []
 
     def cb(hwnd, _):
@@ -261,10 +280,15 @@ def find_game_window() -> GameWindow | None:
     if best is None:
         return None
     hwnd, client, minimized = best
+    return _game_window(hwnd, client, minimized, now)
+
+
+def _game_window(hwnd: int, client, minimized: bool, scanned: float) -> GameWindow:
     _client, outer, window, monitor = window_geometry(hwnd)
     x, y, w, h = client
     return GameWindow(hwnd=hwnd, title=_window_text(hwnd), left=x, top=y, width=w, height=h,
-                      minimized=minimized, client=client, outer=outer, window=window, monitor=monitor)
+                      minimized=minimized, client=client, outer=outer, window=window, monitor=monitor,
+                      scanned=scanned)
 
 
 def foreground_root() -> int:
