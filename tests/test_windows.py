@@ -535,7 +535,7 @@ def test_a_result_file_with_a_second_hard_link_is_not_written(tmp_path):
     for opener in (fsops.open_plain_for_write, hostsedit._open_result, netwatch._open_result):
         with opener(str(plain)) as fh:
             fh.write("{}\n")
-        assert plain.read_bytes() == b"{}\n"       # truncated, and no \r\n translation
+        assert plain.read_bytes() == b"{}\r\n"     # truncated; Python's text mode only (no second CRT layer)
 
 
 def test_the_discord_pipe_lets_its_server_identify_but_not_impersonate_and_times_out():

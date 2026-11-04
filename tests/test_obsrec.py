@@ -508,14 +508,14 @@ def test_prune_keeps_the_entry_of_a_file_it_could_not_delete(tmp_path, monkeypat
         with open(os.path.join(folder, f"r{i}.mkv"), "wb") as f:
             f.write(b"\0" * 100)
         recs.append(obsrec.Recording(t=float(i), file=f"r{i}.mkv"))
-    real = os.remove
+    real = obsrec.fsops.delete_inside                 # 1.33.5: prune deletes through fsops.delete_inside
 
-    def busy(p):
+    def busy(folder, p):
         if p.endswith("r0.mkv"):
             raise PermissionError("in use")
-        real(p)
+        real(folder, p)
 
-    monkeypatch.setattr(obsrec.os, "remove", busy)
+    monkeypatch.setattr(obsrec.fsops, "delete_inside", busy)
     left, deleted = obsrec.prune(folder, recs, limit=150, reserve=0, free=10 ** 9)
     assert deleted == ["r1.mkv", "r2.mkv"] and [r.file for r in left] == ["r0.mkv"]     # the next one went instead
 
