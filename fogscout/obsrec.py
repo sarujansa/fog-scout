@@ -879,18 +879,47 @@ class Space:
     t: float = 0.0               # when measured
 
 
+_SPACE: dict = {}             # 1.34.1 (review P6): folder -> (index stamp, (used, count, oldest, marked))
+
+
+def _index_stamp(folder: str):
+    try:
+        st = os.stat(os.path.join(folder, INDEX))
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size, st.st_ino
+
+
 def space(folder: str | None, recs: list[Recording] | None = None) -> Space:
+    """The tile's numbers. 1.34.1 (review P6): the index is read again only when its file changed (time, size or –
+    after save_index's replace – another file); the drive is asked each time."""
     if not folder:
         return Space(t=time.time())
-    recs = load_index(folder) if recs is None else recs
+    stamp = None                                         # recs handed in: counted, not kept
+    if recs is None:
+        stamp = _index_stamp(folder)
+        hit = _SPACE.get(folder)
+        if stamp is not None and hit is not None and hit[0] == stamp:
+            sums = hit[1]
+        else:
+            recs = load_index(folder)
+            stamp = _index_stamp(folder)                 # (load_index may have adopted the old index)
+            sums = None
+    if recs is not None:
+        sums = (sum(r.size for r in recs), len(recs), min((r.t for r in recs), default=0.0),
+                sum(1 for r in recs if r.marks))
+        if stamp is not None:
+            if len(_SPACE) > 8:
+                _SPACE.clear()
+            _SPACE[folder] = (stamp, sums)
     try:
         du = shutil.disk_usage(folder)
         free, total = du.free, du.total
     except OSError:
         free = total = 0
-    return Space(free=free, total=total, used=sum(r.size for r in recs), count=len(recs),
-                 oldest=min((r.t for r in recs), default=0.0), marked=sum(1 for r in recs if r.marks),
-                 folder=folder, t=time.time())
+    used, count, oldest, marked = sums
+    return Space(free=free, total=total, used=used, count=count, oldest=oldest, marked=marked, folder=folder,
+                 t=time.time())
 
 
 VIDEO_EXTS = (".mkv", ".mp4", ".mov", ".flv", ".ts", ".m3u8", ".fragmented.mp4", ".hybrid.mp4", ".hybrid.mov")

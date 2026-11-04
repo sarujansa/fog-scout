@@ -20,7 +20,7 @@ from .detector import (ROI, Accumulator, BannerReader, OutOfMatchWatcher, curren
                        letterbox_rows)
 from .layout import MIN_VBAR
 from .lobby import LobbyReader, QueueTracker, corner_box, crossplay_box, crossplay_off, result_box
-from .matchstart import MatchStart
+from .matchstart import LOADING_LOOKS, MatchStart
 from .matchend import MatchEndTracker, Signals
 from .ocr import Recognizer
 
@@ -265,7 +265,7 @@ class DetectionWorker(threading.Thread):
                 shot = []
                 # --------------------------------------------- where is DBD?
                 if source is None and tick - window_checked > 1.5:
-                    window = find_game_window()
+                    window = find_game_window(window)   # 1.34.1 (P4): the known window checked first
                     window_checked = tick
                 if source is not None:
                     frame = source.current()
@@ -362,6 +362,23 @@ class DetectionWorker(threading.Thread):
                         whole = grab((0, 0, fw, fh))
                         whole_tried = True
                     except Exception:            # e.g. window moved off-screen: the grabs below say it
+                        whole = None
+                    if whole is not None:
+                        shot.append(whole)
+                # 1.34.1 (review P3): in a match the round-end look takes the whole picture about once a second –
+                # taken first, the banner strip is cut from it (one grab, with the window capture one wait, instead
+                # of two). Due exactly as below (same tracker state; not on the tick the map changes); a banner
+                # seen leaves it unused, as the look below needs no banner.
+                end_tried = False
+                if (source is None and not shot and window is not None and self.map_on_screen
+                        and self.watch_gen is not None and self.watch_gen == tracker_gen
+                        and tracker.active and not tracker.ended
+                        and (self.settings.get("hide_after_match", True) or self.settings.get("pause_in_menus", True))
+                        and tick - last_end_check >= (END_CHECK_INTERVAL if tracker.candidate else END_IDLE_INTERVAL)):
+                    try:
+                        whole = grab((0, 0, fw, fh))
+                        end_tried = True
+                    except Exception:            # the look below grabs (and reports) itself
                         whole = None
                     if whole is not None:
                         shot.append(whole)
@@ -485,7 +502,10 @@ class DetectionWorker(threading.Thread):
                             look = grab((0, 0, fw, fh))
                         if look is not None:             # None: covered -> no look, nothing changes
                             self._mask_screen(look, from_screen(), origin[0], origin[1])
-                            bar, dark = has_loading_bar(look), is_dark(look)
+                            bar = has_loading_bar(look)
+                            # 1.34.1 (review P7): "dark" counts only with the bar, or after the loading screen
+                            # (black before the match) – any other look never reads it
+                            dark = bool((bar or (ms.armed and ms.loading >= LOADING_LOOKS)) and is_dark(look))
                             if bar and dark:
                                 last_loading = tick
                             if ms.armed and ms.update(tick, bar, dark, tick - lobby_button_t < START_LOOK_INTERVAL * 1.5):
@@ -523,7 +543,10 @@ class DetectionWorker(threading.Thread):
                     if sep is None and tick - last_end_check >= interval and (game or source is not None):
                         last_end_check = tick
                         try:
-                            full = look = grab((0, 0, fw, fh))
+                            if end_tried:                        # taken above (None: covered – not again)
+                                full = look = shot.pop() if shot else None
+                            else:
+                                full = look = grab((0, 0, fw, fh))
                             if look is not None:                 # None: covered -> no observation, nothing changes
                                 ignore = self._mask_screen(look, from_screen(), origin[0], origin[1])   # in place: no 14 MB copy
                                 obs = out_of_match.observe(look, ignore)
