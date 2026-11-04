@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 import threading
 
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton
 
-from . import askclaude, editcommands, sequence
+from . import askclaude, clipedit, editcommands, imageedit, sequence
 from .i18n import N_, _
 from .qt_common import PlainLabel
 
@@ -27,7 +27,12 @@ ERROR_WORDS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter E
                         "„Guthaben aufladen“."),
                "refused": N_("Claude hat die Frage abgelehnt."),
                "bad": N_("Claude hat unverständlich geantwortet."),
-               "net": N_("Claude ist nicht erreichbar – keine Internetverbindung?")}
+               "net": N_("Claude ist nicht erreichbar – keine Internetverbindung?"),
+               "still": N_("Das Standbild liess sich nicht lesen – nichts gesendet.")}
+
+
+class _NoStill(Exception):
+    """1.35: ffmpeg gave no picture at the play head – then nothing is sent."""
 
 
 class ClaudeMixin:
@@ -37,6 +42,7 @@ class ClaudeMixin:
         self._claude_base = None             # the state the shown proposal was made for
         self._claude_result = None           # (new state, new mode or None)
         self._claude_busy = False            # 1.28 (audit F3): a wish is on its way – no second (paid) request
+        self.claude_frame = lambda: False    # 1.35: set by the App – a still may go along („Standbilder an Claude“)
 
     # ---- the inspector section
     def _section_claude(self, sec, mode):
@@ -53,6 +59,11 @@ class ClaudeMixin:
                                      "Bild, kein Dateiname) an Claude; nichts wird geändert, bevor du übernimmst."))
         self.cl_ask_btn.clicked.connect(self.claude_ask)
         row.addWidget(self.cl_ask_btn)
+        self.cl_frame_box = QCheckBox(_("Standbild mitsenden"))   # 1.35: per wish, off by default
+        self.cl_frame_box.setToolTip(_("Schickt zusätzlich das Bild an der Abspielposition (verkleinert, bereits "
+                                       "zensierte Bereiche bleiben zensiert) – damit kann Claude z. B. Namen "
+                                       "zensieren. Das Bild kann Spielernamen zeigen."))
+        row.addWidget(self.cl_frame_box)
         row.addStretch()
         sec.body.addLayout(row)
         self.cl_status = PlainLabel("", "dim")             # 1.28: Claude's summary – plain text, long runs broken
@@ -85,6 +96,10 @@ class ClaudeMixin:
         if getattr(self, "cl_field", None) is None:
             return
         on = bool(self.claude_key())
+        frame_ok = on and bool(self.claude_frame())
+        self.cl_frame_box.setVisible(frame_ok)
+        if not frame_ok:
+            self.cl_frame_box.setChecked(False)
         self.cl_field.setEnabled(on)
         self.cl_ask_btn.setEnabled(on and self.history is not None and not self._claude_busy)
         if not on and self._claude_result is None:
@@ -114,7 +129,8 @@ class ClaudeMixin:
         seq = self._claude_seq
         base = self._state()
         mode = str(self.mode_box.currentData() or "copy")
-        text = editcommands.content(wish, base, mode, self._claude_marks())
+        still = self._claude_still_job(base) if self.cl_frame_box.isChecked() and self.claude_frame() else None
+        text = editcommands.content(wish, base, mode, self._claude_marks(), picture=still is not None)
         self._claude_base, self._claude_result = base, None
         self._claude_busy = True
         self.cl_ask_btn.setEnabled(False)
@@ -125,21 +141,44 @@ class ClaudeMixin:
 
         def work():
             try:
-                emit((seq, base, mode, askclaude.request(key, editcommands.SYSTEM, text, editcommands.SCHEMA), None))
+                images = [] if still is None else [still()]
+                emit((seq, base, mode, askclaude.request(key, editcommands.SYSTEM, text, editcommands.SCHEMA,
+                                                         images=images), images != []))
             except askclaude.AskError as e:
                 emit((seq, base, mode, None, e.kind))
+            except _NoStill:
+                emit((seq, base, mode, None, "still"))
             except Exception as e:               # 1.34.2 (review W1): only the kind – never request or key
                 log.warning("Claude im Editor: unerwarteter Fehler %s", e.__class__.__name__)
                 emit((seq, base, mode, None, "bad"))
         threading.Thread(target=work, name="claude-edit", daemon=True).start()
 
+    def _claude_still_job(self, state):
+        """1.35: a function the asking thread calls – the recording's picture at the play head as an image block,
+        the censor boxes already hidden (fractions of the source picture, like the export's censor_graph)."""
+        i, src_t = sequence.source_at(state.parts, self.pos)
+        part = state.parts[i] if i is not None else None
+        path, info, ffmpeg = self._src_path(part), self._src_info(part), self.ffmpeg
+        boxes, style = [list(b) for b in state.boxes], state.censor_style
+
+        def make():
+            img = clipedit.frame_at(path, src_t, min(int(getattr(info, "height", 0) or 1080), 1440), info, ffmpeg)
+            if img is None:
+                raise _NoStill()
+            for b in boxes:                       # always hidden in what is sent – also while „anwenden“ is off
+                img = imageedit.censor_area(img, b, style if style in imageedit.CENSOR_STYLES else "pixel")
+            return askclaude.image_block(img)
+        return make
+
     def _claude_answer(self, item):
         seq, base, mode, data, error = item
+        picture = error is True                          # 1.35: the slot carries "a still went along" on success
+        error = None if isinstance(error, bool) else error
         if self._closed or seq != self._claude_seq:
             return                                       # an older wish (the window was busy with a newer one)
         self._claude_busy = False                        # 1.28: whatever comes next, asking works again
         try:
-            self._claude_show(base, mode, data, error)
+            self._claude_show(base, mode, data, error, picture)
         except Exception:                                # never left on „Claude denkt nach …“
             self._claude_result = None
             self._claude_buttons(False)
@@ -147,7 +186,7 @@ class ClaudeMixin:
         finally:
             self._claude_refresh()
 
-    def _claude_show(self, base, mode, data, error):
+    def _claude_show(self, base, mode, data, error, picture=False):
         if error is not None:
             self.cl_status.setText(_(ERROR_WORDS.get(error, ERROR_WORDS["net"])))
             return
@@ -155,7 +194,7 @@ class ClaudeMixin:
             self.cl_status.setText(_("Der Schnitt hat sich inzwischen geändert – bitte neu vorschlagen."))
             return
         try:
-            new, new_mode, done, skipped = editcommands.apply(base, data.get("ops"), mode)
+            new, new_mode, done, skipped = editcommands.apply(base, data.get("ops"), mode, picture)
         except ValueError:                               # "ops" not a list: an answer it cannot read
             self.cl_list.hide()
             self.cl_status.setText(_(ERROR_WORDS["bad"]))
