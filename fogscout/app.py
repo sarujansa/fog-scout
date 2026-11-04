@@ -81,6 +81,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._progress = progress or (lambda fraction, text: None)     # 1.14.2: the splash screen's steps
         self.settings = Settings(os.path.join(self.data_dir, "settings.json"))
         i18n.set_language(self.settings.get("ui_language", "auto"))
+        from . import askclaude
+        askclaude.set_model(self.settings.get("claude_model", "opus"))   # 1.36: the user's model for every request
         self._secrets_plain = self._secrets_upgrade()     # 1.28: "plain:" → encrypted, before anything reads them
         self._joined_preload()           # 1.16.2: the statistics files are parsed while the window is built
         self._progress(0.3, _("Lade Maps …"))
@@ -176,6 +178,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._show_update_status()
         self._release_check_at_start()          # 1.33: the installed program – a new release? (only looks)
         self._news_check()                      # 1.8.79: "Neu seit …" on the overview after an update
+        self._crash_check()                     # 1.36: the last run crashed – ask once to copy the diagnosis
         self._backup_start()                    # 1.8.80: daily copy of rounds.jsonl/official.jsonl → backup/
         if self.settings.get("show_connection"):
             self.root.after(1500, self._conn_start)
@@ -1129,7 +1132,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                   ("verbindung", ("_conn_tick",)), ("offizielle Daten", ("_official_tick",)), ("show", ("_show_tick",)),
                   ("hotkeys", ("_hotkeys_tick",)), ("tray", ("_tray_tick", "_rec_tick", "_hasher_tick")),
                   ("discord", ("_discord_tick",)), ("youtube", ("_youtube_tick",)),
-                  ("eigene Last", ("_selfload_tick",)), ("Qt", ("_qt_refresh",)))
+                  ("eigene Last", ("_selfload_tick",)), ("claude", ("_claude_cost_tick",)), ("Qt", ("_qt_refresh",)))
 
     def _tick_overlay(self, reschedule=True):
         # 1.8.67 (user: "Statistik dauert ewig zum Laden"; the diagnosis only said "App._tick_overlay 6005 ms"): each

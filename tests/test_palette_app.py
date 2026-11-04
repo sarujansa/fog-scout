@@ -235,7 +235,8 @@ def test_the_claude_search_sends_only_fixed_program_texts_never_status_paths_or_
         app._qt_event("palette_ask", "wie mache ich die karte grösser")
         assert opener.sent.wait(10), "no request was made"
         body = opener.bodies[0]
-        sent = json.loads(body)["messages"][0]["content"]
+        blocks = json.loads(body)["messages"][0]["content"]          # 1.36: catalogue (cached) + question
+        sent = "\n".join(b["text"] for b in blocks)
         for s in secrets:
             assert s not in body, s
         for fixed in ("Overlay testen", "Statistik", "Mit Windows starten"):            # still usable

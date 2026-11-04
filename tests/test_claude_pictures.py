@@ -161,7 +161,9 @@ def test_a_statistics_question_comes_back_as_plain_text(monkeypatch):
     assert kind == "stats" and kw["answer"] == "Auf Coal Tower hast du die meisten Kills."
     body = fake.bodies[0]
     assert body["output_config"]["format"]["schema"] == statsclaude.SCHEMA
-    assert '"rounds": 3' in body["messages"][0]["content"] and a.answered == 1
+    summary, asked = body["messages"][0]["content"]                 # 1.36: the summary cached, the question after
+    assert '"rounds": 3' in summary["text"] and summary["cache_control"] == {"type": "ephemeral"}
+    assert asked["text"] == "Question: Wo habe ich die meisten Kills?" and a.answered == 1
 
 
 # ------------------------------------------------------------------ the windows (offscreen)
@@ -254,3 +256,64 @@ def test_the_clip_editor_sends_a_still_only_when_allowed_and_ticked(qapp, tmp_pa
         assert not win.cl_frame_box.isVisible() and not win.cl_frame_box.isChecked()
     finally:
         win.close()
+
+
+# ------------------------------------------------------------------ 1.36: own perks, the week, fixed questions
+def test_own_perks_become_groups_and_the_week_compares_two_summaries():
+    now = time.mktime((2026, 11, 4, 21, 0, 0, 0, 0, -1))                    # a Wednesday
+    rounds = [_round(now - 3600 * h, "Coal Tower", "killer", "The Nurse") for h in (1, 2, 3)]
+    rounds += [_round(now - 7 * 24 * 3600 - 3600 * h, "Ormond", "killer", "The Nurse") for h in (1, 2)]
+    off = {}
+    for i, r in enumerate(rounds):
+        dead = 4 if i < 3 else 1
+        off[id(r)] = official.Match(t=r.t, map=r.map, role="killer", character="The Nurse",
+                                    perks=[["p1", "Pain Resonance"], ["p2", "Grim Embrace" if i % 2 else "Lethal"]],
+                                    opp=[official.Player("survivor", "Meg", "Sacrificed" if k < dead else "Escaped")
+                                         for k in range(4)])
+    data = statsclaude.summary(rounds, off)
+    assert data["killer_by_own_perk"]["Pain Resonance"]["n"] == 5
+    assert data["killer_by_own_perk"]["Lethal"]["n"] == 3 and "Grim Embrace" in data["killer_by_own_perk"]
+    wk = statsclaude.week(rounds, off, now)
+    assert wk["this_week"]["rounds"] == 3 and wk["last_week"]["rounds"] == 2
+    assert wk["this_week"]["all"]["kills"] == 4.0 and wk["last_week"]["all"]["kills"] == 1.0
+    assert "Meg" not in statsclaude.private_words(data)                    # survivors only as a count
+
+
+def test_a_fixed_question_reopens_the_palette_and_sends_the_week(tmp_path):
+    from types import SimpleNamespace
+
+    from fogscout import app_palette
+    from fogscout.config import Settings
+    shown = []
+
+    class Pal:
+        def open(self, entries, recent, claude, text=""):
+            shown.append(("open", text))
+
+        def show_waiting(self):
+            shown.append(("waiting",))
+
+        def show_error(self, text):
+            shown.append(("error", text))
+    asked = []
+
+    class Stub(app_palette.PaletteMixin):
+        pass
+    s = Stub()
+    s.settings = Settings(str(tmp_path / "settings.json"))
+    s.settings.set("claude_stats", True)
+    s._claude_session_key = KEY
+    s.qt = SimpleNamespace(palette=Pal(), _palette_entries=[], _palette_recent=[], _palette_claude=False)
+    s.asker = SimpleNamespace(ask_stats=lambda key, q, data: asked.append((q, data)))
+    s._joined = lambda: SimpleNamespace(rounds=[], off={})
+    s._palette_ask_fixed("week")
+    assert shown[0][0] == "open" and "Woche" in shown[0][1] and shown[-1][0] == "error" and not asked
+    now = time.time()
+    s._joined = lambda: SimpleNamespace(rounds=[_round(now - 60, "Coal Tower", "killer", "The Nurse")], off={})
+    shown.clear()
+    s._palette_ask_fixed("week")
+    assert shown[-1] == ("waiting",) and asked[0][0] == shown[0][1] and asked[0][1]["this_week"]["rounds"] == 1
+    s.settings.set("claude_stats", False)                                   # switched off: nothing at all
+    shown.clear()
+    s._palette_ask_fixed("build")
+    assert shown == [] and len(asked) == 1

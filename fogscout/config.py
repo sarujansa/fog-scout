@@ -216,6 +216,9 @@ DEFAULTS = {
     "claude_image": False,              # 1.35: the screenshot editor may send the picture to Claude – user's pick
     "claude_frame": False,              # 1.35: the clip editor may send a still of the recording to Claude
     "claude_stats": False,              # 1.35: the search may ask Claude about summed-up round values
+    "crash_seen": 0.0,                  # 1.36: time of the last crash the start already asked about (diagnose)
+    "claude_model": "opus",             # 1.36: opus | sonnet | haiku for every Claude request (askclaude.MODELS)
+    "claude_spent": {},                 # 1.36: {"YYYY-MM": estimated $} – what the requests cost per month, this PC
     "claude_key": "",                   # the user's own Anthropic API key, DPAPI-protected (spotify.protect), PC-specific
     "palette_recent": [],               # 1.26: ids of the palette's last picks (palette.RECENT_KEPT), PC-specific
     "sysinfo": "right",                 # system values at the top of a black bar: off | left | right | custom
@@ -226,7 +229,7 @@ DEFAULTS = {
 RECENT_KEPT = 8                         # palette.RECENT_KEPT (palette imports nothing from here)
 # 1.28 (audit F11): settings whose type the code relies on – a hand-edited "claude_on": "false" counted as on
 TYPED = {"claude_on": bool, "claude_editor": bool, "claude_image": bool, "claude_frame": bool, "claude_stats": bool,
-         "palette_recent": list, "rec_obs_before": dict}
+         "claude_model": str, "claude_spent": dict, "palette_recent": list, "rec_obs_before": dict}
 
 
 def _typed(key, value, default):
@@ -284,7 +287,7 @@ def export_settings(data: dict, path: str) -> None:
 LOCAL_KEYS = ("setup_version", "setup_root", "qt_geometry", "official_dir", "layouts", "layout_key",
               "rec_volume", "rec_rel", "rec_folder", "rec_password", "spotify_token", "seen_version",
               "youtube_client_secret", "youtube_token", "youtube_queue", "youtube_quota", "shots_folder",
-              "editor_layout", "claude_key", "palette_recent", "rec_obs_before")
+              "editor_layout", "claude_key", "palette_recent", "rec_obs_before", "claude_spent", "crash_seen")
 
 
 def reset_data(current: dict) -> dict:
