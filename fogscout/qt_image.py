@@ -17,7 +17,7 @@ from PySide6.QtGui import QGuiApplication, QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QTabWidget,
                                QVBoxLayout, QWidget)
 
-from . import annotate, imageedit, qt_theme
+from . import annotate, imageedit, launch, qt_theme
 from .i18n import N_, _
 from .qt_clip import DRAW_TOOLS, SIZE_LABELS, PreviewView
 from .qt_common import guard_wheel
@@ -715,8 +715,7 @@ class ImageWindow(QWidget):
         if not self.last_out:
             return
         if os.name == "nt":
-            import subprocess
-            subprocess.Popen(["explorer", "/select,", os.path.normpath(self.last_out)])   # noqa: S603,S607
+            launch.show_in_folder(self.last_out)
         else:
             self.status.setText(self.last_out)
 

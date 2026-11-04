@@ -9,7 +9,7 @@ import os
 import sys
 from PIL import Image
 
-from . import mapimage as mi, tooltip
+from . import launch, mapimage as mi, tooltip
 from . import uimodel as ui
 from .i18n import _
 from .textnorm import fold
@@ -41,7 +41,7 @@ def preview(img: Image.Image, height: int = PREVIEW_H) -> Image.Image:
 def open_folder(path: str) -> bool:
     os.makedirs(path, exist_ok=True)
     if sys.platform == "win32":
-        os.startfile(path)                                   # noqa: S606 – opens Explorer
+        launch.open_path(path)                               # opens Explorer (1.33.3: without the bundle)
         return True
     return False
 
