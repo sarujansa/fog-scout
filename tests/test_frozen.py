@@ -57,6 +57,8 @@ def test_the_helper_entry_writes_the_hosts_file_like_the_script(tmp_path, monkey
     name = hostsedit.MANAGED[0]
     job, res = tmp_path / "job.json", tmp_path / "res.json"
     job.write_text(json.dumps({"block": [name]}), encoding="utf-8")
+    res.write_text("", encoding="utf-8")       # made by the normal program first (regions.run_job); 1.33.5: the
+    #                                            elevated helper only writes a plain file that is already there
     assert entry.run_helper(["hostsedit", str(job), str(res)]) == 0
     assert json.loads(res.read_text(encoding="utf-8"))["ok"]
     text = hosts.read_text(encoding="latin-1")

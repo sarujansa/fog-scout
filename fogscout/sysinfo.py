@@ -216,9 +216,12 @@ class Nvml:
         if not IS_WIN:
             self.error = "nur Windows"
             return
-        paths = [os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvml.dll"),
-                 os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"),
-                              "NVIDIA Corporation", "NVSMI", "nvml.dll")]
+        from .paths import known_folder, system_exe
+        # 1.33.5 (review S5): folders from Windows, never from %SystemRoot%/%ProgramFiles% – a normal program could
+        # point those at its own nvml.dll, and this process runs as administrator
+        program_files = known_folder("ProgramFiles")
+        paths = [system_exe("nvml.dll")] + ([os.path.join(program_files, "NVIDIA Corporation", "NVSMI", "nvml.dll")]
+                                            if program_files else [])
         path = next((p for p in paths if os.path.isfile(p)), None)
         if path is None:
             self.error = "nvml.dll nicht gefunden (keine NVIDIA-Karte?)"

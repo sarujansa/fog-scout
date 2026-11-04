@@ -256,7 +256,7 @@ def test_ensure_keeps_an_autostart_that_ran_under_the_old_name(monkeypatch):
     monkeypatch.setattr(au, "install", lambda root: calls.append("install") or (True, "ok"))
     monkeypatch.setattr(au, "set_autostart", lambda root, on: calls.append(("autostart", on)) or (True, ""))
     assert au.ensure(ROOT, 5, ROOT) == (True, "ok") and calls == ["install", ("autostart", True)]
-    assert au.SETUP_VERSION == 7                                  # a renewed setup for every installation
+    assert au.SETUP_VERSION == 8                                  # 1.33.5: tasks renewed with cmd.exe by its real path
 
 
 def test_the_shortcut_and_the_window_point_at_the_same_task_and_icon(monkeypatch, tmp_path):
