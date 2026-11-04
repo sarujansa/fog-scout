@@ -59,15 +59,18 @@ def test_the_request_goes_only_to_the_api_with_the_question_and_the_catalogue(op
     body = json.loads(req.data.decode("utf-8"))
     assert set(body) == {"model", "max_tokens", "fallbacks", "system", "output_config", "messages"}
     assert body["model"] == askclaude.MODEL and body["output_config"]["format"]["type"] == "json_schema"
-    text = body["messages"][0]["content"]
-    assert "wie mache ich die Karte grösser?" in text and "s:size\tEigene Grösse zurücksetzen (Overlay)" in text
+    fixed, asked = body["messages"][0]["content"]                 # 1.36: the catalogue cached, the question after
+    assert fixed["cache_control"] == {"type": "ephemeral"} and "cache_control" not in asked
+    assert "s:size\tEigene Grösse zurücksetzen (Overlay)" in fixed["text"] and "grösser" not in fixed["text"]
+    assert asked["text"] == "Question: wie mache ich die Karte grösser?"
 
 
 def test_the_question_and_the_catalogue_are_cut_to_their_limits(opener):
     o = opener(reply=_answer("", []))
     big = [(f"s:{i}", f"Setting {i}") for i in range(askclaude.MAX_CATALOGUE + 50)]
     askclaude.ask(KEY, "x" * 1000, big)
-    text = json.loads(o.requests[0][0].data.decode("utf-8"))["messages"][0]["content"]
+    blocks = json.loads(o.requests[0][0].data.decode("utf-8"))["messages"][0]["content"]
+    text = "\n\n".join(b["text"] for b in blocks)
     assert text.count("\n") <= askclaude.MAX_CATALOGUE + 4
     assert "x" * askclaude.MAX_QUESTION in text and "x" * (askclaude.MAX_QUESTION + 1) not in text
 
@@ -127,3 +130,73 @@ def test_the_asker_thread_posts_answers_and_errors_and_keeps_no_question(opener)
     a.join(timeout=10)
     line = a.diag_line()
     assert "gefragt 2" in line and "nochmal" not in line and KEY not in line
+
+
+# ------------------------------------------------------------------ 1.36: model choice, costs
+@pytest.fixture
+def model():
+    yield askclaude.set_model
+    askclaude.set_model("opus")
+
+
+def test_the_picked_model_is_sent_and_haiku_goes_without_the_fallback(opener, model):
+    o = opener(reply=_answer("ok", []))
+    for key, want, fallback in (("sonnet", "claude-sonnet-5-5", True), ("haiku", "claude-haiku-5-5", False),
+                                ("nonsense", askclaude.MODEL, True)):
+        model(key)
+        askclaude.ask(KEY, "frage", CATALOGUE)
+        req, _t = o.requests[-1]
+        body = json.loads(req.data.decode("utf-8"))
+        headers = {k.lower(): v for k, v in req.header_items()}
+        assert body["model"] == want
+        assert ("fallbacks" in body) is fallback and ("anthropic-beta" in headers) is fallback
+
+
+def test_the_cost_comes_from_the_usage_at_list_price():
+    usage = {"input_tokens": 1_000_000, "output_tokens": 100_000, "cache_creation_input_tokens": 200_000,
+             "cache_read_input_tokens": 500_000}
+    # opus: 4 + 20 × 0.1 + 4 × 1.25 × 0.2 + 0.20 × 0.5
+    assert askclaude.cost_usd("claude-opus-5-5", usage) == pytest.approx(4 + 2 + 1 + 0.1)
+    assert askclaude.cost_usd("claude-haiku-5-5", {"input_tokens": 2_000_000}) == pytest.approx(0.2)
+    assert askclaude.cost_usd("claude-opus-5-5", {"input_tokens": "viel", "output_tokens": -5}) == 0.0
+    assert askclaude.cost_usd("claude-opus-5-5", None) == 0.0
+
+
+def test_every_reply_is_counted_and_taken_once(opener):
+    m = askclaude.METER
+    m.take()
+    before = (m.requests, m.usd)
+    reply = _answer("ok", [])
+    reply["usage"] = {"input_tokens": 1000, "output_tokens": 100, "cache_read_input_tokens": 3000}
+    opener(reply=reply)
+    askclaude.ask(KEY, "frage", CATALOGUE)
+    want = askclaude.cost_usd(askclaude.MODEL, reply["usage"])
+    assert m.requests == before[0] + 1 and m.usd == pytest.approx(before[1] + want)
+    assert m.take() == pytest.approx(want) and m.take() == 0.0
+
+
+def test_the_month_total_adds_up_and_keeps_twelve_months(tmp_path, monkeypatch):
+    """1.36: App._claude_cost_tick – new cost into this month (settings, this PC), older months stay, at most 12."""
+    from fogscout import app_palette, uimodel
+    from fogscout.config import Settings
+
+    class Stub(app_palette.PaletteMixin):
+        saved = 0
+
+        def _save_soon(self):
+            self.saved += 1
+    s = Stub()
+    s.settings = Settings(str(tmp_path / "settings.json"))
+    s.settings.set("claude_spent", {f"2025-{m:02d}": 1.0 for m in range(1, 13)} | {"kaputt": "x"})
+    s.cl_cost_var = uimodel.StringVar(value="")
+    monkeypatch.setattr(app_palette.time, "strftime", lambda fmt, *a: "2026-11")
+    askclaude.METER.take()
+    s._claude_cost_tick()                                   # nothing asked: nothing written
+    assert s.saved == 0
+    askclaude.METER.add(askclaude.MODEL, {"output_tokens": 50_000})        # 1.00 $ at 20 $/MTok
+    askclaude.METER.add(askclaude.MODEL, {"output_tokens": 25_000})
+    s._claude_cost_tick()
+    spent = s.settings.get("claude_spent")
+    assert spent["2026-11"] == pytest.approx(1.5) and len(spent) == 12 and "2025-01" not in spent
+    assert "kaputt" not in spent and s.saved == 1
+    assert "1,50 $" in s.cl_cost_var.get() and app_palette.usd(0.004) == "< 0,01 $"

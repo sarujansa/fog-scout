@@ -1361,6 +1361,30 @@ class SettingsTab:
                  "letzten {n} Stände je Datei; vor „Alle Runden löschen“ eine zusätzliche): {state}",
                  folder=backups.DIR, n=backups.KEEP, state=state)
 
+    CRASH_ASK_DELAY_MS = 2500          # 1.36: the crash hint comes once the window is up
+
+    def _crash_check(self):
+        """1.36 (user: a crash should not stay unnoticed): the run before this one crashed hard (diagnose.last_crash,
+        only real crashes) and was not reported yet – ask once to copy the diagnosis. Remembered by the crash's time
+        (``crash_seen``), so a later start does not ask again."""
+        from . import diagnose
+        found = diagnose.last_crash(self.data_dir)
+        if found is None or found[0] <= float(self.settings.get("crash_seen", 0) or 0):
+            return
+        self.settings.set("crash_seen", found[0])
+        self._save_soon()
+        when = time.strftime("%d.%m.%Y %H:%M", time.localtime(found[0]))
+        self.root.after(self.CRASH_ASK_DELAY_MS, lambda: self._crash_ask(when))
+
+    def _crash_ask(self, when):
+        if not self._ask(_("Fog Scout ist abgestürzt"),
+                         _("Fog Scout wurde am {when} unerwartet beendet. „Diagnose kopieren“ legt einen Bericht "
+                           "mit den Stellen des Absturzes in die Zwischenablage – zum Melden auf GitHub oder im "
+                           "Chat. Der Bericht enthält keine Schlüssel, Titel oder Server-Adressen.", when=when),
+                         lambda: self._crash_ask(when), ok_text=_("Diagnose kopieren")):
+            return
+        self.show_diagnose()
+
     def _news_check(self):
         """1.8.79: after an update the overview lists what changed since the version last run (the rows of
         HISTORY.md after it) until "Verstanden"; a first start or nothing to tell only remembers the version."""

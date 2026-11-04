@@ -13,10 +13,21 @@ import time
 
 from . import askclaude, i18n, launch, overview, palette, spotify, statsclaude
 from . import uimodel as ui
-from .i18n import _
+from .i18n import N_, _
 
 ROUNDS_KEPT = 50          # the last rounds offered
 CLAUDE_KINDS = ("setting", "page", "action")     # what Claude may see (titles of the program's own texts)
+# 1.36 (user: costs shown, model selectable): the models offered, cheapest last (askclaude.MODELS/PRICES)
+MODEL_LABELS = (("opus", N_("Opus 5.5 – am genauesten")), ("sonnet", N_("Sonnet 5.5 – halber Preis")),
+                ("haiku", N_("Haiku 5.5 – am günstigsten")))
+
+
+def usd(value: float) -> str:
+    """An estimated amount in dollars as the language writes it ("0,04 $" / "$0.04"); under a cent "< 0,01 $"."""
+    v = max(0.0, float(value or 0.0))
+    num = "0.00" if v == 0 else ("< 0.01" if v < 0.01 else f"{v:.2f}")
+    return (num.replace(".", ",") + " $") if i18n.current() == "de" else ("$" + num if v >= 0.01 or v == 0
+                                                                         else "< $0.01")
 
 
 def _fixed(text: str) -> bool:
@@ -63,6 +74,9 @@ class PaletteMixin:
             out.append(("clip", _("Clip speichern")))
         out += [("update", _("Jetzt nach Updates suchen")), ("diagnose", _("Diagnose kopieren")),
                 ("setup", _("Einrichtung starten"))]
+        if self._claude_stats_ready():                 # 1.36: fixed statistics questions (claude_stats on)
+            out += [("claude_week", _("Claude: Woche zusammenfassen")),
+                    ("claude_build", _("Claude: Welcher Build läuft am besten?"))]
         return [palette.Entry("action", "a:" + key, title, action=key, static=i18n.is_program_text(title))
                 for key, title in out]
 
@@ -182,7 +196,8 @@ class PaletteMixin:
              "layout": self.next_variant, "floor": self.next_floor, "choose": lambda: q.show_page("maps"),
              "test": self.test_overlay, "edit": self.toggle_edit, "record": self.record_toggle,
              "clip": self.mark_clip, "diagnose": self.show_diagnose, "setup": lambda: q.show_setup(True),
-             "update": self._palette_update}.get(e.action, lambda: None)()
+             "update": self._palette_update, "claude_week": lambda: self._palette_ask_fixed("week"),
+             "claude_build": lambda: self._palette_ask_fixed("build")}.get(e.action, lambda: None)()
 
     def _palette_update(self):
         self.qt.show_page("settings")
@@ -222,6 +237,32 @@ class PaletteMixin:
         if not data.get("rounds"):
             self.qt.palette.show_error(_("Noch keine Runden – Claude hätte nichts zum Auswerten."))
             return
+        self._asker().ask_stats(self._claude_key(), question, data)
+
+    def _palette_ask_fixed(self, kind: str):
+        """1.36: "Woche zusammenfassen" / "Welcher Build läuft am besten?" – the palette opens again with the
+        question in its field and Claude's answer below it; sent like a statistics question (statsclaude)."""
+        if not self._claude_stats_ready():
+            return
+        question = (_("Fasse meine Woche im Vergleich zur letzten zusammen: was lief besser, was schlechter?")
+                    if kind == "week" else
+                    _("Welche meiner Perks laufen am besten – getrennt nach Killer und Survivor?"))
+        q = self.qt
+        q.palette.open(q._palette_entries, q._palette_recent, q._palette_claude, text=question)
+        try:
+            j = self._joined()
+            data = (statsclaude.week(j.rounds, j.off, time.time()) if kind == "week"
+                    else statsclaude.summary(j.rounds, j.off))
+        except Exception:
+            import logging
+            logging.getLogger("fogscout").exception("Claude: Statistik zusammenfassen")
+            q.palette.show_error(_("Die Statistik liess sich nicht zusammenfassen – Details im Log."))
+            return
+        rounds = (data["this_week"]["rounds"] + data["last_week"]["rounds"]) if kind == "week" else data["rounds"]
+        if not rounds:
+            q.palette.show_error(_("Noch keine Runden – Claude hätte nichts zum Auswerten."))
+            return
+        q.palette.show_waiting()
         self._asker().ask_stats(self._claude_key(), question, data)
 
     def _asker(self):
@@ -288,6 +329,20 @@ class PaletteMixin:
             "und nur im Speicher; bereits zensierte Bereiche bleiben zensiert. Statistik-Fragen senden nur Zähler "
             "und Quoten je Rolle, Killer, Map, Region und Tageszeit – keine einzelne Runde, keine Namen von "
             "Spielern."), style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(2, 0))
+        mr = ui.Frame(cc)                         # 1.36: the model for every Claude request
+        mr.pack(fill="x", pady=(6, 0))
+        self._reg("st.more.cl_model.label", ui.Label(mr, text=_("Modell"))).pack(side="left")
+        labels = dict(MODEL_LABELS)
+        self.cl_model_var = ui.StringVar(value=_(labels.get(self.settings.get("claude_model", "opus"),
+                                                            labels["opus"])))
+        mcb = self._reg("st.more.cl_model", ui.Combobox(mr, textvariable=self.cl_model_var, state="readonly",
+                                                         width=28, values=[_(t) for _k, t in MODEL_LABELS]))
+        mcb.pack(side="left", padx=6)
+        mcb.bind("<<ComboboxSelected>>", lambda e: self._claude_setting())
+        self.cl_cost_var = ui.StringVar(value="")
+        self._reg("st.more.cl_cost", ui.Label(cc, textvariable=self.cl_cost_var, wraplength=420,
+                                               style="Dim.TLabel")).pack(anchor="w", pady=(2, 0))
+        self._claude_cost_show()
         row = ui.Frame(cc)
         row.pack(fill="x", pady=(4, 0))
         self._reg("st.more.cl_key.label", ui.Label(row, text=_("API-Key"))).pack(side="left")
@@ -334,6 +389,9 @@ class PaletteMixin:
             for k, var in (("claude_image", self.cl_image_var), ("claude_frame", self.cl_frame_var),
                            ("claude_stats", self.cl_stats_var)):
                 self.settings.set(k, bool(var.get()))
+            picked = next((k for k, t in MODEL_LABELS if _(t) == self.cl_model_var.get()), "opus")
+            self.settings.set("claude_model", picked)
+            askclaude.set_model(picked)
             if key != self._claude_loaded:        # 1.28 (audit F2b): a switch never overwrites the stored key
                 self._claude_store(key)
             self._save_soon()
@@ -403,6 +461,30 @@ class PaletteMixin:
         key = self._claude_key()
         return key if self.settings.get("claude_editor", False) and askclaude.valid_key(key) else ""
 
+    # ---------------------------------------------------------- 1.36: what the requests cost (estimate)
+    def _claude_cost_tick(self):
+        """A tick step: the cost of replies since the last tick into this month's total (settings, this PC)."""
+        new = askclaude.METER.take()
+        if new <= 0:
+            return
+        month = time.strftime("%Y-%m")
+        spent = {k: v for k, v in (self.settings.get("claude_spent") or {}).items()
+                 if isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool)}
+        spent[month] = float(spent.get(month, 0.0)) + new
+        self.settings.set("claude_spent", dict(sorted(spent.items())[-12:]))      # the last twelve months
+        self._save_soon()
+        self._claude_cost_show()
+
+    def _claude_cost_show(self):
+        var = getattr(self, "cl_cost_var", None)
+        if var is None:
+            return
+        m = askclaude.METER
+        month = float((self.settings.get("claude_spent") or {}).get(time.strftime("%Y-%m"), 0.0) or 0.0)
+        var.set(_("Kosten (Schätzung nach Listenpreis): diese Sitzung {session} bei {n} Anfragen, diesen Monat "
+                  "{month}. Abgerechnet wird in der Anthropic Console.", session=usd(m.usd), n=m.requests,
+                  month=usd(month)))
+
     def _claude_image_key(self) -> str:
         """1.35: the key for the screenshot editor – "" while the user has not allowed pictures there."""
         key = self._claude_key()
@@ -416,4 +498,6 @@ class PaletteMixin:
                 f"Bilder an={bool(self.settings.get('claude_image'))}, "
                 f"Standbilder an={bool(self.settings.get('claude_frame'))}, "
                 f"Statistik an={bool(self.settings.get('claude_stats'))}, Key gesetzt={bool(self._claude_key())}, "
+                f"Modell={askclaude.current_model()}, Anfragen={askclaude.METER.requests}, "
+                f"Kosten≈{askclaude.METER.usd:.3f} $, aus Cache={askclaude.METER.cached_tokens} Token, "
                 + (a.diag_line() if a is not None else "noch nicht gefragt"))
