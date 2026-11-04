@@ -9,6 +9,7 @@ the state, the section lists what would happen and what was skipped. „Überneh
 meanwhile). The key and the user's permission come from the App (``claude_key``: a callable, "" = off)."""
 from __future__ import annotations
 
+import logging
 import threading
 
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton
 from . import askclaude, editcommands, sequence
 from .i18n import N_, _
 from .qt_common import PlainLabel
+
+log = logging.getLogger(__name__)
 
 ERROR_WORDS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
                        "(„API-Key holen“ öffnet die Anthropic Console)."),
@@ -125,7 +128,8 @@ class ClaudeMixin:
                 emit((seq, base, mode, askclaude.request(key, editcommands.SYSTEM, text, editcommands.SCHEMA), None))
             except askclaude.AskError as e:
                 emit((seq, base, mode, None, e.kind))
-            except Exception:
+            except Exception as e:               # 1.34.2 (review W1): only the kind – never request or key
+                log.warning("Claude im Editor: unerwarteter Fehler %s", e.__class__.__name__)
                 emit((seq, base, mode, None, "bad"))
         threading.Thread(target=work, name="claude-edit", daemon=True).start()
 

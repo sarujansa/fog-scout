@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import sys
 import threading
 
 from .i18n import _
+
+log = logging.getLogger(__name__)
 
 IS_WIN = sys.platform == "win32"
 
@@ -219,8 +222,8 @@ class HotkeyThread(threading.Thread):
             elif msg.message == WM_HOTKEY and msg.wParam in ids:
                 try:
                     self.callback(ids[msg.wParam])
-                except Exception:
-                    pass
+                except Exception:                    # 1.34.2 (review W1): never end the hotkey thread – but say so
+                    log.exception("Hotkey %s: Fehler beim Ausführen", ids[msg.wParam])
         for i in ids:
             user32.UnregisterHotKey(None, i)
 
