@@ -57,6 +57,10 @@ class _Rows(QStyledItemDelegate):
             title, sub = _("Claude fragen: „{q}“", q=value), _("Schickt nur die Frage und die Namen der "
                                                                  "Einstellungen an Claude")
             key = _("Enter")
+        elif kind == "ask_stats":                     # 1.35
+            title, sub = _("Claude zur Statistik fragen: „{q}“", q=value), _(
+                "Schickt die Frage und Zähler/Quoten deiner Runden an Claude – keine einzelne Runde, keine Namen")
+            key = _("Enter")
         else:
             title, sub = value.title, value.sub
             if selected:
@@ -83,6 +87,7 @@ class CommandPalette(QWidget):
         self._post = post
         self.setObjectName("palette")
         self._entries, self._recent, self._claude = [], [], False
+        self._stats = False                           # 1.35: offer „Claude zur Statistik fragen“
         self._answer_ids = None                  # Claude's suggestion shown instead of the ranking
         self._return_to = None                   # 1.28 (audit F14): the widget that had the focus before opening
         self.setAccessibleName(_("Befehlspalette"))
@@ -246,6 +251,14 @@ class CommandPalette(QWidget):
             it.setData(Qt.AccessibleTextRole, words)
             self.rows.addItem(it)
             first = first or it
+        if self._stats and len(query.strip()) >= 3 and self._answer_ids is None:     # 1.35
+            it = QListWidgetItem()
+            it.setData(ROLE, ("ask_stats", query.strip()))
+            words = _("Claude zur Statistik fragen: „{q}“", q=query.strip())
+            it.setData(Qt.DisplayRole, words)
+            it.setData(Qt.AccessibleTextRole, words)
+            self.rows.addItem(it)
+            first = first or it
         if first is not None:
             self.rows.setCurrentItem(first)
         self.empty.setVisible(first is None and bool(query.strip()))
@@ -271,8 +284,8 @@ class CommandPalette(QWidget):
         if item is None or not item.flags() & Qt.ItemIsSelectable:
             return
         kind, value = item.data(ROLE)
-        if kind == "ask":
-            self._post("palette_ask", value)
+        if kind in ("ask", "ask_stats"):
+            self._post("palette_ask" if kind == "ask" else "palette_ask_stats", value)
             self.show_waiting()
             return
         self._recent = palette.remember(self._recent, value.id)
@@ -299,8 +312,11 @@ class CommandPalette(QWidget):
                 return True
             if key == Qt.Key_Tab:
                 items = self._selectable()
-                if items and items[-1].data(ROLE)[0] == "ask":
-                    self.rows.setCurrentItem(items[-1])
+                asks = [it for it in items if it.data(ROLE)[0] in ("ask", "ask_stats")]
+                if asks:                              # 1.35: Tab goes through the Claude rows
+                    cur = self.rows.currentItem()
+                    nxt = asks[(asks.index(cur) + 1) % len(asks)] if cur in asks else asks[0]
+                    self.rows.setCurrentItem(nxt)
                 return True
             if key in (Qt.Key_Return, Qt.Key_Enter):
                 self._run(self.rows.currentItem(), alt=bool(e.modifiers() & Qt.ControlModifier))

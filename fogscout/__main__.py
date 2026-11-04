@@ -244,6 +244,8 @@ def main():
         sys.exit(run_helper(sys.argv[2:]))
     if len(sys.argv) == 2 and sys.argv[1] in ("--install-tasks", "--remove-tasks"):   # 1.32: the installer
         sys.exit(install_tasks() if sys.argv[1] == "--install-tasks" else remove_tasks())
+    from .starttime import StartClock
+    clock = StartClock()                          # 1.35: the start's phases (log line, diagnosis, self-check)
     ap = argparse.ArgumentParser(prog="fogscout")
     ap.add_argument("--simulate", help="Screenshots statt Bildschirm verwenden (Datei oder Ordner)")
     ap.add_argument("--test", nargs="+", help="Nur testen: Screenshots auswerten und Ergebnis ausgeben")
@@ -256,7 +258,7 @@ def main():
 
     if args.selftest:
         from .selftest import main as selftest
-        sys.exit(selftest(ROOT, args.selftest))
+        sys.exit(selftest(ROOT, args.selftest, clock))
 
     if args.restart:
         from .restart import wait_and_start
@@ -291,10 +293,13 @@ def main():
     if not args.tray:                             # 1.14.2: the splash screen – not for the silent start in the tray
         from .splash import start as splash_start
         splash = splash_start(data, __version__)
+    clock.mark("splash")
     try:
         from .app import App
+        clock.mark("loaded")
         app = App(ROOT, simulate=args.simulate, start_in_tray=args.tray,
-                  progress=splash.progress if splash is not None else None, data_dir=data)
+                  progress=splash.progress if splash is not None else None, data_dir=data, start_clock=clock)
+        clock.mark("built")
         if splash is not None:
             splash.finish()                       # fades while the window comes up (App.run pumps the events)
         app.exit_watchdog = True                  # a quit that hangs ends the process anyway

@@ -924,7 +924,7 @@ class MainWindow(QMainWindow):
                               return_to=None if back is self.search else back)
         self._post("palette_open")
 
-    def palette_entries(self, entries, recent=None, claude=None):
+    def palette_entries(self, entries, recent=None, claude=None, stats=None):
         """The App's entries for the palette (kept for the next opening, shown now when it is open)."""
         self._palette_entries = list(entries)
         if recent is not None:
@@ -932,6 +932,8 @@ class MainWindow(QMainWindow):
         if claude is not None:
             self._palette_claude = bool(claude)
             self.palette._claude = bool(claude)
+        if stats is not None:                         # 1.35: a statistics question may go to Claude too
+            self.palette._stats = bool(stats)
         self.palette.update_entries(self._palette_entries)
 
     def go_to_found(self, entry: str):

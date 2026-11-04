@@ -211,6 +211,18 @@ TIPS = {
                                     "mit dem Schnitt passieren soll, Claude schlägt Schritte vor, du übernimmst oder "
                                     "verwirfst sie. Gesendet werden nur deine Bitte und der Schnitt als Zahlen – kein "
                                     "Bild, kein Dateiname. Braucht einen eigenen API-Key.",
+    "Bilder im Bild-Editor an Claude schicken": "Zeigt im Bild-Editor den Reiter „Claude“: Du schreibst, was mit dem "
+                                                "Bild passieren soll (Namen verpixeln, zuschneiden, heller), und auf "
+                                                "„Vorschlagen“ gehen Bitte und Bild verkleinert an Claude. Das Bild kann "
+                                                "Spielernamen zeigen; bereits zensierte Bereiche bleiben zensiert.",
+    "Standbilder aus Aufnahmen im Clip-Editor an Claude schicken": "Erlaubt im grossen Clip-Editor das Häkchen "
+                                                                   "„Standbild mitsenden“: dann geht das Bild an der "
+                                                                   "Abspielposition mit, und Claude kann z. B. Namen "
+                                                                   "zensieren. Das Bild kann Spielernamen zeigen.",
+    "In der Suche Statistik-Fragen an Claude stellen": "Zeigt in der Suche (Strg+F) die Zeile „Claude zur Statistik "
+                                                       "fragen“. Gesendet werden deine Frage und Zähler/Quoten deiner "
+                                                       "Runden je Rolle, Killer, Map, Region und Tageszeit – keine "
+                                                       "einzelne Runde, keine Namen von Spielern.",
     "API-Key holen": "Öffnet die Seite „API keys“ der Anthropic Console im Browser (platform.claude.com). Dort einen "
                      "Key anlegen und hier einfügen – er beginnt mit sk-ant-.",
     "Guthaben aufladen": "Öffnet die Seite „Billing“ der Anthropic Console im Browser. Die API wird getrennt von einem "

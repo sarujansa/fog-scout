@@ -70,8 +70,9 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
           Hotkeys, SettingsTab, PaletteMixin,
           SysInfo, OverlayPlacement, LayoutMemory, OverlayTab, QtShell):
     def __init__(self, root_dir: str, simulate: str | None = None, start_in_tray: bool = False, progress=None,
-                 data_dir: str | None = None):
+                 data_dir: str | None = None, start_clock=None):
         self.root_dir = root_dir
+        self.start_clock = start_clock      # 1.35: starttime.StartClock of __main__ (None in tests and tools)
         # 1.30.1 (.exe, stage 2): the program's own files (maps, models, HISTORY.md) stay in root_dir; everything it
         # writes (settings, rounds, log, cache, backups, own pictures, debug) goes to data_dir – the same folder from
         # start.bat, the per-user folder for the installed program (paths.data_root)
@@ -193,6 +194,20 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._show_event = restart.show_event_create() if IS_WIN else None
         threading.Thread(target=self._setup_then_read_autostart, daemon=True, name="autostart").start()
         self._progress(1.0, _("Fog Scout ist bereit."))
+        if self.start_clock is not None:
+            self.root.after(0, self._start_measured)      # 1.35: the first turn of the event loop – window up
+
+    def _start_measured(self):
+        """1.35: how long the start took – one log line (the diagnosis has the phases)."""
+        c = self.start_clock
+        c.mark("ready")
+        total = c.total_ms()
+        if total is None:
+            return
+        log.info("%s", c.diag())
+        before = c.before
+        self._log(_("Start: Fenster bereit nach {total} s seit Programmstart (davon {before} s bis Python).",
+                    total=f"{total / 1000:.1f}", before=f"{before:.1f}" if before is not None else "?"), "System")
 
     # ================================================================== UI
     def _build_ui(self):

@@ -25,10 +25,16 @@ EFFORT = "low"
 FALLBACK_BETA = "server-side-fallback-2026-07-01"   # a declined request is retried server-side ("default")
 MAX_TOKENS = 1024
 HTTP_TIMEOUT = 20.0
+IMAGE_TIMEOUT = 60.0                 # 1.35: a request with a picture uploads more and takes longer
 MAX_IDS = 5
 MAX_QUESTION = 300                   # characters of the question sent at most
 MAX_CATALOGUE = 600                  # entries sent at most
 KEY_PREFIX = "sk-ant-"
+# 1.35 (user's release of 3.11.2026: pictures on a click, one switch per function): a picture goes only as a JPEG
+# made in memory, its long side at most IMAGE_SIDE px (what the model looks at anyway – more only costs), never a file
+IMAGE_SIDE = 1568
+IMAGE_QUALITY = 85
+MAX_IMAGE_BYTES = 3_000_000          # the encoded picture at most (the API takes 5 MB per picture)
 # 1.26.1 (user: "einen Button, dass man direkt auf die Seite kommt"): the Anthropic Console's pages, opened in the
 # default browser on a click only (like ytupload.CONSOLE) – the program itself sends nothing there
 CONSOLE_KEYS = "https://platform.claude.com/settings/keys"
@@ -69,11 +75,34 @@ def _opener():
     return OPENER
 
 
-def request_body(system: str, content: str, schema: dict, max_tokens: int = MAX_TOKENS) -> dict:
-    """1.27: one Messages request with a structured answer (``schema``) – shared by the search and the editor."""
+def image_block(img) -> dict:
+    """1.35: a PIL picture as an image content block – RGB, the long side at most IMAGE_SIDE, JPEG in memory,
+    base64 without line breaks. Nothing is written to disk. ValueError when it stays too large."""
+    import base64
+    import io
+
+    from PIL import Image
+    pic = img.convert("RGB")
+    if max(pic.size) > IMAGE_SIDE:
+        pic = pic.copy()
+        pic.thumbnail((IMAGE_SIDE, IMAGE_SIDE), Image.LANCZOS)
+    buf = io.BytesIO()
+    pic.save(buf, "JPEG", quality=IMAGE_QUALITY)
+    data = buf.getvalue()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError("picture too large")
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                        "data": base64.standard_b64encode(data).decode("ascii")}}
+
+
+def request_body(system: str, content: str, schema: dict, max_tokens: int = MAX_TOKENS, images=()) -> dict:
+    """1.27: one Messages request with a structured answer (``schema``) – shared by the search and the editor.
+    1.35: ``images`` (image blocks from ``image_block``) go before the text, as the API recommends."""
+    blocks = list(images)
+    user = (blocks + [{"type": "text", "text": content}]) if blocks else content
     return {"model": MODEL, "max_tokens": max_tokens, "fallbacks": "default", "system": system,
             "output_config": {"effort": EFFORT, "format": {"type": "json_schema", "schema": schema}},
-            "messages": [{"role": "user", "content": content}]}
+            "messages": [{"role": "user", "content": user}]}
 
 
 def body(question: str, catalogue) -> dict:
@@ -113,12 +142,12 @@ def parse(reply: dict, known) -> tuple[str, list[str]]:
     return str(data.get("answer") or "").strip()[:400], ids[:MAX_IDS]
 
 
-def send(key: str, payload: dict) -> dict:
+def send(key: str, payload: dict, timeout: float = HTTP_TIMEOUT) -> dict:
     """POST ``payload`` to ENDPOINT; the reply as a dict, or AskError with its kind."""
     req = urllib.request.Request(ENDPOINT, data=json.dumps(payload).encode("utf-8"), headers=headers(key),
                                  method="POST")
     try:
-        with _opener().open(req, timeout=HTTP_TIMEOUT) as r:
+        with _opener().open(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         code = e.code
@@ -139,9 +168,10 @@ def send(key: str, payload: dict) -> dict:
         raise AskError("bad") from None
 
 
-def request(key: str, system: str, content: str, schema: dict, max_tokens: int = MAX_TOKENS) -> dict:
-    """1.27: one structured request – the answer's JSON object, or AskError."""
-    return reply_json(send(key, request_body(system, content, schema, max_tokens)))
+def request(key: str, system: str, content: str, schema: dict, max_tokens: int = MAX_TOKENS, images=()) -> dict:
+    """1.27: one structured request – the answer's JSON object, or AskError. 1.35: with ``images``."""
+    return reply_json(send(key, request_body(system, content, schema, max_tokens, images),
+                           IMAGE_TIMEOUT if images else HTTP_TIMEOUT))
 
 
 def ask(key: str, question: str, catalogue) -> tuple[str, list[str]]:
@@ -152,7 +182,7 @@ def ask(key: str, question: str, catalogue) -> tuple[str, list[str]]:
 
 class Asker(threading.Thread):
     """One question at a time in the background; a newer question replaces one still waiting. ``post(kind, **kw)``
-    gets ("answer", answer=, ids=, question=) or ("error", error=, question=)."""
+    gets ("answer", answer=, ids=, question=), 1.35 ("stats", answer=, question=) or ("error", error=, question=)."""
 
     def __init__(self, post):
         super().__init__(daemon=True, name="askclaude")
@@ -161,13 +191,20 @@ class Asker(threading.Thread):
         self.asked = self.answered = self.failed = 0          # for the diagnosis (counts only)
         self.last_error = ""
 
-    def ask(self, key: str, question: str, catalogue):
+    def _put(self, job):
         while True:                                            # only the newest question counts
             try:
                 self._jobs.get_nowait()
             except queue.Empty:
                 break
-        self._jobs.put((key, question, list(catalogue)))
+        self._jobs.put(job)
+
+    def ask(self, key: str, question: str, catalogue):
+        self._put(("search", key, question, list(catalogue)))
+
+    def ask_stats(self, key: str, question: str, data: dict):
+        """1.35: a statistics question with the summed-up round values (statsclaude.summary)."""
+        self._put(("stats", key, question, data))
 
     def stop(self):
         self._jobs.put(None)
@@ -177,10 +214,18 @@ class Asker(threading.Thread):
             job = self._jobs.get()
             if job is None:
                 return
-            key, question, catalogue = job
+            what, key, question, extra = job
             self.asked += 1
             try:
-                answer, ids = ask(key, question, catalogue)
+                if what == "stats":
+                    from . import statsclaude
+                    reply = request(key, statsclaude.SYSTEM, statsclaude.content(question, extra), statsclaude.SCHEMA,
+                                    statsclaude.MAX_TOKENS)
+                    self.answered += 1
+                    self.last_error = ""
+                    self._post("stats", answer=statsclaude.answer(reply), question=question)
+                    continue
+                answer, ids = ask(key, question, extra)
             except AskError as e:
                 self.failed += 1
                 self.last_error = e.kind
