@@ -194,6 +194,12 @@ def install_tasks() -> int:
     start.bat installation the task "Fog Scout" ran until now (takeover, offered at the first start), then points the
     tasks and the Start menu/desktop shortcuts at the .exe; the logon task unless autostart was switched off."""
     from . import autostart, takeover
+    if not autostart.for_session_user():
+        # 1.33.1 (audit H-4): elevated with another administrator's credentials – nothing in that account; one Start
+        # menu shortcut for everybody instead (no task: Windows asks when an administrator function is used)
+        exe = autostart.frozen_exe()
+        ok = bool(exe) and autostart.powershell(autostart.common_shortcut_script(exe))[0]
+        return 0 if ok else 1
     data = _data()
     takeover.record(data, takeover.task_folder(autostart.TASK))
     ok, _msg = autostart.install(ROOT)
@@ -218,12 +224,11 @@ def offer_takeover(data: str, ask=None) -> list:
     text = _("Fog Scout wurde bisher über start.bat genutzt:\n{folder}\n\nEinstellungen, Runden, Match-Daten, "
              "Sicherungen und eigene Kartenbilder in die installierte Version übernehmen? Der alte Ordner bleibt "
              "unverändert.", folder=folder)
-    copied = []
-    try:
-        if (ask or _ask_yes_no)(text):
-            copied = takeover.copy(folder, data)
-    finally:
-        takeover.finish(data)
+    if not (ask or _ask_yes_no)(text):
+        takeover.finish(data)                    # "No": never asked again
+        return []
+    copied = takeover.copy(folder, data)         # 1.33.1 (audit H-1): an OSError leaves the note – asked again
+    takeover.finish(data)
     return copied
 
 
@@ -247,7 +252,8 @@ def main():
     ap.add_argument("--restart", action="store_true", help=argparse.SUPPRESS)   # helper of the update button
     ap.add_argument("--no-update", action="store_true", help=argparse.SUPPRESS)  # with --restart: plain restart
     ap.add_argument("--selftest", metavar="RESULT", help=argparse.SUPPRESS)      # 1.31: CI checks the packaged .exe
-    ap.add_argument("--install-update", metavar="SETUP", help=argparse.SUPPRESS)  # 1.33: helper of the update
+    ap.add_argument("--install-update", nargs=2, metavar=("SETUP", "SHA256"),
+                    help=argparse.SUPPRESS)      # 1.33: helper of the update (1.33.1: with the expected SHA-256)
     args = ap.parse_args()
 
     if args.selftest:
@@ -256,7 +262,7 @@ def main():
 
     if args.install_update:                     # 1.33: the update helper – never the program itself
         from .restart import wait_and_install
-        sys.exit(0 if wait_and_install(args.install_update) else 1)
+        sys.exit(0 if wait_and_install(*args.install_update) else 1)
 
     if args.restart:
         from .restart import wait_and_start

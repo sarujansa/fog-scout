@@ -4,7 +4,10 @@ The installer runs ``FogScout.exe --install-tasks`` (elevated) before it points 
 .exe. If that task ran start.bat until now, its working directory is the start.bat installation: ``record`` notes the
 folder in the data folder. At the first start of the .exe without own settings, ``__main__`` asks once whether to copy
 settings, rounds, match data, backups and own map pictures (``copy``); the original folder is only read, never changed
-or deleted. Logs, caches and debug pictures stay behind (they are rebuilt). Asked once (``MARKER``), whatever the answer.
+or deleted. Logs, caches and debug pictures stay behind (they are rebuilt). Asked once (``MARKER``) once answered with
+"No" or copied completely; 1.33.1 (stability audit H-1): a copy that fails or breaks off is asked again at the next
+start – every file arrives under a temp name and only then gets its name (never over an existing one), settings.json
+last.
 """
 from __future__ import annotations
 
@@ -13,7 +16,9 @@ import os
 import shutil
 import sys
 
-FILES = ("settings.json", "rounds.jsonl", "official.jsonl")
+# settings.json last: pending() stops offering once it exists – a run that broke off earlier asks again (1.33.1)
+FILES = ("rounds.jsonl", "official.jsonl")
+LAST = "settings.json"
 DIRS = ("backup", "user_maps")
 SOURCE_FILE = "takeover-source.txt"         # written by --install-tasks: the start.bat folder
 MARKER = "takeover-asked"                   # the question came once
@@ -72,15 +77,34 @@ def pending(data_dir: str) -> str | None:
     return folder if is_checkout(folder) else None
 
 
+def _copy_file(s: str, d: str) -> bool:
+    """One file: copied beside the target under a temp name, then given its name only if that is still free
+    (fsops.create_exclusive – never replaces). False when the target already exists."""
+    from . import fsops
+    if os.path.exists(d):
+        return False
+    tmp = fsops.tmp_name(d)
+    try:
+        shutil.copy2(s, tmp)
+        fsops.create_exclusive(tmp, d)
+    except FileExistsError:
+        return False
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return True
+
+
 def copy(src: str, dst: str) -> list[str]:
     """Copy the files and folders worth keeping from ``src`` to ``dst`` – never over an existing file, never deleting
-    anything, ``src`` only read. Returns the names that were copied (at least partly)."""
+    anything, ``src`` only read; each file complete or not at all, settings.json last. A second run after a broken one
+    adds only what is still missing. Returns the names that were copied (at least partly); raises OSError when
+    something could not be read or written (the caller asks again at the next start)."""
     os.makedirs(dst, exist_ok=True)
     done = []
     for name in FILES:
-        s, d = os.path.join(src, name), os.path.join(dst, name)
-        if os.path.isfile(s) and not os.path.exists(d):
-            shutil.copy2(s, d)
+        s = os.path.join(src, name)
+        if os.path.isfile(s) and _copy_file(s, os.path.join(dst, name)):
             done.append(name)
     for name in DIRS:
         top = os.path.join(src, name)
@@ -93,12 +117,13 @@ def copy(src: str, dst: str) -> list[str]:
             os.makedirs(os.path.join(dst, rel), exist_ok=True)
             for f in files:
                 s = os.path.join(base, f)
-                d = os.path.join(dst, rel, f)
-                if os.path.isfile(s) and not os.path.islink(s) and not os.path.exists(d):
-                    shutil.copy2(s, d)
+                if os.path.isfile(s) and not os.path.islink(s) and _copy_file(s, os.path.join(dst, rel, f)):
                     copied = True
         if copied:
             done.append(name + "/")
+    s = os.path.join(src, LAST)
+    if os.path.isfile(s) and _copy_file(s, os.path.join(dst, LAST)):
+        done.append(LAST)
     return done
 
 

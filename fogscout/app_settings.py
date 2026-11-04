@@ -1126,6 +1126,8 @@ class SettingsTab:
         program asks for the latest release instead (relupdate.check); ``quiet`` = the look after the start (only
         an available update is logged)."""
         from . import update
+        if getattr(self, "_release_busy", False):  # 1.33.1 (audit M-1): a download is running – no second look now
+            return
         self.upd_btn.state(["disabled"])
         self.upd_apply_btn.pack_forget()
         self.upd_status.set(_("Suche nach Updates …"))
@@ -1154,6 +1156,9 @@ class SettingsTab:
     def _release_check_at_start(self):
         """1.33: the installed program looks for a new release once after the start – if "Beim Start nach Updates
         suchen" is on (start.bat does its own check before the program starts)."""
+        if frozen():                              # 1.33.1 (audit M-3): the setup of the last update is not needed
+            from . import relupdate
+            relupdate.clean_update_folder(self.data_dir)
         if frozen() and self.settings.get("auto_update", True):
             self.root.after(self.RELEASE_CHECK_DELAY_MS, lambda: self.check_update(quiet=True))
 
@@ -1163,8 +1168,10 @@ class SettingsTab:
         """1.33: "Aktualisieren und neu starten" in the installed program – fetch the setup in a thread and check
         its SHA-256 (relupdate.download); installing is asked separately (_release_ready)."""
         rel = getattr(self, "_release", None)
-        if rel is None:
+        if rel is None or getattr(self, "_release_busy", False):    # 1.33.1 (audit M-1): one download at a time
             return
+        self._release_busy = True
+        self.upd_btn.state(["disabled"])
         self.upd_apply_btn.state(["disabled"])
         self.upd_status.set(_("Lade Update …"))
         last = [0]
@@ -1182,38 +1189,42 @@ class SettingsTab:
             except Exception as e:
                 self.events.put(("upd_failed", _("Update nicht geladen: {error}", error=e)))
                 return
-            self.events.put(("upd_ready", path, rel.version, rel.build))
+            self.events.put(("upd_ready", path, rel.version, rel.build, rel.sha256))
         threading.Thread(target=work, daemon=True, name="update-download").start()
 
     def _release_failed(self, msg):
+        self._release_busy = False
+        self.upd_btn.state(["!disabled"])
         self.upd_apply_btn.state(["!disabled"])
         self.upd_status.set(msg)
         self._log(msg, "Fehler")
 
-    def _release_ready(self, path, version, build):
+    def _release_ready(self, path, version, build, sha256=""):
         """The setup is here and its SHA-256 matches – install only after this question."""
+        self._release_busy = False
+        self.upd_btn.state(["!disabled"])
         self.upd_apply_btn.state(["!disabled"])
         self.upd_status.set(_("Update {version} (Build {build}) geladen und geprüft.", version=version, build=build))
         if not self._ask(_("Update installieren"),
                          _("Fog Scout {version} (Build {build}) ist geladen und per SHA-256 geprüft. Jetzt "
                            "installieren? Das Programm schliesst sich und startet danach neu.", version=version,
-                           build=build), lambda: self._release_ready(path, version, build), ok_text=_("Installieren")):
+                           build=build), lambda: self._release_ready(path, version, build, sha256), ok_text=_("Installieren")):
             return
-        self._release_install(path)
+        self._release_install(path, sha256)
 
-    def _release_install(self, path):
+    def _release_install(self, path, sha256=""):
         if self._round_running() or self._clips_saving():
             msg = _("Update gesperrt: eine Runde läuft oder ein Clip wird gespeichert. Danach noch einmal auf "
                     "„Aktualisieren und neu starten“ klicken.")
             self.upd_status.set(msg)
             self._log(msg, "System")
             return
-        if not self._quit_phase1(lambda: self._release_install(path)):
+        if not self._quit_phase1(lambda: self._release_install(path, sha256)):
             self.upd_status.set(_("Update wartet: Editor-Projekte werden gesichert …"))
             return
         from . import restart
         try:
-            ok = restart.spawn_installer(path)
+            ok = restart.spawn_installer(path, sha256)
         except OSError as e:
             self.upd_status.set(_("Neustart nicht möglich: {error}", error=e))
             return
