@@ -567,7 +567,7 @@ def test_the_lobby_is_read_from_one_grab_per_tick_and_as_before(tmp_path, monkey
 
     game = SimpleNamespace(hwnd=1, left=0, top=0, width=W, height=H, minimized=False)
     monkeypatch.setattr(worker, "ScreenGrabber", Grabber)
-    monkeypatch.setattr(worker, "find_game_window", lambda: game)
+    monkeypatch.setattr(worker, "find_game_window", lambda known=None: game)
     monkeypatch.setattr(worker, "foreground_root", lambda: grabs.append((time.time(), "tick")) or 1)   # once a tick
     wk = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
                                 queue.Queue())
@@ -590,3 +590,49 @@ def test_the_lobby_is_read_from_one_grab_per_tick_and_as_before(tmp_path, monkey
             tick.append(size)
     with_picture = [t for t in ticks if W * H in t]
     assert len(with_picture) >= 2 and all(t == [W * H] for t in with_picture), with_picture[:3]
+
+
+def test_one_grab_per_match_tick_banner_and_round_end_look_share_it(tmp_path, monkeypatch):
+    """1.34.1 (review P3): in a match the round-end look takes the whole picture about once a second and the banner
+    strip was a second grab of its own – now the strip is cut from the whole picture: one grab per tick, and the
+    round-end look still sees the picture (its history line)."""
+    pytest.importorskip("onnxruntime")
+    import queue
+    import time
+    from types import SimpleNamespace
+    from fogscout import config, worker
+    from fogscout.catalog import Catalog
+    frame = np.full((H, W, 3), 60, np.uint8)
+    grabs = []
+
+    class Grabber:
+        def grab(self, left, top, width, height):
+            grabs.append((time.time(), width * height))
+            return frame[top:top + height, left:left + width].copy()
+
+        def primary_monitor(self):
+            return 0, 0, W, H
+
+    game = SimpleNamespace(hwnd=1, left=0, top=0, width=W, height=H, minimized=False)
+    monkeypatch.setattr(worker, "ScreenGrabber", Grabber)
+    monkeypatch.setattr(worker, "find_game_window", lambda *a, **k: game)
+    monkeypatch.setattr(worker, "foreground_root", lambda: 1)
+    monkeypatch.setattr(worker, "cursor_state", lambda: None)
+    wk = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
+                                queue.Queue())
+    wk.map_on_screen, wk.watch_gen = True, (1, "auto")              # a map shown: the trial runs
+    wk.start()
+    try:
+        deadline = time.time() + 60                                # generous: shared CI runners
+        while not wk.end_history and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(2.5)                                            # a few more looks
+    finally:
+        wk.stop()
+        wk.join(timeout=10)
+    assert wk.end_history                                          # the round-end look saw the picture
+    wholes = [t for t, size in grabs if size == W * H]
+    assert len(wholes) >= 3                                        # ticks are ~1 s apart, grabs of one tick ms
+    later = [g for g in grabs if g[0] > wholes[0] + 0.3]          # (the tick the map came: no look prepared)
+    strips = [t for t, size in later if size != W * H]
+    assert not [t for t in strips if any(abs(t - u) < 0.3 for u in wholes)], grabs[:8]
