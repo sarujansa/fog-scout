@@ -3632,4 +3632,14 @@ EN = {
         'Fog Scout crashed',
     'Fog Scout wurde am {when} unerwartet beendet. „Diagnose kopieren“ legt einen Bericht mit den Stellen des Absturzes in die Zwischenablage – zum Melden auf GitHub oder im Chat. Der Bericht enthält keine Schlüssel, Titel oder Server-Adressen.':
         'Fog Scout ended unexpectedly on {when}. “Copy diagnosis” puts a report with the places of the crash on the clipboard – to report it on GitHub or in a chat. The report holds no keys, titles or server addresses.',
+    'Claude hat keine Stelle gefunden, die heraussticht.':
+        'Claude found no moment that stands out.',
+    'Claude sieht sich {n} Standbilder an …':
+        'Claude is looking at {n} stills …',
+    'Highlights finden':
+        'Find highlights',
+    'Schickt kleine Standbilder des Schnitts (gleichmässig verteilt und an den F8-Marken, bereits zensierte Bereiche zensiert) an Claude; Claude nennt bis zu drei Stellen für einen Short. Die Bilder können Spielernamen zeigen.':
+        'Sends small stills of the cut (spread evenly and at the F8 marks, areas already censored stay censored) to Claude; Claude names up to three moments for a short. The pictures can show player names.',
+    'Schlägt vor, nur diesen Teil zu behalten – erst „Übernehmen“ ändert den Schnitt.':
+        'Suggests keeping only this part – only “Apply” changes the cut.',
 }
