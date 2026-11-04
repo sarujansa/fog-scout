@@ -3422,7 +3422,6 @@ EN = {
     "Ausgabeauflösung = Basisauflösung ({size})": "Output resolution = base resolution ({size})",
     "Bildrate 60": "Frame rate 60",
     "Aufnahmequalität „Kaum unterscheidbare Qualität“": "Recording quality “Indistinguishable quality”",
-    "Encoder {name}": "Encoder {name}",
     "Aufnahme nicht mehr herunterskalieren": "Stop rescaling the recording",
     "OBS → Einstellungen → Ausgabe (Modus „Einfach“) → Aufnahme:":
         "OBS → Settings → Output (mode “Simple”) → Recording:",
@@ -3453,4 +3452,23 @@ EN = {
     "Erklärung": "Explanation",
     "Sicherung und Ordner": "Backup and folders",
     "Wann aufgenommen wird": "When to record",
+    # review F-03: the advanced mode's steps per encoder family (recquality.encoder_family)
+    "Video-Encoder: AMD HW H.264 oder HEVC (nicht „Stream-Encoder verwenden“)":
+        "Video encoder: AMD HW H.264 or HEVC (not “Use stream encoder”)",
+    "Frequenzsteuerung: CQP, QP-Werte 18 (HEVC 20)": "Rate control: CQP, QP values 18 (HEVC 20)",
+    "Voreinstellung: Qualität": "Preset: Quality",
+    "Video-Encoder: QuickSync H.264 oder HEVC (nicht „Stream-Encoder verwenden“)":
+        "Video encoder: QuickSync H.264 or HEVC (not “Use stream encoder”)",
+    "Frequenzsteuerung: ICQ (oder CQP), Wert 18": "Rate control: ICQ (or CQP), value 18",
+    "Target Usage: TU1 bis TU4 – kleiner = bessere Qualität": "Target usage: TU1 to TU4 – lower = better quality",
+    "Video-Encoder: der Grafikkarten-Encoder (NVENC, AMF oder QuickSync), wenn OBS einen anbietet – sonst x264":
+        "Video encoder: the graphics card's encoder (NVENC, AMF or QuickSync) if OBS offers one – otherwise x264",
+    "Video-Encoder: einen eigenen wählen (nicht „Stream-Encoder verwenden“), am besten den der Grafikkarte, wenn OBS einen anbietet":
+        "Video encoder: pick one of its own (not “Use stream encoder”), best the graphics card's if OBS offers one",
+    "Frequenzsteuerung: gleichbleibende Qualität (CQP, CQ, ICQ oder CRF) um 18 statt einer festen niedrigen Bitrate":
+        "Rate control: constant quality (CQP, CQ, ICQ or CRF) around 18 instead of a low fixed bitrate",
+    # review F-07: the quality verdict is an estimate
+    "Einschätzung aus Bitrate, Auflösung, Bildrate und Codec – Bildinhalt, Bewegung, Encoder-Voreinstellung und Quelle beeinflussen das Ergebnis.":
+        "An estimate from bitrate, resolution, frame rate and codec – picture content, motion, the encoder preset and "
+        "the source change the result.",
 }

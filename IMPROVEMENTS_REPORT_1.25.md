@@ -1,5 +1,7 @@
 # Fog Scout – Optimierung 1.25 bis 1.25.3 (Abschlussbericht)
 
+> **Historische Momentaufnahme** (Stand laut Dokument: 3. November 2026, PR #299). Die Angaben zu Version, offenen Punkten und Merge-Status gelten für diesen Tag; spätere Änderungen stehen in `HISTORY.md`.
+
 **Auftrag:** „Fog Scout – umfassende Produkt-, UI/UX-, Funktions- und Performance-Optimierung“ (Phasen 0 bis 10).
 
 **Stand:** 3. November 2026, Zweig `claude/funny-feynman-gt5t6n`, PR sarujansa/fog-scout#299 – **nicht gemergt**.

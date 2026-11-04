@@ -2178,7 +2178,8 @@ def test_quality_is_written_only_on_a_click_only_the_allowed_values_and_the_old_
     r._poll()
     d = posted.get(timeout=1)[1]
     assert not any(k.startswith("Set") for k, _a in obs.requests)     # reading never writes
-    plan = recquality.plan(d, nvidia=True)
+    plan = recquality.plan(d)
+    assert ("SimpleOutput", "RecEncoder", "nvenc") not in plan["profile"]   # review F-03: the encoder stays as it is
     plan["profile"].append(("Output", "Mode", "Simple"))               # not a quality key: never written
     plan["profile"].append(("AdvOut", "RecEncoder", "obs_x264"))
     n = len(obs.requests)
@@ -2187,13 +2188,12 @@ def test_quality_is_written_only_on_a_click_only_the_allowed_values_and_the_old_
     before = next(e[1]["before"] for e in events if e[0] == "obs_quality" and "before" in e[1])
     assert before["video"] == {"outputWidth": 1920, "outputHeight": 1080, "fpsNumerator": 30, "fpsDenominator": 1}
     assert ("SimpleOutput", "RecQuality", "Stream") in before["profile"]
-    assert ("SimpleOutput", "RecEncoder", "x264") in before["profile"]
     sets = [(k, a) for k, a in obs.requests[n:] if k.startswith("Set")]
-    assert [k for k, _a in sets] == ["SetVideoSettings", "SetProfileParameter", "SetProfileParameter"]
+    assert [k for k, _a in sets] == ["SetVideoSettings", "SetProfileParameter"]
     assert all((a["parameterCategory"], a["parameterName"]) in obsrec.QUALITY_KEYS
                for k, a in sets if k == "SetProfileParameter")
     assert obs.video["outputWidth"] == 2560 and obs.video["fpsNumerator"] == 60
-    assert obs.profile[("SimpleOutput", "RecQuality")] == "HQ" and obs.profile[("SimpleOutput", "RecEncoder")] == "nvenc"
+    assert obs.profile[("SimpleOutput", "RecQuality")] == "HQ" and obs.profile[("SimpleOutput", "RecEncoder")] == "x264"
     assert obs.profile[("Output", "Mode")] == "Simple" and obs.profile[("AdvOut", "RecEncoder")] == "jim_nvenc"
     assert obs.replay                                                 # the buffer was stopped for it and runs again
     kinds = [k for k, _a in obs.requests[n:]]
@@ -2220,7 +2220,7 @@ def test_the_advanced_mode_writes_no_encoder_value_and_a_restore_removes_what_wa
     r, posted = _recorder(obs, str(tmp_path))
     r._poll()
     d = posted.get(timeout=1)[1]
-    plan = recquality.plan(d, nvidia=True)
+    plan = recquality.plan(d)
     assert plan == {"profile": [("AdvOut", "RecRescale", "false")]}
     r._quality(plan)
     before = next(e[1]["before"] for e in _drain(posted) if e[0] == "obs_quality" and "before" in e[1])
@@ -2231,3 +2231,16 @@ def test_the_advanced_mode_writes_no_encoder_value_and_a_restore_removes_what_wa
     assert before["profile"] == [("AdvOut", "RecRescale", None)]
     r._quality(dict(before, restore=True))
     assert ("AdvOut", "RecRescale") not in obs.profile                # null = OBS's default again
+
+
+def test_a_snapshot_from_1_29_with_the_encoder_in_it_is_still_put_back(obs, tmp_path):
+    """Review F-03: a click no longer switches the simple mode's encoder – but "Zurücksetzen" must still put back a
+    snapshot that 1.29 took when it did (RecEncoder stays a key the recorder may write for that)."""
+    obs.profile.update({("Output", "Mode"): "Simple", ("SimpleOutput", "RecEncoder"): "nvenc",
+                        ("SimpleOutput", "RecQuality"): "HQ"})
+    r, posted = _recorder(obs, str(tmp_path))
+    old = {"profile": [["SimpleOutput", "RecQuality", "Stream"], ["SimpleOutput", "RecEncoder", "x264"]],
+           "restore": True}                                           # as settings.json holds it (lists)
+    r._quality(old)
+    assert obs.profile[("SimpleOutput", "RecEncoder")] == "x264" and obs.profile[("SimpleOutput", "RecQuality")] == "Stream"
+    assert any(e[0] == "obs_quality" and e[1].get("done") and e[1].get("restore") for e in _drain(posted))
