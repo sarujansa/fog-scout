@@ -14,7 +14,7 @@ import json
 import statistics
 import time
 
-from . import official
+from . import history, official
 
 MAX_QUESTION = 300               # characters of the question sent at most
 MAX_ANSWER = 1200                # characters of the answer shown at most
@@ -26,7 +26,8 @@ WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 SYSTEM = ("You answer questions about a player's own Dead by Daylight statistics for Fog Scout, a desktop "
           "companion app. You get a JSON summary of the player's rounds: only counts, averages and rates per group "
-          "(role, own killer, map, opposing killer, server region, time of day, weekday). 'kills' is the average "
+          "(role, own killer, map, opposing killer, server region, time of day, weekday, the player's own perks). "
+          "With 'this_week' and 'last_week' it is two such summaries to compare. 'kills' is the average "
           "number of survivors killed per killer match (0–4), 'escape' the share of survivor matches escaped, "
           "'n' the number of rounds, 'n_official' how many of them have official match data (kills, escapes and "
           "bloodpoints only exist for those). Answer in the language of the question in at most five short "
@@ -113,7 +114,8 @@ def summary(rounds, off: dict, include_farming: bool = True) -> dict:
     out["first_day"], out["last_day"] = days[0], days[-1]
     out["farming_rounds"] = sum(1 for r in used if r.farming)
     kinds = {"by_role": {}, "killer_by_own_killer": {}, "killer_by_map": {}, "survivor_by_map": {},
-             "survivor_by_opposing_killer": {}, "by_region": {}, "by_time_of_day": {}, "by_weekday": {}}
+             "survivor_by_opposing_killer": {}, "by_region": {}, "by_time_of_day": {}, "by_weekday": {},
+             "killer_by_own_perk": {}, "survivor_by_own_perk": {}}
     total = _Group()
     for r in used:
         m = off.get(id(r))
@@ -133,6 +135,9 @@ def summary(rounds, off: dict, include_farming: bool = True) -> dict:
         for kind, key in keys.items():
             if key:
                 kinds[kind].setdefault(key, _Group()).add(r, m)
+        if m is not None and role in ("killer", "survivor"):     # 1.36: the own loadout only (official data)
+            for perk in {_name(p) for p in m.perks or ()} - {""}:
+                kinds[role + "_by_own_perk"].setdefault(perk, _Group()).add(r, m)
     out["all"] = total.out()
     for kind, groups in kinds.items():
         table = _table(groups)
@@ -141,9 +146,35 @@ def summary(rounds, off: dict, include_farming: bool = True) -> dict:
     return out
 
 
+def _name(item) -> str:
+    """A loadout entry's name ([id, name] in the official file) – never anything about another player."""
+    if isinstance(item, (list, tuple)) and len(item) >= 2 and isinstance(item[1], str):
+        return item[1].strip()[:60]
+    return ""
+
+
+WEEK_S = 7 * 24 * 3600
+
+
+def week(rounds, off: dict, now: float) -> dict:
+    """1.36: this calendar week (Monday to now) and the week before, each summed up like ``summary``."""
+    start = history.period_start("week", now)
+    this = [r for r in rounds if start <= r.t <= now]
+    last = [r for r in rounds if start - WEEK_S <= r.t < start]
+    return {"this_week": summary(this, off), "last_week": summary(last, off)}
+
+
 def content(question: str, data: dict) -> str:
     return ("Statistics summary:\n" + json.dumps(data, ensure_ascii=False, sort_keys=True)
             + "\n\nQuestion: " + str(question or "").strip()[:MAX_QUESTION])
+
+
+def blocks(question: str, data: dict) -> list:
+    """1.36: the same as two text blocks – the summary marked for the API's cache (a follow-up question within five
+    minutes reads it at a twentieth of the price), the question after it."""
+    return [{"type": "text", "text": "Statistics summary:\n" + json.dumps(data, ensure_ascii=False, sort_keys=True),
+             "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": "Question: " + str(question or "").strip()[:MAX_QUESTION]}]
 
 
 def answer(data: dict) -> str:
