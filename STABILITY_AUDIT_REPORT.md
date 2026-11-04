@@ -235,3 +235,20 @@ M-6 hatte das Risiko eines gescheiterten Setups gesehen, aber zu niedrig eingest
 - Der Weg 1.33.1 → 1.33.2 läuft noch über den alten Helfer von 1.33.1. 1.33.2 muss deshalb einmal von Hand installiert werden; erst Updates ab 1.33.2 nutzen den neuen Weg.
 - Eine schon beschädigte Installation repariert das Setup aus den Releases, von Hand ausgeführt.
 - Echtes Windows mit einem echten Update von Build N auf N+1 bleibt die offene Prüfung.
+
+## Nachtrag 1.33.3 – die Sperre kam von OBS
+
+Beim Installieren von 1.33.1 und 1.33.2 von Hand hing das Setup an `_internal\msvcp140.dll` („DeleteFile failed; code 5“). Saru hat das per PowerShell geprüft (Prozesse mit Modulen aus `C:\Program Files\Fog Scout`): Nur `obs64.exe` hatte Module von dort geladen.
+
+**Ursache:** Fog Scout hatte OBS selbst gestartet (`rec_obs_start`). Die PyInstaller-.exe gibt an gestartete Programme drei Dinge weiter:
+- ihre DLL-Suche (`SetDllDirectoryW` auf `_internal`),
+- `PATH` mit `_internal` vorne,
+- `QT_PLUGIN_PATH` und `QML2_IMPORT_PATH` aus dem Laufzeit-Hook von PySide6.
+
+OBS lud deshalb die C++-Laufzeit aus Fog Scouts Ordner und hielt sie fest. Sehr wahrscheinlich war das auch der Auslöser von C-1.
+
+**Fix in 1.33.3:** Alle fremden Programmstarts laufen über `launch.py`: Windows' eigene DLL-Suche, eine bereinigte Umgebung und ein Wächter-Test, der direkte Starts an anderer Stelle verbietet. Der Selbsttest der .exe prüft das in CI.
+
+**Bewusst nicht umgesetzt:** Vor einem Update Prozesse mit Modulen aus dem Programmordner suchen. Das bräuchte `OpenProcess` auf fremde Prozesse, also auch auf das Spiel, und verstößt damit gegen eine harte Regel.
+
+**Rest:** Ein OBS, das noch von 1.33.2 oder älter gestartet wurde, hält die Datei weiter, bis es beendet wird. Das Setup meldet dann „Zugriff verweigert“; OBS schließen und „Try again“ wählen. Ein stilles Update bricht in diesem Fall ab, und Fog Scout startet wieder (`DeinitializeSetup`). Dateien, die bis dahin schon kopiert waren, bleiben dabei neu, der Rest alt. Zwischen benachbarten Builds mit denselben festen Paketversionen ist das voraussichtlich lauffähig; geprüft ist es nicht. Das Setup aus den Releases von Hand repariert es.

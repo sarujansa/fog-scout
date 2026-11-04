@@ -10,7 +10,7 @@ import threading
 import time
 import traceback
 
-from . import i18n, layout, mapimage, mapnotes, mapstyle, obsrec, regions, restart, tooltip
+from . import i18n, launch, layout, mapimage, mapnotes, mapstyle, obsrec, regions, restart, tooltip
 from . import uimodel as ui
 from .capture import IS_WIN, find_game_window
 from .catalog import Catalog
@@ -1618,7 +1618,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
     def _open(self, path):
         try:
             if IS_WIN:
-                os.startfile(path)                     # noqa: S606 – opens Explorer / editor
+                launch.open_path(path)                 # 1.33.3: Explorer / editor without the bundle
             else:
                 self._log(_("Öffnen nur unter Windows: {path}", path=path), "System")
         except OSError as e:

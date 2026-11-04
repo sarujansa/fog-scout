@@ -18,7 +18,7 @@ from dataclasses import replace
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QSlider, QWidget
 
-from . import musictrack
+from . import launch, musictrack
 from .i18n import N_, _
 from .qt_common import guard_wheel
 from .qt_layouts import FlowRow
@@ -128,9 +128,7 @@ class MusicMixin:
 
     # ---- 1.22.1: YouTube's audio library and the newest sound files of the download folder
     def _music_library(self):
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
-        QDesktopServices.openUrl(QUrl(musictrack.AUDIO_LIBRARY_URL))
+        launch.open_url(musictrack.AUDIO_LIBRARY_URL)
         self.status.setText(_("Audiomediathek im Browser geöffnet – heruntergeladene Titel erscheinen im Abschnitt "
                               "Ton, sobald du zurück im Editor bist."))
 

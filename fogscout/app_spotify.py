@@ -3,9 +3,8 @@ the events of the ``spotify.SpotifyLink`` thread and the list the music card sho
 from __future__ import annotations
 
 import time
-import webbrowser
 
-from . import spotify
+from . import launch, spotify
 from . import uimodel as ui
 from .i18n import N_, _
 
@@ -41,7 +40,7 @@ class SpotifyUpNext:
         self.sp_id_var.trace_add("write", lambda *a: self._spotify_setting())
         self._reg("st.more.sp_id", ui.Entry(row, textvariable=self.sp_id_var, width=34)).pack(side="left", padx=6)
         self._reg("st.more.sp_dash", ui.Button(row, text=_("Developer-Dashboard öffnen"),
-                                                command=lambda: webbrowser.open(spotify.DASHBOARD))).pack(side="left")
+                                                command=lambda: launch.open_url(spotify.DASHBOARD))).pack(side="left")
         row2 = ui.Frame(sc)
         row2.pack(fill="x", pady=(4, 0))
         self._reg("st.more.sp_login", ui.Button(row2, text=_("Mit Spotify verbinden"),

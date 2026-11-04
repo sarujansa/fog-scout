@@ -9,13 +9,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
 import sys
 import threading
 import time
 from types import SimpleNamespace
 
-from . import encoders, history, obsrec, project, recquality, steamshots, uimodel as ui
+from . import encoders, history, launch, obsrec, project, recquality, steamshots, uimodel as ui
 from .medialib import montage_items
 from .app_stats import STATS_PERIODS
 from .capture import IS_WIN
@@ -159,8 +158,8 @@ def rec_card_level(d: dict | None, on: bool, rec_on: bool = True) -> str:
 
 
 def show_in_explorer(path: str):
-    """Windows Explorer with the file marked (nothing else runs the file)."""
-    subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])     # noqa: S603, S607
+    """Windows Explorer with the file marked (nothing else runs the file; 1.33.3: launch.show_in_folder)."""
+    launch.show_in_folder(path)
 
 
 class RecordingsTab:
