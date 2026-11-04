@@ -12,11 +12,12 @@ from __future__ import annotations
 import logging
 import threading
 
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
 
-from . import askclaude, clipedit, editcommands, imageedit, sequence
+from . import askclaude, clipedit, editcommands, highlights, i18n, imageedit, sequence
 from .i18n import N_, _
 from .qt_common import PlainLabel
+from .qt_views import ElideButton
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +67,16 @@ class ClaudeMixin:
         row.addWidget(self.cl_frame_box)
         row.addStretch()
         sec.body.addLayout(row)
+        self.cl_hl_btn = QPushButton(_("Highlights finden"))      # 1.37: only with stills allowed
+        self.cl_hl_btn.setToolTip(_("Schickt kleine Standbilder des Schnitts (gleichmässig verteilt und an den "
+                                    "F8-Marken, bereits zensierte Bereiche zensiert) an Claude; Claude nennt bis zu "
+                                    "drei Stellen für einen Short. Die Bilder können Spielernamen zeigen."))
+        self.cl_hl_btn.clicked.connect(self.claude_highlights)
+        sec.body.addWidget(self.cl_hl_btn)
+        self.cl_hl_rows = QVBoxLayout()                           # one button per highlight Claude named
+        self.cl_hl_rows.setSpacing(4)
+        sec.body.addLayout(self.cl_hl_rows)
+        self._hl_found = []
         self.cl_status = PlainLabel("", "dim")             # 1.28: Claude's summary – plain text, long runs broken
         sec.body.addWidget(self.cl_status)
         self.cl_list = PlainLabel("")                      # … and the steps (a short title comes from Claude)
@@ -100,6 +111,8 @@ class ClaudeMixin:
         self.cl_frame_box.setVisible(frame_ok)
         if not frame_ok:
             self.cl_frame_box.setChecked(False)
+        self.cl_hl_btn.setVisible(frame_ok)
+        self.cl_hl_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
         self.cl_field.setEnabled(on)
         self.cl_ask_btn.setEnabled(on and self.history is not None and not self._claude_busy)
         if not on and self._claude_result is None:
@@ -171,6 +184,9 @@ class ClaudeMixin:
         return make
 
     def _claude_answer(self, item):
+        if item and item[0] == "hl":                     # 1.37: the highlight search's answer
+            self._highlights_answer(*item[1:])
+            return
         seq, base, mode, data, error = item
         picture = error is True                          # 1.35: the slot carries "a still went along" on success
         error = None if isinstance(error, bool) else error
@@ -212,6 +228,117 @@ class ClaudeMixin:
         self._claude_buttons(True)
 
     # ---- taking it over
+    # ---- 1.37: highlights
+    def claude_highlights(self):
+        """„Highlights finden“: small stills of the edit (highlights.still_times) go to Claude in a thread – the
+        censor boxes hidden in each, like the single still of a wish. Nothing changes before a picked range is taken."""
+        if self._claude_busy or self.history is None:
+            return
+        key = self.claude_key()
+        if not key or not self.claude_frame():
+            self._claude_refresh()
+            return
+        base = self._state()
+        mode = str(self.mode_box.currentData() or "copy")
+        length = sequence.duration(base.parts)
+        marks = self._claude_marks()
+        jobs = []
+        for t in highlights.still_times(length, marks):
+            i, src_t = sequence.source_at(base.parts, t)
+            part = base.parts[i] if i is not None else None
+            jobs.append((t, self._src_path(part), self._src_info(part), src_t))
+        if not jobs:
+            return
+        boxes = [list(b) for b in base.boxes]
+        style = base.censor_style if base.censor_style in imageedit.CENSOR_STYLES else "pixel"
+        language = "German" if i18n.current() == "de" else "English"
+        ffmpeg = self.ffmpeg
+        self._claude_seq += 1
+        seq = self._claude_seq
+        self._claude_busy, self._claude_result = True, None
+        self._claude_buttons(False)
+        self._highlights_clear()
+        self.cl_list.hide()
+        self.cl_status.setText(_("Claude sieht sich {n} Standbilder an …", n=len(jobs)))
+        self._claude_refresh()
+        emit = self.bridge.claude.emit
+
+        def work():
+            try:
+                stills = []
+                for t, path, info, src_t in jobs:
+                    img = clipedit.frame_at(path, src_t, highlights.STILL_H, info, ffmpeg)
+                    if img is None:
+                        continue
+                    for b in boxes:              # always hidden in what is sent – also while „anwenden“ is off
+                        img = imageedit.censor_area(img, b, style)
+                    stills.append((t, askclaude.image_block(img, highlights.STILL_SIDE)))
+                if not stills:
+                    raise _NoStill()
+                data = askclaude.request(key, highlights.SYSTEM,
+                                         highlights.blocks(length, marks, stills, language), highlights.SCHEMA)
+                emit(("hl", seq, base, mode, data, None))
+            except askclaude.AskError as e:
+                emit(("hl", seq, base, mode, None, e.kind))
+            except _NoStill:
+                emit(("hl", seq, base, mode, None, "still"))
+            except Exception as e:               # only the kind – never a picture or the key
+                log.warning("Claude-Highlights: unerwarteter Fehler %s", e.__class__.__name__)
+                emit(("hl", seq, base, mode, None, "bad"))
+        threading.Thread(target=work, name="claude-highlights", daemon=True).start()
+
+    def _highlights_clear(self):
+        self._hl_found = []
+        while self.cl_hl_rows.count():
+            w = self.cl_hl_rows.takeAt(0).widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _highlights_answer(self, seq, base, mode, data, error):
+        if self._closed or seq != self._claude_seq:
+            return
+        self._claude_busy = False
+        try:
+            if error is not None:
+                self.cl_status.setText(_(ERROR_WORDS.get(error, ERROR_WORDS["net"])))
+                return
+            length = sequence.duration(base.parts)
+            try:
+                summary, found = highlights.parse(data, length)
+            except ValueError:
+                self.cl_status.setText(_(ERROR_WORDS["bad"]))
+                return
+            self.cl_status.setText(summary or (_("Claude hat keine Stelle gefunden, die heraussticht.")
+                                               if not found else ""))
+            self._hl_found = [(a, b, why, base, mode) for a, b, why in found]
+            for i, (a, b, why) in enumerate(found):
+                btn = ElideButton()                  # a long reason ends in "…" – the inspector keeps its width
+                text = f"{clipedit.fmt_pos(a)}–{clipedit.fmt_pos(b)}" + (f" · {why}" if why else "")
+                btn.set_full_text(text)
+                btn.setToolTip(text + "\n" + _("Schlägt vor, nur diesen Teil zu behalten – erst „Übernehmen“ "
+                                                "ändert den Schnitt."))
+                btn.setProperty("highlight", i)      # a bound method, never a lambda holding the window
+                btn.clicked.connect(self._highlight_clicked)
+                self.cl_hl_rows.addWidget(btn)
+        except Exception:                                # never left on „Claude sieht sich … an“
+            self.cl_status.setText(_(ERROR_WORDS["bad"]))
+        finally:
+            self._claude_refresh()
+
+    def _highlight_clicked(self):
+        n = self.sender().property("highlight") if self.sender() is not None else None
+        if isinstance(n, int):
+            self.highlight_pick(n)
+
+    def highlight_pick(self, n: int):
+        """A highlight → the proposal keep(from, to), checked by editcommands.apply like any wish; „Übernehmen“
+        takes it as one undo step. A cut changed since the search is not touched."""
+        if not 0 <= n < len(self._hl_found):
+            return
+        a, b, why, base, mode = self._hl_found[n]
+        self._claude_base, self._claude_result = base, None
+        self._claude_show(base, mode, {"summary": why, "ops": [{"op": "keep", "from": a, "to": b}]}, None)
+
     def claude_take(self):
         result, base = self._claude_result, self._claude_base
         if result is None:
