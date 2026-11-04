@@ -41,6 +41,29 @@ def test_the_backup_leaves_out_the_obs_password_and_the_spotify_token(tmp_path):
     assert back["rec_password"] == "mine" and back["spotify_token"] == "dpapi:MINE"
 
 
+def test_the_backup_leaves_out_this_pcs_own_values_and_an_old_backup_still_imports(tmp_path):
+    """Review F-01: folders, setup path, window geometry … (LOCAL_KEYS) never go into a backup file – an
+    import never took them anyway; secrets and the YouTube queue stay out, portable settings stay in, and an older
+    backup that still holds local values imports with this PC's values kept."""
+    data = dict(config.DEFAULTS, setup_root="C:/Example/FogScout", rec_folder="C:/Example/Recordings",
+                shots_folder="D:/Example/Shots", official_dir="C:/Example/Downloads", qt_geometry="AbC=",
+                rec_obs_before={"video": {"outputWidth": 1920}}, palette_recent=["a:scan"],
+                rec_password="hunter2", youtube_queue=[{"rel": "Clips/a.mp4"}], sysinfo="left")
+    out = tmp_path / "backup.json"
+    config.export_settings(data, str(out))
+    raw = json.loads(out.read_text(encoding="utf-8"))
+    assert not set(raw) & set(config.LOCAL_KEYS)
+    text = out.read_text(encoding="utf-8")
+    assert "Example" not in text and "hunter2" not in text and "Clips/a.mp4" not in text
+    assert raw["sysinfo"] == "left" and raw["hotkeys"] == config.DEFAULTS["hotkeys"] and "overlay" in raw
+    old = dict(raw, setup_root="C:/Example/Old", rec_folder="C:/Example/OldRecordings")   # a backup from before the fix
+    out.write_text(json.dumps(old), encoding="utf-8")
+    here = {"setup_root": "D:/Example/Here", "rec_folder": "E:/Example/Recordings"}
+    back = config.read_backup(str(out), here)
+    assert back["setup_root"] == "D:/Example/Here" and back["rec_folder"] == "E:/Example/Recordings"
+    assert back["sysinfo"] == "left"
+
+
 def test_reset_data_keeps_only_the_pc_specific_values():
     """1.2.19: "Alle Einstellungen zurücksetzen" – defaults, the PC-specific keys and welcome_seen stay."""
     current = {"overlay": {"anchor": "custom", "height": 0.7}, "sysinfo": "left", "qt_geometry": "AAAA",
