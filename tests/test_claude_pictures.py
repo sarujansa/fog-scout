@@ -317,3 +317,83 @@ def test_a_fixed_question_reopens_the_palette_and_sends_the_week(tmp_path):
     shown.clear()
     s._palette_ask_fixed("build")
     assert shown == [] and len(asked) == 1
+
+
+# ------------------------------------------------------------------ 1.37: highlights
+def test_stills_spread_evenly_and_marks_replace_a_close_one():
+    from fogscout import highlights
+    times = highlights.still_times(160.0)
+    assert len(times) == highlights.EVEN_STILLS and times[0] == 5.0 and times[-1] == 155.0
+    marked = highlights.still_times(160.0, [15.5, 400, -1])          # 15.5 replaces the still at 15
+    assert 15.5 in marked and 15.0 not in marked and len(marked) == highlights.EVEN_STILLS
+    marks = [i * 9.0 + 1 for i in range(15)]
+    many = highlights.still_times(160.0, marks)
+    assert len([t for t in many if t in marks]) == highlights.MAX_MARK_STILLS     # the first eight marks
+    assert highlights.still_times(0) == []
+
+
+def test_only_ranges_that_fit_are_taken_best_first():
+    from fogscout import highlights
+    data = {"summary": " Zwei  Stellen. ", "highlights": [
+        {"from": 10, "to": 40, "why": "Chase"}, {"from": 30, "to": 50, "why": "overlaps the first"},
+        {"from": 50, "to": 52, "why": "too short"}, {"from": 0, "to": 100, "why": "too long"},
+        {"from": 80, "to": 200, "why": "cut to the end"}, {"from": "x", "to": 9, "why": "bad"},
+        {"from": 60, "to": 70, "why": "third"}, {"from": 72, "to": 79, "why": "fourth – one too many"}]}
+    summary, found = highlights.parse(data, 120.0)
+    assert summary == "Zwei Stellen." and found == [(10.0, 40.0, "Chase"), (80.0, 120.0, "cut to the end"),
+                                                    (60.0, 70.0, "third")]
+    with pytest.raises(ValueError):
+        highlights.parse({"summary": "", "highlights": "none"}, 120.0)
+    blocks = highlights.blocks(30.0, [12.0], [(7.5, {"type": "image"}), (12.0, {"type": "image"})], "German")
+    assert [b["type"] for b in blocks] == ["text", "text", "image", "text", "image"]
+    assert "Clip length: 30.0 s" in blocks[0]["text"] and "12.0 s" in blocks[0]["text"]
+    assert blocks[1]["text"] == "Still at 7.5 s:"
+
+
+@pytest.mark.skipif(FF is None, reason="imageio-ffmpeg not installed")
+def test_the_editor_finds_highlights_from_stills_and_keeps_one_on_take(qapp, tmp_path, monkeypatch):
+    from fogscout import highlights, qt_editor
+    clip = str(tmp_path / "2026-11-03 20-15 Coal Tower – Nurse.mkv")
+    subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                    "-i", "testsrc=duration=30:size=320x180:rate=15", "-c:v", "libx264", "-preset", "veryfast",
+                    "-g", "15", "-pix_fmt", "yuv420p", clip], check=True, timeout=120)
+    fake = FakeOpener({"summary": "Eine Stelle.", "highlights": [{"from": 8, "to": 20, "why": "Verfolgung"},
+                                                                 {"from": 2, "to": 3, "why": "zu kurz"}]})
+    monkeypatch.setattr(askclaude, "OPENER", fake)
+    win = qt_editor.EditorWindow(clip, [12.0], str(tmp_path / "Clips"), sound=False)
+    win.resize(1400, 860)
+    win.show()
+    try:
+        assert _pump(qapp, lambda: win.preview._img is not None and (win.loading is None or win.loading.finished)
+                     and win._pstate != "loading")
+        win.claude_key = lambda: KEY
+        win._claude_refresh()
+        assert not win.cl_hl_btn.isVisible()                      # stills not allowed by the App
+        win.claude_highlights()
+        assert fake.bodies == []
+        win.claude_frame = lambda: True
+        win._claude_refresh()
+        assert win.cl_hl_btn.isVisible()
+        win.claude_highlights()
+        assert _pump(qapp, lambda: not win._claude_busy)
+        content = fake.bodies[0]["messages"][0]["content"]
+        pictures = [b for b in content if b["type"] == "image"]
+        length = sequence.duration(win.parts)                   # the editor opens a stretch around the mark
+        assert len(pictures) == len(highlights.still_times(length, win._claude_marks()))
+        assert f"Clip length: {round(length, 1)} s" in content[0]["text"]
+        assert max(_decoded(pictures[0]).size) <= highlights.STILL_SIDE
+        words = json.dumps([b for b in content if b["type"] == "text"])
+        assert "Coal" not in words and "Nurse" not in words and "mkv" not in words and "12.0 s" in words
+        assert fake.timeouts[0] == askclaude.IMAGE_TIMEOUT
+        assert win.cl_hl_rows.count() == 1 and win._state().parts == win.parts      # nothing changed yet
+        before = [(p.start, p.end) for p in win.parts]
+        win.highlight_pick(0)
+        assert win.cl_take_btn.isVisible() and [(p.start, p.end) for p in win.parts] == before
+        first = sequence.source_at(win.parts, 8.0)[1]
+        win.claude_take()
+        assert len(win.parts) == 1 and round(sequence.duration(win.parts), 1) == 12.0
+        assert round(win.parts[0].start, 1) == round(first, 1)
+        win.undo()
+        assert [(p.start, p.end) for p in win.parts] == before
+    finally:
+        win.close()
