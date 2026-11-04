@@ -54,6 +54,23 @@ a = Analysis(
     excludes=["tkinter"],
     noarchive=False,
 )
+# 1.35.1 (user: smaller setup, measured on the Windows wheels): files the program never uses, left out of the folder.
+# - PySide6/opengl32sw.dll (20.6 MB): Qt's software OpenGL, loaded only for an OpenGL context – the window draws
+#   with the raster engine, no QOpenGLWidget/QtQuick (test_the_bundle_leaves_out_only_what_is_never_used)
+# - PySide6/translations (13.7 MB): Qt's own texts for its standard dialogs, only through a QTranslator – none here
+# - cv2/opencv_videoio_ffmpeg*.dll (30.9 MB): OpenCV's video reader plugin, only for cv2.VideoCapture/VideoWriter –
+#   recordings and clips go through the imageio-ffmpeg executable (obsrec.ffmpeg_exe), OpenCV only does pictures
+UNUSED = ("opengl32sw.dll", "/translations/", "opencv_videoio_ffmpeg")
+
+
+def used(entry) -> bool:
+    dest = entry[0].replace("\\", "/").lower()
+    return not any(u in "/" + dest for u in UNUSED)
+
+
+a.binaries = [e for e in a.binaries if used(e)]
+a.datas = [e for e in a.datas if used(e)]
+
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz,

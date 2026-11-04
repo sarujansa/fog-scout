@@ -3610,4 +3610,26 @@ EN = {
         'Shows the row “Ask Claude about the statistics” in the search (Ctrl+F). Sent are your question and counts/rates of your rounds per role, killer, map, region and time of day – no single round, no player names.',
     'Start: Fenster bereit nach {total} s seit Programmstart (davon {before} s bis Python).':
         'Start: window ready {total} s after the program started ({before} s of it until Python).',
+    'Haiku 5.5 – am günstigsten':
+        'Haiku 5.5 – cheapest',
+    'Opus 5.5 – am genauesten':
+        'Opus 5.5 – most accurate',
+    'Sonnet 5.5 – halber Preis':
+        'Sonnet 5.5 – half the price',
+    'Modell':
+        'Model',
+    'Kosten (Schätzung nach Listenpreis): diese Sitzung {session} bei {n} Anfragen, diesen Monat {month}. Abgerechnet wird in der Anthropic Console.':
+        'Cost (estimate at list price): this session {session} for {n} requests, this month {month}. Billing is in the Anthropic Console.',
+    'Claude: Welcher Build läuft am besten?':
+        'Claude: Which build works best?',
+    'Claude: Woche zusammenfassen':
+        'Claude: Sum up the week',
+    'Fasse meine Woche im Vergleich zur letzten zusammen: was lief besser, was schlechter?':
+        'Sum up my week compared with the last one: what went better, what went worse?',
+    'Welche meiner Perks laufen am besten – getrennt nach Killer und Survivor?':
+        'Which of my perks work best – killer and survivor separately?',
+    'Fog Scout ist abgestürzt':
+        'Fog Scout crashed',
+    'Fog Scout wurde am {when} unerwartet beendet. „Diagnose kopieren“ legt einen Bericht mit den Stellen des Absturzes in die Zwischenablage – zum Melden auf GitHub oder im Chat. Der Bericht enthält keine Schlüssel, Titel oder Server-Adressen.':
+        'Fog Scout ended unexpectedly on {when}. “Copy diagnosis” puts a report with the places of the crash on the clipboard – to report it on GitHub or in a chat. The report holds no keys, titles or server addresses.',
 }

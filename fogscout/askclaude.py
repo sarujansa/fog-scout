@@ -20,7 +20,16 @@ import urllib.request
 
 ENDPOINT = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2026-10-21"
-MODEL = "claude-opus-5-5"            # the current default model; effort low keeps the answer quick
+MODEL = "claude-opus-5-5"            # the default model; effort low keeps the answer quick
+# 1.36 (user: costs shown, model selectable): the models the user can pick (setting claude_model) and their list
+# prices in $ per million tokens – input, output, cache read (a cache write costs 1.25 × input). An estimate only:
+# the API bills; Anthropic's prices can change (checked 2026-10). Haiku: prompts up to 100 000 tokens.
+MODELS = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
+PRICES = {"claude-opus-5-5": (4.0, 20.0, 0.20), "claude-sonnet-5-5": (2.0, 10.0, 0.20),
+          "claude-haiku-5-5": (0.10, 0.50, 0.01)}
+CACHE_WRITE = 1.25
+FALLBACK_MODELS = ("claude-opus-5-5", "claude-sonnet-5-5")   # the server-side fallback ("default"); not on Haiku
+_model = [MODEL]                     # the picked model (set_model); one list cell – the asking threads only read it
 EFFORT = "low"
 FALLBACK_BETA = "server-side-fallback-2026-07-01"   # a declined request is retried server-side ("default")
 MAX_TOKENS = 1024
@@ -62,6 +71,66 @@ class AskError(Exception):
         self.kind = kind
 
 
+def set_model(key: str) -> str:
+    """1.36: the model for every request from now on ("opus" | "sonnet" | "haiku"; anything else = the default)."""
+    _model[0] = MODELS.get(str(key or ""), MODEL)
+    return _model[0]
+
+
+def current_model() -> str:
+    return _model[0]
+
+
+def cost_usd(model: str, usage: dict) -> float:
+    """1.36: what a reply cost at list price, from its ``usage`` (input, cache write/read, output tokens)."""
+    p_in, p_out, p_read = PRICES.get(model, PRICES[MODEL])
+    u = usage if isinstance(usage, dict) else {}
+
+    def n(k):
+        v = u.get(k)
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else 0.0
+    return (n("input_tokens") * p_in + n("cache_creation_input_tokens") * p_in * CACHE_WRITE
+            + n("cache_read_input_tokens") * p_read + n("output_tokens") * p_out) / 1e6
+
+
+class Meter:
+    """1.36: what the requests of this session cost (estimate at list price) – every ``send`` adds its reply's
+    usage; the App takes the new amount once a second for the month's total. Counts only, never a question."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.requests = 0
+        self.usd = 0.0
+        self.cached_tokens = 0               # input tokens read from the cache (what caching saved)
+        self._untaken = 0.0
+
+    def add(self, model: str, usage) -> float:
+        c = cost_usd(model, usage)
+        read = (usage or {}).get("cache_read_input_tokens") if isinstance(usage, dict) else 0
+        with self._lock:
+            self.requests += 1
+            self.usd += c
+            self._untaken += c
+            self.cached_tokens += int(read) if isinstance(read, int) and read > 0 else 0
+        return c
+
+    def take(self) -> float:
+        """The cost added since the last take (0.0 when nothing was asked)."""
+        with self._lock:
+            c, self._untaken = self._untaken, 0.0
+        return c
+
+
+METER = Meter()
+
+
+def cached(text: str) -> dict:
+    """1.36: a text block the API may keep for five minutes – the part of a request that does not change between
+    questions (the search's catalogue, the statistics summary). A second question within five minutes reads it at a
+    twentieth of the price; the first pays a quarter more. Too short a block is simply not cached."""
+    return {"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}
+
+
 def valid_key(key: str) -> bool:
     k = str(key or "").strip()
     return k.startswith(KEY_PREFIX) and len(k) >= 20 and " " not in k
@@ -95,26 +164,37 @@ def image_block(img) -> dict:
                                         "data": base64.standard_b64encode(data).decode("ascii")}}
 
 
-def request_body(system: str, content: str, schema: dict, max_tokens: int = MAX_TOKENS, images=()) -> dict:
+def request_body(system: str, content, schema: dict, max_tokens: int = MAX_TOKENS, images=(), model=None) -> dict:
     """1.27: one Messages request with a structured answer (``schema``) – shared by the search and the editor.
-    1.35: ``images`` (image blocks from ``image_block``) go before the text, as the API recommends."""
+    1.35: ``images`` (image blocks from ``image_block``) go before the text, as the API recommends. 1.36: ``content``
+    may be a list of text blocks (``cached`` for the fixed part); ``model`` default = the picked one; the
+    server-side fallback only where the model has it."""
+    model = model or current_model()
     blocks = list(images)
-    user = (blocks + [{"type": "text", "text": content}]) if blocks else content
-    return {"model": MODEL, "max_tokens": max_tokens, "fallbacks": "default", "system": system,
+    text = list(content) if isinstance(content, (list, tuple)) else [{"type": "text", "text": content}]
+    user = blocks + text if blocks or isinstance(content, (list, tuple)) else content
+    body = {"model": model, "max_tokens": max_tokens, "system": system,
             "output_config": {"effort": EFFORT, "format": {"type": "json_schema", "schema": schema}},
             "messages": [{"role": "user", "content": user}]}
+    if model in FALLBACK_MODELS:
+        body["fallbacks"] = "default"
+    return body
 
 
 def body(question: str, catalogue) -> dict:
-    """The search's request body. ``catalogue``: [(id, title)] – only the program's own entries."""
+    """The search's request body. ``catalogue``: [(id, title)] – only the program's own entries. 1.36: the catalogue
+    is its own cached block (the same for every question), the question comes after it."""
     lines = "\n".join(f"{i}\t{t}" for i, t in list(catalogue)[:MAX_CATALOGUE])
-    return request_body(SYSTEM, f"Catalogue:\n{lines}\n\nQuestion: {str(question or '').strip()[:MAX_QUESTION]}",
+    return request_body(SYSTEM, [cached(f"Catalogue:\n{lines}"),
+                                 {"type": "text", "text": f"Question: {str(question or '').strip()[:MAX_QUESTION]}"}],
                         SCHEMA)
 
 
-def headers(key: str) -> dict:
-    return {"x-api-key": str(key).strip(), "anthropic-version": API_VERSION, "anthropic-beta": FALLBACK_BETA,
-            "content-type": "application/json"}
+def headers(key: str, fallback: bool = True) -> dict:
+    h = {"x-api-key": str(key).strip(), "anthropic-version": API_VERSION, "content-type": "application/json"}
+    if fallback:
+        h["anthropic-beta"] = FALLBACK_BETA
+    return h
 
 
 def reply_json(reply: dict) -> dict:
@@ -144,11 +224,14 @@ def parse(reply: dict, known) -> tuple[str, list[str]]:
 
 def send(key: str, payload: dict, timeout: float = HTTP_TIMEOUT) -> dict:
     """POST ``payload`` to ENDPOINT; the reply as a dict, or AskError with its kind."""
-    req = urllib.request.Request(ENDPOINT, data=json.dumps(payload).encode("utf-8"), headers=headers(key),
-                                 method="POST")
+    req = urllib.request.Request(ENDPOINT, data=json.dumps(payload).encode("utf-8"),
+                                 headers=headers(key, "fallbacks" in payload), method="POST")
     try:
         with _opener().open(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8"))
+            reply = json.loads(r.read().decode("utf-8"))
+        if isinstance(reply, dict):                      # 1.36: what it cost (estimate), also for a refusal
+            METER.add(str(payload.get("model") or MODEL), reply.get("usage"))
+        return reply
     except urllib.error.HTTPError as e:
         code = e.code
         try:
@@ -168,7 +251,7 @@ def send(key: str, payload: dict, timeout: float = HTTP_TIMEOUT) -> dict:
         raise AskError("bad") from None
 
 
-def request(key: str, system: str, content: str, schema: dict, max_tokens: int = MAX_TOKENS, images=()) -> dict:
+def request(key: str, system: str, content, schema: dict, max_tokens: int = MAX_TOKENS, images=()) -> dict:
     """1.27: one structured request – the answer's JSON object, or AskError. 1.35: with ``images``."""
     return reply_json(send(key, request_body(system, content, schema, max_tokens, images),
                            IMAGE_TIMEOUT if images else HTTP_TIMEOUT))
@@ -219,7 +302,7 @@ class Asker(threading.Thread):
             try:
                 if what == "stats":
                     from . import statsclaude
-                    reply = request(key, statsclaude.SYSTEM, statsclaude.content(question, extra), statsclaude.SCHEMA,
+                    reply = request(key, statsclaude.SYSTEM, statsclaude.blocks(question, extra), statsclaude.SCHEMA,
                                     statsclaude.MAX_TOKENS)
                     self.answered += 1
                     self.last_error = ""

@@ -173,3 +173,19 @@ def test_the_exe_is_built_and_checked_in_ci():
     assert "retention-days: 14" in wf
     build_job = wf[wf.index("\n  exe:"):wf.index("\n  release:")]
     assert "contents: write" not in build_job and "gh release" not in build_job   # the build itself publishes nothing
+
+
+def test_the_bundle_leaves_out_only_what_is_never_used():
+    """1.35.1: the spec drops Qt's software OpenGL, Qt's translations and OpenCV's video plugin (~65 MB unpacked) –
+    valid only while the program uses none of them. Using one of these means taking it out of UNUSED again."""
+    spec = _spec()
+    for name in ("opengl32sw.dll", "/translations/", "opencv_videoio_ffmpeg"):
+        assert f'"{name}"' in spec, name
+    assert "a.binaries = [e for e in a.binaries if used(e)]" in spec and "a.datas = [e for e in a.datas if used(e)]" in spec
+    needs = re.compile(r"QTranslator|QOpenGL|QtOpenGL|QtQuick|QQuick|QtQml|VideoCapture|VideoWriter")
+    pkg = os.path.join(ROOT, "fogscout")
+    for name in sorted(os.listdir(pkg)):
+        if name.endswith(".py"):
+            with open(os.path.join(pkg, name), encoding="utf-8") as fh:
+                hit = needs.search(fh.read())
+            assert hit is None, f"{name} uses {hit.group(0)} – the spec leaves it out of the .exe"
