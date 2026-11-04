@@ -5,9 +5,8 @@ from __future__ import annotations
 
 import os
 import time
-import webbrowser
 
-from . import obsrec, spotify, ytupload
+from . import launch, obsrec, spotify, ytupload
 from . import uimodel as ui
 from .capture import foreground_root, is_game_window
 from .i18n import _
@@ -48,7 +47,7 @@ class YouTubeUpload:
         self._reg("st.more.yt_file", ui.Button(row, text=_("Client-Datei laden …"),
                                                 command=self._youtube_file)).pack(side="left")       # 1.10.1
         self._reg("st.more.yt_console", ui.Button(row, text=_("Google Cloud Console öffnen"),
-                                                   command=lambda: webbrowser.open(ytupload.CONSOLE))).pack(side="left", padx=(6, 0))
+                                                   command=lambda: launch.open_url(ytupload.CONSOLE))).pack(side="left", padx=(6, 0))
         row2 = ui.Frame(yc)
         row2.pack(fill="x", pady=(4, 0))
         self._reg("st.more.yt_privacy.label", ui.Label(row2, text=_("Sichtbarkeit"))).pack(side="left")
@@ -323,4 +322,4 @@ class YouTubeUpload:
         self._log(_("YouTube-Link kopiert: {url}", url=ytupload.video_url(video_id)), "System")
 
     def _yt_open_link(self, video_id: str):
-        webbrowser.open(ytupload.video_url(video_id))
+        launch.open_url(ytupload.video_url(video_id))

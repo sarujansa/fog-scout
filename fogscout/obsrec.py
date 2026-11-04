@@ -34,7 +34,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 
-from . import obsoverlay
+from . import launch, obsoverlay
 from .i18n import _
 
 log = logging.getLogger("fogscout")
@@ -1797,7 +1797,8 @@ class Recorder(threading.Thread):
     def _start_obs_process(exe: str):
         """OBS in its own folder (it finds its data there), minimised to the tray, detached from this program."""
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        subprocess.Popen([exe, *OBS_ARGS], cwd=os.path.dirname(exe), close_fds=True, creationflags=flags)
+        # 1.33.3: never with the packaged program's DLL search and PATH – OBS loaded _internal\msvcp140.dll and held it
+        launch.start_program([exe, *OBS_ARGS], cwd=os.path.dirname(exe), creationflags=flags)
 
     def _start_buffer(self, c: ObsClient):
         """StartReplayBuffer at most once per DBD start and OBS session (1.8.42): when OBS cannot start the output
