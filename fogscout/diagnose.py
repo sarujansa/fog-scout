@@ -214,8 +214,9 @@ def collect(app) -> str:
         lines.append(tt.line())
     errs = getattr(app, "_errors_seen", set())
     lines.append(f"Fehler seit Start: {sorted(errs) if errs else 'keine'}")
-    if getattr(app, "root_dir", None):
-        lines.extend(crash_lines(app.root_dir))
+    data = getattr(app, "data_dir", None) or getattr(app, "root_dir", None)    # 1.30.1: crash files live there
+    if data:
+        lines.extend(crash_lines(data))
     root = getattr(app, "root", None)
     lines.extend(lag_lines(getattr(root, "slow", ()), getattr(root, "worst", ())))
     return "\n".join(lines)

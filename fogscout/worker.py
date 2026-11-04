@@ -89,9 +89,11 @@ def scan_rate(base: float, *, in_match: bool, session: bool, since_button: float
 
 
 class DetectionWorker(threading.Thread):
-    def __init__(self, root_dir: str, settings, catalog, events: queue.Queue, simulate: str | None = None):
+    def __init__(self, root_dir: str, settings, catalog, events: queue.Queue, simulate: str | None = None,
+                 data_dir: str | None = None):
         super().__init__(daemon=True, name="detector")
         self.root_dir = root_dir
+        self.data_dir = data_dir or root_dir     # 1.30.1: debug pictures go there (models stay in root_dir)
         self.settings = settings
         self.catalog = catalog
         self.events = events
@@ -759,7 +761,7 @@ class DetectionWorker(threading.Thread):
         """Debug: downscaled screenshots while a map is shown (folder debug/frames)."""
         try:
             self._last_frame_save = time.time()
-            d = os.path.join(self.root_dir, "debug", "frames")
+            d = os.path.join(self.data_dir, "debug", "frames")
             os.makedirs(d, exist_ok=True)
             h, w = frame.shape[:2]
             s = min(1.0, 1280.0 / max(1, w))
@@ -777,7 +779,7 @@ class DetectionWorker(threading.Thread):
         """1.5.4: the cross-play zone when the globe could not be read (farming rounds not recognised) – PNG in
         debug/lobby, newest GLOBE_KEPT. The user sends these; the detector is tuned on them."""
         try:
-            d = os.path.join(self.root_dir, "debug", "lobby")
+            d = os.path.join(self.data_dir, "debug", "lobby")
             os.makedirs(d, exist_ok=True)
             name = time.strftime("%Y%m%d-%H%M%S") + f"-crossplay-{button or 'x'}.png"
             cv2.imencode(".png", img)[1].tofile(os.path.join(d, name))
@@ -820,7 +822,7 @@ class DetectionWorker(threading.Thread):
         self.role_misses.append(f"{time.strftime('%H:%M:%S')} Bild {crop.shape[1]}×{crop.shape[0]} · "
                                 f"gelesen „{text[:60]}“")
         try:
-            d = os.path.join(self.root_dir, "debug", "result")
+            d = os.path.join(self.data_dir, "debug", "result")
             os.makedirs(d, exist_ok=True)
             cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tofile(
                 os.path.join(d, time.strftime("%Y%m%d-%H%M%S") + ".jpg"))
@@ -833,7 +835,7 @@ class DetectionWorker(threading.Thread):
         """Mid-match banner-like sighting: the captured region (separator marked) + what was read, in
         debug/midmatch – only the newest SIGHTINGS_KEPT. Returns the file name (None on failure)."""
         try:
-            d = os.path.join(self.root_dir, "debug", "midmatch")
+            d = os.path.join(self.data_dir, "debug", "midmatch")
             os.makedirs(d, exist_ok=True)
             stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
             name = f"{stamp}-{tag}.jpg"
@@ -854,7 +856,7 @@ class DetectionWorker(threading.Thread):
 
     def _save_debug(self, img, res, sep):
         try:
-            d = os.path.join(self.root_dir, "debug")
+            d = os.path.join(self.data_dir, "debug")
             os.makedirs(d, exist_ok=True)
             stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
             vis = img.copy()

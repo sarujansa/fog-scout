@@ -1454,7 +1454,7 @@ class StatsTab:
                          ok_text=_("Alle löschen"), danger=True):
             return
         from . import backups
-        self._backup_done(backups.snapshot(self.root_dir, tag="vorher"))     # 1.8.80: one more copy first
+        self._backup_done(backups.snapshot(self.data_dir, tag="vorher"))     # 1.8.80: one more copy first
         history.clear(self._hist_path())
         self._stats_render()
         self._log(_("Rundenverlauf gelöscht."), "System")
@@ -1580,7 +1580,7 @@ class StatsTab:
             self._stats_render()
 
     def _hist_path(self):
-        return os.path.join(self.root_dir, history.FILE)
+        return os.path.join(self.data_dir, history.FILE)
 
     # ---------------------------------------------------------- own record on the map on display (overlay)
     def _map_records(self):
@@ -1628,7 +1628,7 @@ class StatsTab:
 
     # ---------------------------------------------------------- official match data (stats.deadbydaylight.com)
     def _official_path(self):
-        return os.path.join(self.root_dir, official.FILE)
+        return os.path.join(self.data_dir, official.FILE)
 
     def _official_folder(self):
         if not getattr(self, "_off_downloads", None):
