@@ -94,17 +94,11 @@ def parse_release(data: dict) -> Release:
                    sha["browser_download_url"], digest[len("sha256:"):])
 
 
-class _HttpsOnly(urllib.request.HTTPRedirectHandler):
-    """1.33.1 (audit M-2): follow redirects (GitHub sends release downloads to its storage host) only to https."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if not str(newurl).lower().startswith("https://"):
-            raise urllib.error.URLError(f"Weiterleitung ohne HTTPS abgelehnt: {newurl}")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
 def _opener():
-    return urllib.request.build_opener(_HttpsOnly)
+    """1.33.1 (audit M-2): redirects (GitHub sends release downloads to its storage host) only to https – since
+    1.33.5 the program's one opener (net.py)."""
+    from .net import opener
+    return opener()
 
 
 def _get(url: str, opener, limit: int) -> bytes:

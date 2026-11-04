@@ -99,7 +99,9 @@ def clean_process():
                 if saved.get(key) != value:
                     os.environ[key] = value
             if k32:
-                k32.SetDllDirectoryW(None)
+                # 1.33.5 (review S8): "" rather than None – None would put the current folder back into the
+                # search of every thread while the program starts; "" leaves it out and is all a child inherits
+                k32.SetDllDirectoryW("")
             yield
         finally:
             if k32:
@@ -126,8 +128,9 @@ def open_path(path: str) -> None:
 def show_in_folder(path: str):
     """Windows Explorer with the file marked (nothing else runs the file)."""
     with clean_process():
-        return subprocess.Popen(["explorer", "/select,", os.path.normpath(path)],     # noqa: S603, S607
-                                env=child_env())
+        from .paths import windows_dir             # 1.33.5 (review S4): by its full path, not searched for
+        return subprocess.Popen([os.path.join(windows_dir(), "explorer.exe"), "/select,",   # noqa: S603
+                                 os.path.normpath(path)], env=child_env())
 
 
 def start_program(args: list, cwd: str | None = None, creationflags: int = 0):

@@ -491,3 +491,94 @@ def test_the_udp_table_and_the_window_process_on_windows(root):
         assert connwatch.window_pid(hwnd) == os.getpid()
     finally:
         w.close()
+
+
+def test_deleting_never_goes_through_a_junction_and_waits_for_an_open_file(tmp_path):
+    """1.33.5 (review S2): the recordings clean-up runs elevated – a junction "x" → another folder inside the
+    recordings folder (no admin needed to make one) must not let an index line "x/<file>" delete outside it."""
+    import subprocess
+    from fogscout import fsops
+    rec, other = tmp_path / "rec", tmp_path / "other"
+    rec.mkdir()
+    other.mkdir()
+    victim = other / "kernel.dll"
+    victim.write_bytes(b"x")
+    r = subprocess.run(["cmd", "/c", "mklink", "/J", str(rec / "x"), str(other)], capture_output=True)
+    assert r.returncode == 0, r.stderr
+    with pytest.raises(fsops.NotInside):
+        fsops.delete_inside(str(rec), str(rec / "x" / "kernel.dll"))
+    assert victim.exists()
+    mine = rec / "a.mp4"
+    mine.write_bytes(b"x")
+    held = open(mine, "rb")                     # a player: Python opens without FILE_SHARE_DELETE
+    try:
+        with pytest.raises(PermissionError):
+            fsops.delete_inside(str(rec), str(mine))
+    finally:
+        held.close()
+    fsops.delete_inside(str(rec), str(mine))
+    assert not mine.exists()
+
+
+def test_a_result_file_with_a_second_hard_link_is_not_written(tmp_path):
+    """1.33.5 (review S6): the elevated helpers write their result only into a plain file with one name."""
+    from fogscout import fsops, hostsedit, netwatch
+    victim = tmp_path / "hosts"
+    victim.write_text("keep", encoding="utf-8")
+    os.link(victim, tmp_path / "res.json")
+    for opener in (fsops.open_plain_for_write, hostsedit._open_result, netwatch._open_result):
+        with pytest.raises(OSError):
+            opener(str(tmp_path / "res.json"))
+    assert victim.read_text(encoding="utf-8") == "keep"
+    plain = tmp_path / "plain.json"
+    plain.write_text("long old text", encoding="utf-8")
+    for opener in (fsops.open_plain_for_write, hostsedit._open_result, netwatch._open_result):
+        with opener(str(plain)) as fh:
+            fh.write("{}\n")
+        assert plain.read_bytes() == b"{}\n"       # truncated, and no \r\n translation
+
+
+def test_the_discord_pipe_lets_its_server_identify_but_not_impersonate_and_times_out():
+    """1.33.5 (review S3): anybody may serve \\\\.\\pipe\\discord-ipc-N while Discord is not running – the elevated
+    program connects with SECURITY_IDENTIFICATION, so that server can never act as it; a server that never answers
+    ends the read after TIMEOUT instead of blocking the thread for good."""
+    import ctypes
+    from ctypes import wintypes
+    from fogscout import discordrpc as dc
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    a = ctypes.WinDLL("advapi32", use_last_error=True)
+    k.CreateNamedPipeW.restype = wintypes.HANDLE
+    k.CreateNamedPipeW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
+                                   wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID]
+    k.ReadFile.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                           wintypes.LPVOID]
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    k.GetCurrentThread.restype = wintypes.HANDLE
+    a.ImpersonateNamedPipeClient.argtypes = [wintypes.HANDLE]
+    a.OpenThreadToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.BOOL, ctypes.POINTER(wintypes.HANDLE)]
+    a.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
+                                      ctypes.POINTER(wintypes.DWORD)]
+    path = rf"\\.\pipe\fogscout-test-{os.getpid()}"
+    server = k.CreateNamedPipeW(path, 3, 0, 1, 4096, 4096, 0, None)          # duplex, byte mode, blocking
+    assert server not in (None, -1, 2 ** 64 - 1)
+    try:
+        ipc = dc.Ipc(path)
+        try:
+            ipc.send(dc.OP_FRAME, {"hello": 1})
+            buf, got = ctypes.create_string_buffer(64), wintypes.DWORD()
+            assert k.ReadFile(server, buf, 64, ctypes.byref(got), None) and got.value > 8
+            assert a.ImpersonateNamedPipeClient(server)
+            try:
+                tok, level, n = wintypes.HANDLE(), wintypes.DWORD(), wintypes.DWORD()
+                assert a.OpenThreadToken(k.GetCurrentThread(), 0x0008, True, ctypes.byref(tok))   # TOKEN_QUERY
+                assert a.GetTokenInformation(tok, 9, ctypes.byref(level), 4, ctypes.byref(n))   # ImpersonationLevel
+                k.CloseHandle(tok)
+            finally:
+                a.RevertToSelf()
+            assert level.value == 1                                              # SecurityIdentification
+            with pytest.raises(dc.IpcError):                                     # the server never answers
+                ipc.recv()
+        finally:
+            ipc.close()
+    finally:
+        k.CloseHandle(server)

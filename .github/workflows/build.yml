@@ -212,3 +212,10 @@ jobs:
               gh release delete "$t" --cleanup-tag --yes || echo "Konnte $t nicht entfernen"
             fi
           done
+          # 1.33.5: tags of releases deleted by hand on the website (the website leaves the tag) go as well
+          for ref in $(gh api "repos/$GH_REPO/git/matching-refs/tags/build-" -q '.[].ref'); do
+            t=${ref#refs/tags/}
+            if [[ "$t" =~ ^build-[0-9]+$ ]] && [ "$t" != "$TAG" ]; then
+              gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$t" || echo "Konnte Tag $t nicht entfernen"
+            fi
+          done
