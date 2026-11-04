@@ -173,11 +173,15 @@ class SettingsTab:
         upd = self._reg("st.updates", ui.LabelFrame(f, text=_("Updates"), padding=8))
         upd.pack(fill="x", pady=(8, 0))
         self.update_var = ui.BooleanVar(value=self.settings.get("auto_update", True))
-        self._reg("st.update", ui.Checkbutton(upd, text=_("Beim Start Updates installieren"),
+        # 1.33: the installed program only looks at start (relupdate) – downloading and installing need clicks
+        self._reg("st.update", ui.Checkbutton(upd, text=_("Beim Start nach Updates suchen") if frozen() else
+                                               _("Beim Start Updates installieren"),
                                                variable=self.update_var, command=self._update_flag_changed)).pack(
             anchor="w")
-        self._reg("st.update_note", ui.Label(upd, text=_("nur über start.bat bzw. die Desktop-Verknüpfung; eigene "
-                                                          "Änderungen werden nie überschrieben"), style="Dim.TLabel",
+        self._reg("st.update_note", ui.Label(upd, text=_("Laden und Installieren nur nach deiner Bestätigung; das "
+                                                          "Setup wird per SHA-256 geprüft") if frozen() else
+                                              _("nur über start.bat bzw. die Desktop-Verknüpfung; eigene "
+                                                "Änderungen werden nie überschrieben"), style="Dim.TLabel",
                                               wraplength=400)).pack(anchor="w", padx=(22, 0))
         ur = ui.Frame(upd)
         ur.pack(fill="x", pady=(6, 0))
@@ -1117,31 +1121,105 @@ class SettingsTab:
         threading.Thread(target=work, daemon=True, name="autostart").start()
 
     # ---------------------------------------------------------- updates (done by start.bat)
-    def check_update(self):
-        """Button: ask GitHub (git fetch) whether there is something new – only on this click."""
+    def check_update(self, quiet: bool = False):
+        """Button: ask GitHub (git fetch) whether there is something new – only on this click. 1.33: the installed
+        program asks for the latest release instead (relupdate.check); ``quiet`` = the look after the start (only
+        an available update is logged)."""
         from . import update
-        if frozen():                              # 1.31: no git checkout – updates come with the installer (stage 5)
-            self.upd_status.set(_("Diese Ausgabe sucht noch nicht selbst nach Updates – neue Versionen gibt es auf "
-                                  "GitHub."))
-            return
         self.upd_btn.state(["disabled"])
         self.upd_apply_btn.pack_forget()
         self.upd_status.set(_("Suche nach Updates …"))
 
         def work():
             try:
-                res = update.check(self.root_dir)
+                if frozen():
+                    from . import relupdate
+                    res = relupdate.check(self.root_dir)
+                else:
+                    res = tuple(update.check(self.root_dir)) + (None,)
             except Exception as e:
-                res = ("error", f"{type(e).__name__}: {e}", False)
-            self.events.put(("upd_check",) + tuple(res))
+                res = ("error", f"{type(e).__name__}: {e}", False, None)
+            self.events.put(("upd_check",) + tuple(res) + (quiet,))
         threading.Thread(target=work, daemon=True, name="update-check").start()
 
-    def _update_checked(self, state, msg, can_apply):
+    def _update_checked(self, state, msg, can_apply, release=None, quiet=False):
         self.upd_btn.state(["!disabled"])
         self.upd_status.set(msg)
-        self._log(msg.splitlines()[0] if msg else "", "System")
+        self._release = release
+        if not quiet or state == "available":
+            self._log(msg.splitlines()[0] if msg else "", "System")
         if state == "available" and can_apply:
             self.upd_apply_btn.pack(side="left", padx=6)
+
+    def _release_check_at_start(self):
+        """1.33: the installed program looks for a new release once after the start – if "Beim Start nach Updates
+        suchen" is on (start.bat does its own check before the program starts)."""
+        if frozen() and self.settings.get("auto_update", True):
+            self.root.after(self.RELEASE_CHECK_DELAY_MS, lambda: self.check_update(quiet=True))
+
+    RELEASE_CHECK_DELAY_MS = 20000
+
+    def _release_download(self):
+        """1.33: "Aktualisieren und neu starten" in the installed program – fetch the setup in a thread and check
+        its SHA-256 (relupdate.download); installing is asked separately (_release_ready)."""
+        rel = getattr(self, "_release", None)
+        if rel is None:
+            return
+        self.upd_apply_btn.state(["disabled"])
+        self.upd_status.set(_("Lade Update …"))
+        last = [0]
+
+        def progress(got, total):
+            pct = int(got * 100 / max(1, total))
+            if pct >= last[0] + 5:
+                last[0] = pct
+                self.events.put(("status_upd", _("Lade Update … {pct} %", pct=pct)))
+
+        def work():
+            from . import relupdate
+            try:
+                path = relupdate.download(rel, self.data_dir, progress=progress)
+            except Exception as e:
+                self.events.put(("upd_failed", _("Update nicht geladen: {error}", error=e)))
+                return
+            self.events.put(("upd_ready", path, rel.version, rel.build))
+        threading.Thread(target=work, daemon=True, name="update-download").start()
+
+    def _release_failed(self, msg):
+        self.upd_apply_btn.state(["!disabled"])
+        self.upd_status.set(msg)
+        self._log(msg, "Fehler")
+
+    def _release_ready(self, path, version, build):
+        """The setup is here and its SHA-256 matches – install only after this question."""
+        self.upd_apply_btn.state(["!disabled"])
+        self.upd_status.set(_("Update {version} (Build {build}) geladen und geprüft.", version=version, build=build))
+        if not self._ask(_("Update installieren"),
+                         _("Fog Scout {version} (Build {build}) ist geladen und per SHA-256 geprüft. Jetzt "
+                           "installieren? Das Programm schliesst sich und startet danach neu.", version=version,
+                           build=build), lambda: self._release_ready(path, version, build), ok_text=_("Installieren")):
+            return
+        self._release_install(path)
+
+    def _release_install(self, path):
+        if self._round_running() or self._clips_saving():
+            msg = _("Update gesperrt: eine Runde läuft oder ein Clip wird gespeichert. Danach noch einmal auf "
+                    "„Aktualisieren und neu starten“ klicken.")
+            self.upd_status.set(msg)
+            self._log(msg, "System")
+            return
+        if not self._quit_phase1(lambda: self._release_install(path)):
+            self.upd_status.set(_("Update wartet: Editor-Projekte werden gesichert …"))
+            return
+        from . import restart
+        try:
+            ok = restart.spawn_installer(path)
+        except OSError as e:
+            self.upd_status.set(_("Neustart nicht möglich: {error}", error=e))
+            return
+        if ok:
+            self._log(_("Programm schliesst sich und installiert das Update …"), "System")
+            self.quit()
 
     def _round_running(self) -> bool:
         """1.8.63: a round is open (map detected, no end yet) or OBS records – no restart for an update now."""
@@ -1190,6 +1268,9 @@ class SettingsTab:
                     "starten“ klicken.")
             self.upd_status.set(msg)
             self._log(msg, "System")
+            return
+        if frozen():                              # 1.33: the release setup – downloaded, checked, then asked
+            self._release_download()
             return
         if not self._quit_phase1(self.apply_update):          # 1.18.1: editor states first – the update follows
             self.upd_status.set(_("Update wartet: Editor-Projekte werden gesichert …"))
