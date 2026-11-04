@@ -1042,11 +1042,9 @@ class SettingsTab:
     def _setup_then_read_autostart(self):
         """Thread: create/renew task, icon and shortcuts if needed, and the logon task unless autostart was
         switched off (only as administrator, no prompt), then read the autostart state for the settings tab.
-        1.31: not for the packaged program – the task and the shortcuts start start.bat; the installer sets up its own
-        (stage 4)."""
-        if frozen():
-            pass
-        elif IS_WIN and is_admin():
+        1.32: the packaged program the same way – its tasks start the .exe (autostart.app_root/frozen_exe); the
+        installer creates them first (--install-tasks), this only renews them."""
+        if IS_WIN and is_admin():
             try:
                 res = autostart.ensure(self.root_dir, self.settings.get("setup_version"),
                                        self.settings.get("setup_root"))
@@ -1064,6 +1062,8 @@ class SettingsTab:
                     "Infobereich).") if auto[0] else _("Autostart mit Windows fehlgeschlagen: {error}", error=auto[1])))
         elif IS_WIN and not autostart.task_exists(autostart.TASK):
             self.events.put(("setup_done", None, _(
+                "Tipp: Fog Scout über die Verknüpfung im Startmenü starten – dann läuft es ohne Windows-Abfrage mit "
+                "den nötigen Rechten.") if frozen() else _(
                 "Tipp: Einmal als Administrator starten (Rechtsklick auf start.bat → „Als Administrator ausführen“) "
                 "– dann richtet das Programm die Desktop-Verknüpfung ein, die künftig ohne Windows-Abfrage startet.")))
         self._read_autostart()
@@ -1071,7 +1071,7 @@ class SettingsTab:
     def _setup_done(self, ok, msg):
         if ok:
             self.settings.set("setup_version", autostart.SETUP_VERSION)
-            self.settings.set("setup_root", os.path.abspath(self.root_dir))
+            self.settings.set("setup_root", os.path.abspath(autostart.app_root(self.root_dir)))
             self._save_soon()
             self._log(_("Desktop-Verknüpfung eingerichtet/aktualisiert: startet ab jetzt ohne Windows-Abfrage."),
                       "System")
@@ -1085,14 +1085,10 @@ class SettingsTab:
         if not IS_WIN:
             self.events.put(("autostart", None, False, _("Nur unter Windows.")))
             return
-        if frozen():
-            self.events.put(("autostart", autostart.task_exists(autostart.TASK_AUTO), False,
-                             _("In dieser Ausgabe noch nicht einstellbar – den Autostart richtet später der Installer "
-                               "ein.")))
-            return
         exists = autostart.task_exists(autostart.TASK_AUTO)
         admin = is_admin()
-        info = ("" if admin else _("Änderbar, wenn das Programm über die Desktop-Verknüpfung gestartet wurde "
+        info = ("" if admin else _("Änderbar, wenn das Programm über die Verknüpfung im Startmenü gestartet wurde.")
+                if frozen() else _("Änderbar, wenn das Programm über die Desktop-Verknüpfung gestartet wurde "
                                    "(verknuepfung_erstellen.bat einmal ausführen)."))
         self.events.put(("autostart", exists, admin, info))
 
