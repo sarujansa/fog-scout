@@ -605,3 +605,27 @@ def test_the_staged_setup_cannot_be_changed_or_deleted_until_it_is_started(tmp_p
     with open(staged, "r+b"):
         pass                                                   # free again once started
     os.remove(staged)
+
+
+def test_a_layered_window_keeps_its_bitmap_while_its_size_stays(root):
+    """1.34.1 (review P1): one memory DC + DIB per window, made again only for another size, freed with it; a fade
+    pushes the same picture again without copying it."""
+    from fogscout import overlay_win32 as ow
+    hud = ow.HudWindow()
+    rows = [[("CPU ", (210, 214, 224, 255)), ("62°C", (134, 239, 172, 255))]]
+    hud.render(rows, 1440)
+    hud.show_at(30, 30)
+    pump()
+    surf = hud._surface
+    dc, data = surf._dc, surf._data
+    assert dc and data is hud._data and not hud.last_error
+    hud.set_fade(0.5)                                          # the same bytes: no copy, same bitmap
+    assert surf._dc == dc and surf._data is data
+    hud.render([[("CPU ", (210, 214, 224, 255)), ("62°C", (250, 204, 21, 255))]], 1440)   # same text, other colour
+    hud.show_at(30, 30)
+    assert surf._dc == dc and surf._data is hud._data         # same size, new pixels: copied into the same DIB
+    hud.render(rows + rows, 1440)
+    hud.show_at(30, 30)
+    assert surf._size == hud.size and not hud.last_error      # another size: a new bitmap
+    hud.destroy()
+    assert surf._dc is None

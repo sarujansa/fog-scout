@@ -52,6 +52,36 @@ def parse(pkt: bytes):
     return socket.inet_ntoa(pkt[12:16]), socket.inet_ntoa(pkt[16:20]), sport, dport
 
 
+_NAMES = {}                  # 1.34.1 (review P2): 4 address bytes -> dotted text, made once per partner
+
+
+def feed(table, t: float, local_b: bytes, local: str, buf, n: int) -> None:
+    """1.34.1 (review P2): one received packet, ``n`` bytes in ``buf`` (the helper's one receive buffer), into
+    ``table`` – the same header fields as parse(), but anything that is not IPv4/UDP is dropped at its first bytes,
+    and the addresses are compared as bytes; only the partner's becomes text, once per partner."""
+    if n < 20 or buf[0] >> 4 != 4 or buf[9] != 17:
+        return
+    ihl = (buf[0] & 0x0F) * 4
+    if ihl < 20 or n < ihl + 4 or ((buf[6] << 8) | buf[7]) & 0x1FFF:     # later fragment: no UDP header
+        return
+    sport, dport = (buf[ihl] << 8) | buf[ihl + 1], (buf[ihl + 2] << 8) | buf[ihl + 3]
+    src, dst = bytes(buf[12:16]), bytes(buf[16:20])
+    if src == local_b:
+        peer, port, lport, way = dst, dport, sport, "sent"
+    elif dst == local_b:
+        peer, port, lport, way = src, sport, dport, "recv"
+    else:
+        return
+    if port in IGNORE_PORTS:
+        return
+    name = _NAMES.get(peer)
+    if name is None:
+        if len(_NAMES) > 4096:           # bounded like _PUBLIC
+            _NAMES.clear()
+        name = _NAMES[peer] = socket.inet_ntoa(peer)
+    table.count(t, name, port, lport, way)
+
+
 _PUBLIC = {}                 # ip -> is_global; the same few partners come again thousands of times per second
 
 
@@ -89,7 +119,13 @@ class FlowTable:
             remote, port, lport, way = src, sport, dport, "recv"
         else:
             return
-        if port in IGNORE_PORTS or not is_public(remote):
+        if port in IGNORE_PORTS:
+            return
+        self.count(t, remote, port, lport, way)
+
+    def count(self, t: float, remote: str, port: int, lport: int, way: str) -> None:
+        """One packet ``way`` ("sent"/"recv") with the partner ``remote`` (only public ones are kept)."""
+        if not is_public(remote):
             return
         f = self.flows.get(remote)
         if f is None:
@@ -211,18 +247,18 @@ def watch(control: str, result: str) -> None:
                 raise OSError(f"Windows unterstützt den Mitschnitt nur des eigenen Verkehrs (RCVALL_IPLEVEL) "
                               f"hier nicht ({e}). Der Promiscuous-Modus wird bewusst nicht verwendet.") from e
             s.settimeout(0.5)
+            buf = bytearray(65535)                       # 1.34.1 (review P2): one buffer, not 64 KB per packet
+            local_b = socket.inet_aton(local)
             next_write = next_check = 0.0
             rebind_at = time.time() + REBIND_EVERY
             while True:
                 try:
-                    pkt = s.recv(65535)
+                    n = s.recv_into(buf)
                 except socket.timeout:
-                    pkt = None
+                    n = 0
                 now = time.time()
-                if pkt:
-                    p = parse(pkt)
-                    if p:
-                        table.add(now, local, p)
+                if n:
+                    feed(table, now, local_b, local, buf, n)
                 if now >= next_check:
                     if not keep_running(control, now):
                         return

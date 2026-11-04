@@ -715,8 +715,10 @@ DARK_SHARE = 0.85       # loading screen: share of near-black pixels in the uppe
 
 def is_dark(frame) -> bool:
     """Almost black upper picture (loading screen: black with the white logo). A player lying on the
-    ground has a progress bar and a nearly still picture too – but the lit game world around them."""
-    g = cv2.cvtColor(_region(frame, 0.0, 0.0, 1.0, 0.70), cv2.COLOR_BGR2GRAY)
+    ground has a progress bar and a nearly still picture too – but the lit game world around them. 1.34.1 (review
+    P7): every 4th pixel each way, like _still – the share of a 2.6 MP region from 160 000 pixels (measured 0.95 on
+    the loading screen, 0.75 on the darkest game picture: far from the 0.85 line)."""
+    g = cv2.cvtColor(np.ascontiguousarray(_region(frame, 0.0, 0.0, 1.0, 0.70)[::4, ::4]), cv2.COLOR_BGR2GRAY)
     return g.size > 0 and float((g < 12).mean()) >= DARK_SHARE
 
 

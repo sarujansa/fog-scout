@@ -50,3 +50,55 @@ def test_a_screen_grab_turns_mss_bgra_into_writable_bgr():
         assert img.shape == (4, 5, 3) and np.array_equal(img, px[:, :, :3])
         img[0, 0] = 0                                                   # writable, and not mss' buffer
         assert raw[0] == px[0, 0, 0]
+
+
+def test_a_known_dbd_window_is_checked_and_all_windows_searched_only_every_10_s(monkeypatch):
+    """1.34.1 (review P4): App and worker asked for the DBD window 2× a second, each time through every window on the
+    desktop – now the window they know is checked (still there, still DBD) and measured again; all windows are
+    searched when it is gone and at least every FULL_SCAN_S."""
+    from types import SimpleNamespace
+    from fogscout import capture
+    clock, enums, alive = [1000.0], [], {77}
+
+    class User32:
+        def EnumWindows(self, cb, _lp):
+            enums.append(clock[0])
+            for hwnd in sorted(alive):
+                cb(hwnd, 0)
+            return True
+
+        def IsWindow(self, hwnd):
+            return hwnd in alive
+
+        def IsIconic(self, hwnd):
+            return False
+
+    monkeypatch.setattr(capture, "IS_WIN", True)
+    monkeypatch.setattr(capture, "user32", User32(), raising=False)
+    monkeypatch.setattr(capture, "WNDENUMPROC", lambda f: f, raising=False)
+    monkeypatch.setattr(capture, "is_game_window", lambda hwnd: hwnd in alive)
+    monkeypatch.setattr(capture, "_client_rect", lambda hwnd: (0, 0, 3440, 1440))
+    monkeypatch.setattr(capture, "window_geometry", lambda hwnd: ((0, 0, 3440, 1440), None, None, None))
+    monkeypatch.setattr(capture, "_window_text", lambda hwnd: "DeadByDaylight")
+    monkeypatch.setattr(capture, "foreground_root", lambda: 77)
+    monkeypatch.setattr(capture.time, "monotonic", lambda: clock[0])
+    win = capture.find_game_window()
+    assert win.hwnd == 77 and enums == [1000.0]
+    for _ in range(18):                                  # 9 s at the App's and the worker's pace
+        clock[0] += 0.5
+        win = capture.find_game_window(win)
+        assert win.hwnd == 77 and win.width == 3440
+    assert enums == [1000.0]                             # only checked
+    clock[0] += 1.0
+    win = capture.find_game_window(win)
+    assert enums == [1000.0, 1010.0]                     # FULL_SCAN_S: every window once more
+    alive.clear()
+    alive.add(91)                                        # DBD restarted: the known window is gone
+    clock[0] += 0.5
+    win = capture.find_game_window(win)
+    assert win.hwnd == 91 and enums[-1] == 1010.5
+    assert len(enums) == 3
+    assert capture.find_game_window(SimpleNamespace(hwnd=91)).hwnd == 91   # a window without its search time
+    assert len(enums) == 4                                                  # (a test's fake): searched
+    alive.clear()
+    assert capture.find_game_window(win) is None
