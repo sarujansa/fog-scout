@@ -62,6 +62,12 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""Fog Scout"""; Flags: run
 [UninstallRun]
 Filename: "{app}\FogScout.exe"; Parameters: "--remove-tasks"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveTasks"
 
+; 1.34 (review S1): the program starts an update setup only from a copy in {app}\update (admins only, see
+; fogscout/restart.py staged_setup). Removed with the program; only that folder, never the data folder.
+[UninstallDelete]
+Type: files; Name: "{app}\update\*"
+Type: dirifempty; Name: "{app}\update"
+
 [Code]
 const
   MutexName = 'Local\FogScout.SingleInstance';   { fogscout/restart.py MUTEX_NAME }
