@@ -236,7 +236,9 @@ def test_a_redirect_to_plain_http_is_refused():
     """Audit M-2: urllib follows https → http by default; the updater does not."""
     import urllib.error
     import urllib.request
-    handler = relupdate._HttpsOnly()
+    from fogscout import net
+    handler = net.SafeRedirect()                      # 1.33.5: the program's one opener (net.py)
+    assert isinstance(relupdate._opener(), urllib.request.OpenerDirector)
     req = urllib.request.Request("https://github.com/x")
     with pytest.raises(urllib.error.URLError):
         handler.redirect_request(req, None, 302, "Found", {}, "http://example.com/setup.exe")
@@ -357,6 +359,9 @@ def test_only_a_push_to_main_publishes_and_only_that_job_may_write():
     assert 'gh release delete "$t" --cleanup-tag --yes' in release
     assert '[[ "$t" =~ ^build-[0-9]+$ ]] && [ "$t" != "$TAG" ]' in release
     assert release.index("gh release create") < release.index("gh release delete")   # the new one exists first
+    # 1.33.5: tags left behind by releases deleted on the website go too – only build-<N>, never this one
+    assert 'gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$t"' in release
+    assert release.count('[[ "$t" =~ ^build-[0-9]+$ ]] && [ "$t" != "$TAG" ]') == 2
     assert relupdate.TAG.match("build-123") and relupdate.SETUP.match("FogScout-Setup-1.33.exe")
     assert "build-info.json" in wf and "GITHUB_RUN_NUMBER" in wf
     with open(os.path.join(ROOT, "installer", "fogscout.spec"), encoding="utf-8") as fh:

@@ -391,7 +391,8 @@ def myc_firewall_active() -> bool:
         return False
     try:
         import subprocess
-        r = subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule", "name=MakeYourChoice RegionLock 1"],
+        from .paths import system_exe
+        r = subprocess.run([system_exe("netsh.exe"), "advfirewall", "firewall", "show", "rule", "name=MakeYourChoice RegionLock 1"],
                            capture_output=True, timeout=8, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         out = r.stdout.decode("mbcs", errors="replace")
         return r.returncode == 0 and "MakeYourChoice RegionLock" in out

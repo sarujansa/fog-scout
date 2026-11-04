@@ -256,16 +256,18 @@ def test_ensure_keeps_an_autostart_that_ran_under_the_old_name(monkeypatch):
     monkeypatch.setattr(au, "install", lambda root: calls.append("install") or (True, "ok"))
     monkeypatch.setattr(au, "set_autostart", lambda root, on: calls.append(("autostart", on)) or (True, ""))
     assert au.ensure(ROOT, 5, ROOT) == (True, "ok") and calls == ["install", ("autostart", True)]
-    assert au.SETUP_VERSION == 7                                  # a renewed setup for every installation
+    assert au.SETUP_VERSION == 8                                  # 1.33.5: tasks renewed with cmd.exe by its real path
 
 
 def test_the_shortcut_and_the_window_point_at_the_same_task_and_icon(monkeypatch, tmp_path):
     """1.9.1 (user's screenshot: the Python icon on the taskbar after the rename): the window carries relaunch
     properties with the task command and the versioned icon file – what the shortcuts carry too."""
     from fogscout import icon
-    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    from fogscout import paths
+    monkeypatch.setenv("SystemRoot", r"C:\Elsewhere")             # 1.33.5: never taken from the environment
     cmd = au.relaunch_command()
-    assert cmd == r'"C:\Windows\System32\schtasks.exe" /run /tn "Fog Scout"'
+    assert cmd == f'"{paths.system_exe("schtasks.exe")}" /run /tn "Fog Scout"' and "Elsewhere" not in cmd
+    assert cmd.lower().endswith(r'\system32\schtasks.exe" /run /tn "fog scout"')
     assert au.shortcut_script(ROOT, "", "Desktop").count("'/run /tn \"Fog Scout\"'") == 1
     assert icon.FILE == "fogscout-2.ico" and icon.FILE not in icon.OLD_FILES
     s = au.shortcut_script(ROOT, os.path.join(ROOT, icon.FILE))

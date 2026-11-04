@@ -34,7 +34,7 @@ from . import icon as icon_mod
 from .appid import set_link_app_id
 from .i18n import _
 
-SETUP_VERSION = 7           # raise when task, shortcut or icon change: the program then renews them itself
+SETUP_VERSION = 8           # raise when task, shortcut or icon change: the program then renews them itself
 TASK = "Fog Scout"
 TASK_AUTO = "Fog Scout (Autostart)"
 LINK_NAME = "Fog Scout.lnk"
@@ -75,7 +75,9 @@ def task_script(root: str, name: str, at_logon: bool, exe: str | None = None) ->
         # Explicit cmd /c closes it. 1.8.45: start.bat by its name in the working directory (-WorkingDirectory,
         # which start passes on) – a folder with "&" or "%" on the command line broke the task.
         arg = '/c start "" /min cmd /c .\\start.bat' + (" tray" if at_logon else "")
-        action = (f"$a = New-ScheduledTaskAction -Execute \"$env:SystemRoot\\System32\\cmd.exe\" -Argument {_q(arg)} "
+        # 1.33.5 (review S5): cmd.exe by the path Windows gives, not the SystemRoot variable – the elevated task would run
+        # whatever a normal program set that variable to
+        action = (f"$a = New-ScheduledTaskAction -Execute {_q(_system_exe('cmd.exe'))} -Argument {_q(arg)} "
                   f"-WorkingDirectory {_q(root)}")
     lines = [
         "$ErrorActionPreference = 'Stop'",
@@ -116,8 +118,8 @@ def relaunch_command() -> str:
     from .paths import frozen, installed
     if frozen() and not installed():
         return f'"{sys.executable}"'
-    system_root = (os.environ.get("SystemRoot") or r"C:\Windows").rstrip("\\/")
-    return f'"{system_root}\\System32\\schtasks.exe" /run /tn "{TASK}"'
+    from .paths import system_exe
+    return f'"{system_exe("schtasks.exe")}" /run /tn "{TASK}"'
 
 
 def shortcut_script(root: str, icon: str, folder: str = "Desktop") -> str:
@@ -127,7 +129,7 @@ def shortcut_script(root: str, icon: str, folder: str = "Desktop") -> str:
         "$ErrorActionPreference = 'Stop'",
         f"$lnk = Join-Path ([Environment]::GetFolderPath({_q(folder)})) {_q(LINK_NAME)}",
         "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)",
-        "$s.TargetPath = \"$env:SystemRoot\\System32\\schtasks.exe\"",
+        f"$s.TargetPath = {_q(_system_exe('schtasks.exe'))}",
         f"$s.Arguments = {_q(run_args)}",
         f"$s.WorkingDirectory = {_q(os.path.abspath(root))}",
         "$s.WindowStyle = 7",
@@ -139,11 +141,17 @@ def shortcut_script(root: str, icon: str, folder: str = "Desktop") -> str:
     return "\n".join(lines)
 
 
+def _system_exe(*parts: str) -> str:
+    """1.33.5 (review S4/S5): Windows' own programs by full path – never through PATH or the current folder."""
+    from .paths import system_exe
+    return system_exe(*parts)
+
+
 def powershell(script: str, timeout: float = 60.0):
     """Run a PowerShell script (encoded: no quoting trouble). Returns (ok, output)."""
     enc = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     try:
-        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+        r = subprocess.run([_system_exe("WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                             "-EncodedCommand", enc], capture_output=True, text=True, timeout=timeout,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -156,7 +164,7 @@ def task_exists(name: str) -> bool:
     if not IS_WIN:
         return False
     try:
-        r = subprocess.run(["schtasks", "/Query", "/TN", name], capture_output=True,
+        r = subprocess.run([_system_exe("schtasks.exe"), "/Query", "/TN", name], capture_output=True,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=15)
         return r.returncode == 0
     except (OSError, subprocess.TimeoutExpired):

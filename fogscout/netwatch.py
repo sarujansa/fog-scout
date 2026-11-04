@@ -150,13 +150,47 @@ def keep_running(control: str, now: float) -> bool:
         return False
 
 
+def _open_result(path: str):
+    """1.33.5 (review S6): the result file the (normal) program created for this elevated helper – written only if
+    it is still a plain file with one name, never through a link or a second hard link onto someone else's file.
+    Opened without following links, checked, then truncated; PermissionError otherwise. Kept in step with
+    fsops.open_plain_for_write (tests/test_fsops.py) – this script runs on its own (-I -S), it cannot import it."""
+    if sys.platform == "win32":
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                                  wintypes.DWORD, wintypes.HANDLE]
+        k.CreateFileW.restype = wintypes.HANDLE
+        k.GetFileInformationByHandle.argtypes = [wintypes.HANDLE, wintypes.LPVOID]
+        k.CloseHandle.argtypes = [wintypes.HANDLE]
+        # GENERIC_WRITE | FILE_READ_ATTRIBUTES, share read, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT
+        h = k.CreateFileW(path, 0x40000000 | 0x80, 0x1, None, 3, 0x00200000, None)
+        if h in (None, -1, 2 ** 64 - 1, 2 ** 32 - 1):
+            raise ctypes.WinError(ctypes.get_last_error())
+        info = (wintypes.DWORD * 13)()            # BY_HANDLE_FILE_INFORMATION: [0] attributes, [10] links
+        if not k.GetFileInformationByHandle(h, info) or info[0] & 0x410 or info[10] != 1:
+            k.CloseHandle(h)                      # REPARSE_POINT | DIRECTORY, or a second name
+            raise PermissionError(13, "not a plain file", path)
+        fd = msvcrt.open_osfhandle(h, os.O_WRONLY)
+    else:
+        import stat
+        fd = os.open(path, os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0))
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+            os.close(fd)
+            raise PermissionError(13, "not a plain file", path)
+    os.ftruncate(fd, 0)
+    return os.fdopen(fd, "w", encoding="utf-8")
+
+
 def write(result: str, data: dict) -> None:
     """Overwrite the result file in place. It was created by the (non-elevated) program, so it keeps its
     owner and the program can read it; a file the program already removed is not created again."""
     try:
-        with open(result, "r+", encoding="utf-8") as fh:
+        with _open_result(result) as fh:            # 1.33.5 (S6): never through a link
             json.dump(data, fh)
-            fh.truncate()
     except OSError:
         pass
 

@@ -34,7 +34,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 
-from . import launch, obsoverlay
+from . import fsops, launch, obsoverlay
 from .i18n import _
 
 log = logging.getLogger("fogscout")
@@ -532,7 +532,7 @@ def prune_farming(folder: str, recs: list[Recording], days: int, now: float | No
             p = rel_path(folder, n) if n else None
             if p and os.path.exists(p):
                 try:
-                    os.remove(p)
+                    fsops.delete_inside(folder, p)      # 1.33.5 (S2): never through a link out of the folder
                     deleted.append(n)
                 except OSError:
                     pass
@@ -578,7 +578,7 @@ def prune(folder: str, recs: list[Recording], limit: int, reserve: int = RESERVE
             p = rel_path(folder, n) if n else None                        # only inside the folder
             if p:
                 try:
-                    os.remove(p)
+                    fsops.delete_inside(folder, p)                        # 1.33.5 (S2): and no link out of it
                     deleted.append(n)
                 except OSError:
                     pass
@@ -825,7 +825,7 @@ def settle_parts(folder: str, now: float | None = None) -> list[str]:
         done = whole(p)
         if done is False:
             try:
-                os.remove(p)
+                fsops.delete_inside(folder, p)                   # 1.33.5 (S2)
             except OSError:
                 pass
         if not done:
@@ -1108,8 +1108,10 @@ def obs_exe(registry=None, env=None) -> str | None:
     """1.8.47: obs64.exe – the folder the OBS installer stores in HKLM\\SOFTWARE\\OBS Studio, else the usual one in
     Program Files. Absolute paths only (the program runs as administrator), never PATH or the current folder.
     ``registry``/``env`` for tests."""
-    env = os.environ if env is None else env
     folders = list(registry if registry is not None else _obs_registry())
+    if env is None:                                  # 1.33.5 (review S5): Program Files from Windows, not %ProgramFiles%
+        from .paths import known_folder
+        env = {"ProgramFiles": known_folder("ProgramFiles")}
     for var in ("ProgramW6432", "ProgramFiles"):
         if env.get(var):
             folders.append(os.path.join(env[var], "obs-studio"))
@@ -1539,7 +1541,7 @@ class Recorder(threading.Thread):
             p = rel_path(folder, n) if n else None                        # only inside the folder
             if p:
                 try:
-                    os.remove(p)
+                    fsops.delete_inside(folder, p)                        # 1.33.5 (S2): and no link out of it
                     gone.append(n)
                 except FileNotFoundError:
                     pass
@@ -1585,7 +1587,7 @@ class Recorder(threading.Thread):
         if hit is None:
             return                                          # someone else's file: never
         try:
-            os.remove(os.path.join(cdir, name))
+            fsops.delete_inside(folder, os.path.join(cdir, name))        # 1.33.5 (S2): Clips/ no link either
         except FileNotFoundError:
             pass
         except OSError as e:
