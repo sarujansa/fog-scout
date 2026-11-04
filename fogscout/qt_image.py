@@ -8,19 +8,20 @@ The canvas is the clip editor's PreviewView: it draws the censor boxes, the draw
 turned and colour-adjusted picture exactly as imageedit.render will."""
 from __future__ import annotations
 
+import logging
 import os
 import threading
 
 from PIL import Image
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QTabWidget,
                                QVBoxLayout, QWidget)
 
-from . import annotate, imageedit, launch, qt_theme
+from . import annotate, askclaude, imageclaude, imageedit, launch, qt_theme
 from .i18n import N_, _
 from .qt_clip import DRAW_TOOLS, SIZE_LABELS, PreviewView
-from .qt_common import guard_wheel
+from .qt_common import PlainLabel, guard_wheel
 from .qt_layouts import FlowRow
 
 CENSOR_LABELS = {"pixel": N_("Verpixelt"), "blur": N_("Verwischt"), "black": N_("Schwarz")}
@@ -43,6 +44,21 @@ def qimage(img: Image.Image) -> QImage:
     img = img.convert("RGB")
     w, h = img.size
     return QImage(img.tobytes(), w, h, w * 3, QImage.Format_RGB888).copy()
+
+
+class _ClaudeBridge(QObject):
+    """1.35: Claude's answer from the asking thread into the window's thread."""
+    answer = Signal(object)
+
+
+CLAUDE_ERRORS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
+                         "(„API-Key holen“ öffnet die Anthropic Console)."),
+                 "rate": N_("Claude: Zu viele Anfragen – gleich noch einmal versuchen."),
+                 "quota": N_("Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › "
+                          "„Guthaben aufladen“."),
+                 "refused": N_("Claude hat die Frage abgelehnt."),
+                 "bad": N_("Claude hat unverständlich geantwortet."),
+                 "net": N_("Claude ist nicht erreichbar – keine Internetverbindung?")}
 
 
 class ImageWindow(QWidget):
@@ -81,6 +97,10 @@ class ImageWindow(QWidget):
         self._save_timer = QTimer(self)
         self._save_timer.setInterval(SAVE_POLL_MS)
         self._save_timer.timeout.connect(self._save_poll)
+        self.claude_key = lambda: ""       # 1.35: set by the App – the key while „Bilder an Claude“ is on, else ""
+        self._claude_seq, self._claude_base, self._claude_result, self._claude_busy = 0, None, None, False
+        self._claude_bridge = _ClaudeBridge(self)
+        self._claude_bridge.answer.connect(self._claude_answer)
         self._build()
         self.resize(1280, 860)
         self.setMinimumSize(900, 620)
@@ -150,6 +170,7 @@ class ImageWindow(QWidget):
         self.tools.addTab(self._draw_page(), _("Zeichnen"))
         self.tools.addTab(self._censor_page(), _("Zensieren"))
         self.tools.addTab(self._colour_page(), _("Farbe"))
+        self.tools.addTab(self._claude_page(), _("Claude"))
         self.tools.currentChanged.connect(self._tab_changed)
         side.addWidget(self.tools)
         side.addStretch()
@@ -322,6 +343,155 @@ class ImageWindow(QWidget):
         pl.addLayout(r)
         return page
 
+    def _claude_page(self):
+        """1.35: „Mit Claude bearbeiten“ – the wish and the picture go to Claude only on „Vorschlagen“."""
+        page, pl = self._page()
+        self.cl_field = QLineEdit()
+        self.cl_field.setPlaceholderText(_("z. B. Spielernamen verpixeln, auf 16:9 zuschneiden, etwas heller"))
+        self.cl_field.setMaxLength(imageclaude.MAX_REQUEST)
+        self.cl_field.returnPressed.connect(self.claude_ask)
+        pl.addWidget(self.cl_field)
+        r = QHBoxLayout()
+        self.cl_ask_btn = self._btn(r, _("Vorschlagen"), self.claude_ask,
+                                    _("Schickt deine Bitte und das Bild, wie es hier zu sehen ist (bereits zensierte "
+                                      "Bereiche bleiben zensiert), an Claude; nichts wird geändert, bevor du "
+                                      "übernimmst."))
+        r.addStretch()
+        pl.addLayout(r)
+        self.cl_status = PlainLabel("", "dim")
+        pl.addWidget(self.cl_status)
+        self.cl_list = PlainLabel("")
+        self.cl_list.hide()
+        pl.addWidget(self.cl_list)
+        r = QHBoxLayout()
+        self.cl_take_btn = self._btn(r, _("Übernehmen"), self.claude_take,
+                                     _("Führt die vorgeschlagenen Schritte aus – ein Schritt zum Rückgängigmachen "
+                                       "(Strg+Z)."))
+        self.cl_take_btn.setObjectName("primary")
+        self.cl_drop_btn = self._btn(r, _("Verwerfen"), self.claude_drop,
+                                     _("Vergisst den Vorschlag; das Bild bleibt, wie es ist."))
+        r.addStretch()
+        pl.addLayout(r)
+        hint = PlainLabel(_("Das Bild kann Spielernamen zeigen – es geht nur auf Klick an Claude "
+                            "(api.anthropic.com), verkleinert und nur im Speicher."), "dim")
+        pl.addWidget(hint)
+        self._claude_buttons(False)
+        return page
+
+    def _claude_buttons(self, shown: bool):
+        for b in (self.cl_take_btn, self.cl_drop_btn):
+            b.setVisible(shown)
+
+    def _claude_refresh(self):
+        """Field and button follow the permission (the App may switch it while the window is open)."""
+        on = bool(self.claude_key()) and self.original is not None
+        self.cl_field.setEnabled(on)
+        self.cl_ask_btn.setEnabled(on and not self._claude_busy)
+        if not on and self._claude_result is None and not self._claude_busy:
+            self.cl_status.setText(_("Aus – in Einstellungen › Verbindungen › Claude „Bilder im Bild-Editor an "
+                                     "Claude schicken“ einschalten und einen API-Key eintragen."))
+            self._claude_off_shown = True
+        elif on and getattr(self, "_claude_off_shown", False):
+            self._claude_off_shown = False
+            self.cl_status.setText("")
+
+    def claude_ask(self):
+        if self._claude_busy or self.original is None:
+            return
+        key = self.claude_key()
+        wish = self.cl_field.text().strip()
+        if not key or not wish:
+            self._claude_refresh()
+            return
+        try:
+            block = askclaude.image_block(imageclaude.picture(self.original, self.edit))
+        except (ValueError, OSError):
+            self.cl_status.setText(_("Das Bild lässt sich nicht für Claude verkleinern."))
+            return
+        self._claude_seq += 1
+        seq, base, size = self._claude_seq, self.edit.copy(), self._turned_size()
+        self._claude_base, self._claude_result, self._claude_busy = base, None, True
+        self.cl_ask_btn.setEnabled(False)
+        self._claude_buttons(False)
+        self.cl_list.hide()
+        self.cl_status.setText(_("Claude denkt nach …"))
+        emit, text = self._claude_bridge.answer.emit, imageclaude.content(wish)
+
+        def work():
+            try:
+                emit((seq, base, size, askclaude.request(key, imageclaude.SYSTEM, text, imageclaude.SCHEMA,
+                                                         images=[block]), None))
+            except askclaude.AskError as e:
+                emit((seq, base, size, None, e.kind))
+            except Exception as e:                       # only the kind – never the wish, the picture or the key
+                logging.getLogger(__name__).warning("Claude im Bild-Editor: unerwarteter Fehler %s",
+                                                    e.__class__.__name__)
+                emit((seq, base, size, None, "bad"))
+        threading.Thread(target=work, name="claude-image", daemon=True).start()
+
+    def _claude_answer(self, item):
+        seq, base, size, data, error = item
+        if seq != self._claude_seq:
+            return
+        self._claude_busy = False
+        try:
+            self._claude_show(base, size, data, error)
+        except Exception:                                # never left on „Claude denkt nach …“
+            self._claude_result = None
+            self._claude_buttons(False)
+            self.cl_status.setText(_(CLAUDE_ERRORS["bad"]))
+        finally:
+            self._claude_refresh()
+
+    def _claude_show(self, base, size, data, error):
+        if error is not None:
+            self.cl_status.setText(_(CLAUDE_ERRORS.get(error, CLAUDE_ERRORS["net"])))
+            return
+        if self.edit != base:
+            self.cl_status.setText(_("Das Bild hat sich inzwischen geändert – bitte neu vorschlagen."))
+            return
+        try:
+            new, done, skipped = imageclaude.apply(base, data.get("ops"), size)
+        except ValueError:
+            self.cl_list.hide()
+            self.cl_status.setText(_(CLAUDE_ERRORS["bad"]))
+            return
+        summary = " ".join(str(data.get("summary") or "").split())[:300]
+        lines = ["• " + _(w, **kw) for _op, (w, kw) in done]
+        lines += ["– " + _("übersprungen: {why}", why=_(w, **kw)) for _op, (w, kw) in skipped]
+        self.cl_list.setText("\n".join(lines))
+        self.cl_list.setVisible(bool(lines))
+        if not done or new == base:
+            self.cl_status.setText(summary or _("Claude hat keinen passenden Schritt gefunden."))
+            return
+        self._claude_result = new
+        self.cl_status.setText(summary)
+        self._claude_buttons(True)
+
+    def claude_take(self):
+        new, base = self._claude_result, self._claude_base
+        if new is None:
+            return
+        if self.edit != base:
+            self.claude_drop()
+            self.cl_status.setText(_("Das Bild hat sich inzwischen geändert – bitte neu vorschlagen."))
+            return
+        self._snapshot()                                 # one step back with Ctrl+Z
+        self.edit = new.copy()
+        self._step = None
+        self._sync_crop_box()
+        self._refresh(frame=True)
+        self._claude_result = None
+        self._claude_buttons(False)
+        self.cl_list.hide()
+        self.cl_status.setText(_("Übernommen – Strg+Z macht es rückgängig."))
+
+    def claude_drop(self):
+        self._claude_result = None
+        self._claude_buttons(False)
+        self.cl_list.hide()
+        self.cl_status.setText("")
+
     # ---- state
     def _snapshot(self, step=None):
         """Before a change: the edit as it was, for undo. ``step``: what the change was, while more of the same
@@ -465,6 +635,8 @@ class ImageWindow(QWidget):
         if page != 2 and self.censor_tool.isChecked():
             self.censor_tool.setChecked(False)
             self.canvas.set_editing(False)
+        if page == 4:                                    # 1.35: the App may switch Claude while the window is open
+            self._claude_refresh()
 
     def _crop_picked(self, _i):
         if self.original is None:

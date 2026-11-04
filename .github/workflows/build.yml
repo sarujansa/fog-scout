@@ -56,6 +56,9 @@ jobs:
           $p = Start-Process -FilePath "dist\FogScout\FogScout.exe" -ArgumentList "--selftest", "`"$out`"" -Wait -PassThru
           if (Test-Path $out) { Get-Content $out } else { Write-Output "keine Ergebnisdatei" }
           if ($p.ExitCode -ne 0) { throw "Selbsttest fehlgeschlagen (Code $($p.ExitCode))" }
+          # 1.35: start times of the packaged program on Windows (shown only – no limit, runners are shared)
+          $st = (Get-Content $out -Raw | ConvertFrom-Json).start
+          Write-Output ("Start: bis Python {0} ms, alle Module {1} ms" -f $st.python_ms, $st.modules_ms)
           # the elevated helpers are the .exe itself; without its two files a helper only prints usage (code 2)
           $h = Start-Process -FilePath "dist\FogScout\FogScout.exe" -ArgumentList "--helper", "hostsedit" -Wait -PassThru
           if ($h.ExitCode -ne 2) { throw "--helper hostsedit: Code $($h.ExitCode) statt 2" }

@@ -190,6 +190,9 @@ def collect(app) -> str:
     if yt is not None:
         lines.append(yt.diag_line() + f" (ID gesetzt={bool(app.settings.get('youtube_client_id'))}, "
                      f"Sichtbarkeit={app.settings.get('youtube_privacy')})")
+    clock = getattr(app, "start_clock", None)             # 1.35: how long the start took, in phases
+    if clock is not None:
+        lines.append(clock.diag())
     if hasattr(app, "_claude_diag"):                      # 1.26: counts only – never the key or a question
         lines.append(app._claude_diag())
     mon = getattr(app, "sysmon", None)
