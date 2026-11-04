@@ -144,17 +144,19 @@ def _opener():
     return OPENER
 
 
-def image_block(img) -> dict:
-    """1.35: a PIL picture as an image content block – RGB, the long side at most IMAGE_SIDE, JPEG in memory,
-    base64 without line breaks. Nothing is written to disk. ValueError when it stays too large."""
+def image_block(img, side: int = IMAGE_SIDE) -> dict:
+    """1.35: a PIL picture as an image content block – RGB, the long side at most ``side`` (IMAGE_SIDE), JPEG in
+    memory, base64 without line breaks. Nothing is written to disk. ValueError when it stays too large. 1.37: the
+    highlight search sends many small stills (highlights.STILL_SIDE)."""
     import base64
     import io
 
     from PIL import Image
     pic = img.convert("RGB")
-    if max(pic.size) > IMAGE_SIDE:
+    side = max(64, min(int(side), IMAGE_SIDE))
+    if max(pic.size) > side:
         pic = pic.copy()
-        pic.thumbnail((IMAGE_SIDE, IMAGE_SIDE), Image.LANCZOS)
+        pic.thumbnail((side, side), Image.LANCZOS)
     buf = io.BytesIO()
     pic.save(buf, "JPEG", quality=IMAGE_QUALITY)
     data = buf.getvalue()
@@ -252,9 +254,12 @@ def send(key: str, payload: dict, timeout: float = HTTP_TIMEOUT) -> dict:
 
 
 def request(key: str, system: str, content, schema: dict, max_tokens: int = MAX_TOKENS, images=()) -> dict:
-    """1.27: one structured request – the answer's JSON object, or AskError. 1.35: with ``images``."""
+    """1.27: one structured request – the answer's JSON object, or AskError. 1.35: with ``images``. 1.37: pictures
+    inside ``content`` (labelled stills) get the longer timeout as well."""
+    pictures = bool(images) or (isinstance(content, (list, tuple))
+                                and any(isinstance(b, dict) and b.get("type") == "image" for b in content))
     return reply_json(send(key, request_body(system, content, schema, max_tokens, images),
-                           IMAGE_TIMEOUT if images else HTTP_TIMEOUT))
+                           IMAGE_TIMEOUT if pictures else HTTP_TIMEOUT))
 
 
 def ask(key: str, question: str, catalogue) -> tuple[str, list[str]]:
