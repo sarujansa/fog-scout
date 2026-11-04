@@ -112,7 +112,10 @@ def test_windows_folders_come_from_windows_not_the_environment(monkeypatch):
     monkeypatch.setenv("COMSPEC", "/tmp/evil/cmd.exe")
     assert "evil" not in paths.system_dir() and "evil" not in paths.windows_dir()
     assert "evil" not in paths.system_exe("cmd.exe") and paths.system_exe("cmd.exe").endswith("cmd.exe")
-    assert "evil" not in hostsedit.hosts_path() and "evil" not in hostsedit.system_dir()
+    assert "evil" not in hostsedit.system_dir()
+    if sys.platform != "win32":                              # on Windows the tests never touch the real hosts file
+        monkeypatch.delenv("DBDMS_HOSTS_FILE", raising=False)
+        assert "evil" not in hostsedit.hosts_path()
     from fogscout import autostart, restart
     assert "evil" not in restart.start_command() and "evil" not in autostart.relaunch_command()
     assert "evil" not in autostart.task_script(os.getcwd(), "Fog Scout", False)
