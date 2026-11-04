@@ -696,7 +696,7 @@ def test_marked_rounds_open_as_one_montage_listed_in_the_library(app_root, tmp_p
     it there brings up the window open on it."""
     import subprocess
     import time
-    from fogscout import obsrec, project
+    from fogscout import obsrec
     from PySide6.QtWidgets import QApplication
     FF = obsrec.ffmpeg_exe()
     if FF is None:
@@ -728,11 +728,13 @@ def test_marked_rounds_open_as_one_montage_listed_in_the_library(app_root, tmp_p
             time.sleep(0.01)
         assert win._montage and [os.path.basename(p) for p in win.sources] == [r.file for r in recs]
         assert [(p.src, p.start, p.end) for p in win.parts] == [(0, 5.0, 35.0), (1, 0.0, pytest.approx(40.0, abs=0.2))]
-        mdir = os.path.join(folder, obsrec.CLIPS_DIR, project.MONTAGE_DIR)
-        while time.time() < end and not (os.path.isdir(mdir) and os.listdir(mdir)):
+        # wait for the finished project itself: write_guarded puts a temp file into the folder first (1.33.1 – a
+        # wait for "folder not empty" ended there on a fast runner)
+        lib = []
+        while time.time() < end and not lib:
             QApplication.instance().processEvents()
             time.sleep(0.01)
-        lib = [it for it in app._media_items() if it.kind == "montage"]
+            lib = [it for it in app._media_items() if it.kind == "montage"]
         assert len(lib) == 1 and lib[0].recordings == 2 and lib[0].seconds == pytest.approx(70.0, abs=0.5)
         assert app._editor_for(win.path) is None                          # the round's own editor is another one
         app._editor_open(lib[0])
