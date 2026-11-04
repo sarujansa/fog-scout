@@ -2,6 +2,7 @@
 folder). Linux runs the POSIX path, the Windows job the handle path; both check the same promises."""
 import ast
 import errno
+import json
 import os
 import subprocess
 import sys
@@ -188,7 +189,7 @@ ALLOWED = {                       # (module, function) → calls it may make
     ("fsops", "delete_inside"): {"os.remove"},   # 1.33.5: POSIX, after every part below the folder was checked
     ("fsops", "delete"): {"os.unlink"},
     ("filehash", "_save_cache"): {"os.replace"},
-    ("project", "save"): {"os.replace"},  # format 1 (Strg+S of 1.16–1.18); the editor moves to projectsave in 1.18.1
+    ("fsops", "write_atomic"): {"os.replace"},   # 1.34.2: the one replacing write (settings backup, format 1)
 }
 WATCHED = {"os.rename", "os.replace", "os.remove", "os.unlink", "os.link", "shutil.move", "shutil.copyfile",
            "shutil.copy", "shutil.copy2", "shutil.rmtree", "os.renames", "os.removedirs"}
@@ -249,3 +250,29 @@ def test_an_unwritable_data_folder_reports_none(tmp_path, monkeypatch):
     _write(str(blocker))
     monkeypatch.setenv(paths.ENV, str(blocker / "below-a-file"))
     assert paths.ensure() is None and paths.writer_id() is None
+
+
+def test_the_one_replacing_write_is_whole_or_nothing(tmp_path, monkeypatch):
+    """1.34.2 (review W8): the settings backup and a format-1 project were written to "<name>.tmp" without fsync, and
+    a value json could not write left that .tmp behind – now one write_atomic: fsync'ed temp file, one replace."""
+    from fogscout import config, project
+    target = tmp_path / "f.json"
+    fsops.write_atomic(str(target), b"one")
+    fsops.write_atomic(str(target), b"two")
+    assert target.read_bytes() == b"two" and os.listdir(tmp_path) == ["f.json"]
+
+    def broken(src, dst):
+        raise PermissionError(13, "locked")
+    monkeypatch.setattr(fsops.os, "replace", broken)
+    with pytest.raises(PermissionError):
+        fsops.write_atomic(str(target), b"three")
+    assert target.read_bytes() == b"two" and os.listdir(tmp_path) == ["f.json"]   # old file kept, no temp left
+    monkeypatch.undo()
+    proj = tmp_path / "Projekte" / "a.fogscout-project.json"
+    assert project.save(str(proj), {"v": 1}) and json.loads(proj.read_text(encoding="utf-8")) == {"v": 1}
+    assert not project.save(str(proj), {"v": object()})                  # not writable as json: nothing left over
+    assert os.listdir(proj.parent) == [proj.name] and json.loads(proj.read_text(encoding="utf-8")) == {"v": 1}
+    backup = tmp_path / "backup.json"
+    config.export_settings({"ui_language": "de", "rec_password": "secret"}, str(backup))
+    assert json.loads(backup.read_text(encoding="utf-8")) == {"ui_language": "de"}
+    assert sorted(os.listdir(tmp_path)) == ["Projekte", "backup.json", "f.json"]

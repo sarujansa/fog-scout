@@ -133,6 +133,19 @@ def write_new(path: str, data: bytes):
         raise
 
 
+def write_atomic(path: str, data: bytes) -> None:
+    """1.34.2 (review W8): ``path`` replaced by ``data`` – complete or not at all: a temp file beside it (write_tmp:
+    exclusive, fsync'ed), then one replace. The one replacing write here, for files that are the program's own and
+    meant to be overwritten (a settings backup, a format-1 project); everything of the project saving never replaces.
+    A failure leaves the old file and no temp file."""
+    tmp = write_tmp(path, data)
+    try:
+        os.replace(tmp, path)
+    except BaseException:
+        discard_tmp(tmp)
+        raise
+
+
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

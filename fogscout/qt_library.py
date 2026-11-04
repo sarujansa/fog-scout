@@ -450,10 +450,6 @@ class MediaLibrary(QFrame):
                 self.view.setCurrentIndex(self.model.index(row, 0))
         return added
 
-    def selected_item(self):
-        idx = self.view.currentIndex()
-        return idx.data(ITEM_ROLE) if idx.isValid() else None
-
     def closeEvent(self, e):
         self.loader.stop()
         super().closeEvent(e)
