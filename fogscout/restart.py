@@ -166,6 +166,44 @@ def wait_and_start(root: str, timeout: float = WAIT_S, running=None, run=None, u
     return True
 
 
+def spawn_installer(setup: str) -> bool:
+    """1.33 (.exe, stage 5): the program's last act before quitting for an update – ``FogScout.exe --install-update
+    <setup>`` waits for it to end, starts the setup and ends itself (it runs from the folder the setup replaces)."""
+    if not IS_WIN:
+        return False
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen([sys.executable, "--install-update", setup], creationflags=flags, close_fds=True)
+    return True
+
+
+def wait_and_install(setup: str, timeout: float = WAIT_S, running=None, launch=None, stuck=None) -> bool:
+    """Helper process: wait for the program to end, then start the downloaded setup (relupdate.install_args) and
+    return at once. Only an existing .exe in the data folder's update folder; ``running``/``launch`` for tests."""
+    from .paths import data_root
+    from .relupdate import SETUP, UPDATE_DIR, install_args
+    folder = os.path.normcase(os.path.abspath(os.path.join(data_root(os.path.dirname(sys.executable)), UPDATE_DIR)))
+    path = os.path.abspath(setup)
+    if (os.path.normcase(os.path.dirname(path)) != folder or not SETUP.match(os.path.basename(path))
+            or not os.path.isfile(path)):
+        return False
+    running = running or _program_running
+    deadline = time.time() + timeout
+    while running():
+        if time.time() > deadline:
+            (stuck or _stuck_message)()
+            return False
+        time.sleep(0.3)
+    (launch or _shell_open)(path, install_args())
+    return True
+
+
+def _shell_open(path: str, args: list) -> None:
+    """ShellExecute "open": the setup asks for administrator rights itself when this process has none."""
+    import ctypes
+    params = " ".join(args)
+    ctypes.windll.shell32.ShellExecuteW(None, "open", path, params, os.path.dirname(path), 1)
+
+
 def _stuck_message():
     """The old copy did not end (1.65.1, user: after an update the program did not come back)."""
     try:

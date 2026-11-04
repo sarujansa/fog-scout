@@ -90,7 +90,7 @@ def test_the_taskbar_button_of_the_packaged_program_starts_the_exe(packaged):
     assert autostart.relaunch_command() == f'"{EXE}"'      # not installed (the CI folder): no task to run
 
 
-def test_the_packaged_program_renews_its_own_tasks_and_checks_no_git(packaged, monkeypatch):
+def test_the_packaged_program_renews_its_own_tasks_and_checks_releases_not_git(packaged, monkeypatch):
     """1.32: the installed .exe renews its tasks like start.bat did (they start the .exe – autostart.app_root); git
     fetch needs a checkout – updates come with stage 5."""
     from fogscout import app_settings
@@ -114,15 +114,20 @@ def test_the_packaged_program_renews_its_own_tasks_and_checks_no_git(packaged, m
             self.events = type("Q", (), {"put": staticmethod(events.append)})()
             self.upd_status = Var()
             self.upd_btn = type("B", (), {"state": staticmethod(lambda s: calls.append(("btn", tuple(s))))})()
+            self.upd_apply_btn = type("B", (), {"pack_forget": staticmethod(lambda: None)})()
 
     fake = Fake()
     fake._setup_then_read_autostart()
     assert ("ensure", ROOT) in calls and "auto" in calls
     (kind, exists, can_change, info), = events
     assert kind == "autostart" and exists is True and can_change is True
-    calls.clear()
+    calls.clear()                                                   # 1.33: the release check (no git) in a thread
+    from fogscout import relupdate
+    monkeypatch.setattr(relupdate, "check", lambda root: calls.append(("release", root)) or
+                        ("current", "aktuell", False, None))
+    monkeypatch.setattr(app_settings.threading, "Thread", lambda target, **k: type("T", (), {"start": staticmethod(target)})())
     fake.check_update()
-    assert "GitHub" in fake.upd_status.v and calls == []             # nothing fetched, button untouched
+    assert ("release", ROOT) in calls and events[-1] == ("upd_check", "current", "aktuell", False, None, False)
 
 
 def test_the_self_check_passes_from_the_source_checkout(tmp_path):
@@ -164,4 +169,5 @@ def test_the_exe_is_built_and_checked_in_ci():
     assert "--only-binary=:all:" in wf
     assert "installer/fogscout.spec" in wf and "--selftest" in wf and '"--helper", "hostsedit"' in wf
     assert "retention-days: 14" in wf
-    assert "contents: write" not in wf and "gh release" not in wf and "action-gh-release" not in wf   # nothing published
+    build_job = wf[wf.index("\n  exe:"):wf.index("\n  release:")]
+    assert "contents: write" not in build_job and "gh release" not in build_job   # the build itself publishes nothing
