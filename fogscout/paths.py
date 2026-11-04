@@ -42,6 +42,12 @@ def frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def installed() -> bool:
+    """1.32 (.exe, stage 4): the packaged program was set up by its installer (Inno Setup leaves unins000.exe next to
+    the .exe) – the scheduled tasks then exist; the bare folder from CI has none."""
+    return frozen() and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "unins000.exe"))
+
+
 def data_root(program_root: str) -> str:
     """1.30.1 (.exe, stage 2): where the program's own runtime files live – settings.json, rounds.jsonl,
     official.jsonl, the log, crash files, cache/, backup/, user_maps/, debug/. From a source checkout (start.bat) the
