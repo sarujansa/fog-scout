@@ -240,6 +240,35 @@ def keep_crash(root: str):
         pass
 
 
+# 1.36: exception codes faulthandler writes on Windows although nothing crashed – a C++ exception a library catches
+# itself (MSVC 0xE06D7363), a thread naming (0x406D1388), debug output (0x40010006, 0x4001000A)
+HARMLESS_CODES = ("0xe06d7363", "0x406d1388", "0x40010006", "0x4001000a")
+
+
+def real_crash(text: str) -> bool:
+    """1.36: does a crash file show a real crash? "Fatal Python error", "Segmentation fault" (Linux) or a Windows
+    exception other than HARMLESS_CODES – a file with only those is a run Windows ended (shutdown), not a crash."""
+    for line in str(text or "").splitlines():
+        low = line.strip().lower()
+        if low.startswith(("fatal python error", "segmentation fault", "bus error", "illegal instruction")):
+            return True
+        if low.startswith("windows fatal exception:"):
+            if not any(code in low for code in HARMLESS_CODES):
+                return True
+    return False
+
+
+def last_crash(root: str):
+    """1.36: (time, True) of the kept last crash when it was a real one, else None – for the start's hint."""
+    path = os.path.join(root, CRASH_LAST)
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read(200_000)
+        return (os.path.getmtime(path), True) if real_crash(text) else None
+    except OSError:
+        return None
+
+
 def crash_lines(root: str) -> list:
     """1.8.66 (user: "das Programm crasht ab und zu, wenn ich Videos öffne" – a hard crash left nothing in the log):
     the start of the last hard crash's thread stacks, written by faulthandler."""
