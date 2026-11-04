@@ -488,8 +488,10 @@ class SettingsTab:
                                                    wraplength=420)).pack(anchor="w", pady=(6, 0))
 
         folders = bk                                   # 1.29.1: one card "Sicherung und Ordner"
-        self._reg("st.more.dir", ui.Button(folders, text=_("Programmordner öffnen"),
-                                            command=lambda: self._open(self.root_dir))).pack(side="left")
+        # 1.30.1: the folder with the settings, rounds and log – the program folder from start.bat, the per-user
+        # data folder for the installed program
+        self._reg("st.more.dir", ui.Button(folders, text=_("Datenordner öffnen"),
+                                            command=lambda: self._open(self.data_dir))).pack(side="left")
         self._reg("st.more.maps_dir", ui.Button(folders, text=_("Karten-Ordner öffnen"),
                                                  command=lambda: self._open(os.path.join(self.root_dir, "maps")))).pack(
             side="left", padx=6)
@@ -632,7 +634,7 @@ class SettingsTab:
                              pre=bool(self.rec_pre_var.get()), tail_s=tail, buffer_auto=bool(self.rec_buffer_var.get()),
                              window=bool(self.rec_window_var.get()), obs_start=bool(self.rec_obs_start_var.get()),
                              capture="game" if self.rec_game_var.get() else "window",                # 1.11.7
-                             overlay=bool(self.rec_overlay_var.get()), overlay_file=obsoverlay.path(self.root_dir),
+                             overlay=bool(self.rec_overlay_var.get()), overlay_file=obsoverlay.path(self.data_dir),
                              merge=bool(self.rec_merge_var.get()), farming_sub=bool(self.rec_farming_var.get()),
                              early=bool(self.rec_early_var.get()), instant=bool(self.rec_instant_var.get()),
                              clip_s=next((s for s, lbl in self._rec_clips if lbl == self.rec_clip_var.get()),
@@ -1011,7 +1013,7 @@ class SettingsTab:
                 writer.submit([], (0, 0), None)
             return
         if writer is None:
-            writer = self._overlay_writer = obsoverlay.Writer(obsoverlay.path(self.root_dir), self.recorder.set_overlay)
+            writer = self._overlay_writer = obsoverlay.Writer(obsoverlay.path(self.data_dir), self.recorder.set_overlay)
             writer.start()
         gx, gy = self._game_rect()[:2]
         elements, key = [], []
@@ -1204,7 +1206,7 @@ class SettingsTab:
     def _backup_start(self):
         """Copy rounds.jsonl/official.jsonl to backup/ once a day (backups.snapshot) – in a thread, the files can
         be megabytes; the result comes back as the event "backup". Runs at the start and every 24 h after."""
-        threading.Thread(target=lambda: self.events.put(("backup", backups.snapshot(self.root_dir))),
+        threading.Thread(target=lambda: self.events.put(("backup", backups.snapshot(self.data_dir))),
                          daemon=True, name="backup").start()
         self.root.after(self.BACKUP_EVERY_MS, self._backup_start)
 
@@ -1216,7 +1218,7 @@ class SettingsTab:
             self.backup_var.set(self._backup_text())
 
     def _backup_text(self) -> str:
-        count, day = backups.status(self.root_dir)
+        count, day = backups.status(self.data_dir)
         state = (_("{n} Dateien, zuletzt {day}", n=count, day=day) if count > 1 else       # 1.25: not "1 Dateien"
                  _("1 Datei, zuletzt {day}", day=day) if count else _("noch keine"))
         return _("Tägliche Kopie von rounds.jsonl und official.jsonl nach {folder}/ (nur bei Änderungen, die "

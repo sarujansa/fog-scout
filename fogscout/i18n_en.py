@@ -587,7 +587,7 @@ EN = {
     "Beendet das Programm und startet es über start.bat neu – dabei wird das Update installiert.":
         "Closes the program and starts it again via start.bat – the update is installed on the way.",
     "Alle löschen": "Delete all",
-    "Programmordner öffnen": "Open program folder",
+    "Datenordner öffnen": "Open data folder",
     "Karten-Ordner öffnen": "Open maps folder",
     "liest nur Bildschirmpixel, sendet keine Eingaben ans Spiel.": "reads screen pixels only, sends no input to the game.",
     "Keine. Unbekannte Map-Namen lassen sich nach dem Match im Hauptfenster zuordnen.":
@@ -1006,7 +1006,6 @@ EN = {
         "overwritten.",
     "Alle eigenen Map-Zuordnungen löschen (die Namen werden dann wieder als unbekannt gemeldet).":
         "Delete all own map assignments (the names are reported as unknown again).",
-    "Öffnet den Ordner des Programms im Explorer.": "Opens the program folder in Explorer.",
     "Öffnet den Ordner mit den mitgelieferten Kartenbildern.": "Opens the folder with the supplied map pictures.",
     "PNG, JPG, WebP oder GIF auswählen – zum Beispiel ein Original mit Hintergrund.":
         "Choose a PNG, JPG, WebP or GIF – for example an original with background.",
@@ -3499,4 +3498,6 @@ EN = {
     "Serverregionen auswählen …": "Choose server regions …",
     "Beendet die Einrichtung und öffnet die Seite Server – dort die Regionen anhaken, in denen DBD Matches suchen soll.":
         "Ends the setup and opens the Server page – tick the regions there in which DBD should look for matches.",
+    "Öffnet den Ordner mit Einstellungen, Runden, Log und Sicherungen im Explorer.":
+        "Opens the folder with the settings, rounds, log and backups in Explorer.",
 }

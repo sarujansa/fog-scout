@@ -237,7 +237,7 @@ class PictureDialog:
             self.msg.set(t)
             return
         stem, map_id, variant = t
-        dest = mi.target_path(self.app.root_dir, stem, mi.is_animated(self.src))
+        dest = mi.target_path(self.app.data_dir, stem, mi.is_animated(self.src))
         try:
             mi.save(self.src, dest, self.bg_var.get(), self._title())
         except (OSError, ValueError) as e:
@@ -265,6 +265,6 @@ class PictureDialog:
         self.dlg.destroy()
 
     def open_dir(self):
-        path = os.path.join(self.app.root_dir, mi.USER_DIR)
+        path = os.path.join(self.app.data_dir, mi.USER_DIR)
         if not open_folder(path):
             self.msg.set(path)
