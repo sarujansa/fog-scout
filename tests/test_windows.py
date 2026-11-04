@@ -582,3 +582,26 @@ def test_the_discord_pipe_lets_its_server_identify_but_not_impersonate_and_times
             ipc.close()
     finally:
         k.CloseHandle(server)
+
+
+def test_the_staged_setup_cannot_be_changed_or_deleted_until_it_is_started(tmp_path):
+    """1.34 (review S1): between the last check and ShellExecuteW nobody may write, rename or delete the copy –
+    reading (and so starting) it stays possible."""
+    import hashlib
+    from fogscout import restart
+    data = b"MZ setup" * 1000
+    src = tmp_path / "cache" / "FogScout-Setup-1.34.exe"
+    src.parent.mkdir()
+    src.write_bytes(data)
+    dest = tmp_path / "app" / "update"
+    with restart.staged_setup(str(src), hashlib.sha256(data).hexdigest(), str(dest)) as staged:
+        assert open(staged, "rb").read() == data
+        with pytest.raises(PermissionError):
+            open(staged, "r+b")
+        with pytest.raises(PermissionError):
+            os.remove(staged)
+        with pytest.raises(PermissionError):
+            os.rename(staged, staged + ".x")
+    with open(staged, "r+b"):
+        pass                                                   # free again once started
+    os.remove(staged)
