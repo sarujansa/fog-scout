@@ -166,26 +166,40 @@ def wait_and_start(root: str, timeout: float = WAIT_S, running=None, run=None, u
     return True
 
 
-def spawn_installer(setup: str) -> bool:
+def spawn_installer(setup: str, sha256: str) -> bool:
     """1.33 (.exe, stage 5): the program's last act before quitting for an update – ``FogScout.exe --install-update
-    <setup>`` waits for it to end, starts the setup and ends itself (it runs from the folder the setup replaces)."""
+    <setup> <sha256>`` waits for it to end, checks the setup once more and starts it, then ends itself (it runs from the
+    folder the setup replaces). 1.33.1 (audit H-3): the SHA-256 the release stated goes along."""
     if not IS_WIN:
         return False
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen([sys.executable, "--install-update", setup], creationflags=flags, close_fds=True)
+    subprocess.Popen([sys.executable, "--install-update", setup, sha256], creationflags=flags, close_fds=True)
     return True
 
 
-def wait_and_install(setup: str, timeout: float = WAIT_S, running=None, launch=None, stuck=None) -> bool:
+def _file_sha256(path: str) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def wait_and_install(setup: str, sha256: str = "", timeout: float = WAIT_S, running=None, launch=None, stuck=None,
+                     failed=None) -> bool:
     """Helper process: wait for the program to end, then start the downloaded setup (relupdate.install_args) and
-    return at once. Only an existing .exe in the data folder's update folder; ``running``/``launch`` for tests."""
+    return at once. Only an existing .exe in the data folder's update folder whose SHA-256 – checked right before the
+    start – is the one the release stated. 1.33.1 (audit H-2/H-3): a refused or failed start (changed file, Windows
+    could not start it, the user said no to the administrator prompt) is said in a message and Fog Scout starts again,
+    so the user is never left without the program and can retry. ``running``/``launch``/``failed`` for tests."""
     from .paths import data_root
     from .relupdate import SETUP, UPDATE_DIR, install_args
+    failed = failed or _install_failed
     folder = os.path.normcase(os.path.abspath(os.path.join(data_root(os.path.dirname(sys.executable)), UPDATE_DIR)))
     path = os.path.abspath(setup)
-    if (os.path.normcase(os.path.dirname(path)) != folder or not SETUP.match(os.path.basename(path))
-            or not os.path.isfile(path)):
-        return False
+    if os.path.normcase(os.path.dirname(path)) != folder or not SETUP.match(os.path.basename(path)):
+        return False                                   # never anything but our own setup – no message, nothing run
     running = running or _program_running
     deadline = time.time() + timeout
     while running():
@@ -193,15 +207,59 @@ def wait_and_install(setup: str, timeout: float = WAIT_S, running=None, launch=N
             (stuck or _stuck_message)()
             return False
         time.sleep(0.3)
-    (launch or _shell_open)(path, install_args())
+    try:
+        ok = len(sha256) == 64 and os.path.isfile(path) and _file_sha256(path) == sha256.lower()
+    except OSError:
+        ok = False
+    if not ok:
+        failed(path, "checksum")
+        return False
+    if not (launch or _shell_open)(path, install_args()):
+        failed(path, "start")
+        return False
     return True
 
 
-def _shell_open(path: str, args: list) -> None:
-    """ShellExecute "open": the setup asks for administrator rights itself when this process has none."""
+def _shell_open(path: str, args: list) -> bool:
+    """ShellExecute "open": the setup asks for administrator rights itself when this process has none. True when
+    Windows started it (ShellExecuteW returns a value above 32; below = error, e.g. the prompt was declined)."""
     import ctypes
-    params = " ".join(args)
-    ctypes.windll.shell32.ShellExecuteW(None, "open", path, params, os.path.dirname(path), 1)
+    shell = ctypes.windll.shell32
+    shell.ShellExecuteW.restype = ctypes.c_void_p
+    rc = shell.ShellExecuteW(None, "open", path, " ".join(args), os.path.dirname(path), 1)
+    return int(rc or 0) > 32
+
+
+def _install_failed(path: str, why: str) -> None:
+    """The update did not start: say why and where the setup is, then start Fog Scout again (through its task when
+    installed – elevated without a prompt, like every start)."""
+    try:
+        import ctypes
+        from .i18n import _
+        text = (_("Das Update wurde nicht gestartet: Die Setup-Datei hat sich seit dem Download verändert oder fehlt. "
+                  "Fog Scout startet wieder – bitte das Update noch einmal laden.") if why == "checksum" else
+                _("Das Update wurde nicht gestartet (Windows konnte das Setup nicht ausführen oder die Abfrage nach "
+                  "Administratorrechten wurde abgebrochen). Fog Scout startet wieder – erneut versuchen über "
+                  "„Aktualisieren und neu starten“ oder das Setup selbst starten:\n{path}", path=path))
+        ctypes.windll.user32.MessageBoxW(None, text, "Fog Scout", 0x30)
+    except Exception:
+        pass
+    relaunch()
+
+
+def relaunch() -> None:
+    """Start Fog Scout again: the installed program through its task (no prompt), else its .exe."""
+    try:
+        from .paths import installed
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if installed():
+            system_root = os.environ.get("SystemRoot") or r"C:\Windows"
+            subprocess.Popen([os.path.join(system_root, "System32", "schtasks.exe"), "/run", "/tn", "Fog Scout"],
+                             creationflags=flags, close_fds=True)
+        else:
+            subprocess.Popen([sys.executable], close_fds=True)
+    except OSError:
+        pass
 
 
 def _stuck_message():
