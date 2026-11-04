@@ -597,6 +597,10 @@ EN = {
     "Update gesperrt: eine Runde läuft oder ein Clip wird gespeichert. Danach noch einmal auf „Aktualisieren und neu starten“ klicken.":
         "Update blocked: a round is running or a clip is being saved. Click “Update and restart” again afterwards.",
     "Programm schliesst sich und installiert das Update …": "The program closes and installs the update …",
+    "Das Update wurde nicht gestartet: Die Setup-Datei hat sich seit dem Download verändert oder fehlt. Fog Scout startet wieder – bitte das Update noch einmal laden.":
+        "The update was not started: the setup file changed since the download or is missing. Fog Scout starts again – please download the update once more.",
+    "Das Update wurde nicht gestartet (Windows konnte das Setup nicht ausführen oder die Abfrage nach Administratorrechten wurde abgebrochen). Fog Scout startet wieder – erneut versuchen über „Aktualisieren und neu starten“ oder das Setup selbst starten:\n{path}":
+        "The update was not started (Windows could not run the setup, or the administrator prompt was cancelled). Fog Scout starts again – retry with “Update and restart” or start the setup yourself:\n{path}",
     "Neustart nicht möglich: {error}": "Restart not possible: {error}",
     "Nur unter Windows: bitte das Programm über start.bat neu starten.": "Windows only: please restart the program via start.bat.",
     "Programm startet neu und installiert das Update …": "The program restarts and installs the update …",

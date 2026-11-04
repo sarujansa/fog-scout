@@ -167,7 +167,7 @@ def test_the_takeover_copies_and_never_changes_the_original(tmp_path):
     data.mkdir()
     (data / "rounds.jsonl").write_text("mine\n", encoding="utf-8")           # never overwritten
     done = takeover.copy(str(old), str(data))
-    assert done == ["settings.json", "official.jsonl", "backup/", "user_maps/"]
+    assert done == ["official.jsonl", "backup/", "user_maps/", "settings.json"]      # settings last (H-1)
     assert (data / "rounds.jsonl").read_text(encoding="utf-8") == "mine\n"
     assert (data / "user_maps" / "Realm" / "Own.webp").read_bytes() == b"RIFF"
     assert not (data / "cache").exists() and not (data / "fogscout.log").exists()
@@ -225,3 +225,102 @@ def test_ci_builds_installs_checks_and_uninstalls_the_setup():
                   "selftest-installed.json", "unins000.exe", "nach der Deinstallation"):
         assert check in wf, check
     assert "FogScout-Setup-${{ github.sha }}" in wf
+
+
+# ------------------------------------------------------------------ 1.33.1 stability audit (H-1, H-4)
+
+def test_a_failed_takeover_is_not_marked_done_and_is_asked_again(tmp_path, monkeypatch):
+    """Audit H-1: before, `finally: finish()` marked the takeover done even when copying failed – no second try."""
+    old = _checkout(tmp_path / "old")
+    (old / "rounds.jsonl").write_text("r\n", encoding="utf-8")
+    data = tmp_path / "data"
+    takeover.record(str(data), str(old))
+    real = takeover._copy_file
+
+    def broken(s, d):
+        if s.endswith("rounds.jsonl"):
+            raise PermissionError("no access")
+        return real(s, d)
+    monkeypatch.setattr(takeover, "_copy_file", broken)
+    with pytest.raises(OSError):
+        entry.offer_takeover(str(data), ask=lambda text: True)
+    assert not (data / takeover.MARKER).exists() and takeover.pending(str(data)) == str(old)
+    assert not (data / "settings.json").exists()                       # settings come last: nothing half-taken
+    monkeypatch.setattr(takeover, "_copy_file", real)
+    assert entry.offer_takeover(str(data), ask=lambda text: True) == ["rounds.jsonl", "settings.json"]
+    assert (data / takeover.MARKER).exists() and takeover.pending(str(data)) is None
+
+
+def test_a_takeover_that_broke_off_completes_on_the_next_run(tmp_path):
+    """A crash mid-copy leaves only a temp file beside the target – never a half file under the real name."""
+    old = _checkout(tmp_path / "old")
+    (old / "rounds.jsonl").write_text("all rounds\n", encoding="utf-8")
+    data = tmp_path / "data"
+    data.mkdir()
+    from fogscout import fsops
+    leftover = fsops.tmp_name(str(data / "rounds.jsonl"))
+    with open(leftover, "w", encoding="utf-8") as fh:
+        fh.write("all ro")                                            # the crash
+    assert not (data / "rounds.jsonl").exists()
+    assert takeover.copy(str(old), str(data)) == ["rounds.jsonl", "settings.json"]
+    assert (data / "rounds.jsonl").read_text(encoding="utf-8") == "all rounds\n"
+    assert takeover.copy(str(old), str(data)) == []                    # repeated: idempotent, nothing overwritten
+
+
+def test_existing_targets_and_broken_sources_are_left_alone(tmp_path):
+    old = _checkout(tmp_path / "old", settings="{broken json")         # only copied, never read
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "settings.json").write_text('{"mine": 1}', encoding="utf-8")
+    assert takeover.copy(str(old), str(data)) == []
+    assert (data / "settings.json").read_text(encoding="utf-8") == '{"mine": 1}'
+    data2 = tmp_path / "data2"
+    assert takeover.copy(str(old), str(data2)) == ["settings.json"]
+    assert (data2 / "settings.json").read_text(encoding="utf-8") == "{broken json"
+    assert [p.name for p in data2.iterdir() if p.name.endswith(".tmp")] == []
+
+
+@pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="chmod does not stop root")
+def test_an_unreadable_source_raises_and_leaves_no_temp_file(tmp_path):
+    old = _checkout(tmp_path / "old")
+    (old / "official.jsonl").write_text("x\n", encoding="utf-8")
+    os.chmod(old / "official.jsonl", 0)
+    data = tmp_path / "data"
+    try:
+        with pytest.raises(PermissionError):
+            takeover.copy(str(old), str(data))
+    finally:
+        os.chmod(old / "official.jsonl", 0o644)
+    assert [p.name for p in data.iterdir()] == []
+
+
+def test_another_administrator_gets_no_tasks_but_everybody_a_start_menu_entry(installed_exe, tmp_path, monkeypatch):
+    """Audit H-4: UAC answered with another administrator's credentials – the installer process is that
+    administrator. Tasks, shortcuts and the takeover note would land in the wrong account; instead one Start menu
+    shortcut for all users straight to the .exe."""
+    app, exe = installed_exe
+    monkeypatch.setattr(autostart, "session_user", lambda: "PC\\Saru")
+    monkeypatch.setattr(autostart, "process_user", lambda: "PC\\Admin")
+    scripts = []
+    monkeypatch.setattr(autostart, "powershell", lambda s, timeout=60.0: scripts.append(s) or (True, "x.lnk"))
+    monkeypatch.setattr(autostart, "install", lambda root: pytest.fail("tasks in the admin account"))
+    monkeypatch.setattr(takeover, "record", lambda *a: pytest.fail("takeover note in the admin profile"))
+    monkeypatch.setattr(entry, "_data", lambda: pytest.fail("data folder of the admin"))
+    assert entry.install_tasks() == 0
+    (script,) = scripts
+    assert "CommonPrograms" in script and autostart._q(str(exe)) in script and "schtasks" not in script
+    assert "'CommonPrograms'" in autostart.uninstall_script()          # the uninstaller removes it again
+
+
+def test_the_same_person_still_gets_tasks_and_shortcuts(monkeypatch):
+    assert autostart.same_user("PC\\Saru", "pc\\saru") and autostart.same_user("MicrosoftAccount\\saru", "PC\\Saru")
+    assert not autostart.same_user("PC\\Saru", "PC\\Admin") and not autostart.same_user("", "PC\\Saru")
+    assert autostart.for_session_user("PC\\Saru", "PC\\SARU")
+    assert autostart.for_session_user("", "PC\\Admin") and autostart.for_session_user("PC\\Saru", "")   # unknown: as before
+    assert not autostart.for_session_user("PC\\Saru", "PC\\Admin")
+
+
+def test_the_uninstaller_never_touches_the_data_folder():
+    iss = _iss()
+    assert "[UninstallDelete]" not in iss and "{localappdata}" not in iss.lower() and "{userappdata}" not in iss.lower()
+    assert "FogScout" not in autostart.uninstall_script().replace("Fog Scout", "")
