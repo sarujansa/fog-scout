@@ -77,7 +77,8 @@ def test_cells_table_csv_and_text():
                                     "map": "Coal Tower", "realm": "MacMillan", "role": "Killer", "killer": "Nurse",
                                     "kind": "Normal", "wait": "01:23", "region": "Frankfurt", "ping": "47",
                                     "kills": "1", "escaped": "", "bp": "31500", "opponents": "Dwight Fairfield, Meg Thomas",
-                                    "balance": ""}
+                                    "balance": "", "stalls": "", "fps": "", "mode": "", "character": "",
+                                    "perks": ""}
     r.balance = 5000000                                                                   # 1.13
     assert rx.cell("balance", r, m, names) == "5000000"
     farm = _round(t0 + 900, 120, role="survivor", farming=True)
@@ -106,3 +107,22 @@ def test_write_csv_with_bom_and_text_file(tmp_path):
     assert rx.write(str(txt), "text", head, rows) == 2
     assert txt.read_text(encoding="utf-8") == "23.10.2026 18:32 · Coal Tower\n23.10.2026 18:47 · Léry's\n"
     assert rx.write(str(txt), "text", head, []) == 0 and txt.read_text(encoding="utf-8") == ""
+
+
+def test_the_new_columns_and_the_json_format():
+    """1.38.32 (project review F8): stalls, Ø FPS, game mode, own character and own perks – the round and the match
+    data had them, the export left them out; JSON for own evaluations (column titles as keys)."""
+    import json
+    t0 = time.mktime((2026, 10, 23, 18, 32, 0, 0, 0, -1))
+    r = _round(t0, 754, role="killer", killer="The Nurse")
+    r.stalls, r.sys = 2, {"fps": 143.6, "gpu_temp": 70.0}
+    m = official.Match(t=t0 - 38, map="Coal Tower", role="killer", character="The Nurse", mode=["1", "Chaos Shuffle"],
+                       perks=[["p1", "Lethal Pursuer"], ["p2", "Grim Embrace"], ["bad"]])
+    keys = ["stalls", "fps", "mode", "character", "perks"]
+    assert rx.table([r], {id(r): m}, keys, rx.Names())[0] == ["2", "144", "Chaos Shuffle", "The Nurse",
+                                                             "Lethal Pursuer, Grim Embrace"]
+    head = rx.header(["map", "stalls"])
+    rows = rx.table([r], {id(r): m}, ["map", "stalls"], rx.Names())
+    assert json.loads(rx.json_text(head, rows)) == [{"Map": "Coal Tower", "Aussetzer": "2"}]
+    assert rx.text_of("json", head, rows) == rx.json_text(head, rows) and rx.SUFFIX["json"] == ".json"
+    assert rx.preview("json", head, rows).startswith("[")
