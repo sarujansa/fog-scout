@@ -753,8 +753,11 @@ class DetectionWorker(threading.Thread):
         dark scene at the picture edge does not count as bar; smaller bars apply at once (intro → gameplay)."""
         if self._vbar_looks and self._vbar_looks[-1][2] != (fw, fh):
             self._vbar_looks.clear()                 # window resized: old looks are void
-        with self.times.measure("vbars"):
-            top, bottom = letterbox_rows(look)
+        if fw * 9 >= fh * 16 - 32:                   # 1.38.23 (PERF-3): 16:9 or wider has no bars above/below – the
+            top, bottom = 0, 0                       # grey pass over the whole frame (~3 ms, 1.11.13) was thrown away
+        else:                                        # by layout.vbars anyway (same test as _vbar_strip)
+            with self.times.measure("vbars"):
+                top, bottom = letterbox_rows(look)
         self._vbar_looks.append((top, bottom, (fw, fh)))
         self.vbars = (min(t for t, _b, _s in self._vbar_looks), min(b for _t, b, _s in self._vbar_looks),
                       time.time(), (fw, fh))
