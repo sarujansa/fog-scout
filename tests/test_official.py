@@ -746,3 +746,42 @@ def test_files_of_the_old_program_name_are_still_taken(tmp_path):
         o.parse({"format": "someone-elses", "matches": []})
     assert o.PREFIX == o.FORMAT == "fogscout-matches" and o.STRUCTURE_HASH == "#fogscout-structure"
     assert o.STRUCTURE_SCRIPT == o.RESAVE_SCRIPT == o.script_version(SCRIPT) == 5      # the hashes carry the new name
+
+
+def test_the_download_folder_is_listed_only_when_it_changed(tmp_path):
+    """1.38.7: pending() lists the whole download folder in the window's thread every 20 s – now only when the
+    folder's own time changed (a file came, went or was renamed), or every FULL_SCAN_S as a fallback."""
+    w = o.FolderWatch()
+    dl = tmp_path / "Downloads"
+    dl.mkdir()
+    d = str(dl)
+    assert w.due(d, 1000.0)                                   # first look
+    assert not w.due(d, 1020.0) and not w.due(d, 1040.0)      # nothing changed
+    (dl / "fogscout-matches.json").write_text("{}", encoding="utf-8")
+    st = os.stat(d)
+    os.utime(d, ns=(st.st_atime_ns, st.st_mtime_ns + 10 ** 9))   # the folder time moves (coarse clocks: forced)
+    assert w.due(d, 1060.0) and not w.due(d, 1080.0)
+    assert w.due(d, 1060.0 + w.FULL_SCAN_S)                   # the fallback full look
+    assert w.due(str(tmp_path / "fehlt"), 1361.0)             # gone: looked (pending says [] itself), not remembered
+    assert not w.due(d, 1362.0)                               # so the known folder is still unchanged
+    other = tmp_path / "anderer"                              # beside it: Downloads' own time stays
+    other.mkdir()
+    assert not w.due(d, 1362.5)
+    assert w.due(str(other), 1363.0)                          # the setting points elsewhere: listed at once
+    assert w.due(d, 1364.0)                                   # and back
+
+
+def test_the_tick_takes_the_downloads_only_when_due_but_always_while_the_user_waits(monkeypatch):
+    import types
+    from fogscout import app_stats
+    calls = []
+    fake = types.SimpleNamespace(_off_open=types.SimpleNamespace(update=lambda now, running: False), game=None,
+                                 settings={}, simulate=True, _off_next=0.0, _off_fast_until=0.0,
+                                 _off_watch=types.SimpleNamespace(due=lambda folder, now: False),
+                                 _official_folder=lambda: "/nirgends", _official_take=lambda: calls.append(1))
+    monkeypatch.setattr(app_stats.time, "time", lambda: 5000.0)
+    app_stats.StatsTab._official_tick(fake)                   # unchanged folder: not listed
+    assert calls == [] and fake._off_next == 5020.0
+    fake._off_next, fake._off_fast_until = 0.0, 6000.0        # the user just opened the stats page
+    app_stats.StatsTab._official_tick(fake)
+    assert calls == [1] and fake._off_next == 5003.0
