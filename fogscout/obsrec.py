@@ -35,6 +35,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 
 from . import fsops, launch, obsoverlay
+from .fsops import rel_path   # noqa: F401 – 1.38.20: lives in fsops now (ytupload shares it); callers keep obsrec.rel_path
 from .i18n import _
 
 log = logging.getLogger("fogscout")
@@ -53,6 +54,7 @@ RENAME_WAIT = 0.5
 REPLAY_WAIT = 4.0               # 1.5.4: s to wait for OBS to finish writing the replay buffer (it saves asynchronously)
 REPLAY_POLL = 0.2
 MAX_MESSAGE = 16 * 1024 * 1024  # 1.8.38: a WebSocket message larger than this ends the connection (OBS sends KBs)
+MAX_HANDSHAKE = 64 * 1024       # 1.38.20: the HTTP upgrade answer – obs-websocket's is a few hundred bytes
 MAX_ROUND_S = 45 * 60           # a recording longer than this is stopped (an end that was never detected)
 MAX_MANUAL_S = 4 * 3600         # 1.15: a recording started by hand (record_start) ends after this at the latest
 STATUS_POLL_S = 2.0             # 1.15: the recordings page asks OBS for its state this often, only while it is shown
@@ -329,6 +331,9 @@ class ObsClient:
             if not chunk:
                 raise ObsError(_("Keine Antwort von obs-websocket"))
             head += chunk
+            if len(head) > MAX_HANDSHAKE:       # 1.38.20 (audit): a foreign service on the port must not grow the buffer
+                self.close()
+                raise ObsError(_("Kein obs-websocket auf diesem Port"))
         head, self._buf = head.split(b"\r\n\r\n", 1)
         lines = head.decode("latin-1").split("\r\n")
         if " 101 " not in lines[0] + " ":
@@ -454,17 +459,6 @@ class Recording:
     farming: bool = False        # 1.4.2: a farming round (cross-play off) – goes first when room is needed
     pre_s: float = 0.0           # 1.4.2: seconds of pre-roll at the start of the file (0 = none or separate)
     yt: str = ""                 # 1.10: the YouTube video id once uploaded (ytupload)
-
-
-def rel_path(folder: str, name: str) -> str | None:
-    """Absolute path of an index entry's file: a plain name or one inside a subfolder (``Farming/…``), never
-    outside ``folder`` (no absolute path, no ``..``) – None for anything else. Entries use "/" on every system."""
-    if not name or os.path.isabs(name) or name.startswith(("/", "\\")) or ":" in name or "\x00" in name:
-        return None                                   # ":" = a drive letter; NUL: os.remove raises ValueError on it
-    parts = [p for p in re.split(r"[\\/]", name) if p]
-    if not parts or any(p in ("..", ".") for p in parts) or len(parts) > 2:
-        return None
-    return os.path.join(folder, *parts)
 
 
 def adopt_old_file(folder: str, old: str, new: str) -> bool:

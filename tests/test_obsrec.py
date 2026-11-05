@@ -2199,6 +2199,32 @@ def test_the_idle_work_runs_even_while_commands_keep_coming(obs, tmp_path, monke
 
 def test_an_index_name_with_a_nul_is_no_path():
     assert obsrec.rel_path("/d/DBD", "a\x00b.mkv") is None
+    from fogscout import fsops
+    assert obsrec.rel_path is fsops.rel_path                 # 1.38.20: one rule for the index and the upload queue
+
+
+def test_a_handshake_answer_without_an_end_is_cut_off(monkeypatch):
+    """1.38.20 (audit): the upgrade answer was collected until a blank line – a foreign service on the OBS port (OBS
+    not running) that never sends one grew the buffer without limit. Now MAX_HANDSHAKE ends it."""
+    class EndlessSocket:
+        sent = b""
+
+        def sendall(self, data):
+            self.sent += data
+
+        def recv(self, n):
+            return b"HTTP/1.1 101 Switching Protocols\r\nX-Filler: " + b"y" * (n - 40) + b"\r\n"
+
+        def close(self):
+            pass
+
+        def settimeout(self, t):
+            pass
+    c = obsrec.ObsClient(port=4455)
+    c._sock = EndlessSocket()
+    with pytest.raises(obsrec.ObsError):
+        c._handshake()
+    assert len(c._buf) == 0 and c._sock is None               # closed, nothing kept
 
 
 # ------------------------------------------------------------------ 1.29: recording quality on a click
