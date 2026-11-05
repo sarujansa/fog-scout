@@ -24,7 +24,9 @@ AppPublisherURL=https://github.com/sarujansa/fog-scout
 AppSupportURL=https://github.com/sarujansa/fog-scout/issues
 DefaultDirName={autopf}\Fog Scout
 DisableProgramGroupPage=yes
-DisableDirPage=auto
+; 1.38.21 (audit SEC-3): always Program Files – a folder the user may write to would let anyone replace the .exe
+; that the task "Fog Scout" starts with highest rights, and fogscout/paths.app_update_dir counts on this folder
+DisableDirPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

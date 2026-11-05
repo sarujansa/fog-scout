@@ -27,22 +27,22 @@ echo ok> "%VENV%\installed.ok"
 rem Neuen Stand von GitHub holen (fogscout\update.py: nur auf main, nur ohne eigene Aenderungen,
 rem nur Nachziehen). Exit-Code 3 = aktualisiert. Weil cmd diese Datei waehrend der Ausfuehrung
 rem weiterliest, das Update sie aber geaendert haben kann, startet sie sich IN DERSELBEN ZEILE neu.
-if not defined DBDMS_UPDATED ("%VENV%\Scripts\python.exe" "%~dp0fogscout\update.py" & if errorlevel 3 (set "DBDMS_UPDATED=1" & cmd /c "".\%~nx0" %*" & exit /b))
+if not defined DBDMS_UPDATED ("%VENV%\Scripts\python.exe" -E "%~dp0fogscout\update.py" & if errorlevel 3 (set "DBDMS_UPDATED=1" & cmd /c "".\%~nx0" %*" & exit /b))
 
 rem Pakete nachinstallieren, wenn sich requirements.txt / requirements-extra.txt geaendert haben
 rem (Zusatzpaket ohne Abhaengigkeiten, siehe requirements-extra.txt). Fehlschlag: Start trotzdem.
-"%VENV%\Scripts\python.exe" "%~dp0fogscout\update.py" --deps
+"%VENV%\Scripts\python.exe" -E "%~dp0fogscout\update.py" --deps
 
 :run
 if /i "%~1"=="debug" (
-  "%VENV%\Scripts\python.exe" -m fogscout
+  "%VENV%\Scripts\python.exe" -E -m fogscout
   pause
   exit /b 0
 )
 rem "tray": Autostart mit Windows (Aufgabe "Fog Scout (Autostart)") - im Infobereich starten
 set "ARGS="
 if /i "%~1"=="tray" set "ARGS=--tray"
-start "" "%VENV%\Scripts\pythonw.exe" -m fogscout %ARGS%
+start "" "%VENV%\Scripts\pythonw.exe" -E -m fogscout %ARGS%
 exit /b 0
 
 :nopython
