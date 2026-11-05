@@ -18,7 +18,7 @@ class ServerTab:
         conn = ui.LabelFrame(f, text=_("Verbundener Spielserver"), padding=8)
         conn.pack(fill="x")
         self.conn_show_var = ui.BooleanVar(value=bool(self.settings.get("show_connection")))
-        self._reg("srv.conn", ui.Checkbutton(conn, text=_("Anzeigen, mit welchem Server DBD verbunden ist"),  # 1.30: also
+        self._reg("srv.conn", ui.Checkbutton(conn, text=_("Spielserver anzeigen"),  # 1.38.10: one name (overview, setup); 1.30: also
                                              variable=self.conn_show_var, command=self._conn_toggled)  # in the setup
                   ).pack(anchor="w")
         self.conn_tab_var = ui.StringVar(value="")

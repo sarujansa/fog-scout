@@ -86,7 +86,8 @@ def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: fl
             cause = why.rsplit("(", 1)[-1].rstrip(")") if why.endswith(")") else ""   # keep only the cause
             why = _("Ursache: {cause}", cause=cause_words(cause)) if cause else ""
         return _("OBS nicht erreichbar"), (_("OBS starten, WebSocket-Server einschalten, Port/Passwort prüfen (Einstellungen → "
-                                              "Aufnahmen → Verbindung testen). {why}", why=why).strip()), ""
+                                              "Verbindungen → OBS-Verbindung → Verbindung testen). {why}",
+                                              why=why).strip()), ""     # 1.38.10: was „Aufnahmen“ (moved in 1.28)
     rec, paused = bool(d.get("recording")), bool(d.get("paused"))
     secs = float(d.get("seconds") or 0.0) + (extra_s if rec and not paused else 0.0)
     if rec:
@@ -812,7 +813,7 @@ class RecordingsTab:
         self._rec_card_render()
 
     def _show_round_recording(self, t: float) -> bool:
-        """1.17.1: the page Aufnahmen › Runden with the recording of the round at ``t`` marked (the compact editor
+        """1.17.1: the page Aufnahmen → Runden with the recording of the round at ``t`` marked (the compact editor
         follows the marking as for a click). False when there is none or the filters hide it."""
         self.qt.show_page("recordings")
         self.rec_nb.select(self.rec_nb.tabs()[0])
