@@ -580,6 +580,8 @@ class MapsPage(QWidget):
     # ------------------------------------------------------------------ right click (1.2.18)
     MENU = (("show", N_("Anzeigen")), ("rotate", N_("Drehen")),
             ("size_reset", N_("Eigene Grösse und Drehung zurücksetzen")), ("picture", N_("Kartenbild ersetzen …")),
+            ("styles_one", N_("Alle Kartenstile für diese Karte erstellen")),       # 1.38.8 (user)
+            ("styles_all", N_("Alle Karten in allen Stilen erstellen")),
             ("note", N_("Notiz bearbeiten …")))
 
     def menu_entries(self, key):

@@ -548,6 +548,10 @@ class QtShell:
                 self.rotate_map(mid)
             elif name == "size_reset":
                 self._reset_map_size(mid)
+            elif name == "styles_one":               # 1.38.8 (user): the styles made on demand
+                self._style_map_all(mid)
+            elif name == "styles_all":
+                self._style_everything()
             elif name == "picture":
                 from .picturedlg import PictureDialog
                 self._picture_from_unknown = False

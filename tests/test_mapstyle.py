@@ -427,3 +427,62 @@ def test_the_style_cache_keeps_only_the_current_version_and_newest_source(tmp_pa
     assert mapstyle.prune(str(tmp_path)) == len(drop)
     assert sorted(p.name for p in sub.iterdir()) == sorted(keep)
     assert mapstyle.prune(str(tmp_path / "missing")) == 0
+
+
+def test_warm_reports_each_picture_it_made(tmp_path):
+    """1.38.8: the maps page drew the tiles only after the last of ~56 pictures – ``on_made`` comes per picture."""
+    made = []
+    pics = [os.path.join(MAPS, "McMillan", "Coal Tower.webp"), os.path.join(MAPS, "McMillan", "Groaning Storehouse.webp")]
+    other = str(tmp_path / "plain.png")
+    Image.new("RGBA", (64, 64), (200, 30, 30, 255)).save(other)       # not of the community maps' kind: stays
+    n = mapstyle.warm(pics + [other], str(tmp_path / "cache"), style="dark", on_made=lambda: made.append(1))
+    assert n == 2 and len(made) == 2
+
+
+def test_the_tiles_are_drawn_again_at_most_once_a_second_while_styling(monkeypatch):
+    import queue
+    from fogscout import app as appmod
+    clock = [100.0]
+    monkeypatch.setattr(appmod.time, "monotonic", lambda: clock[0])
+    fake = types.SimpleNamespace(events=queue.Queue(), STYLE_TILES_GAP_S=appmod.App.STYLE_TILES_GAP_S)
+    fake._style_tiles_changed = "redraw"
+    for _ in range(5):                                       # five pictures within the same second
+        appmod.App._style_tiles_soon(fake)
+    clock[0] += 1.0
+    appmod.App._style_tiles_soon(fake)
+    calls = [fake.events.get_nowait() for _ in range(fake.events.qsize())]
+    assert calls == [("call", "redraw", ())] * 2
+
+
+def test_right_click_makes_the_styles_of_one_map_or_of_every_map(tmp_path, monkeypatch):
+    """1.38.8 (user: „Context Action … mit der ich die anderen Stile erstellen kann per Rechtsklick“)."""
+    import threading
+    from fogscout import app as appmod
+    from fogscout import qt_maps
+    assert ["styles_one", "styles_all", "note"] == [a for a, _l in qt_maps.MapsPage.MENU][-3:]
+    maps = {"coal": types.SimpleNamespace(id="coal", name="Coal Tower", variants={1: "a", 2: "b"}),
+            "bad": types.SimpleNamespace(id="bad", name="Badham", variants={1: "c"})}
+    cat = types.SimpleNamespace(maps=maps, image_path=lambda mid, v=1: (f"/maps/{mid}-{v}.webp", v))
+    fake = _fake_app(appmod, cat, tmp_path, "grey")
+    logs, styled = [], []
+    fake._log = lambda text, kind: logs.append(text)
+    fake._style_all = styled.append
+    fake._style_tiles_soon = lambda: None
+    appmod.App._style_map_all(fake, "coal")
+    assert styled == ["/maps/coal-1.webp", "/maps/coal-2.webp"] and "Coal Tower" in logs[-1]
+    release, runs = threading.Event(), []
+
+    def warm(paths, cache, stop=lambda: False, style="dark", on_made=None):
+        runs.append((style, list(paths)))
+        release.wait(5)
+        return len(paths)
+    monkeypatch.setattr(appmod.mapstyle, "warm", warm)
+    appmod.App._style_everything(fake)
+    appmod.App._style_everything(fake)                        # once at a time
+    assert logs[-1] == "Die Kartenstile werden schon erstellt."
+    release.set()
+    for t in [t for t in threading.enumerate() if t.name == "mapstyle-everything"]:
+        t.join(5)
+    assert runs[0][0] == "grey" and {s for s, _p in runs} == set(appmod.mapstyle.STYLES)
+    assert all(p == ["/maps/bad-1.webp", "/maps/coal-1.webp", "/maps/coal-2.webp"] for _s, p in runs)
+    assert not fake._style_everything_on
