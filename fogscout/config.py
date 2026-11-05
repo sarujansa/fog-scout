@@ -239,6 +239,11 @@ def _typed(key, value, default):
     want = TYPED[key]
     if want is bool:
         return value if isinstance(value, bool) else copy.deepcopy(default)
+    if want is str or want is dict:
+        # 1.38.17 (audit): only bool and list had a branch – a str such as claude_model always fell through to the
+        # default, so a picked "haiku"/"sonnet" came back as "opus" at every start (dicts never got here: _merge
+        # merges them before, but a stored non-dict for a dict key does, and keeps the default as before)
+        return value if isinstance(value, want) else copy.deepcopy(default)
     if not isinstance(value, list):
         return copy.deepcopy(default)
     return [v for v in value if isinstance(v, str)][:RECENT_KEPT]

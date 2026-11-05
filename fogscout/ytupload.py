@@ -37,7 +37,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 
-from . import launch, spotify
+from . import fsops, launch, spotify
 from .i18n import N_, _
 from .textnorm import fmt_duration
 
@@ -315,6 +315,8 @@ class Job:
     def from_dict(cls, d) -> "Job | None":
         if not isinstance(d, dict) or not str(d.get("rel") or ""):
             return None
+        if fsops.rel_path(".", str(d["rel"])) is None:     # 1.38.20 (audit): settings.json is user-writable – a
+            return None                                     # "../x" or "C:/x" never reaches os.path.join below
         fields = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         try:
             return cls(**fields)
@@ -798,7 +800,7 @@ class Uploader(threading.Thread):
             self._say(_("YouTube: {n} in der Warteschlange – Tageskontingent aufgebraucht, weiter ab {when}",
                         n=len(self.jobs), when=time.strftime("%H:%M", time.localtime(next_reset(now)))), True)
             return
-        path = os.path.join(self.folder, job.rel.replace("/", os.sep)) if self.folder else ""
+        path = (fsops.rel_path(self.folder, job.rel) or "") if self.folder else ""   # 1.38.20: never outside the folder
         if not job.video and (not path or not os.path.isfile(path)):
             self._give_up(job, _("Datei nicht gefunden") if self.folder else _("Aufnahmeordner nicht da"),
                           final=bool(self.folder))
