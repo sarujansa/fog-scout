@@ -1,0 +1,37 @@
+{
+"format": "fogscout-corpus",
+"version": 1,
+"program": "1.38.33",
+"t": 1793908762.966,
+"map_id": "rpd-west",
+"variant": 1,
+"probability": 1.0,
+"name_text": "RACCOON CITY POLICE STATION WEST WING",
+"realm_text": "RACCOON CITY",
+"name_fit": 0.04,
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+676
+],
+"offset": [
+0,
+90
+],
+"separator": {
+"x0": 561,
+"x1": 1744,
+"y": 493,
+"frac": 0.462,
+"thickness": 2.67
+},
+"letterboxed": false,
+"bars": null,
+"languages": [
+"en",
+"de"
+]
+}

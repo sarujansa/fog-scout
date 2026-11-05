@@ -1,0 +1,37 @@
+{
+"format": "fogscout-corpus",
+"version": 1,
+"program": "1.38.33",
+"t": 1793911231.004,
+"map_id": "underground-complex",
+"variant": 1,
+"probability": 1.0,
+"name_text": "THE UNDERGROUND COMPLEX",
+"realm_text": "HAWKINSNATIONAL LABORATORY",
+"name_fit": 0.03,
+"frame": [
+1071,
+601
+],
+"roi": [
+685,
+282
+],
+"offset": [
+0,
+90
+],
+"separator": {
+"x0": 60,
+"x1": 393,
+"y": 204,
+"frac": 0.3117,
+"thickness": 1.0
+},
+"letterboxed": false,
+"bars": null,
+"languages": [
+"en",
+"de"
+]
+}
