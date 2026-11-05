@@ -244,3 +244,23 @@ def test_a_big_text_with_the_dark_area_still_fits_the_bar():
     height = layout.fit_height(518, 406, *ov.map_size())
     h = ov.fit_width(height, text_h, 406 + 2 * edge)
     assert ov.render(h)[0] <= 406 + 2 * edge and ov.text_height >= 40
+
+
+def test_every_drawing_name_is_still_importable_from_overlay_win32():
+    """1.38.34 (Phase 5, ARCH-3): the drawing moved to overlay_render; old imports from overlay_win32 keep working –
+    the same objects (the glyph cache is shared, not copied)."""
+    import ast
+    import os
+    from fogscout import overlay_render, overlay_win32
+    src = open(os.path.join(os.path.dirname(overlay_render.__file__), "overlay_render.py"), encoding="utf-8").read()
+    names = set()
+    for node in ast.parse(src).body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    missing = [n for n in sorted(names) if getattr(overlay_win32, n, None) is not getattr(overlay_render, n)]
+    assert missing == []
+    assert overlay_win32._GLYPHS is overlay_render._GLYPHS and overlay_win32.BACKDROP == overlay_render.BACKDROP
