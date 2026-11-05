@@ -19,7 +19,7 @@ from .i18n import _
 from .detector import (ROI, Accumulator, BannerReader, OutOfMatchWatcher, currency_box, has_loading_bar, is_dark,
                        letterbox_rows)
 from .layout import MIN_VBAR
-from .lobby import LobbyReader, QueueTracker, corner_box, crossplay_box, crossplay_off, result_box
+from .lobby import LobbyReader, QueueTracker, SteadyCorner, corner_box, crossplay_box, crossplay_off, result_box
 from .matchstart import LOADING_LOOKS, MatchStart
 from .matchend import MatchEndTracker, Signals
 from .ocr import Recognizer
@@ -219,6 +219,7 @@ class DetectionWorker(threading.Thread):
         acc = Accumulator()
         out_of_match = OutOfMatchWatcher(rec)
         lobby_reader = LobbyReader(rec)
+        steady = self.lobby_steady = SteadyCorner()   # 1.38.14: an unchanged corner is not read again
         last_lobby = 0.0
         lobby_button_t = -1e9             # last look that saw PLAY / CANCEL / READY
         last_start_look = -1e9            # 1.6: last look for the end of the loading screen
@@ -484,7 +485,11 @@ class DetectionWorker(threading.Thread):
                         corner = grab(cb)
                         if corner is not None:
                             self._mask_screen(corner, from_screen(), origin[0] + cb[0], origin[1] + cb[1])
-                            view = lobby_reader.read(corner, fw, fh)
+                            view = steady.reuse(corner, tick)
+                            same = view is not None
+                            if view is None:
+                                view = lobby_reader.read(corner, fw, fh)
+                                steady.remember(corner, view, tick)
                             if view.button is not None:
                                 lobby_button_t = tick
                                 # 1.2.20: the cross-play globe above the button (farming rounds) – a second small grab
@@ -502,7 +507,8 @@ class DetectionWorker(threading.Thread):
                             fit = "–" if view.fit is None else f"{view.fit:.1f}"
                             cross = {True: " · Crossplay aus", False: " · Crossplay an"}.get(view.crossplay_off, "")
                             self.lobby_info = (f"{view.button or '–'} ({fit}) "
-                                               f"„{view.name}“ „{view.time_text}“ → {view.kind or '–'}{cross}")
+                                               f"„{view.name}“ „{view.time_text}“ → {view.kind or '–'}{cross}"
+                                               + (" · unverändert" if same else ""))
                             for ev in self.queue.update(view, tick):
                                 self._queue_event(ev, tick)
                     except Exception:
