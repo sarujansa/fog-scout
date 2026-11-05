@@ -1324,7 +1324,7 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        QTimer.singleShot(0, self._hint_fit)
+        QTimer.singleShot(0, self, self._hint_fit)
         if getattr(self, "key_help", None) is not None and not self.key_help.isHidden():
             self.key_help.place()
 
