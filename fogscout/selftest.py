@@ -186,3 +186,41 @@ def main(root: str, out: str, clock=None) -> int:
     with open(out, "w", encoding="utf-8") as fh:
         json.dump(res, fh, ensure_ascii=False, indent=1)
     return 0 if res["ok"] else 1
+
+
+# ---------------------------------------------------------------- 1.38.33 (project review F10): from the running program
+CHILD_TIMEOUT_S = 180
+
+
+def child_args(out: str, frozen: bool | None = None, python: str | None = None) -> list:
+    """The command that runs this check as its own process (the running program must not import every module, open
+    a second QApplication or bend its own environment for it): the .exe itself, or this Python with -E."""
+    import sys
+    from .paths import frozen as is_frozen
+    exe = python or sys.executable
+    if is_frozen() if frozen is None else frozen:
+        return [exe, "--selftest", out]
+    return [exe, "-E", "-m", "fogscout", "--selftest", out]
+
+
+def run_child(root: str, out: str, timeout: float = CHILD_TIMEOUT_S, run=None) -> dict:
+    """Run the check as a child process and read its result file; a broken or hung child is a failed result."""
+    import subprocess
+    run = run or subprocess.run
+    try:
+        os.remove(out)
+    except OSError:
+        pass
+    try:
+        run(child_args(out), cwd=root, timeout=timeout, capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "failed": [f"Selbsttest: nach {timeout:.0f} s abgebrochen"], "passed": []}
+    except OSError as e:
+        return {"ok": False, "failed": [f"Selbsttest: {type(e).__name__}: {e}"], "passed": []}
+    try:
+        with open(out, encoding="utf-8") as fh:
+            res = json.load(fh)
+    except (OSError, ValueError) as e:
+        return {"ok": False, "failed": [f"Selbsttest: kein Ergebnis ({type(e).__name__})"], "passed": []}
+    return res if isinstance(res, dict) else {"ok": False, "failed": ["Selbsttest: Ergebnis unlesbar"], "passed": []}
