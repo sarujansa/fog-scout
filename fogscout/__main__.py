@@ -5,6 +5,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 import traceback
 
 from . import __version__, i18n
@@ -163,6 +164,38 @@ def _log_thread_deaths():
     threading.excepthook = hook
 
 
+UNCAUGHT_GAP_S = 60.0                            # one log entry per kind of uncaught error and minute
+
+
+def _log_uncaught(clock=time.monotonic):
+    """1.38.4: an exception in a Qt handler (a click, a timer) reaches sys.excepthook – by default that writes to
+    sys.stderr, which is None under pythonw.exe and in the .exe: the error vanished without a trace. Into the log
+    instead, with the traceback; the same error (type, file, line where it was raised) at most once per
+    UNCAUGHT_GAP_S, the next entry says how often it came meanwhile. Never a dialog. Ctrl+C keeps the old hook."""
+    logger = logging.getLogger("fogscout")
+    old = sys.excepthook
+    seen = {}                                    # key -> [last logged, repeats since, first repeat wall time]
+
+    def hook(exc_type, exc, tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            old(exc_type, exc, tb)
+            return
+        frames = traceback.extract_tb(tb) if tb is not None else []
+        where = (frames[-1].filename, frames[-1].lineno) if frames else ("?", 0)
+        key = (exc_type.__name__,) + where
+        now = clock()
+        entry = seen.get(key)
+        if entry is not None and now - entry[0] < UNCAUGHT_GAP_S:
+            if not entry[1]:
+                entry[2] = time.strftime("%H:%M")
+            entry[1] += 1
+            return
+        again = f" ({entry[1]}× seit {entry[2]})" if entry is not None and entry[1] else ""
+        seen[key] = [now, 0, ""]
+        logger.error("Unerwarteter Fehler%s", again, exc_info=(exc_type, exc, tb))
+    sys.excepthook = hook
+
+
 HELPER_MODULES = ("hostsedit", "netwatch")      # = regions.HELPERS (test_frozen)
 
 
@@ -287,6 +320,7 @@ def main():
     if taken:
         logging.getLogger("fogscout").info("Aus der start.bat-Installation übernommen: %s", ", ".join(taken))
     _log_thread_deaths()
+    _log_uncaught()
     from .capture import enable_dpi_awareness
     enable_dpi_awareness()
     splash = None
