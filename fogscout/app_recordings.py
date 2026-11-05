@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 from . import encoders, history, launch, obsrec, project, recquality, steamshots, uimodel as ui
 from .medialib import montage_items
-from .app_stats import STATS_PERIODS
+from .appconst import STATS_PERIODS
 from .capture import IS_WIN
 from .i18n import N_, _
 from .lobby import killer_label

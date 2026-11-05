@@ -22,6 +22,7 @@ from .textnorm import fmt_duration
 from .dashboard import Tile, _bp
 from .theme import DOT
 from .trendchart import TrendChart
+from .appconst import STATS_PERIODS   # noqa: F401 – 1.38.36: shared choices live in appconst
 
 log = logging.getLogger("fogscout")
 
@@ -77,12 +78,7 @@ def sys_tiles(avg) -> list:
 RESULTS = {"escaped": N_("entkommen"), "dead": N_("tot"), "abandoned": N_("aufgegeben"), "gone": N_("verlassen")}
 
 
-
-
 RECORD_MIN = 3        # rounds with official results on a map before the overlay shows the own record there
-STATS_PERIODS = [("all", N_("Gesamter Zeitraum")), ("day", N_("Heute")), ("7d", N_("Letzte 7 Tage")),
-                 ("30d", N_("Letzte 30 Tage")), ("week", N_("Diese Woche")), ("month", N_("Dieser Monat")),
-                 ("year", N_("Dieses Jahr"))]
 TREND_UNIT = {"day": "hour", "7d": "day", "30d": "day", "week": "day", "month": "day"}   # else: week
 LAST_ROUNDS_STEP = 100                      # "Letzte Runden": rows shown, +100 per "Weitere" (1.2.16)
 
