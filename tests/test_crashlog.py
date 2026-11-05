@@ -5,6 +5,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 from fogscout import diagnose
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -58,3 +60,73 @@ def test_a_thread_that_dies_of_an_exception_is_logged(caplog):
                    for r in caplog.records)
     finally:
         threading.excepthook = old
+
+
+def _raise(exc):
+    try:
+        raise exc
+    except BaseException:
+        return sys.exc_info()
+
+
+def test_an_uncaught_error_is_logged_once_a_minute_with_how_often_it_came(caplog, monkeypatch):
+    """1.38.4: an exception in a Qt handler goes to sys.excepthook – by default to sys.stderr, None under pythonw.exe
+    and in the .exe. Into the log instead; the same error (type + place) once per minute, then with its count."""
+    import logging
+    from fogscout import __main__ as m
+    now = [1000.0]
+    passed = []
+    monkeypatch.setattr(sys, "excepthook", lambda *a: passed.append(a[0]))
+    m._log_uncaught(clock=lambda: now[0])
+    hook = sys.excepthook
+    with caplog.at_level(logging.ERROR, logger="fogscout"):
+        info = _raise(ValueError("Klick"))
+        hook(*info)
+        hook(*info)                                      # same place, same second: counted, not logged
+        hook(*info)
+        hook(*_raise(KeyError("anderer Fehler")))        # another place: logged at once
+        now[0] += m.UNCAUGHT_GAP_S + 1
+        hook(*info)
+    lines = [r.getMessage() for r in caplog.records if r.name == "fogscout"]
+    assert lines[0] == "Unerwarteter Fehler" and caplog.records[0].exc_info[0] is ValueError
+    assert lines[1] == "Unerwarteter Fehler" and caplog.records[1].exc_info[0] is KeyError
+    assert len(lines) == 3 and lines[2].startswith("Unerwarteter Fehler (2× seit ") and lines[2].endswith(")")
+    hook(*_raise(KeyboardInterrupt()))                   # Ctrl+C: the old hook, as before
+    assert passed == [KeyboardInterrupt]
+
+
+def test_an_error_in_a_qt_click_handler_reaches_the_log(caplog, monkeypatch):
+    """The reason for the hook: PySide6 reports an exception in a slot through sys.excepthook (checked, 6.11.2)."""
+    import logging
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6.QtWidgets import QPushButton
+    from fogscout import __main__ as m, qt_window
+    qt_window.application()
+    monkeypatch.setattr(sys, "excepthook", sys.excepthook)          # restored after the test
+    m._log_uncaught()
+    b = QPushButton("x")
+
+    def broken():
+        raise RuntimeError("Handler kaputt")
+    b.clicked.connect(broken)
+    with caplog.at_level(logging.ERROR, logger="fogscout"):
+        b.click()
+    assert any(r.getMessage() == "Unerwarteter Fehler" and r.exc_info and "Handler kaputt" in str(r.exc_info[1])
+               for r in caplog.records)
+
+
+def test_a_closed_dialog_is_deleted(monkeypatch):
+    """1.38.4: close_dialog only closed – every dialog stayed a child of the main window until Fog Scout quit."""
+    import types
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    import shiboken6
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QDialog
+    from fogscout import qt_window
+    qt_window.application()
+    dlg = QDialog()
+    dlg.show()
+    owner = types.SimpleNamespace(dialogs={"assign": dlg})
+    qt_window.MainWindow.close_dialog(owner, "assign")
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert owner.dialogs == {} and dlg.closing_from_app and not shiboken6.isValid(dlg)

@@ -232,7 +232,7 @@ class Hasher(threading.Thread):
                     on_done(result)
                 except Exception:                     # 1.34.2 (review W1): the next waiter still gets its answer
                     log.exception("Hash fertig: Fehler beim Weitergeben")
-            # 1.38.4: let go of the answers before waiting – the callbacks hold the asking editor's bridge, and as
+            # 1.38.5: let go of the answers before waiting – the callbacks hold the asking editor's bridge, and as
             # loop locals they kept the last closed editor alive until the next file was hashed
             dones = progs = progress = on_done = result = None
 

@@ -344,7 +344,7 @@ def _gone(app, seconds=3):
 
 
 def test_a_closed_editor_is_freed_and_one_still_saving_only_after_its_save(qapp, clip, tmp_path, monkeypatch):
-    """1.38.4 (measured during 1.38.3): a closed editor stayed in memory until Fog Scout quit. The "Ton" box is never
+    """1.38.5 (measured during 1.38.3): a closed editor stayed in memory until Fog Scout quit. The "Ton" box is never
     shown in the big editor (the mute button stands for it) and had no Qt parent: its C++ object outlived the window,
     and its two lambdas held the window. A save still running keeps the window until its result is handed over."""
     import gc
