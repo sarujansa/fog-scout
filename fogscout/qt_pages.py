@@ -53,7 +53,7 @@ SETUP = (
         ("sub", N_("Systemwerte")),              # 1.8.2: "Position" alone did not say what it places
         ("row", (("label", "ov.sysinfo.label"), ("combo", "ov.sysinfo"), ("stretch",))),
         ("check", "ov.today"), ("check", "ov.media"))),
-    (N_("Tasten"), (
+    (N_("Hotkeys"), (                       # 1.38.10: the name of the settings tab (was „Tasten“)
         ("note", N_("Die wichtigsten Tasten – zum Ändern draufklicken und die neue Kombination drücken. Alle "
                     "Tasten findest du später unter Einstellungen.")),
         ("grid", 1, tuple(("row", (("label", f"st.hk.{k}.label"), ("stretch",), ("hotkey", f"st.hk.{k}")))
@@ -527,7 +527,7 @@ class OverviewPage(QWidget):
 
 
 class RoundRowView(QFrame):
-    """1.17.1: one row of the overview's "Letzte Runden" – a click opens the round in Statistik › Letzte Runden,
+    """1.17.1: one row of the overview's "Letzte Runden" – a click opens the round in Statistik → Letzte Runden,
     ▶ (only with a recording of it) opens it on the page Aufnahmen. Rows are made once and refilled."""
 
     def __init__(self, post):

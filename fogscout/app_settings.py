@@ -278,7 +278,7 @@ class SettingsTab:
         self._reg("st.more.rec_on", ui.Checkbutton(rc, text=_("Jede Runde mit OBS aufnehmen"),
                                                     variable=self.rec_on_var, command=self._rec_setting)).pack(anchor="w")
         self._reg("st.more.rec_link_hint", ui.Label(rc, text=_(
-            "Port und Passwort von OBS stehen unter Verbindungen › OBS-Verbindung."),
+            "Port und Passwort von OBS stehen unter Verbindungen → OBS-Verbindung."),
             style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(4, 0))
         # 1.28 (user: "warum ist OBS auf einer separaten Seite und nicht in Verbindungen"): the connection to OBS
         # (port, password, test) is a card of its own on the tab "Verbindungen"; recording stays on "Aufnahmen"
@@ -437,7 +437,8 @@ class SettingsTab:
         self._reg("st.more.rec_text", ui.Label(rc, text=_(
             "OBS nimmt auf, das Programm sagt nur wann: Start beim Map-Banner, Stopp beim erkannten Rundenende, "
             "Datei nach Datum, Map und Killer benannt. Dafür in OBS unter Werkzeuge → WebSocket-Servereinstellungen "
-            "den Server einschalten und das Passwort hier eintragen; Verbindung nur auf diesem PC (127.0.0.1). "
+            "den Server einschalten und Port und Passwort unter Verbindungen → OBS-Verbindung eintragen; Verbindung nur "
+            "auf diesem PC (127.0.0.1). "
             "Empfohlen: Aufnahmeformat MKV oder Hybrid-MP4 (bleibt bei Abbruch lesbar), Fenster- oder "
             "Bildschirmaufnahme statt Spielaufnahme. Der Ordner wird über sein Laufwerk gemerkt – ist die Platte "
             "nicht angeschlossen, wird nicht aufgenommen."),

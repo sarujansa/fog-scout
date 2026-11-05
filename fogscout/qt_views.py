@@ -277,7 +277,7 @@ class Table(QTreeWidget):
 
     def _fit_stretch(self):
         """1.17: the stretching column (the name) takes the room that is left – but never less than its contents:
-        when the columns are wider than the table (statistics › System: 15 columns) Qt squeezed it to "Ba…";
+        when the columns are wider than the table (statistics → System: 15 columns) Qt squeezed it to "Ba…";
         then it keeps its natural width and the table scrolls sideways."""
         s = self._stretch_now
         if s is None or s >= len(self._natural) or s >= self.columnCount():
