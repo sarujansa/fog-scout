@@ -757,7 +757,9 @@ def test_the_clips_sub_tab_lists_filters_and_deletes_the_programs_clips(app_root
         app._confirmed = True
         app._menu_act("delete")                                # → recorder thread
         deadline = time.time() + 5
-        while time.time() < deadline and (cdir / "nurse.mp4").exists():
+        # 1.38.25: the recorder deletes the file first and writes the index after – wait for both (CI saw the
+        # file gone and the index still with the clip)
+        while time.time() < deadline and ((cdir / "nurse.mp4").exists() or obsrec.load_clips(str(cdir))):
             time.sleep(0.05)
         assert not (cdir / "nurse.mp4").exists() and (cdir / "holiday.mp4").exists()
         assert obsrec.load_clips(str(cdir)) == []

@@ -178,6 +178,19 @@ def test_a_crashed_detection_shows_in_the_status_line(app):
     assert status.is_problem(app._worker_status) and "neu starten" in app._worker_status
 
 
+def test_a_round_still_open_at_quit_is_kept_as_a_lost_round(app):
+    """1.38.24 (review STAB-7): quit closed nothing – a round open at quit (or logoff) vanished without a trace."""
+    from fogscout import history
+    app._dispatch(_detected("coal-tower", 1))
+    assert app._hist is not None
+    app.recorder.quit = lambda: None
+    app.recorder.join = lambda timeout=None: None
+    app.quit()
+    lost = history.load_lost(app._hist_path())
+    assert len(lost) == 1 and lost[0][1].startswith("Coal Tower") and lost[0][2] == "quit"
+    assert history.load_lost_rounds(app._hist_path())[0].map_id == "coal-tower" and app._hist is None
+
+
 def test_quitting_runs_every_step_even_when_one_raises(app):
     calls = []
 

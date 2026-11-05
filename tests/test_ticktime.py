@@ -31,3 +31,30 @@ def test_a_wrapped_step_counts_its_time_and_keeps_its_result():
     assert f(21) == 42 and f.__wrapped__(1) == 2
     tt.end(5.0)
     assert set(tt.ticks[0]) == {"info", "total", "map"} and tt.ticks[0]["info"] >= 0
+
+
+def test_the_workers_looks_are_timed_per_step_with_counts_and_without_the_sleep():
+    """1.38.22 (project review PERF-2): nothing measured what a look of the detection cost. LookTimes: a tick's
+    total is the steps' sum (the sleep between looks says nothing), sparse steps (lobby once a second, banner strip
+    five times) are averaged over the ticks they ran in, with their count."""
+    from fogscout.ticktime import CpuShare, LookTimes
+    lt = LookTimes(kept=10)
+    for i in range(4):
+        lt.start()
+        lt.add("grab", 10.0)
+        if i % 2 == 0:
+            with lt.measure("lobby"):
+                pass
+            lt.add("lobby", 100.0)
+        lt.end()                                           # no total: the steps' sum
+    assert lt.ticks[-1]["total"] == 10.0 and lt.ticks[-2]["total"] >= 110.0 and lt.ticks[-1]["map"] == 0.0
+    line = lt.line()
+    assert line.startswith("Erkennungs-Takt (4 Takte") and "Aufnahme 10.0/10 (4×)" in line
+    assert "Lobby-OCR 100.0/100 (2×)" in line and "Banner-OCR" not in line
+    assert LookTimes().line() == "Erkennungs-Takt: noch keine Messung"
+    cpu = CpuShare(kept=5)
+    assert cpu.percent() is None and "noch keine" in cpu.line()
+    for wall, used in ((0.0, 0.0), (1.0, 0.25), (2.0, 0.50), (3.0, 1.0)):
+        cpu.note(wall, used)
+    assert cpu.percent(60) == 100.0 * 1.0 / 3.0 and cpu.percent(1.5) == 50.0       # the last window only
+    assert "letzte Minute 33.3 %" in cpu.line("Erkennung")

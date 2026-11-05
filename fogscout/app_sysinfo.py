@@ -336,14 +336,15 @@ class SysInfo:
             return None
         editing = on and self.overlay.editing
         win.set_editing(editing)
-        rows = self._today_rows(time.time()) if on else []
         spot = o.get("today_pos", "below")
         gx, gy, gw, gh, show = ctx or (0, 0, 0, 0, False)
         bar = layout.bar_width(gw, gh) if gh else 0
         forced = getattr(self, "_forced", False)
         fade = bool(o.get("fade", True)) and not editing
-        if not (ctx and rows and (show or editing) and (self.game is not None or editing or forced)
-                and (bar >= layout.MIN_BAR or spot == "custom" or editing)):
+        possible = bool(ctx and (show or editing) and (self.game is not None or editing or forced)
+                        and (bar >= layout.MIN_BAR or spot == "custom" or editing))
+        rows = self._today_rows(time.time()) if on and possible else []   # 1.38.23 (PERF-11): not every tick with
+        if not rows:                                                       # DBD closed – it was computed before the test
             self._fade_hide("today", fade)
             self.worker.today_rect = None
             self._today_box = None

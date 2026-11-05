@@ -81,7 +81,11 @@ def _rewrite(path: str, rounds, lost) -> None:
     lines = [(r.t, json.dumps(asdict(r), ensure_ascii=False)) for r in rounds] + \
         [(d["t"], json.dumps(d, ensure_ascii=False)) for d in lost]
     text = "".join(line + "\n" for _t, line in sorted(lines, key=lambda x: x[0]))
-    fsops.write_atomic(path, text.encode("utf-8"))   # 1.38.5: fsync'ed temp file + one replace (was its own copy)
+    data = text.encode("utf-8")
+    fsops.write_atomic(path, data)   # 1.38.5: fsync'ed temp file + one replace (was its own copy)
+    # 1.38.24 (PERF-1): the cache knows the new file – after set_result_role / set_balance (twice per round) every
+    # load parsed the whole file again, and the statistics' join followed on the window's thread
+    _LINES.prime(path, data, sorted(rounds, key=lambda r: r.t))
 
 
 LOST_KEYS = ("map_id", "region", "source", "wait", "role", "custom", "farming", "killer", "ping", "sys")   # since 1.35/1.43

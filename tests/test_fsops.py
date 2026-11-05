@@ -413,3 +413,27 @@ def test_a_temp_file_of_the_clips_index_is_never_taken_for_a_clip(tmp_path):
     assert obsrec.list_clips(cdir, []) == []
     assert obsrec.settle_parts(str(tmp_path), now=old + 20 * 3600) == []
     assert os.path.exists(tmp)
+
+
+def test_write_atomic_waits_for_a_reader_that_blocks_the_replace(tmp_path, monkeypatch):
+    """1.38.24 (review STAB-3): on Windows os.replace fails with a PermissionError while another handle has the
+    target open without FILE_SHARE_DELETE (our own reader thread, a virus scanner, OneDrive) – the write was lost.
+    A few short retries; when they run out the error still comes and no temp file stays."""
+    p = tmp_path / "rounds.jsonl"
+    p.write_bytes(b"old\n")
+    real = os.replace
+    fails = {"n": 2}
+
+    def flaky(src, dst):
+        if fails["n"]:
+            fails["n"] -= 1
+            raise PermissionError(13, "Der Prozess kann nicht auf die Datei zugreifen")
+        return real(src, dst)
+    monkeypatch.setattr(fsops.os, "replace", flaky)
+    monkeypatch.setattr(fsops, "REPLACE_WAIT_S", 0.001)
+    fsops.write_atomic(str(p), b"new\n")
+    assert p.read_bytes() == b"new\n" and fails["n"] == 0 and os.listdir(tmp_path) == ["rounds.jsonl"]
+    fails["n"] = 99
+    with pytest.raises(PermissionError):
+        fsops.write_atomic(str(p), b"newer\n")
+    assert p.read_bytes() == b"new\n" and os.listdir(tmp_path) == ["rounds.jsonl"]

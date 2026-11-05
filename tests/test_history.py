@@ -364,7 +364,13 @@ def test_a_later_balance_is_stored_with_the_round(tmp_path):
         fh.write('{"t": 200, "seconds": 600, "map_id": "a", "map": "A", "balance": "5000000"}\n')
         fh.write('{"t": 300, "seconds": 600, "map_id": "a", "map": "A", "balance": true}\n')
     assert [r.balance for r in h.load(path)] == [None, None, None]
+    full = h._LINES.full
     assert h.set_balance(path, 100, 5000000).balance == 5000000
+    # 1.38.24 (PERF-1): the rewrite primes the line cache – the next load parses nothing again (before: the prefix
+    # hash no longer matched and the whole file was parsed, twice per round, then the statistics joined anew)
+    tail = h._LINES.tail
+    assert [r.balance for r in h.load(path)] == [5000000, None, None]
+    assert h._LINES.full == full and h._LINES.tail == tail + 1
     assert h.set_balance(path, 100, 5000000) is None and h.set_balance(path, 999, 1) is None
     got = {r.t: r for r in h.load(path)}
     assert (got[100].balance, got[100].role, got[200].balance) == (5000000, "killer", None)
