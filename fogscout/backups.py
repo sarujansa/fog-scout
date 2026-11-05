@@ -76,3 +76,38 @@ def status(root: str) -> tuple:
     all_names = [n for name in FILES for n in copies(folder, name.split(".")[0])]
     days = sorted(_NAME.match(n).group("day") for n in all_names)
     return len(all_names), days[-1] if days else ""
+
+
+# ---------------------------------------------------------------- 1.38.32 (project review F8): everything in one ZIP
+ARCHIVE_FILES = FILES + ("corpus",)            # the own data a user wants to move or keep (corpus: folder)
+ARCHIVE_DIRS = ("user_maps", "corpus")
+
+
+def archive(data_dir: str, dest: str, settings: dict) -> int:
+    """The program's own data into the ZIP ``dest`` (the user's file): rounds and match data, the settings as
+    "Einstellungen exportieren" writes them (no secrets, no PC-specific values), own map pictures and the banner
+    corpus. Logs, caches and recordings stay out. Returns the number of files."""
+    import json
+    import zipfile
+    from .config import EXPORT_SKIP, LOCAL_KEYS, SECRET_KEYS
+    clean = {k: v for k, v in settings.items() if k not in SECRET_KEYS and k not in EXPORT_SKIP and k not in LOCAL_KEYS}
+    n = 0
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("fogscout-einstellungen.json", json.dumps(clean, indent=2, ensure_ascii=False))
+        n += 1
+        for name in FILES:
+            p = os.path.join(data_dir, name)
+            if os.path.isfile(p):
+                z.write(p, name)
+                n += 1
+        for sub in ARCHIVE_DIRS:
+            top = os.path.join(data_dir, sub)
+            for folder, dirs, files in os.walk(top):
+                dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(folder, d))]
+                for f in sorted(files):
+                    p = os.path.join(folder, f)
+                    if os.path.islink(p) or not os.path.isfile(p):
+                        continue
+                    z.write(p, os.path.relpath(p, data_dir).replace(os.sep, "/"))
+                    n += 1
+    return n
