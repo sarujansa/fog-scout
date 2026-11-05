@@ -26,7 +26,7 @@ import traceback
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 
-from . import jsonlcache
+from . import fsops, jsonlcache
 from .textnorm import fold
 
 log = logging.getLogger(__name__)
@@ -295,13 +295,8 @@ def load_gaps(path: str) -> list:
 def _write(path: str, matches, gaps) -> None:
     lines = [(m.t, json.dumps(asdict(m), ensure_ascii=False)) for m in matches] + \
         [(b, json.dumps({"gap": True, "from": a, "to": b})) for a, b in gaps]
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        for _t, line in sorted(lines, key=lambda x: x[0]):
-            fh.write(line + "\n")
-        fh.flush()
-        os.fsync(fh.fileno())          # 1.12.3: on disk before the rename (see history._rewrite)
-    os.replace(tmp, path)
+    text = "".join(line + "\n" for _t, line in sorted(lines, key=lambda x: x[0]))
+    fsops.write_atomic(path, text.encode("utf-8"))   # 1.38.5 (see history._rewrite)
 
 
 def merge(path: str, matches) -> tuple:

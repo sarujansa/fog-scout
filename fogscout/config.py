@@ -8,6 +8,8 @@ import os
 import shutil
 import time
 
+from . import fsops
+
 log = logging.getLogger(__name__)
 
 HUD_SHOWN = ("above", "left", "right", "custom")    # settings.sysinfo values that show the system values
@@ -279,7 +281,6 @@ def export_settings(data: dict, path: str) -> None:
     (LOCAL_KEYS: folders, setup path, window geometry …): read_backup never takes them from a file anyway, so in a
     shared backup they only told others about this PC. Old backups that still hold them import as before."""
     data = {k: v for k, v in data.items() if k not in SECRET_KEYS and k not in EXPORT_SKIP and k not in LOCAL_KEYS}
-    from . import fsops                       # 1.34.2 (review W8): fsync'ed, no half or leftover file
     fsops.write_atomic(path, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
 
 
@@ -421,13 +422,8 @@ class Settings:
     def save(self):
         if self.frozen:
             return
-        tmp = self.path + ".tmp"
-        try:
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(self.data, fh, indent=2, ensure_ascii=False)
-                fh.flush()
-                os.fsync(fh.fileno())   # 1.12.3: on disk before the rename – a power cut must not leave an empty file
-            os.replace(tmp, self.path)
+        try:                            # 1.38.5: fsops.write_atomic – fsync'ed temp file, one replace, no temp left
+            fsops.write_atomic(self.path, json.dumps(self.data, indent=2, ensure_ascii=False).encode("utf-8"))
         except OSError as e:
             if not self._save_failed:   # disk full, locked: said once in the log, the next save tries again
                 log.warning("Einstellungen nicht gespeichert: %s", e)

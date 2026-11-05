@@ -276,3 +276,140 @@ def test_the_one_replacing_write_is_whole_or_nothing(tmp_path, monkeypatch):
     config.export_settings({"ui_language": "de", "rec_password": "secret"}, str(backup))
     assert json.loads(backup.read_text(encoding="utf-8")) == {"ui_language": "de"}
     assert sorted(os.listdir(tmp_path)) == ["Projekte", "backup.json", "f.json"]
+
+
+# ---- 1.38.5: the program's data files go through write_atomic; every other replace is a reviewed place
+REPLACE_PLACES = {               # (module, function): why it may rename/replace without write_atomic
+    ("fsops", "write_atomic"): "the one replacing write",
+    ("fsops", "create_exclusive"): "never over an existing name (project saving)",
+    ("fsops", "rename_fallback"): "never over an existing name (project saving)",
+    ("filehash", "_save_cache"): "hash cache, rebuilt when lost",
+    ("clipedit", "_publish"): "a finished ffmpeg output gets its name",
+    ("obsrec", "_join"): "the joined recording (ffmpeg output) takes the round's name",
+    ("obsrec", "_move"): "a recording moved into its folder",
+    ("obsrec", "settle_parts"): "a whole clip left as .tmp by a quit gets its name",
+    ("obsrec", "adopt_old_file"): "an index of the old program name taken over once",
+    ("diagnose", "keep_crash"): "the crash file of the last run kept",
+    ("rename", "migrate"): "files of the old program name taken over once",
+    ("restart", "staged_setup"): "the checked setup copy under its final name",
+    ("relupdate", "download"): "a whole, checked download gets its name",
+    ("icon", "ensure_ico"): "cache – rebuilt when lost, no fsync wanted",
+    ("thumbs", "thumbnail"): "cache – rebuilt when lost, no fsync per tile",
+    ("mapstyle", "styled_path"): "cache – rebuilt when lost",
+    ("imageedit", "save"): "a copy the user saves; own temp name and cleanup",
+    ("obsoverlay", "_write"): "rewritten many times a round; no fsync per picture",
+}
+
+
+def test_every_rename_or_replace_is_a_reviewed_place():
+    """1.38.5: config, history, official, the recordings/clips index and the backups wrote their own tmp + replace;
+    now write_atomic. A new os.replace/os.rename anywhere needs a line in REPLACE_PLACES."""
+    found = set()
+    folder = os.path.join(ROOT, "fogscout")
+    for name in sorted(os.listdir(folder)):
+        if not name.endswith(".py"):
+            continue
+        tree = ast.parse(open(os.path.join(folder, name), encoding="utf-8").read())
+
+        def visit(node, func, mod=name[:-3]):
+            for child in ast.iter_child_nodes(node):
+                f = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else func
+                if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute) \
+                        and isinstance(child.func.value, ast.Name) \
+                        and f"{child.func.value.id}.{child.func.attr}" in ("os.replace", "os.rename"):
+                    found.add((mod, f))
+                visit(child, f)
+        visit(tree, "<module>")
+    assert found - set(REPLACE_PLACES) == set()
+    assert set(REPLACE_PLACES) - found == set(), "a reviewed place is gone – drop its line"
+
+
+def test_write_atomic_sweeps_only_its_own_stale_temp_files(tmp_path, monkeypatch):
+    """1.38.5: the random temp names are not overwritten by the next save – a hard stop between write and replace
+    would leave one for good. The first write of a path sweeps those older than STALE_TMP_S; fresh ones (another
+    save may be writing) and every other name stay."""
+    target = tmp_path / "rounds.jsonl"
+    old = tmp_path / ".rounds.jsonl.4242.deadbeef.tmp"
+    fresh = tmp_path / ".rounds.jsonl.4243.cafebabe.tmp"
+    others = [tmp_path / n for n in (".settings.json.4242.deadbeef.tmp", "rounds.jsonl.tmp",
+                                     ".rounds.jsonl.x.deadbeef.tmp", "rounds.jsonl")]
+    for p in [old, fresh, *others]:
+        p.write_bytes(b"x")
+    past = os.stat(old).st_mtime - fsops.STALE_TMP_S - 60
+    os.utime(old, (past, past))
+    monkeypatch.setattr(fsops, "_SWEPT", set())
+    fsops.write_atomic(str(target), b"new\n")
+    assert not old.exists() and fresh.exists() and all(p.exists() for p in others[:3])
+    assert target.read_bytes() == b"new\n"
+    assert {n for n in os.listdir(tmp_path) if n.startswith(".rounds.jsonl.")} == {fresh.name,
+                                                                                   ".rounds.jsonl.x.deadbeef.tmp"}
+    os.utime(fresh, (past, past))
+    fsops.write_atomic(str(target), b"again\n")              # once per path and process: no second sweep
+    assert fresh.exists()
+
+
+def test_the_data_files_go_through_write_atomic(tmp_path, monkeypatch):
+    from fogscout import backups, config, history, obsrec, official
+    written = []
+    real = fsops.write_atomic
+    monkeypatch.setattr(fsops, "write_atomic", lambda p, d: (written.append(os.path.basename(p)), real(p, d)))
+    s = config.Settings(str(tmp_path / "settings.json"))
+    s.set("ui_zoom", 1.25)
+    s.save()
+    r = history.Round(t=1000.0, seconds=300.0, map_id="coal-tower", map="Coal Tower")
+    history._rewrite(str(tmp_path / "rounds.jsonl"), [r], [])
+    official._write(str(tmp_path / "official.jsonl"), [], [(1.0, 2.0)])
+    obsrec.save_index(str(tmp_path), [])
+    obsrec.save_clips(str(tmp_path), [])
+    backups.snapshot(str(tmp_path))
+    assert written[:5] == ["settings.json", "rounds.jsonl", "official.jsonl", obsrec.INDEX, obsrec.CLIPS_INDEX]
+    assert {n for n in written[5:] if n.startswith("rounds-")} and {n for n in written[5:] if n.startswith("official-")}
+    assert json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["ui_zoom"] == 1.25
+    assert [x.map_id for x in history.load(str(tmp_path / "rounds.jsonl"))] == ["coal-tower"]
+    assert not [n for n in os.listdir(tmp_path) if n.endswith(".tmp")]
+
+
+def test_a_failed_settings_save_leaves_no_temp_file_and_says_it_once(tmp_path, monkeypatch, caplog):
+    import logging
+    from fogscout import config
+    s = config.Settings(str(tmp_path / "settings.json"))
+    real = os.replace
+    monkeypatch.setattr(fsops.os, "replace", lambda a, b: (_ for _ in ()).throw(PermissionError(13, "gesperrt")))
+    with caplog.at_level(logging.WARNING):
+        s.save()
+        s.save()
+    monkeypatch.setattr(fsops.os, "replace", real)
+    assert len([r for r in caplog.records if "Einstellungen nicht gespeichert" in r.getMessage()]) == 1
+    assert os.listdir(tmp_path) == []
+    s.save()
+    assert os.listdir(tmp_path) == ["settings.json"]
+
+
+def test_a_rewritten_history_is_read_whole_again(tmp_path):
+    """The cache reads only lines added since the last read; a rewrite (now "\\n" where the text mode wrote "\\r\\n"
+    on Windows) makes the file different from the bytes it remembers – it parses from the start."""
+    from fogscout import history
+    path = str(tmp_path / "rounds.jsonl")
+    rounds = [history.Round(t=1000.0 + i, seconds=300.0, map_id=f"m{i}", map=f"M{i}") for i in range(3)]
+    with open(path, "wb") as fh:                              # as Windows text mode wrote it
+        for r in rounds:
+            fh.write(json.dumps(history.asdict(r)).encode() + b"\r\n")
+    assert [r.map_id for r in history.load(path)] == ["m0", "m1", "m2"]
+    history._rewrite(path, rounds[1:], [])
+    assert [r.map_id for r in history.load(path)] == ["m1", "m2"]
+    assert b"\r" not in open(path, "rb").read()
+
+
+def test_a_temp_file_of_the_clips_index_is_never_taken_for_a_clip(tmp_path):
+    """Pflichtprüfung 1.38.5: the index's temp file sits in Clips/ and ends in .tmp like a clip the editor writes."""
+    from fogscout import obsrec
+    cdir = obsrec.clips_dir(str(tmp_path))
+    os.makedirs(cdir)
+    tmp = os.path.join(cdir, f".{obsrec.CLIPS_INDEX}.4242.deadbeef.tmp")
+    with open(tmp, "wb") as fh:
+        fh.write(b'{"file": "x.mp4"}\n')
+    old = os.stat(tmp).st_mtime - 10 * 3600
+    os.utime(tmp, (old, old))
+    assert obsrec.list_clips(cdir, []) == []
+    assert obsrec.settle_parts(str(tmp_path), now=old + 20 * 3600) == []
+    assert os.path.exists(tmp)

@@ -9,7 +9,7 @@ import json
 import os
 from dataclasses import asdict, dataclass
 
-from . import jsonlcache
+from . import fsops, jsonlcache
 
 FILE = "rounds.jsonl"
 MIN_SECONDS = 60.0
@@ -80,13 +80,8 @@ def _rewrite(path: str, rounds, lost) -> None:
     """Write rounds and lost-round lines (as ``_lost_lines()`` returns them) back in time order (atomic)."""
     lines = [(r.t, json.dumps(asdict(r), ensure_ascii=False)) for r in rounds] + \
         [(d["t"], json.dumps(d, ensure_ascii=False)) for d in lost]
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        for _t, line in sorted(lines, key=lambda x: x[0]):
-            fh.write(line + "\n")
-        fh.flush()
-        os.fsync(fh.fileno())          # 1.12.3: on disk before the rename – else a power cut can leave an empty file
-    os.replace(tmp, path)
+    text = "".join(line + "\n" for _t, line in sorted(lines, key=lambda x: x[0]))
+    fsops.write_atomic(path, text.encode("utf-8"))   # 1.38.5: fsync'ed temp file + one replace (was its own copy)
 
 
 LOST_KEYS = ("map_id", "region", "source", "wait", "role", "custom", "farming", "killer", "ping", "sys")   # since 1.35/1.43

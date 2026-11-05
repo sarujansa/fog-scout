@@ -499,14 +499,8 @@ def load_index(folder: str) -> list[Recording]:
 
 
 def save_index(folder: str, recs: list[Recording]):
-    path = os.path.join(folder, INDEX)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        for r in sorted(recs, key=lambda r: r.t):
-            f.write(json.dumps(asdict(r), ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())           # 1.12.3: on disk before the rename (see history._rewrite)
-    os.replace(tmp, path)
+    text = "".join(json.dumps(asdict(r), ensure_ascii=False) + "\n" for r in sorted(recs, key=lambda r: r.t))
+    fsops.write_atomic(os.path.join(folder, INDEX), text.encode("utf-8"))     # 1.38.5 (see history._rewrite)
 
 
 FARMING_DAYS = (0, 3, 7, 14, 30)      # 1.8.23 (user's pick): farming recordings go after this many days (0 = never)
@@ -674,16 +668,12 @@ def load_clips(cdir: str) -> list[Clip]:
 
 
 def save_clips(cdir: str, clips: list[Clip]):
-    path = os.path.join(cdir, CLIPS_INDEX)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        for c in sorted(clips, key=lambda c: c.t):
-            d = asdict(c)
-            d.pop("adopted", None)
-            f.write(json.dumps(d, ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    lines = []
+    for c in sorted(clips, key=lambda c: c.t):
+        d = asdict(c)
+        d.pop("adopted", None)
+        lines.append(json.dumps(d, ensure_ascii=False) + "\n")
+    fsops.write_atomic(os.path.join(cdir, CLIPS_INDEX), "".join(lines).encode("utf-8"))   # 1.38.5
 
 
 def _who(who: str) -> tuple[str, str]:
