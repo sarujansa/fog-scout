@@ -136,6 +136,19 @@ def test_the_app_queues_rounds_on_request_and_clips_by_themselves(app_root, tmp_
         app._yt_sent, app._queue, app.game = None, {"state": "search"}, None
         app._youtube_tick()
         assert sent[-2:] == [("pause", False), ("folder", folder)]
+        # 1.38.23 (project review PERF-7): with upload off and nothing queued, the tick never looks the folder up
+        # (recorder.folder → find_folder: 26 drive letters on Windows, on the window's thread) – on, or with a queue, it does
+        looked = []
+        monkeypatch.setattr(app.recorder, "folder", lambda: looked.append(1) or folder)
+        app.youtube.on, app.youtube.jobs, app._yt_folder_at = False, [], 0.0
+        app._youtube_tick()
+        assert looked == []
+        app.youtube.jobs, app._yt_folder_at = [ytupload.Job(rel="Clips/x.mp4")], 0.0
+        app._youtube_tick()
+        assert looked == [1]
+        app.youtube.on, app.youtube.jobs, app._yt_folder_at = True, [], 0.0
+        app._youtube_tick()
+        assert looked == [1, 1]
         # 1.10.1: the client file from Google fills both fields (the dialog starts in the download folder) …
         asked = []
         monkeypatch.setattr(app, "_qt_file", lambda mode, title, initial, cb, pattern="JSON (*.json)":

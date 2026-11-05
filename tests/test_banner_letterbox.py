@@ -70,6 +70,26 @@ def test_letterbox_bars_measured_and_used_only_when_fresh():
     assert layout.fit_scale(400, 300, 800, 150) == 0.5 and layout.fit_scale(10, 10, 100, 100) == 1.0
 
 
+def test_a_16_to_9_or_wider_picture_is_not_measured_for_bars(monkeypatch):
+    """1.38.23 (project review PERF-3): the round-end look measured the black bars above/below on every frame,
+    also at 16:9 and 21:9, where there are none and layout.vbars threw the result away – a grey pass over the
+    whole 3440×1440 frame (~3 ms, 1.11.13) per look. Now only a picture narrower than 16:9 is measured."""
+    import collections
+    import numpy as np
+    from fogscout import worker
+    from fogscout.ticktime import LookTimes
+    w = worker.DetectionWorker.__new__(worker.DetectionWorker)
+    w._vbar_looks = collections.deque(maxlen=worker.VBAR_LOOKS)
+    w.times = LookTimes()
+    monkeypatch.setattr(worker, "letterbox_rows", lambda look: (_ for _ in ()).throw(AssertionError("measured")))
+    for fw, fh in ((3440, 1440), (2560, 1440), (1920, 1080), (1920, 1079)):
+        w._note_vbars(np.zeros((8, 8, 3), np.uint8), fw, fh)        # the frame itself is never looked at
+        assert w.vbars[:2] == (0, 0) and w.vbars[3] == (fw, fh)
+    monkeypatch.setattr(worker, "letterbox_rows", lambda look: (7, 9))
+    w._note_vbars(np.zeros((8, 8, 3), np.uint8), 1718, 1359)         # narrower than 16:9: measured as before
+    assert w.vbars[:2] == (7, 9)
+
+
 def test_worker_keeps_the_smallest_bars_of_the_last_looks():
     import numpy as np
     from fogscout.worker import DetectionWorker
