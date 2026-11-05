@@ -96,7 +96,8 @@ def test_claude_md_stays_a_short_map_of_every_module():
     """1.34.2 (review W4): CLAUDE.md had grown to 133 KB with rows of up to 9 600 characters of version history
     (which belongs in HISTORY.md), and two modules were missing. Now: the rules, and per module what it does and
     which names to look for – every module in the first column of an architecture row, no row over 1 600 bytes,
-    the whole file under 80 KB (the hard rules alone are ~27 KB and stay word for word)."""
+    the whole file under 80 KB (the hard rules alone are ~24 KB; 1.38.1 moved their version history to HISTORY.md
+    and kept every normative clause)."""
     with open(os.path.join(ROOT, "CLAUDE.md"), encoding="utf-8") as fh:
         text = fh.read()
     assert len(text.encode("utf-8")) < 80_000
