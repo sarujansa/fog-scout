@@ -1,4 +1,5 @@
 """1.8.80: daily copies of rounds.jsonl / official.jsonl in backup/ (backups.py)."""
+import os
 import time
 
 from fogscout import backups
@@ -57,3 +58,35 @@ def test_without_files_or_folder_nothing_happens(tmp_path):
     (tmp_path / "backup").write_text("not a folder")                            # an unusable target: no crash
     (tmp_path / "rounds.jsonl").write_text("a\n")
     assert backups.snapshot(root)["copied"] == []
+
+
+def test_everything_goes_into_one_zip_without_secrets_logs_or_links(tmp_path):
+    """1.38.32 (project review F8): rounds, match data, the settings as exported (no secrets, no PC-specific
+    values), own map pictures and the corpus; logs, caches and links stay out."""
+    import json
+    import zipfile
+    from fogscout import backups
+    d = tmp_path / "data"
+    (d / "user_maps").mkdir(parents=True)
+    (d / "corpus").mkdir()
+    (d / "cache").mkdir()
+    (d / "rounds.jsonl").write_text('{"t": 1}\n', encoding="utf-8")
+    (d / "official.jsonl").write_text('{"t": 2}\n', encoding="utf-8")
+    (d / "fogscout.log").write_text("log", encoding="utf-8")
+    (d / "user_maps" / "a.webp").write_bytes(b"pic")
+    (d / "corpus" / "20260101-000000-000.json").write_text("{}", encoding="utf-8")
+    (d / "cache" / "x.bin").write_bytes(b"x")
+    outside = tmp_path / "secret.txt"
+    outside.write_text("nope", encoding="utf-8")
+    try:
+        os.symlink(str(outside), str(d / "user_maps" / "link.txt"))
+    except (OSError, NotImplementedError):
+        pass
+    dest = tmp_path / "s.zip"
+    n = backups.archive(str(d), str(dest), {"overlay": {"x": 1}, "claude_key": "dpapi:secret", "qt_geometry": "g"})
+    with zipfile.ZipFile(dest) as z:
+        names = sorted(z.namelist())
+        cfg = json.loads(z.read("fogscout-einstellungen.json"))
+    assert names == ["corpus/20260101-000000-000.json", "fogscout-einstellungen.json", "official.jsonl", "rounds.jsonl",
+                     "user_maps/a.webp"] and n == 5
+    assert cfg == {"overlay": {"x": 1}}

@@ -210,9 +210,7 @@ class ExportDialog:
         self.export_preview_var.set(roundexport.preview(fmt, self._export_head, self._export_rows) if keys else "")
 
     def _export_text(self) -> str:
-        if self.export_format_var.get() == "csv":
-            return roundexport.csv_text(self._export_head, self._export_rows)
-        return "\n".join(roundexport.text_lines(self._export_rows))
+        return roundexport.text_of(self.export_format_var.get(), self._export_head, self._export_rows).rstrip("\n")
 
     def _export_copy(self):
         self._export_refresh()
@@ -229,9 +227,9 @@ class ExportDialog:
             if not getattr(self, "_export_rows", None) or not self._export_head:
                 self.export_msg_var.set(_("Nichts zu speichern – keine Runde passt, oder keine Spalte gewählt."))
                 return
-            csv_fmt = self.export_format_var.get() == "csv"
-            self._qt_file("save", _("Runden exportieren"), "fogscout-runden.csv" if csv_fmt else "fogscout-runden.txt",
-                          self._export_save, pattern="CSV (*.csv)" if csv_fmt else "Text (*.txt)")
+            fmt = self.export_format_var.get()
+            self._qt_file("save", _("Runden exportieren"), "fogscout-runden" + roundexport.SUFFIX.get(fmt, ".txt"),
+                          self._export_save, pattern=roundexport.PATTERN.get(fmt, "Text (*.txt)"))
             return
         try:
             n = roundexport.write(path, self.export_format_var.get(), self._export_head, self._export_rows)
