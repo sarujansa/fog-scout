@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 from . import layoutmem
-from .app_sysinfo import SELECTABLE
+from .appconst import SELECTABLE
 from .i18n import _
 
 CAP_FIT = 0.97             # 1.8.24: shown below 97 % of the asked size = the bar holds the element back
@@ -42,7 +42,7 @@ class LayoutMemory:
 
     def _layout_apply(self, snap):
         """A stored layout into the settings and every control that shows it."""
-        from .app_sysinfo import BAR_ALIGNS, HUD_SIDES, MEDIA_SPOTS, TODAY_SPOTS
+        from .appconst import BAR_ALIGNS, HUD_SIDES, MEDIA_SPOTS, TODAY_SPOTS
         self._layout_applying = True
         try:
             layoutmem.apply(self.settings.data, snap)
@@ -59,7 +59,7 @@ class LayoutMemory:
             if hasattr(self, "same_width_var"):                              # 1.8.29
                 self.same_width_var.set(bool(o.get("cards_same_width", True)))
             if hasattr(self, "info_pos_var"):                                # 1.8.24
-                from .app_overlay import INFO_SPOTS
+                from .appconst import INFO_SPOTS
                 self.info_pos_var.set(_(dict(INFO_SPOTS).get(o.get("info_pos", "below"), "")))
             self.bar_align_var.set(_(dict(BAR_ALIGNS).get(o.get("bar_align", "centre"), "")))
             self.gap_var.set(float(o.get("stack_gap", 8)))
