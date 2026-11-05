@@ -325,7 +325,8 @@ EN = {
         "detected by the visible mouse pointer (ESC menu, results screen, lobby)",
     "Spielsprache (Map-Namen)": "Game language (map names)",
     "Erweitert": "Advanced",
-    "Erweitert (Fehlersuche, Technik)": "Advanced (troubleshooting, technical)",
+    "Erweitert (Fehlersuche)": "Advanced (troubleshooting)",
+    "Technik": "Technical",
     "Auch erkennen, wenn andere Fenster über DBD liegen": "Also detect when other windows cover DBD",
     "Fensteraufnahme wie bei OBS, nur solange DBD im Hintergrund ist":
         "window capture like OBS, only while DBD is in the background",
@@ -932,7 +933,7 @@ EN = {
         "queue finishes; rounds are still uploaded by right-click. Settings → Connections → YouTube.",
 
     # ------------------------------------------------------------------ tooltips
-    "Technische Optionen für die Fehlersuche ein- oder ausklappen.": "Show or hide technical options for troubleshooting.",
+    "Werkzeuge für die Fehlersuche ein- oder ausklappen: Live-Zustand der Rundenende-Erkennung, Debug-Bilder, Bildschirm scannen.": "Show or hide the troubleshooting tools: live state of the end-of-round detection, debug pictures, scan the screen.",
     "Klicken und die neue Tastenkombination drücken: Strg/Alt + Taste, oder eine Taste allein (F1–F12, Numpad, "
     "Pause, Rollen, Einfg, Pos1, Ende, Bild↑/↓ – die gilt nur, solange DBD vorne ist). Esc bricht ab, Entf schaltet "
     "den Hotkey aus.":

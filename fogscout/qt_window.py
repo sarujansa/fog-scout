@@ -230,6 +230,8 @@ SPECS = {
                 # 1.8.78: the page "Erkennung" is gone – its cards live here, "Erweitert" on the log page
                 ("card", "st.detect", (("check", "st.det_auto"), ("check", "st.det_hide"), ("hint", "st.det_hide_hint"),
                                        ("check", "st.det_menu"), ("hint", "st.det_menu_hint"))),
+                # 1.38.12: window capture and scan rate came from Log → "Erweitert" (that keeps only the tools)
+                ("card", "st.det_tech", (("check", "st.det_wgc"), ("hint", "st.det_wgc_hint"), ("slider", "st.det_rate"))),
                 ("card", "st.langs", (("grid", 5, tuple(("check", f"det.lang.{code}") for code in GAME_LANGS)),)),
                 ("card", "st.more.own", (("row", (("hint", "st.more.aliases"), ("button", "st.more.aliases_clear"))),)),
                 ("card", "st.notify", (
@@ -307,8 +309,10 @@ SPECS = {
                                                       ("stretch",))),
                                              ("hint", "st.more.sp_status"), ("fold", N_("Erklärung"), (("hint", "st.more.sp_text"),)))),
                 ("card", "st.more.youtube", (("check", "st.more.yt_on"),                             # 1.10: upload
+                                             # 1.38.12: ID and secret on two rows (one row was wider than the card)
                                              ("row", (("label", "st.more.yt_id.label"), ("entry", "st.more.yt_id"),
-                                                      ("label", "st.more.yt_secret.label"), ("entry", "st.more.yt_secret"),
+                                                      ("stretch",))),
+                                             ("row", (("label", "st.more.yt_secret.label"), ("entry", "st.more.yt_secret"),
                                                       ("button", "st.more.yt_file"), ("stretch",))),
                                              ("row", (("button", "st.more.yt_login"), ("button", "st.more.yt_logout"),
                                                       ("stretch",))),
