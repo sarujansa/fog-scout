@@ -324,6 +324,8 @@ class StatsTab:
                                                    ("ping", _("Ø Ping"), 70, "e")), 5)
         ui.Label(box_r, text=_("Region nur bekannt, wenn im Tab Server „Verbundener Spielserver“ an war."),
                   style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+        self.stats_regs_now = ui.StringVar(value="")       # 1.38.31 (F7): the fastest region at this time of day
+        ui.Label(box_r, textvariable=self.stats_regs_now, wraplength=520).pack(anchor="w", pady=(6, 0))
         box_w = self._stats_page(_("Wartezeit"), "maps", "_stats_part_wait")
         self.stats_wait_tiles = ui.Tiles(box_w)          # 1.2.16: Ø / median / shortest / longest as tiles
         self.stats_wait_tiles.pack(fill="x", pady=(0, 6))
@@ -996,6 +998,28 @@ class StatsTab:
             p = pings.get(code)
             t.insert("", "end", values=(self._stats_region_name(code), n, fmt_duration(avg), f"{share:.0%}",
                                         f"{p:.0f} ms" if p is not None else "–"))
+        self.stats_regs_now.set(self._regions_now_text(time.time()))
+
+    def _regions_now_text(self, now) -> str:
+        """1.38.31 (F7): "Um diese Tageszeit (18–21 Uhr) am schnellsten: Frankfurt – Wartezeit 1:12 (Median), 31 ms,
+        8 Runden" from all own rounds (not the filter: a time of day needs every round); "" without enough."""
+        try:
+            block, rows = history.regions_at(self._joined().rounds, now)
+        except Exception:
+            return ""
+        if not rows:
+            return ""
+        code, n, wait, ping = rows[0]
+        span = f"{block:02d}–{(block + history.HOUR_BLOCK) % 24:02d}"
+        text = _("Um diese Tageszeit ({span} Uhr) am schnellsten: {region} – Wartezeit {wait} (Median), {n} Runden",
+                 span=span, region=self._stats_region_name(code), wait=fmt_duration(wait), n=n)
+        if ping is not None:
+            text += " · " + _("Ø {ping} ms", ping=f"{ping:.0f}")
+        if len(rows) > 1:
+            other = rows[1]
+            text += " · " + _("danach {region} ({wait})", region=self._stats_region_name(other[0]),
+                              wait=fmt_duration(other[2]))
+        return text
 
     def _stats_part_wait(self, c):
         rounds = c.rounds
