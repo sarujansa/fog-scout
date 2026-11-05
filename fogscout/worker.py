@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import cv2
 
-from . import bloodpoints
+from . import __version__, bloodpoints, corpus
 from .capture import (IS_WIN, ImageSource, ScreenGrabber, cursor_state, find_game_window, foreground_root,
                       overlaps, windows_above)
 from .i18n import _
@@ -471,6 +471,12 @@ class DetectionWorker(threading.Thread):
                                           variant_probability=d.variant_probability, name_text=d.name_text,
                                           realm_text=d.realm_text, frames=d.frames, name_fit=d.name_fit,
                                           unsure=d.unsure)
+                                if self.settings.get("corpus_save", True):     # 1.38.29: the banner for "Erkennung prüfen"
+                                    try:
+                                        corpus.save(self.data_dir, img, sep, res, d, (fw, fh), boxed, bars,
+                                                    self.settings.get("languages") or [], __version__)
+                                    except Exception:
+                                        log.exception("Korpus")
                             if self.settings.get("save_debug_images"):
                                 self._save_debug(img, res, sep)
                     elif session and tick - last_seen > 1.5:
