@@ -180,6 +180,10 @@ def sweep_stale_tmp(path: str, now: float | None = None) -> int:
     return gone
 
 
+REPLACE_TRIES = 5                 # 1.38.24: write_atomic – attempts of the replace while a reader holds the file
+REPLACE_WAIT_S = 0.1              # … and the wait between them (0.4 s at most)
+
+
 def write_atomic(path: str, data: bytes) -> None:
     """1.34.2 (review W8): ``path`` replaced by ``data`` – complete or not at all: a temp file beside it (write_tmp:
     exclusive, fsync'ed), then one replace. The one replacing write here, for files that are the program's own and
@@ -194,7 +198,17 @@ def write_atomic(path: str, data: bytes) -> None:
         sweep_stale_tmp(path)
     tmp = write_tmp(path, data)
     try:
-        os.replace(tmp, path)
+        for attempt in range(REPLACE_TRIES):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                # 1.38.24 (review STAB-3): Windows refuses the replace while another handle has the target open
+                # without FILE_SHARE_DELETE – our own reader thread, a virus scanner, a sync client. A few short
+                # waits instead of a lost write.
+                if attempt == REPLACE_TRIES - 1:
+                    raise
+                time.sleep(REPLACE_WAIT_S)
     except BaseException:
         discard_tmp(tmp)
         raise

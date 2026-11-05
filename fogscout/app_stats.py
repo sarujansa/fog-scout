@@ -1581,6 +1581,14 @@ class StatsTab:
     def _hist_path(self):
         return os.path.join(self.data_dir, history.FILE)
 
+    def _hist_quit(self):
+        """1.38.24 (review STAB-7): a round still open when the program quits is kept as a lost round ("quit") –
+        before it vanished without a trace (only a later banner in the same session wrote one)."""
+        rec, self._hist = self._hist, None
+        if rec:
+            history.append_lost(self._hist_path(), rec["t"], rec.get("map") or rec.get("map_id", ""), "quit",
+                                **{k: v for k, v in rec.items() if k in history.LOST_KEYS})
+
     # ---------------------------------------------------------- own record on the map on display (overlay)
     def _map_records(self):
         """{map_id: {"kills": [...], "escaped": [...]}} of the rounds with official results (no custom games);
