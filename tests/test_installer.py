@@ -204,6 +204,7 @@ def _iss():
 def test_the_installer_goes_to_program_files_for_everyone_and_keeps_the_data():
     iss = _iss()
     assert "DefaultDirName={autopf}\\Fog Scout" in iss and "PrivilegesRequired=admin" in iss
+    assert "DisableDirPage=yes" in iss          # 1.38.21 (audit SEC-3): never a folder the user may write to
     assert re.search(r"^AppId=\{\{[0-9A-F-]{36}\}$", iss, re.M)              # never change: upgrades find it
     from fogscout import restart
     assert restart.MUTEX_NAME == "Local\\FogScout.SingleInstance"

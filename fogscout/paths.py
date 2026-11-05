@@ -113,7 +113,17 @@ def app_update_dir() -> str | None:
     %LOCALAPPDATA% is the user's. None when not installed (the bare CI folder, start.bat)."""
     if not installed():
         return None
-    return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "update")
+    folder = os.path.dirname(os.path.abspath(sys.executable))
+    pf = known_folder("ProgramFiles")
+    if pf and not _under(folder, pf):
+        return None       # 1.38.21 (audit SEC-3): installed elsewhere – the folder may be the user's to write; the
+    return os.path.join(folder, "update")         # update then stays in the data folder (Windows asks per UAC)
+
+
+def _under(path: str, folder: str) -> bool:
+    p = os.path.normcase(os.path.abspath(path)).rstrip("\\/")
+    f = os.path.normcase(os.path.abspath(folder)).rstrip("\\/")
+    return p == f or p.startswith(f + os.sep)
 
 
 def installed() -> bool:

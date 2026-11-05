@@ -58,6 +58,41 @@ def child_env(environ=None, bundle: str | None = None) -> dict:
     return env
 
 
+# 1.38.21 (audit SEC-2): variables any program of the user can set in HKCU\Environment and that steer this process
+# or its children when it runs as administrator – which certificates TLS trusts (the update check), what Python
+# imports (PYTHONPATH/PYTHONHOME for the helpers started with sys.executable), what git does (hooks, fsmonitor,
+# sslCAInfo), where Qt loads plugins from. Proxies stay: a proxy alone cannot break TLS, and some PCs need one.
+UNSAFE_PREFIXES = ("SSL_CERT_", "PYTHON", "GIT_")
+UNSAFE_NAMES = ("REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "QT_QPA_PLATFORM_PLUGIN_PATH")
+
+
+def clean_elevated_environment(environ, bundle: str = "") -> dict:
+    """``environ`` without the variables above; the Qt plugin variables stay only when they point into the bundle
+    (PyInstaller's runtime hook sets them – from source they are never ours). Pure."""
+    out = {}
+    for key, value in environ.items():
+        upper = key.upper()
+        if upper.startswith(UNSAFE_PREFIXES) or upper in UNSAFE_NAMES:
+            continue
+        if upper in QT_VARS and not (bundle and all(_inside(p, bundle) for p in value.split(os.pathsep) if p)):
+            continue
+        out[key] = value
+    return out
+
+
+def harden_start_environment() -> list:
+    """At the very start of the elevated program: drop those variables from the process (its own TLS context is
+    built later and reads SSL_CERT_*; children inherit the rest). Returns the names dropped; [] when not elevated."""
+    if not elevated():
+        return []
+    with _LOCK:
+        clean = clean_elevated_environment(os.environ, bundle_dir())
+        gone = sorted(k for k in os.environ if k not in clean)
+        for key in gone:
+            del os.environ[key]
+    return gone
+
+
 def _kernel32():
     import ctypes
     from ctypes import wintypes
@@ -113,15 +148,49 @@ def clean_process():
                     os.environ[key] = value
 
 
+def elevated() -> bool:
+    """Windows: this process runs with administrator rights (the scheduled task, UAC); False elsewhere."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def _explorer() -> str:
+    from .paths import windows_dir                 # 1.33.5 (review S4): by its full path, not searched for
+    return os.path.join(windows_dir(), "explorer.exe")
+
+
+def _through_users_shell(target: str):
+    """1.38.21 (audit SEC-1): from the elevated program, a URL or file is handed to ``explorer.exe``, which passes
+    it to the user's running shell – the browser or the file's program then starts with the user's own rights.
+    ShellExecute from this process (``webbrowser``, ``os.startfile``) would start it elevated and reads the
+    handler from ``HKCU\\Software\\Classes`` first, a key every program of the user may write: a known way from
+    user to administrator without a prompt (the same threat model as S4/S5 in 1.33.5)."""
+    return subprocess.Popen([_explorer(), target], env=child_env())   # noqa: S603
+
+
 def open_url(url: str, *args, **kwargs) -> bool:
-    """``webbrowser.open`` without handing the bundle to the browser."""
+    """``webbrowser.open`` without handing the bundle to the browser; elevated: through the user's shell."""
     with clean_process():
+        if elevated():
+            if not str(url).lower().startswith(("http://", "https://")):
+                return False                              # only web addresses leave this way
+            _through_users_shell(url)
+            return True
         return webbrowser.open(url, *args, **kwargs)
 
 
 def open_path(path: str) -> None:
-    """A file or folder with its own program (Windows: ``os.startfile``; raises OSError like it)."""
+    """A file or folder with its own program (Windows: ``os.startfile``; raises OSError like it); elevated:
+    through the user's shell."""
     with clean_process():
+        if elevated():
+            _through_users_shell(os.path.normpath(path))
+            return
         os.startfile(path)                                    # noqa: S606 – the user's own program for the file
 
 

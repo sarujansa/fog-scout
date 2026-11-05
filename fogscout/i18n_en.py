@@ -2334,6 +2334,7 @@ EN = {
         'Opens the marked clip (F8 instant clips too) in the clip editor: trim, censor, mix the sound. '
         'It saves a new clip, the old one stays.',
     'Clip fehlt: {file}': 'Clip missing: {file}',
+    'Keine Videodatei: {file}': 'Not a video file: {file}',
     'Clip gelöscht: {file}': 'Clip deleted: {file}',
     'Clip im Explorer zeigen': 'Show clip in Explorer',
     'Clip löschen': 'Delete clip',
