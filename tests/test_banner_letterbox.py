@@ -185,7 +185,7 @@ def test_the_worker_reads_a_letterboxed_banner_with_no_map_on_display(tmp_path, 
     monkeypatch.setattr(worker, "ImageSource", Source)
     events = queue.Queue()
     wk = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
-                                events, simulate=str(tmp_path))
+                                events, simulate=str(tmp_path), data_dir=str(tmp_path))
     assert not wk.map_on_screen
     wk.start()
     found = None

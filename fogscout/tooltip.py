@@ -417,6 +417,17 @@ TIPS = {
     "Auch erkennen, wenn andere Fenster über DBD liegen":
         "Fensteraufnahme wie bei OBS: erkennt das Banner auch, wenn DBD verdeckt ist. Nur solange DBD im "
         "Hintergrund ist.",
+    "Banner jeder Erkennung für „Erkennung prüfen“ sammeln":
+        "Speichert bei jeder erkannten Map den Ausschnitt um die Banner-Linie (Name und Realm) im Datenordner unter corpus/, "
+        "höchstens 300 Stück – die Grundlage für „Erkennung prüfen“. Der Ausschnitt kann den linken HUD-Rand mit Spielernamen "
+        "zeigen; er bleibt auf diesem PC.",
+    "Erkennung prüfen":
+        "Liest alle gesammelten Banner mit der Erkennung neu und zählt, wie viele wieder die gespeicherte Map ergeben – "
+        "nach einem Update oder einer geänderten Spielsprache. Läuft im Hintergrund, Ergebnis im Log.",
+    "Korpus exportieren …":
+        "Packt alle gesammelten Banner mit ihren Angaben in eine ZIP-Datei – z. B. um sie für die Tests des Projekts "
+        "weiterzugeben. Vorher die Bilder ansehen: sie können Spielernamen zeigen.",
+    "Korpus-Ordner öffnen": "Öffnet den Ordner corpus/ im Datenordner.",
     "Debug-Bilder speichern": "Speichert gelesene Banner und verkleinerte Bilder der Runde im Ordner debug/ – "
                                               "nur zur Fehlersuche, kostet Speicherplatz.",
     "Bildschirm jetzt scannen": "Sucht sofort auf dem ganzen Bildschirm nach einem Map- oder Realm-Namen.",
