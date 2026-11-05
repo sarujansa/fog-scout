@@ -213,3 +213,33 @@ def test_the_version_of_a_revision_before_the_rename_is_read(repos):
     git(user, "fetch", "origin", "main")
     assert up._version(str(user), "FETCH_HEAD") == "1.8.91"
     assert up._version(str(user), "HEAD~9") == "?"
+
+
+def test_git_runs_without_hooks_fsmonitor_or_user_config(tmp_path, monkeypatch):
+    """1.38.21 (audit SEC-2): start.bat runs update.py as administrator in a folder the user writes to, and git reads
+    the user's global config (core.fsmonitor = any command, hooks path) and GIT_* variables from HKCU\\Environment.
+    Every git call now disables hooks and fsmonitor on the command line, skips global and system config and drops
+    GIT_*/SSL_CERT_*/PYTHON* from the environment – proxies stay."""
+    seen = {}
+
+    class Done:
+        returncode, stdout, stderr = 0, "ok", ""
+
+    def fake_run(args, **kw):
+        seen["args"], seen["env"] = args, kw["env"]
+        return Done()
+    monkeypatch.setattr(up.subprocess, "run", fake_run)
+    monkeypatch.setenv("GIT_SSL_CAINFO", "C:/evil/ca.pem")
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'core.fsmonitor=evil.exe'")
+    monkeypatch.setenv("SSL_CERT_FILE", "C:/evil/ca.pem")
+    monkeypatch.setenv("PYTHONPATH", "C:/evil")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy:3128")
+    assert up._git(str(tmp_path), "fetch", "origin") == (0, "ok")
+    args, env = seen["args"], seen["env"]
+    assert args[0] == "git" and args[-2:] == ["fetch", "origin"]
+    assert "core.fsmonitor=false" in args and any(a.startswith("core.hooksPath=") for a in args)
+    hooks = next(a for a in args if a.startswith("core.hooksPath=")).split("=", 1)[1]
+    assert hooks.startswith(str(tmp_path)) and not os.path.exists(hooks)          # nothing there to run
+    assert env["GIT_CONFIG_NOSYSTEM"] == "1" and not os.path.exists(env["GIT_CONFIG_GLOBAL"])
+    assert env["GIT_TERMINAL_PROMPT"] == "0" and env["HTTPS_PROXY"] == "http://proxy:3128"
+    assert not any(k in env for k in ("GIT_SSL_CAINFO", "GIT_CONFIG_PARAMETERS", "SSL_CERT_FILE", "PYTHONPATH"))

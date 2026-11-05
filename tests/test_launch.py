@@ -96,6 +96,64 @@ def test_obs_is_started_through_launch(monkeypatch):
     assert args[0].endswith("obs64.exe") and kw["cwd"].endswith("64bit")
 
 
+def test_the_elevated_program_opens_urls_and_files_through_the_users_shell(monkeypatch):
+    """1.38.21 (audit SEC-1): Fog Scout runs as administrator. ``webbrowser.open``/``os.startfile`` would start the
+    browser or the file's program elevated – and ShellExecute picks the handler from HKCU\\Software\\Classes first,
+    which any program of the user can write (a known way to administrator rights without a prompt). Elevated, the
+    target goes to explorer.exe, which hands it to the user's own shell; not elevated, nothing changes."""
+    calls = []
+    monkeypatch.setattr(launch.subprocess, "Popen", lambda args, **kw: calls.append(args))
+    monkeypatch.setattr(launch.webbrowser, "open", lambda *a, **k: (_ for _ in ()).throw(AssertionError("browser")))
+    monkeypatch.setattr(os, "startfile", lambda p: (_ for _ in ()).throw(AssertionError("startfile")), raising=False)
+    monkeypatch.setattr(launch, "elevated", lambda: True)
+    assert launch.open_url("https://stats.deadbydaylight.com/") is True
+    launch.open_path("C:/Users/x/AppData/Local/FogScout/fogscout.log")
+    launch.open_path("C:/Users/x/AppData/Local/FogScout")
+    assert launch.open_url("file:///C:/Windows/System32/cmd.exe") is False      # only web addresses leave this way
+    assert launch.open_url("javascript:alert(1)") is False
+    assert len(calls) == 3 and all(a[0].lower().endswith("explorer.exe") and a[0] != "explorer.exe" for a in calls)
+    assert calls[0][1] == "https://stats.deadbydaylight.com/" and calls[1][1].endswith("fogscout.log")
+    # not elevated (a source checkout started by hand, Linux): the plain way as before
+    monkeypatch.setattr(launch, "elevated", lambda: False)
+    opened = []
+    monkeypatch.setattr(launch.webbrowser, "open", lambda url, *a, **k: opened.append(url) or True)
+    assert launch.open_url("https://example.org") is True and opened == ["https://example.org"] and len(calls) == 3
+
+
+def test_the_elevated_start_drops_what_the_user_environment_could_steer(tmp_path, monkeypatch):
+    """1.38.21 (audit SEC-2): the task starts Fog Scout as administrator with the user's environment, which any
+    program of the user can extend in HKCU\\Environment – SSL_CERT_FILE (whom the update check trusts), PYTHON*
+    (what the helpers import), GIT_* (hooks, sslCAInfo), Qt plugin folders. Those go at the start; proxies, the
+    data folder and the bundle's own Qt variables stay."""
+    bundle = _bundle(tmp_path)
+    env = {"SSL_CERT_FILE": "C:/evil/ca.pem", "SSL_CERT_DIR": "C:/evil", "REQUESTS_CA_BUNDLE": "x", "CURL_CA_BUNDLE": "x",
+           "PYTHONPATH": "C:/evil", "PYTHONHOME": "C:/evil", "pythonstartup": "C:/evil/s.py",
+           "GIT_DIR": "C:/evil", "GIT_SSL_CAINFO": "x", "GIT_CONFIG_PARAMETERS": "'core.fsmonitor=evil'",
+           "QT_PLUGIN_PATH": "C:/evil/plugins", "QML2_IMPORT_PATH": "C:/evil/qml", "QT_QPA_PLATFORM_PLUGIN_PATH": "C:/evil",
+           "HTTPS_PROXY": "http://proxy:3128", "NO_PROXY": "localhost", "PATH": "C:/Windows", "DBDMS_DATA_DIR": "D:/data",
+           "QT_QPA_PLATFORM": "offscreen", "LOCALAPPDATA": "C:/Users/x/AppData/Local"}
+    out = launch.clean_elevated_environment(env, "")
+    assert out == {"HTTPS_PROXY": "http://proxy:3128", "NO_PROXY": "localhost", "PATH": "C:/Windows",
+                   "DBDMS_DATA_DIR": "D:/data", "QT_QPA_PLATFORM": "offscreen", "LOCALAPPDATA": "C:/Users/x/AppData/Local"}
+    ours = {"QT_PLUGIN_PATH": os.path.join(bundle, "PySide6", "plugins"), "PATH": "x"}
+    assert launch.clean_elevated_environment(ours, bundle) == ours               # the runtime hook's own values stay
+    assert "QT_PLUGIN_PATH" not in launch.clean_elevated_environment({"QT_PLUGIN_PATH": "C:/evil"}, bundle)
+    # the start applies it only when elevated
+    monkeypatch.setenv("SSL_CERT_FILE", "C:/evil/ca.pem")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy:3128")
+    monkeypatch.setattr(launch, "elevated", lambda: False)
+    assert launch.harden_start_environment() == [] and os.environ["SSL_CERT_FILE"] == "C:/evil/ca.pem"
+    monkeypatch.setattr(launch, "elevated", lambda: True)
+    gone = launch.harden_start_environment()
+    assert "SSL_CERT_FILE" in gone and "SSL_CERT_FILE" not in os.environ and os.environ["HTTPS_PROXY"]
+    assert not any(k.upper().startswith(("SSL_CERT_", "GIT_")) for k in os.environ)
+
+
+def test_elevated_is_false_outside_windows():
+    if sys.platform != "win32":
+        assert launch.elevated() is False
+
+
 # Calls that start another program; outside launch.py they must go through it.
 FORBIDDEN = {("webbrowser", "open"), ("webbrowser", "open_new"), ("webbrowser", "open_new_tab"), ("os", "startfile"),
              ("QDesktopServices", "openUrl")}
