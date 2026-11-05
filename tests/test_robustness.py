@@ -69,13 +69,58 @@ def test_a_frame_that_raises_does_not_end_the_detection(tmp_path, monkeypatch):
 
 
 def test_a_detection_that_fails_every_frame_is_reported_as_crashed(tmp_path, monkeypatch):
+    """1.38.9: started again WORKER_RESTARTS times first (each run gives up after TICK_FAIL_LIMIT ticks) – only the
+    last failure is a crash, reported once."""
     monkeypatch.setattr(worker, "TICK_FAIL_LIMIT", 4)
+    monkeypatch.setattr(worker, "WORKER_RESTART_S", 0.01)
     w, events, calls = _worker(tmp_path, monkeypatch, fails=None)
     w.start()
     seen = _events(events, 20, lambda kinds: "error" in kinds)
     w.join(timeout=10)
     assert [e.kind for e in seen].count("error") == 1 and "bad frame" in seen[-1].data["text"]
-    assert calls["n"] == 4 and not w.is_alive()
+    restarts = [e.data["text"] for e in seen if e.kind == "warn" and "neu gestartet" in e.data["text"]]
+    assert restarts == ["Erkennung neu gestartet (1/2)", "Erkennung neu gestartet (2/2)"]
+    assert calls["n"] == 4 * (worker.WORKER_RESTARTS + 1) and not w.is_alive()
+
+
+def test_a_detection_that_broke_once_runs_on_after_its_restart(tmp_path, monkeypatch):
+    """1.38.9: before, a passing cause (display change, lock screen) left the detection off until Fog Scout was
+    restarted – now the run after the pause goes on, and nothing is reported as a crash."""
+    monkeypatch.setattr(worker, "TICK_FAIL_LIMIT", 4)
+    monkeypatch.setattr(worker, "WORKER_RESTART_S", 0.01)
+    w, events, calls = _worker(tmp_path, monkeypatch, fails=4)
+    w.start()
+    try:
+        seen = _events(events, 20, lambda kinds: "status" in kinds)
+        kinds = [e.kind for e in seen]
+        assert "status" in kinds and "error" not in kinds and calls["n"] > 4 and w.is_alive()
+        assert "Erkennung neu gestartet (1/2)" in [e.data.get("text") for e in seen if e.kind == "warn"]
+    finally:
+        w.stop()
+        w.join(timeout=10)
+    assert not w.is_alive()
+
+
+def test_stopping_during_the_restart_pause_ends_at_once_without_a_crash(tmp_path, monkeypatch):
+    """The pause is 30 s here; the thread must be gone within the join's 10 s – stop() ends the pause (_nap)."""
+    monkeypatch.setattr(worker, "TICK_FAIL_LIMIT", 2)
+    monkeypatch.setattr(worker, "WORKER_RESTART_S", 30.0)
+    w, events, calls = _worker(tmp_path, monkeypatch, fails=None)
+    w.start()
+    end, pausing = time.time() + 20, False
+    while time.time() < end and not pausing:                       # until the first restart's pause begins
+        try:
+            e = events.get(timeout=0.1)
+        except queue.Empty:
+            continue
+        pausing = e.kind == "warn" and "neu gestartet" in e.data["text"]
+    assert pausing
+    w.stop()
+    w.join(timeout=10)
+    rest = []
+    while not events.empty():
+        rest.append(events.get_nowait().kind)
+    assert not w.is_alive() and "error" not in rest and calls["n"] == 2   # no second run started
 
 
 # ------------------------------------------------------------------ the app
@@ -106,6 +151,25 @@ def test_the_map_is_hidden_at_the_round_end_even_when_saving_the_round_fails(app
     app._dispatch(worker.Event("match_end", {"t": time.time(), "reason": "Ergebnisbildschirm"}))
     assert app.hidden_after_match and not app.menu_paused
     assert "Rundenverlauf" in app._errors_seen                         # and the user hears of it
+
+
+def test_a_repeating_error_is_logged_once_a_minute_and_counted_in_the_window(app, caplog):
+    """1.38.9: before, every call wrote the full traceback to the log (a tick step: up to 4×/s, into a log file
+    without a size limit) and the window said it once, never that it kept coming."""
+    import logging
+    lines = []
+    app._log = lambda text, kind="System": lines.append(text)
+    text = "Traceback (most recent call last):\n  File x\nValueError: kaputt"
+    with caplog.at_level(logging.ERROR, logger="fogscout"):
+        for i in range(100):                                       # 25 s of a broken tick step
+            app._report_once("Testschritt", text, now=1000.0 + i * 0.25)
+        app._report_once("Testschritt", text, now=1000.0 + app.REPORT_LOG_S + 1)
+    logged = [r.getMessage() for r in caplog.records if "ValueError: kaputt" in r.getMessage()]
+    assert len(logged) == 2 and "(99× ohne Eintrag seit " in logged[1]
+    assert lines == ["Testschritt: ValueError: kaputt – Details in fogscout.log"]      # the window: once so far
+    app._report_once("Testschritt", text, now=1000.0 + app.REPORT_UI_S + 1)
+    assert len(lines) == 2 and lines[1].startswith("Testschritt: ValueError: kaputt (101× seit ")
+    assert app._error_counts["Testschritt"] == 102
 
 
 def test_a_crashed_detection_shows_in_the_status_line(app):
