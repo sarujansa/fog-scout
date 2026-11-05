@@ -1655,14 +1655,14 @@ def test_the_settings_page_is_split_into_tabs_with_its_cards(qapp, keep):
     recs = ["st.more.rec", "st.rec.when", "st.rec.picture", "st.rec.sound", "st.rec.clips", "st.rec.cleanup"]
     assert where == {"st.look": "Allgemein", "st.start": "Allgemein", "st.updates": "Allgemein",
                      "st.more.backup": "Allgemein",
-                     "st.detect": "Erkennung", "st.langs": "Erkennung", "st.more.own": "Erkennung", "st.notify": "Erkennung",
+                     "st.detect": "Erkennung", "st.det_tech": "Erkennung", "st.langs": "Erkennung", "st.more.own": "Erkennung", "st.notify": "Erkennung",
                      "st.hotkeys": "Hotkeys", "st.more.official": "Match-Daten", "st.more.farming": "Match-Daten",
                      **{k: "Aufnahmen" for k in recs},
                      "st.more.obs": "Verbindungen", "st.more.discord": "Verbindungen", "st.more.spotify": "Verbindungen",
                      "st.more.youtube": "Verbindungen", "st.more.claude": "Verbindungen"}                                                  # 1.10
     assert [col.ids() for col in page.columns] == [
         ["st.look", "st.start", "st.updates", "st.more.backup"],
-        ["st.detect", "st.langs", "st.more.own", "st.notify"], ["st.hotkeys"],
+        ["st.detect", "st.det_tech", "st.langs", "st.more.own", "st.notify"], ["st.hotkeys"],
         ["st.more.official", "st.more.farming"], recs,
         ["st.more.obs", "st.more.discord", "st.more.spotify", "st.more.youtube", "st.more.claude"]]
     # 1.29.1 (user: "unübersichtlich, was gehört zu was"): six OBS cards instead of one with five sub-headings;
