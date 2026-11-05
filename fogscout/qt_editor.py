@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCh
                                QHBoxLayout, QLabel, QLineEdit, QListWidget, QProgressBar, QPushButton, QScrollArea, QScrollBar, QSizePolicy, QSlider, QSplitter,
                                QToolButton, QVBoxLayout, QWidget)
 
-from . import annotate, clipedit, imageedit, launch, medialib, obsrec, project, qt_icons, qt_theme, sequence
+from . import annotate, clipedit, hudnames, imageedit, launch, medialib, obsrec, project, qt_icons, qt_theme, sequence
 from .i18n import N_, _
 from .editorclaude import ClaudeMixin
 from .editormontage import MontageMixin
@@ -1203,6 +1203,9 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
         self.names_btn = self._btn(zb, _("Namen links unten"), self._add_names_box,
                                    _("Setzt einen Kasten dorthin, wo DBD die Namen der Survivor zeigt (links unten "
                                      "im Spielbild) – bei Bedarf verschieben."))
+        self.spectate_btn = self._btn(zb, _("Namen beim Zuschauen"), self._add_spectate_boxes,
+                                      _("Setzt Kästen auf die Namen, wie DBD sie beim Zuschauen zeigt: die Liste "
+                                        "links weiter oben und den Namen oben in der Mitte – bei Bedarf verschieben."))
         self.remove_btn = self._btn(zb, _("Kasten entfernen"), self._remove_box,
                                     _("Entfernt den markierten Kasten (Taste Entf)."))
         self.clear_btn = self._btn(zb, _("Alle entfernen"), self._clear_boxes, "")
@@ -2093,6 +2096,13 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
 
     def _add_names_box(self):
         self.preview.add_box(clipedit.names_box(self.info.width, self.info.height))
+        if not self.censor_box.isChecked():
+            self.censor_box.setChecked(True)
+
+    def _add_spectate_boxes(self):
+        """1.38: the name boxes of the spectating HUD (hudnames, measured on the user's screenshot)."""
+        for box in hudnames.boxes("spectate", (self.info.width, self.info.height)):
+            self.preview.add_box(box)
         if not self.censor_box.isChecked():
             self.censor_box.setChecked(True)
 
