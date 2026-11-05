@@ -8,7 +8,10 @@ import sys
 import time
 
 from . import __version__
-from .capture import IS_WIN, describe_window, find_game_window, foreground_root, is_above, window_kind
+
+# 1.38.16 (user's diagnosis: start step "Log 0,48 s" on Windows): __main__ imports CRASH_FILE/keep_crash from here
+# before the splash shows – capture (cv2 + numpy) is imported only where the diagnosis text is made
+IS_WIN = sys.platform == "win32"
 
 
 def spotify_match(app) -> str:
@@ -27,6 +30,7 @@ def _win_info(hwnd):
     if not IS_WIN or not hwnd:
         return "—"
     from ctypes import wintypes
+    from .capture import describe_window
     u = ctypes.WinDLL("user32", use_last_error=True)
     u.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
     u.IsWindowVisible.argtypes = [wintypes.HWND]
@@ -90,6 +94,7 @@ def _qt_version() -> str:
 
 
 def collect(app) -> str:
+    from .capture import find_game_window, foreground_root, is_above, window_kind
     lines = [f"Fog Scout {__version__} – Diagnose {time.strftime('%Y-%m-%d %H:%M:%S')}",
              f"Python {sys.version.split()[0]} · Qt {_qt_version()} · {platform.platform()}"]
     try:
