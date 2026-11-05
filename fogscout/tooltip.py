@@ -36,6 +36,9 @@ TIPS = {
         "Noch einmal melden, wenn der Countdown der Lobby unter 15 s fällt und du READY nicht gedrückt hast.",
     "Nur wenn DBD nicht das aktive Fenster ist":
         "Keine Meldung, solange DBD im Vordergrund ist – dann siehst du die Lobby ja selbst.",
+    "Bilanz der Sitzung zeigen, wenn DBD beendet wurde":
+        "Etwa 15 s nachdem DBD geschlossen wurde: eine Meldung mit den Runden der Sitzung, der Spielzeit und – mit "
+        "Match-Daten – Ø Kills, Entkommen und Bloodpoints. Steht auch im Log.",
     "Melden, wenn eine Runde keine Blutpunkte gebracht hat (Cap erreicht)":
         "Fog Scout liest in der Lobby den Blutpunkte-Stand oben rechts. Ist er nach einer gezählten Runde derselbe "
         "wie davor, ist das Cap erreicht (normal 5 Millionen, nach Tome-Belohnungen auch mehr) – die Punkte der "
@@ -145,6 +148,8 @@ TIPS = {
                 "wieder.",
     "Killer setzen": "Setzt den Killer nur für die markierte Runde und zählt sie als Killer-Runde – z. B. wenn sie "
                      "fälschlich als Survivor gezählt wurde oder der Name falsch gelesen wurde.",
+    "Map setzen": "Setzt die Map nur für die markierten Runden – wenn das Banner falsch gelesen wurde. Statistik, "
+                  "eigener Rekord und die Verknüpfung mit den Match-Daten folgen; die Aufnahme behält ihren Namen.",
     "Zuordnungen löschen": "Entfernt alle eigenen Killer-Zuordnungen; die Namen erscheinen wieder so, wie sie gelesen "
                            "wurden.",
     "Survivor": "Diese Runde als Survivor-Runde zählen (falls die Erkennung falsch lag).",

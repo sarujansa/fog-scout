@@ -227,6 +227,14 @@ EN = {
     "Keine Meldung, solange DBD im Vordergrund ist – dann siehst du die Lobby ja selbst.":
         "No notification while DBD is in front – then you see the lobby yourself.",
     # 1.13: bloodpoint cap
+    "Bilanz der Sitzung zeigen, wenn DBD beendet wurde": "Show the session's numbers when DBD is closed",
+    "Etwa 15 s nachdem DBD geschlossen wurde: eine Meldung mit den Runden der Sitzung, der Spielzeit und – mit "
+    "Match-Daten – Ø Kills, Entkommen und Bloodpoints. Steht auch im Log.":
+        "About 15 s after DBD was closed: a notification with the session's rounds, the play time and – with match "
+        "data – Ø kills, escapes and bloodpoints. Also in the log.",
+    "Sitzung beendet": "Session over",
+    "1 Runde": "1 round",
+    "{bp} BP": "{bp} BP",
     "Melden, wenn eine Runde keine Blutpunkte gebracht hat (Cap erreicht)":
         "Notify when a round brought no bloodpoints (cap reached)",
     "Fog Scout liest in der Lobby den Blutpunkte-Stand oben rechts. Ist er nach einer gezählten Runde derselbe wie "
@@ -486,6 +494,14 @@ EN = {
     "Killer setzen": "Set killer",
     "Killer konnte nicht gespeichert werden: {error}": "Could not save the killer: {error}",
     "Killer für {map} ({when}) auf {killer} gesetzt.": "Killer for {map} ({when}) set to {killer}.",
+    "Map der Runde:": "Map of the round:",
+    "Setzt die Map nur für die markierten Runden – wenn das Banner falsch gelesen wurde. Statistik, eigener Rekord und die "
+    "Verknüpfung mit den Match-Daten folgen; die Aufnahme behält ihren Namen.":
+        "Sets the map for the marked rounds only – when the banner was read wrongly. Statistics, own record and the link "
+        "to the match data follow; the recording keeps its name.",
+    "Map setzen": "Set map",
+    "Map konnte nicht gespeichert werden: {error}": "Could not save the map: {error}",
+    "Map der Runde vom {when} auf {map} gesetzt.": "Map of the round of {when} set to {map}.",
     "Setzt den Killer nur für die markierte Runde und zählt sie als Killer-Runde – z. B. wenn sie fälschlich als "
     "Survivor gezählt wurde oder der Name falsch gelesen wurde.":
         "Sets the killer for the selected round only and counts it as a killer round – e.g. if it was wrongly counted "
@@ -2111,6 +2127,10 @@ EN = {
     'aktuell {n}': 'current {n}',
     'zuletzt {date}': 'last {date}',
     '4K-Serie': '4K streak',
+    'Ø {kills} Kills · {n} Runden als {killer}': 'Ø {kills} kills · {n} rounds as {killer}',
+    '{share} entkommen · {n} Runden gegen {killer}': '{share} escaped · {n} rounds against {killer}',
+    '4K-Serie {n}': '4K streak {n}',
+    'Entkommen-Serie {n}': 'Escape streak {n}',
     'Entkommen-Serie': 'Escape streak',
     'Beste Woche als Killer': 'Best week as killer',
     'ab {date} · {n} Runden': 'from {date} · {n} rounds',
@@ -2925,8 +2945,8 @@ EN = {
     "Diese Übersicht ein / aus": "This overview on / off",
     "In der Statistik zeigen": "Show in the statistics",
     "Aufnahme dieser Runde öffnen": "Open the recording of this round",
-    "Runde markieren: Rolle, Farming oder Killer korrigieren, löschen – oder Rechtsklick.":
-        "Mark a round: correct role, farming or killer, delete – or right-click.",
+    "Runde markieren: Rolle, Farming, Killer oder Map korrigieren, löschen – oder Rechtsklick.":
+        "Mark a round: correct role, farming, killer or map, delete – or right-click.",
     "OBS-Passwort ist auf diesem PC/Benutzerkonto nicht lesbar – bitte neu eingeben.":
         "The OBS password cannot be read on this PC/user account – please enter it again.",
     # 1.18.1: project saving in the big editor

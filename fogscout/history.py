@@ -458,6 +458,21 @@ def set_killer(path: str, t: float, killer: str):
     return hit
 
 
+def set_map(path: str, t: float, map_id: str, label: str):
+    """1.38.26 (project review F3): the map of the round that started at ``t`` – a wrongly read banner could not be
+    corrected before (``official.correct_maps`` covers only some cases). Returns the changed round, or None (no
+    such round / already that map)."""
+    if not map_id or not label:
+        raise ValueError((map_id, label))
+    rounds = load(path)
+    hit = next((r for r in rounds if abs(r.t - t) < 1e-6), None)
+    if hit is None or (hit.map_id == map_id and hit.map == label):
+        return None
+    hit.map_id, hit.map = map_id, label
+    _rewrite(path, rounds, _lost_lines(path))
+    return hit
+
+
 # ------------------------------------------------------------------ ping
 def median(values):
     v = sorted(x for x in values if x is not None)
