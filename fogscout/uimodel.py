@@ -279,6 +279,13 @@ def primary(w):
     return w
 
 
+def folded(w, title: str = "Erklärung"):
+    """1.38.13: a long explanation (a label) shut behind a fold "› title" on its page (qt_pages.make_fold); ``title``
+    is the German key, translated where it is drawn. The search still finds the text and opens the fold."""
+    w._dbdms_fold = title
+    return w
+
+
 def glyph(w, name: str):
     """1.24 (phase 2): a drawn sign (qt_icons.GLYPHS) before a button's text – instead of Unicode signs like ↻ ▸ ✕.
     May change later (a fold: chevron_right ↔ chevron_down)."""
