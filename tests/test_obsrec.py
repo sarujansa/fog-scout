@@ -888,8 +888,9 @@ def test_space_reads_the_index_only_when_it_changed(tmp_path, monkeypatch):
     folder = str(tmp_path)
     obsrec.save_index(folder, [obsrec.Recording(t=5.0, file="a.mkv", size=100)])
     reads = []
-    real = obsrec.load_index
-    monkeypatch.setattr(obsrec, "load_index", lambda f: reads.append(f) or real(f))
+    from fogscout import recindex                  # 1.38.35: space() and load_index live in recindex
+    real = recindex.load_index
+    monkeypatch.setattr(recindex, "load_index", lambda f: reads.append(f) or real(f))
     first = obsrec.space(folder)
     again = obsrec.space(folder)
     assert len(reads) == 1 and (again.count, again.used, again.oldest) == (first.count, first.used, first.oldest)
@@ -2314,3 +2315,21 @@ def test_a_snapshot_from_1_29_with_the_encoder_in_it_is_still_put_back(obs, tmp_
     r._quality(old)
     assert obs.profile[("SimpleOutput", "RecEncoder")] == "x264" and obs.profile[("SimpleOutput", "RecQuality")] == "Stream"
     assert any(e[0] == "obs_quality" and e[1].get("done") and e[1].get("restore") for e in _drain(posted))
+
+
+def test_every_index_name_is_still_importable_from_obsrec():
+    """1.38.35 (Phase 5, ARCH-3): index, clips and pruning moved to recindex; obsrec re-exports the same objects."""
+    import ast
+    import os
+    from fogscout import recindex
+    src = open(os.path.join(os.path.dirname(recindex.__file__), "recindex.py"), encoding="utf-8").read()
+    names = set()
+    for node in ast.parse(src).body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    assert [n for n in sorted(names) if getattr(obsrec, n, None) is not getattr(recindex, n)] == []
+    assert obsrec.rel_path is recindex.rel_path
