@@ -602,6 +602,36 @@ def test_auto_page_lays_out_a_grid(qapp, keep):
     assert [c.isChecked() for c in checks[:3]] == [True, True, False] and checks[8].text() == "L8"
 
 
+def test_a_long_explanation_of_a_model_page_is_shut_behind_a_fold(qapp, keep):
+    """1.38.13 (plan stage 3, D4): the statistics' 300–500-character footers were always open; a model label marked
+    ``ui.folded`` sits shut behind "Erklärung" (qt_pages.make_fold, the same fold as on the hand-made pages) and
+    the search's way of going there (_open_tabs) opens it."""
+    from fogscout import qt_window, uimodel
+    from fogscout.app_qt import ui_layout
+    assert uimodel.folded(uimodel.Label(None, text="x"))._dbdms_fold == "Erklärung"
+    node = {"kind": "card", "key": ".c", "row": False, "grid": False, "children": [
+        {"kind": "label", "key": ".c.a", "side": "top"},
+        {"kind": "hint", "key": ".c.b", "side": "top", "fold": "Erklärung"}]}
+    page = keep(qt_window.AutoPage(lambda a, arg=None: None, "Statistik", node))
+    page.show_states({".c.a": {"text": "oben", "visible": True}, ".c.b": {"text": "lang " * 80, "visible": True}})
+    page.resize(700, 400)
+    page.show()
+    qapp.processEvents()
+    top, hint = page.controls[".c.a"][1], page.controls[".c.b"][1]
+    from PySide6.QtWidgets import QPushButton
+    fold = [b for b in page.findChildren(QPushButton, "fold")]
+    assert len(fold) == 1 and fold[0].text() == "Erklärung"
+    assert top.isVisible() and not hint.isVisible()
+    qt_window._open_tabs(hint)
+    qapp.processEvents()
+    assert hint.isVisible()
+    # the model carries the mark into the node
+    root = uimodel.Frame(None)
+    uimodel.folded(uimodel.Label(root, text="lang", style="Dim.TLabel")).pack()
+    n = ui_layout(root, {})
+    assert n["children"][0]["fold"] == "Erklärung"
+
+
 def test_file_choice_is_not_modal(qapp, keep):
     from fogscout import qt_window
     posted = queue.Queue()
