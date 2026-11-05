@@ -61,6 +61,14 @@ def test_cover_is_decoded_small_and_broken_data_is_none():
     assert img is not None and img.mode == "RGBA" and max(img.size) <= media.COVER_PX
     assert media.decode_cover(b"") is None and media.decode_cover(b"not a picture") is None
     assert media.decode_cover(b"x" * (media.MAX_COVER_BYTES + 1)) is None
+    # 1.38.20 (audit): a small file can declare a huge picture (PNG: draft() cannot shrink it) – only the header is
+    # read before the size check, so nothing of it is decoded
+    huge = io.BytesIO()
+    Image.new("1", (media.MAX_COVER_PX + 1, media.MAX_COVER_PX + 1)).save(huge, "PNG")
+    assert len(huge.getvalue()) < media.MAX_COVER_BYTES and media.decode_cover(huge.getvalue()) is None
+    fine = io.BytesIO()
+    Image.new("1", (media.MAX_COVER_PX, 10)).save(fine, "PNG")
+    assert media.decode_cover(fine.getvalue()) is not None
 
 
 def test_music_card_places():
