@@ -9,8 +9,9 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import shutil
 import time
+
+from . import fsops
 
 DIR = "backup"
 KEEP = 14                                   # copies kept per file (the newest)
@@ -54,9 +55,9 @@ def snapshot(root: str, now: float | None = None, tag: str = "") -> dict:
             continue                                                    # nothing new since the last copy
         try:
             os.makedirs(folder, exist_ok=True)
-            tmp = os.path.join(folder, target + ".tmp")
-            shutil.copy2(src, tmp)
-            os.replace(tmp, os.path.join(folder, target))
+            with open(src, "rb") as fh:           # 1.38.5: was copy2 + replace without fsync – a power cut right
+                data = fh.read()                    # after could leave an empty backup of the very file it guards
+            fsops.write_atomic(os.path.join(folder, target), data)
         except OSError:
             continue
         out["copied"].append(target)
