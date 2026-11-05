@@ -28,6 +28,16 @@ def test_readmes_name_the_same_python_range():
     assert "3.12 to 3.14" in _read("README.en.md")
 
 
+def test_the_program_and_the_updater_ignore_python_environment_variables():
+    """1.38.21 (audit SEC-2): start.bat runs as administrator with the user's environment – PYTHONPATH/PYTHONHOME
+    from HKCU\\Environment would make the elevated Python import the user's code. ``-E`` ignores PYTHON* (not -I:
+    ``-m fogscout`` needs the program folder on sys.path)."""
+    lines = [line for line in _read("start.bat").splitlines()
+             if ("update.py" in line or "-m fogscout" in line) and not line.lstrip().lower().startswith("rem")]
+    assert len(lines) == 4, lines
+    assert all(re.search(r'python(w)?\.exe" -E ', line) for line in lines), lines
+
+
 def test_the_first_setup_installs_wheels_only():
     """1.12.3 (audit): start.bat runs as administrator – pip must never build a source package (its setup.py)."""
     pip_lines = [line for line in _read("start.bat").splitlines() if " -m pip install" in line]

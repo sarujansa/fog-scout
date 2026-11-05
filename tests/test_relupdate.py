@@ -309,7 +309,14 @@ def test_the_admin_update_folder_exists_only_for_the_installed_program(tmp_path,
     monkeypatch.setattr(sys, "executable", str(exe))
     assert paths.app_update_dir() is None                               # the bare CI folder: no unins000.exe
     (tmp_path / "unins000.exe").write_bytes(b"")
+    monkeypatch.setattr(paths, "known_folder", lambda name: "")           # no Program Files known (Linux): no check
     assert paths.app_update_dir() == os.path.join(str(tmp_path), "update")
+    # 1.38.21 (audit SEC-3): the folder counts as administrators' only inside Program Files – installed elsewhere
+    # (a folder the user may write to) the update stays in the data folder and Windows asks per UAC
+    monkeypatch.setattr(paths, "known_folder", lambda name: str(tmp_path.parent) if name == "ProgramFiles" else "")
+    assert paths.app_update_dir() == os.path.join(str(tmp_path), "update")
+    monkeypatch.setattr(paths, "known_folder", lambda name: str(tmp_path / "elsewhere") if name == "ProgramFiles" else "")
+    assert paths.app_update_dir() is None
 
 
 def test_the_update_helper_entry_is_gone(monkeypatch):
