@@ -47,6 +47,8 @@ class ServerTab:
         self.srv_status_label.pack(anchor="w", pady=(2, 0))
         self.srv_pending = ui.StringVar(value="")       # 1.23: ticked regions differ from the hosts file
         ui.Label(f, textvariable=self.srv_pending, style="Note.TLabel", wraplength=430).pack(anchor="w", pady=(2, 0))
+        self.srv_best = ui.StringVar(value="")          # 1.38.31 (F7): the fastest region at this time – a hint only
+        ui.Label(f, textvariable=self.srv_best, style="Dim.TLabel", wraplength=430).pack(anchor="w", pady=(2, 0))
         tf = ui.Frame(f)
         tf.pack(fill="x", pady=(6, 0))
         t = ui.Treeview(tf, columns=("ping", "state"), show="tree headings", height=11, selectmode="browse")
@@ -224,6 +226,7 @@ class ServerTab:
 
     def _srv_refresh(self, log_summary=False):
         """Read the hosts file (no administrator rights needed)."""
+        self.srv_best.set(self._regions_now_text(time.time()))   # 1.38.31: never applied by itself
         self.srv_state = regions.current_state()
         st = self.srv_state
         # 1.24.3 (phase 2): an unreadable hosts file is an error in red, and nothing can be applied or released
