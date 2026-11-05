@@ -1209,13 +1209,37 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         if restart.show_requested(getattr(self, "_show_event", None)):
             self._show_main()
 
-    def _report_once(self, key, text):
-        """Log an unexpected error (the full text goes to the log file; the UI once per kind)."""
-        log.error(text)
+    REPORT_LOG_S = 60.0              # 1.38.9: the same error's full text goes to the log at most this often …
+    REPORT_UI_S = 600.0              # … and the window says again that it keeps coming at most this often
+
+    def _report_once(self, key, text, now=None):
+        """Log an unexpected error. 1.38.9: before, every call wrote the full traceback to the log – from a tick step
+        up to four times a second, into a log file without a size limit – and the window said it only the first
+        time, never that it kept coming. Now like the worker's ``_tick_failed``: the full text at most every
+        REPORT_LOG_S per (kind, last line), the next entry with how often it came meanwhile; the window the first
+        time and then at most every REPORT_UI_S with the count."""
+        now = time.monotonic() if now is None else now
+        last = text.strip().splitlines()[-1] if text.strip() else text
+        counts = self.__dict__.setdefault("_error_counts", {})
+        counts[key] = counts.get(key, 0) + 1
+        st = self.__dict__.setdefault("_error_state", {}).setdefault(
+            (key, last), {"log": None, "ui": None, "n_log": 0, "n_ui": 0, "since_log": "", "since_ui": ""})
+        for side in ("log", "ui"):
+            if not st["n_" + side]:
+                st["since_" + side] = time.strftime("%H:%M")
+            st["n_" + side] += 1
+        if st["log"] is None or now - st["log"] >= self.REPORT_LOG_S:
+            again = st["n_log"] - 1
+            log.error("%s%s", text, f"\n({again}× ohne Eintrag seit {st['since_log']})" if again else "")
+            st["log"], st["n_log"] = now, 0
         if key not in self._errors_seen:
             self._errors_seen.add(key)
-            last = text.strip().splitlines()[-1] if text.strip() else text
             self._log(_("{text} – Details in fogscout.log", text=f"{key}: {last}"), "Fehler")
+            st["ui"], st["n_ui"] = now, 0
+        elif st["ui"] is None or now - st["ui"] >= self.REPORT_UI_S:
+            self._log(_("{text} ({n}× seit {since}) – Details in fogscout.log", text=f"{key}: {last}", n=st["n_ui"],
+                        since=st["since_ui"]), "Fehler")
+            st["ui"], st["n_ui"] = now, 0
 
     # ============================================================ settings
 

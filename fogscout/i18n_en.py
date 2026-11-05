@@ -748,6 +748,8 @@ EN = {
     "Overlay sichtbar bei {pos} über {src}.": "Overlay visible at {pos} over {src}.",
     "Overlay pausiert: {reason}.": "Overlay paused: {reason}.",
     "{text} – Details in fogscout.log": "{text} – details in fogscout.log",
+    "{text} ({n}× seit {since}) – Details in fogscout.log": "{text} ({n}× since {since}) – details in fogscout.log",
+    "Erkennung neu gestartet ({n}/{total})": "Detection restarted ({n}/{total})",
 
     # ------------------------------------------------------------------ detection events
     "Map-Banner gefunden, lese …": "Map banner found, reading …",
