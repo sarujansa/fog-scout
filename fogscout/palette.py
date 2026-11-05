@@ -29,9 +29,10 @@ SEARCH_ALSO = {"tast": "hotkey shortcut tastenkürzel", "hotkey": "taste tastenk
                "size": "grösse zoom bigger smaller", "cross-play": "crossplay", "crossplay": "cross-play",
                "aufnahme": "obs recording", "recording": "obs aufnahme", "einrichtung": "setup assistent wizard",
                "setup": "einrichtung assistent wizard", "aktualis": "update", "update": "aktualisieren",
-               # 1.23: the folded part at the foot of the log page – found by what it holds
-               "erweitert (fehlersuche": "advanced debug-bilder fensteraufnahme scans/sek rundenende diagnose",
-               "advanced (troubleshooting": "erweitert debug pictures window capture scans/s end of round"}
+               # 1.23: the folded part at the foot of the log page – found by what it holds (1.38.12: window
+               # capture and scan rate are on Einstellungen → Erkennung → Technik now, found by their own labels)
+               "erweitert (fehlersuche": "advanced debug-bilder rundenende diagnose",
+               "advanced (troubleshooting": "erweitert debug pictures end of round"}
 
 
 @dataclass

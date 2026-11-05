@@ -295,6 +295,18 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._reg("st.det_menu_hint", ui.Label(
             auto, text=_("erkannt am sichtbaren Mauszeiger (ESC-Menü, Ergebnisbildschirm, Lobby)"),
             style="Dim.TLabel", wraplength=400)).pack(anchor="w", padx=(22, 0))
+        # 1.38.12: the two settings of the old "Erweitert" (log page) live with the other detection settings
+        tech = self._reg("st.det_tech", ui.LabelFrame(f, text=_("Technik"), padding=8))
+        tech.pack(fill="x", pady=(8, 0))
+        self.wgc_var = ui.BooleanVar(value=self.settings.get("window_capture", True))
+        self._reg("st.det_wgc", ui.Checkbutton(tech, text=_("Auch erkennen, wenn andere Fenster über DBD liegen"),
+                                                variable=self.wgc_var,
+                                                command=self._detect_flags_changed)).pack(anchor="w", pady=1)
+        self._reg("st.det_wgc_hint", ui.Label(
+            tech, text=_("Fensteraufnahme wie bei OBS, nur solange DBD im Hintergrund ist"),
+            style="Dim.TLabel", wraplength=400)).pack(anchor="w", padx=(22, 0))
+        self.rate_var = ui.DoubleVar(value=float(self.settings.get("scans_per_second", 5)))
+        self._slider(tech, _("Scans/Sek."), self.rate_var, 2, 10, self._rate_changed, fmt="{:.0f}", key="st.det_rate")
         lang = self._reg("st.langs", ui.LabelFrame(f, text=_("Spielsprache (Map-Namen)"), padding=8))
         lang.pack(fill="x", pady=(8, 0))
         grid = ui.Frame(lang)
@@ -307,19 +319,13 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 row=i // 5, column=i % 5, sticky="w", padx=(0, 12), pady=1)
 
     def _advanced_card(self, f):
-        """"Erweitert" at the foot of the log page: technical options, folded away – only needed when something
-        does not work (window capture, scan rate, the live state of the end-of-round watcher, debug pictures)."""
+        """"Erweitert" at the foot of the log page: troubleshooting tools, folded away – only needed when something
+        does not work (the live state of the end-of-round watcher, debug pictures, a scan now). The settings
+        window capture and scan rate are on Einstellungen → Erkennung → Technik since 1.38.12."""
         self.adv_open = ui.BooleanVar(value=bool(self.settings.get("show_advanced", False)))
         self.adv_btn = ui.Button(f, command=self._toggle_advanced)
         self.adv_btn.pack(anchor="w", pady=(10, 0))
         adv = self.adv_frame = ui.LabelFrame(f, text=_("Erweitert"), padding=8)
-        self.wgc_var = ui.BooleanVar(value=self.settings.get("window_capture", True))
-        ui.Checkbutton(adv, text=_("Auch erkennen, wenn andere Fenster über DBD liegen"),
-                        variable=self.wgc_var, command=self._detect_flags_changed).pack(anchor="w", pady=1)
-        ui.Label(adv, text=_("Fensteraufnahme wie bei OBS, nur solange DBD im Hintergrund ist"),
-                  style="Dim.TLabel", wraplength=400).pack(anchor="w", padx=(22, 0))
-        self.rate_var = ui.DoubleVar(value=float(self.settings.get("scans_per_second", 5)))
-        self._slider(adv, _("Scans/Sek."), self.rate_var, 2, 10, self._rate_changed, fmt="{:.0f}")
         self.watch_var = ui.StringVar(value=_("Rundenende-Erkennung: {state}", state=_("keine Map angezeigt")))
         ui.Label(adv, textvariable=self.watch_var, style="Dim.TLabel", wraplength=420).pack(anchor="w", pady=(4, 6))
         self.debug_var = ui.BooleanVar(value=self.settings["save_debug_images"])
@@ -338,11 +344,11 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
 
     def _show_advanced(self):
         if self.adv_open.get():
-            self.adv_btn.configure(text=_("Erweitert (Fehlersuche, Technik)"))
+            self.adv_btn.configure(text=_("Erweitert (Fehlersuche)"))
             ui.glyph(self.adv_btn, "chevron_down")                 # 1.24: a drawn chevron, not "▾"
             self.adv_frame.pack(fill="x", pady=(4, 0))
         else:
-            self.adv_btn.configure(text=_("Erweitert (Fehlersuche, Technik)"))
+            self.adv_btn.configure(text=_("Erweitert (Fehlersuche)"))
             ui.glyph(self.adv_btn, "chevron_right")
             self.adv_frame.pack_forget()
 
@@ -581,7 +587,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                               "und Musik (Beispielwerte, wenn nichts anliegt) – an den eingestellten Stellen, auch "
                               "ohne DBD. Nochmal drücken beendet den Test."))
         if w is self.adv_btn:
-            return _("Technische Optionen für die Fehlersuche ein- oder ausklappen.")
+            return _("Werkzeuge für die Fehlersuche ein- oder ausklappen: Live-Zustand der "
+                     "Rundenende-Erkennung, Debug-Bilder, Bildschirm scannen.")
         if w in (getattr(self, "rec_start_btn", None), getattr(self, "rec_pause_btn", None)):   # 1.15: labels change
             return lambda: tooltip.tip_for_label(str(w.cget("text")))
         if w is getattr(self, "stats_filter_btn", None):                  # 1.11.14: "Filter (2) ▾"

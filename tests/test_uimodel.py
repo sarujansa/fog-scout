@@ -2512,12 +2512,14 @@ def test_the_detection_page_went_into_the_settings_and_the_log(app_root):
         assert "detect" not in qt_window.AUTO_PAGES and len(app.nb.tabs()) == len(qt_window.PAGES) - 1   # no overview tab
         keys = qt_window.page_keys("settings")
         assert {"st.detect", "st.det_auto", "st.det_hide", "st.det_menu", "st.langs", "det.lang.en", "det.lang.tr",
-                "st.more.off_check"} <= keys
+                "st.more.off_check", "st.det_tech", "st.det_wgc", "st.det_rate"} <= keys
         assert all(k in app._qt_reg for k in keys)                       # every key names a widget the App made
-        # the technical options: in the log tab's model, hidden until "Erweitert" is unfolded
+        # the troubleshooting tools: in the log tab's model, hidden until "Erweitert" is unfolded; the settings
+        # window capture and scan rate are not there any more (1.38.12: Einstellungen → Erkennung → Technik)
         reg = {}
         ui_layout(app.tab_log, reg)
         assert str(app.adv_frame) in reg and not ui_shown(app.adv_frame)
+        assert str(app._qt_reg["st.det_wgc"]) not in reg and str(app._qt_reg["st.det_rate"]) not in reg
         app._toggle_advanced()
         assert ui_shown(app.adv_frame) and app.settings["show_advanced"] is True
         # opening the settings fills the stats check (no data: one line, no pointer to a page that is gone)
@@ -3006,7 +3008,8 @@ def test_a_fired_or_cancelled_timer_is_freed():
 
 def test_the_search_finds_the_folded_advanced_part_and_opens_it(app_root):
     """1.23 (audit, prompt.md): Log › „Erweitert“ is folded by default – the search skipped its button (and the
-    folded tick boxes). Its name and what it holds (debug pictures, window capture …) find it; going there opens it."""
+    folded tick boxes). Its name and what it holds (debug pictures, the end-of-round line …) find it; going there
+    opens it. 1.38.12: window capture moved to Einstellungen → Erkennung and is found there."""
     import json
     from fogscout.app import App
     (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
@@ -3017,10 +3020,12 @@ def test_the_search_finds_the_folded_advanced_part_and_opens_it(app_root):
         app.qapp.processEvents()
         app._qt_refresh(force=True)
         app.qt.update_search_index()
-        hit = "Erweitert (Fehlersuche, Technik)  ·  Log"
+        hit = "Erweitert (Fehlersuche)  ·  Log"
         assert hit in app.qt._found
         hay = app.qt._search_hits()[hit][3]
-        assert "debug" in hay and "fensteraufnahme" in hay
+        assert "debug" in hay and "rundenende" in hay and "fensteraufnahme" not in hay
+        assert any(h.startswith("Auch erkennen, wenn andere Fenster über DBD liegen") and "Einstellungen" in h
+                   for h in app.qt._found), [h for h in app.qt._found if "Fenster" in h]
         app.qt.go_to_found(hit)
         for _i in range(5):
             app.qapp.processEvents()
