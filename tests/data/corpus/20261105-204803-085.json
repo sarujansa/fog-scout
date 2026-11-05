@@ -1,0 +1,37 @@
+{
+"format": "fogscout-corpus",
+"version": 1,
+"program": "1.38.33",
+"t": 1793908083.086,
+"map_id": "mothers-dwelling",
+"variant": 1,
+"probability": 1.0,
+"name_text": "MOTHER'S DWELLING",
+"realm_text": "REDFORESTVAUNNN",
+"name_fit": 0.02,
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+676
+],
+"offset": [
+61,
+220
+],
+"separator": {
+"x0": 581,
+"x1": 1380,
+"y": 492,
+"frac": 0.312,
+"thickness": 1.33
+},
+"letterboxed": false,
+"bars": null,
+"languages": [
+"en",
+"de"
+]
+}

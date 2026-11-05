@@ -1,0 +1,37 @@
+{
+"format": "fogscout-corpus",
+"version": 1,
+"program": "1.38.33",
+"t": 1793909879.41,
+"map_id": "father-campbells-chapel",
+"variant": 1,
+"probability": 1.0,
+"name_text": "FATHER CAMPBELL'S CHAPEL",
+"realm_text": "CROTUSPRENN ASYLUM /IN",
+"name_fit": 0.01,
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+676
+],
+"offset": [
+64,
+221
+],
+"separator": {
+"x0": 581,
+"x1": 1376,
+"y": 492,
+"frac": 0.3104,
+"thickness": 1.33
+},
+"letterboxed": false,
+"bars": null,
+"languages": [
+"en",
+"de"
+]
+}

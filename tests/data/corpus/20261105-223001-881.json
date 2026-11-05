@@ -1,0 +1,37 @@
+{
+"format": "fogscout-corpus",
+"version": 1,
+"program": "1.38.36",
+"t": 1793914201.881,
+"map_id": "sanctum-of-wrath",
+"variant": 1,
+"probability": 1.0,
+"name_text": "SANCTUM OF WRATH",
+"realm_text": "TYAMAOKAESTATELHLTT/FTI!",
+"name_fit": 0.03,
+"frame": [
+1071,
+601
+],
+"roi": [
+685,
+282
+],
+"offset": [
+0,
+104
+],
+"separator": {
+"x0": 60,
+"x1": 354,
+"y": 204,
+"frac": 0.2752,
+"thickness": 1.0
+},
+"letterboxed": false,
+"bars": null,
+"languages": [
+"en",
+"de"
+]
+}
