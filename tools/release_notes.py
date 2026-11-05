@@ -18,7 +18,10 @@ def main(argv) -> int:
         return 2
     with open(argv[0], encoding="utf-8") as fh:
         text = fh.read()
-    print(release_notes(text, argv[1], argv[2] if len(argv) == 3 else ""))
+    notes = release_notes(text, argv[1], argv[2] if len(argv) == 3 else "")
+    # 1.38.2: always UTF-8 – a Windows console (cp1252) cannot encode "→" and the script died with it
+    sys.stdout.buffer.write((notes + "\n").encode("utf-8"))
+    sys.stdout.flush()
     return 0
 
 
