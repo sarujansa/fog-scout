@@ -75,3 +75,12 @@ def _a_cipher_like_dpapi(monkeypatch):
     if spotify.CIPHER is None:
         monkeypatch.setattr(spotify, "CIPHER", fake_cipher)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _tests_run_as_a_plain_user(monkeypatch):
+    """1.38.21: GitHub's Windows runner is an administrator – launch.elevated() would send every open_url/open_path
+    through explorer.exe (the real one) and the program start would drop variables from the test process. Tests
+    that want the elevated path set it themselves (test_launch)."""
+    from fogscout import launch
+    monkeypatch.setattr(launch, "elevated", lambda: False)

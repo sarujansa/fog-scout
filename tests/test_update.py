@@ -218,7 +218,8 @@ def test_the_version_of_a_revision_before_the_rename_is_read(repos):
 def test_git_runs_without_hooks_fsmonitor_or_user_config(tmp_path, monkeypatch):
     """1.38.21 (audit SEC-2): start.bat runs update.py as administrator in a folder the user writes to, and git reads
     the user's global config (core.fsmonitor = any command, hooks path) and GIT_* variables from HKCU\\Environment.
-    Every git call now disables hooks and fsmonitor on the command line, skips global and system config and drops
+    Every git call now disables hooks, the fsmonitor command and credential helpers on the command line (which beats
+    every config file – the system/global config itself stays: Git for Windows keeps core.autocrlf there) and drops
     GIT_*/SSL_CERT_*/PYTHON* from the environment – proxies stay."""
     seen = {}
 
@@ -240,6 +241,6 @@ def test_git_runs_without_hooks_fsmonitor_or_user_config(tmp_path, monkeypatch):
     assert "core.fsmonitor=false" in args and any(a.startswith("core.hooksPath=") for a in args)
     hooks = next(a for a in args if a.startswith("core.hooksPath=")).split("=", 1)[1]
     assert hooks.startswith(str(tmp_path)) and not os.path.exists(hooks)          # nothing there to run
-    assert env["GIT_CONFIG_NOSYSTEM"] == "1" and not os.path.exists(env["GIT_CONFIG_GLOBAL"])
+    assert "credential.helper=" in args and "GIT_CONFIG_NOSYSTEM" not in env and "GIT_CONFIG_GLOBAL" not in env
     assert env["GIT_TERMINAL_PROMPT"] == "0" and env["HTTPS_PROXY"] == "http://proxy:3128"
     assert not any(k in env for k in ("GIT_SSL_CAINFO", "GIT_CONFIG_PARAMETERS", "SSL_CERT_FILE", "PYTHONPATH"))
