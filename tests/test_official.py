@@ -776,6 +776,7 @@ def test_the_tick_takes_the_downloads_only_when_due_but_always_while_the_user_wa
     from fogscout import app_stats
     calls = []
     fake = types.SimpleNamespace(_off_open=types.SimpleNamespace(update=lambda now, running: False), game=None,
+                                 _session_end=types.SimpleNamespace(update=lambda now, running: False),   # 1.38.27
                                  settings={}, simulate=True, _off_next=0.0, _off_fast_until=0.0,
                                  _off_watch=types.SimpleNamespace(due=lambda folder, now: False),
                                  _official_folder=lambda: "/nirgends", _official_take=lambda: calls.append(1))

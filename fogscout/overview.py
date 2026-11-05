@@ -9,7 +9,7 @@ import time
 from collections import namedtuple
 from dataclasses import dataclass, field
 
-from . import dashboard, history, obsrec, official, sysinfo, theme
+from . import dashboard, history, obsrec, official, records, sysinfo, theme
 from .connwatch import UNKNOWN, region_name
 from .i18n import N_, _
 from .lobby import killer_label
@@ -365,6 +365,26 @@ def week(app, now: float) -> tuple[list, str]:
         if this[key] is not None or last[key] is not None:
             tiles.append(_week_fact(title, this[key], last[key], fmt, **kw))
     return tiles, _("Montag bis jetzt gegenüber der Vorwoche (Mo–So); Custom und Farming zählen nicht.")
+
+
+def session_text(j, now: float, gap: float = records.SESSION_GAP) -> tuple[str, str] | None:
+    """1.38.27 (project review F1): the session that just ended – rounds within ``gap`` of each other, the last of
+    them ending before ``now`` – as (title, one line): rounds, play time, Ø kills / escaped / bloodpoints where
+    the official data has them. None without a normal round. Pure."""
+    normal = [r for r in j.rounds if history.normal(r) and r.t <= now]
+    ss = records.sessions(normal, gap)
+    if not ss:
+        return None
+    start, end, n = ss[-1]
+    part = _week_part(j, start, end + 1)
+    bits = [_("{n} Runden", n=n) if n != 1 else _("1 Runde"), fmt_duration(max(0.0, end - start))]
+    if part["kills"] is not None:
+        bits.append(_("Ø {kills} Kills", kills=f"{part['kills']:.1f}"))
+    if part["escaped"] is not None:
+        bits.append(_("{share} entkommen", share=f"{part['escaped']:.0%}"))
+    if part["bp"] is not None:
+        bits.append(_("{bp} BP", bp=dashboard._bp(part["bp"])))
+    return _("Sitzung beendet"), " · ".join(bits)
 
 
 def _gb(n: float) -> str:
