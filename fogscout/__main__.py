@@ -306,8 +306,10 @@ def main():
     set_process_app_id()                          # before the first window: own taskbar button and icon
     data = _data()
     i18n.init_from_settings(os.path.join(data, "settings.json"))
+    clock.step("Einstellungen")                   # 1.38.15: steps inside the phases (diagnosis "Schritte:")
     if not _single_instance():
         return
+    clock.step("Einzelinstanz")
     taken = []
     if data != ROOT:                              # 1.32: the installed program – a start.bat installation to take over
         try:
@@ -321,12 +323,14 @@ def main():
         logging.getLogger("fogscout").info("Aus der start.bat-Installation übernommen: %s", ", ".join(taken))
     _log_thread_deaths()
     _log_uncaught()
+    clock.step("Log")
     from .capture import enable_dpi_awareness
     enable_dpi_awareness()
+    clock.step("DPI")
     splash = None
     if not args.tray:                             # 1.14.2: the splash screen – not for the silent start in the tray
         from .splash import start as splash_start
-        splash = splash_start(data, __version__)
+        splash = splash_start(data, __version__, clock=clock)
     clock.mark("splash")
     try:
         from .app import App

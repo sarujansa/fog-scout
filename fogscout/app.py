@@ -85,15 +85,18 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         askclaude.set_model(self.settings.get("claude_model", "opus"))   # 1.36: the user's model for every request
         self._secrets_plain = self._secrets_upgrade()     # 1.28: "plain:" → encrypted, before anything reads them
         self._joined_preload()           # 1.16.2: the statistics files are parsed while the window is built
+        self._start_step("Einstellungen (App)")
         self._progress(0.3, _("Lade Maps …"))
         self.catalog = Catalog(root_dir, self.settings["languages"], self.settings.get("user_aliases"),
                                data_dir=self.data_dir)
+        self._start_step("Katalog")
         self._unknown = None             # (name text, realm text) of the last banner that matched no map
         self.events: queue.Queue = queue.Queue()
         self._quitting = False
         self._errors_seen = set()
         self._log_entries = collections.deque(maxlen=1500)
         self._qt_init()                  # Qt application; self.root = its main loop (timers, clipboard …)
+        self._start_step("Qt-Schleife")
         if IS_WIN:
             try:
                 from .icon import ensure_ico
@@ -141,6 +144,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._conn_next = 0.0
         self._conn_last = None
         self._conn_idle = IdlePause()    # capture paused while DBD is not running
+        self._start_step("OBS, Verbindung")
 
         self._progress(0.42, _("Bereite Overlay vor …"))
         self.overlay = make_overlay(self.root, prefer_native=self.settings["overlay"].get("native_window", True))
@@ -151,11 +155,13 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.overlay.on_wheel = lambda d: self.events.put(("call", self._resize, (0.02 * d,)))
         self._layout_init()              # undo + one layout per DBD window size (1.65)
         self._hud_init()                 # system values at the top of a black bar (CPU/GPU temperature …)
+        self._start_step("Overlay")
 
         self._progress(0.5, _("Baue Oberfläche …"))
         self._build_ui()
         self._apply_overlay_settings()
         self._style_warm()
+        self._start_step("Seitenmodell")
 
         self._progress(0.58, _("Starte Erkennung …"))
         self.worker = DetectionWorker(root_dir, self.settings, self.catalog, self.events, simulate=simulate,
@@ -163,6 +169,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.toast.on_rect = lambda r: setattr(self.worker, "toast_rect", r)    # 1.8.13: never read as the game
         self.worker.start()
         self.hotkeys = self._start_hotkeys()
+        self._start_step("Erkennung, Hotkeys")
         self.root.after(50, self._poll)
         self.root.after(250, self._tick_overlay)
         self._log(_("Bereit. {n} Maps geladen, Spielsprachen: {langs}.", n=len(self.catalog.maps),
@@ -186,13 +193,16 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         if not IS_WIN and not simulate:
             self._log(_("Kein Windows: Fenstersuche, Hotkeys und Click-Through sind nur unter Windows aktiv."), "System")
 
+        self._start_step("Server, Updates, Sicherung")
         self._progress(0.72, _("Öffne Fenster …"))
         # notification area icon; "minimise" hides the window there
         from .tray import Tray
         self.tray = Tray(lambda action: self.events.put(("tray", action)))
         if IS_WIN and self.settings.get("tray", True):
             self._tray_start()
+        self._start_step("Infobereich")
         self._qt_build(start_in_tray)
+        self._start_step("Steuerfenster")
         # 1.65.1: a second start (shortcut while this one sits in the tray) asks for the window instead of
         # only saying "läuft bereits"
         self._show_event = restart.show_event_create() if IS_WIN else None
@@ -200,6 +210,11 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._progress(1.0, _("Fog Scout ist bereit."))
         if self.start_clock is not None:
             self.root.after(0, self._start_measured)      # 1.35: the first turn of the event loop – window up
+
+    def _start_step(self, label: str):
+        """1.38.15: a step of the start for the diagnosis (starttime.StartClock.step) – nothing without a clock."""
+        if self.start_clock is not None:
+            self.start_clock.step(label)
 
     def _start_measured(self):
         """1.35: how long the start took – one log line (the diagnosis has the phases)."""
