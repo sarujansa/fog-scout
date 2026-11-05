@@ -179,3 +179,19 @@ def test_the_program_keeps_the_note_and_shows_it_with_the_map(tmp_path):
         assert app.settings.get(mapnotes.KEY) == {}
     finally:
         app.quit()
+
+
+def test_the_killers_note_follows_the_maps_and_both_share_the_lines():
+    """1.38.30 (project review F5): a note per killer, shown below the map's once the round's killer is known; the
+    block stays at most MAX_LINES – the map's note first, the killer's gets at least one line."""
+    from fogscout import mapnotes as mn
+    notes = mn.put({}, "The Nurse", "Blinks durch Wände\nnicht im Kreis laufen")
+    assert mn.get(notes, "The Nurse") == "Blinks durch Wände\nnicht im Kreis laufen"
+    assert mn.memo_lines("Shack links", "", "Nurse") == ("Shack links",)                 # no killer note: as before
+    out = mn.memo_lines("Shack links", mn.get(notes, "The Nurse"), "Nurse")
+    assert out[0] == "Shack links" and out[1].startswith("Nurse: Blinks durch Wände") and len(out) <= mn.MAX_LINES
+    full = "\n".join(f"Zeile {i}" for i in range(6))
+    out = mn.memo_lines(full, "Achtung Blink", "Nurse")
+    assert len(out) == mn.MAX_LINES and out[-1].startswith("Nurse: Achtung")            # the killer keeps one line
+    assert mn.memo_lines("", "Achtung Blink", "Nurse") == ("Nurse: Achtung Blink",)
+    assert mn.memo_lines("", "Achtung", "") == ("Achtung",)

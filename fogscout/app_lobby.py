@@ -98,6 +98,13 @@ class LobbyInfo:
 
     def _queue_event(self, d):
         prev, what = self._queue, d.get("what")
+        try:
+            self._queue_event_apply(d, prev, what)
+        finally:
+            if (self._queue or {}).get("killer") != (prev or {}).get("killer") and self.current:
+                self._update_memo()                           # 1.38.30: the killer's note follows the lobby
+
+    def _queue_event_apply(self, d, prev, what):
         if what == "search":
             self._queue = {"state": "search", "since": d.get("since"), "role": d.get("role") or prev.get("role"),
                            "killer": d.get("killer") or prev.get("killer", ""),
