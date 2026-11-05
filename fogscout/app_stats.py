@@ -9,9 +9,10 @@ import logging
 import os
 import threading
 import time
+import traceback
 from types import SimpleNamespace
 
-from . import builds, dashboard, history, launch, mapnotes, official, records, regions, sysinfo
+from . import builds, dashboard, history, launch, mapnotes, official, overview, records, regions, sysinfo
 from . import uimodel as ui
 from .capture import foreground_root, is_game_window
 from .i18n import N_, _
@@ -1592,6 +1593,7 @@ class StatsTab:
         # 1.13: the next balance read in the lobby tells what the round brought (a custom game brings nothing)
         self.bloodpoints.round_ended(t, counts=not rec.get("custom"))
         self._off_open.round_recorded()              # worth opening the stats page once DBD is closed
+        self._session_end.round_recorded()
         if self.nb.select() == str(self.tab_stats):
             self._stats_render()
 
@@ -1886,12 +1888,29 @@ class StatsTab:
         self._log(msg, "System")
         self._inform(_("Userscript kopieren"), msg)
 
+    def _session_summary(self, now: float):
+        """1.38.27 (F1): once DBD is closed after at least one round – the session as one line: notification (sound
+        as for a found lobby) and a log line. Nothing is stored; the numbers come from the rounds and their matches."""
+        try:
+            got = overview.session_text(self._joined(), now)
+        except Exception:
+            self._report_once("Sitzungsbilanz", traceback.format_exc())
+            return
+        if got is None:
+            return
+        title, text = got
+        self._log(f"{title}: {text}", "System")
+        if self.settings.get("session_notify", True):
+            self._notify(title, text, force=True)
+
     def _official_tick(self):
         """Every tick: open the stats page once DBD was closed (if wanted), look for the userscript's files."""
         now = time.time()
         if self._off_open.update(now, self.game is not None) and self.settings.get("official_open_after_dbd") \
                 and not self.simulate:
             self._official_open(True)
+        if self._session_end.update(now, self.game is not None):
+            self._session_summary(now)
         if now >= self._off_next:
             fast = now < self._off_fast_until
             self._off_next = now + (3.0 if fast else 20.0)

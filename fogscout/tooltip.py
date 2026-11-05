@@ -36,6 +36,9 @@ TIPS = {
         "Noch einmal melden, wenn der Countdown der Lobby unter 15 s fällt und du READY nicht gedrückt hast.",
     "Nur wenn DBD nicht das aktive Fenster ist":
         "Keine Meldung, solange DBD im Vordergrund ist – dann siehst du die Lobby ja selbst.",
+    "Bilanz der Sitzung zeigen, wenn DBD beendet wurde":
+        "Etwa 15 s nachdem DBD geschlossen wurde: eine Meldung mit den Runden der Sitzung, der Spielzeit und – mit "
+        "Match-Daten – Ø Kills, Entkommen und Bloodpoints. Steht auch im Log.",
     "Melden, wenn eine Runde keine Blutpunkte gebracht hat (Cap erreicht)":
         "Fog Scout liest in der Lobby den Blutpunkte-Stand oben rechts. Ist er nach einer gezählten Runde derselbe "
         "wie davor, ist das Cap erreicht (normal 5 Millionen, nach Tome-Belohnungen auch mehr) – die Punkte der "
