@@ -7,18 +7,15 @@ from . import layout
 from . import uimodel as ui
 from .i18n import N_, _
 from .skin import STYLE_LABELS
-from .app_spotify import MEDIA_NEXT_N, MEDIA_NEXT_SPOTS
-from .app_sysinfo import (BAR_ALIGNS, HUD_ROW_LABELS, HUD_SIDES, MAP_SCALE, MEDIA_SPOTS, MEDIA_STYLES,
+from .appconst import MEDIA_NEXT_N, MEDIA_NEXT_SPOTS
+from .appconst import (BAR_ALIGNS, HUD_ROW_LABELS, HUD_SIDES, MAP_SCALE, MEDIA_SPOTS, MEDIA_STYLES,
                           OPACITY_KEYS, PRESET_LABELS, SELECTABLE, TODAY_SPOTS)
+from .appconst import INFO_SPOTS   # noqa: F401 – 1.38.36: shared choices live in appconst
 
 ANCHORS = [("auto", N_("automatisch")), ("top-left", N_("oben links")), ("top-right", N_("oben rechts")),
            ("bottom-left", N_("unten links")), ("bottom-right", N_("unten rechts")), ("custom", N_("eigene Position"))]
 
 
-# 1.8.24: where the map's lines (timer, record, server) go – an element of their own, or drawn with the map as before
-INFO_SPOTS = [("below", N_("Eigenes Element unter der Karte")), ("above", N_("Eigenes Element über der Karte")),
-              ("custom", N_("Eigenes Element, eigene Position")), ("inside", N_("Mit der Karte verbunden, unten")),
-              ("inside_top", N_("Mit der Karte verbunden, oben"))]     # 1.8.34
 # 1.8.24 (user: "zwischen runden und eckigen Bildern"): the shape of the music card's cover
 COVER_SHAPES = [("style", N_("Wie der Stil")), ("round", N_("Rund")), ("square", N_("Eckig"))]
 STYLE_DEFER_MS = 30                     # 1.3.4: the window repaints before the slow part of a map style change
