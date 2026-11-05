@@ -280,18 +280,18 @@ class StatsTab:
                                                  ("round", _("Ø BP"), 70, "e"), ("hour", _("BP/h"), 70, "e"),
                                                  ("hourw", _("BP/h mit Wartezeit"), 120, "e"),
                                                  ("sum", _("Summe"), 80, "e")), 8)
-        ui.Label(box_b, text=_("Bloodpoints laut Stats-Seite. BP/h = je Stunde im Match; mit Wartezeit = je Stunde aus "
+        ui.folded(ui.Label(box_b, text=_("Bloodpoints laut Stats-Seite. BP/h = je Stunde im Match; mit Wartezeit = je Stunde aus "
                                 "Match und Suche zusammen. Was das Farmen allein bringt, steht im Reiter „Farming“; "
-                                "„Farming ausblenden“ rechnet hier ohne Farming-Runden."), style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+                                "„Farming ausblenden“ rechnet hier ohne Farming-Runden."), style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
         box_rk = self._stats_page(_("Rekorde"), "rounds", "_stats_part_records")    # 1.7: streaks, best week, busiest day, longest session
         self.stats_records_var = ui.StringVar(value="")
         ui.Label(box_rk, textvariable=self.stats_records_var, wraplength=400).pack(anchor="w")
         self.stats_records = ui.Tiles(box_rk)
         self.stats_records.pack(fill="x")
-        ui.Label(box_rk, text=_("Serien zählen Runden mit Ergebnis laut Stats-Seite in zeitlicher Reihenfolge – „aktuell“ "
+        ui.folded(ui.Label(box_rk, text=_("Serien zählen Runden mit Ergebnis laut Stats-Seite in zeitlicher Reihenfolge – „aktuell“ "
                                  "ist die Serie der neuesten Runden der Auswahl. Beste Woche ab {n} Runden mit Ergebnis. "
                                  "Eine Sitzung endet nach 45 Minuten ohne Runde.", n=records.WEEK_MIN),
-                  style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(6, 0))
+                  style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(6, 0))
         box_v = self._stats_page(_("Verlauf"), "rounds", "_stats_part_trend")
         self.trend = TrendChart(box_v, bool(self.settings.get("dark_mode", True)))
         ui.Label(box_v, text=_("Nur Runden, die einem Match auf der Stats-Seite zugeordnet sind. Die Maus über einer "
@@ -355,13 +355,13 @@ class StatsTab:
                                                 ("cputhr", _("CPU gedr."), 70, "e"),
                                                 ("fps", _("FPS Ø"), 56, "e"), ("fpslow", _("FPS Tief"), 60, "e")), 6)
         self.sys_trend = TrendChart(box_s, bool(self.settings.get("dark_mode", True)), panels=("temp",))
-        ui.Label(box_s, text=_("Werte der Systemwerte-Anzeige (Tab Overlay) während der Runden – nur Runden, in denen "
+        ui.folded(ui.Label(box_s, text=_("Werte der Systemwerte-Anzeige (Tab Overlay) während der Runden – nur Runden, in denen "
                                 "sie eingeschaltet war. CPU-Temperatur nur mit HWiNFO. „Wann/Wo“ zeigt, auf welchen "
                                 "Maps oder zu welcher Tageszeit der PC am heißesten läuft. „Gedrosselt“: Sekunden, in "
                                 "denen die GPU wegen Temperatur oder Hardware langsamer lief (nur NVIDIA). „–“: in diesen "
                                 "Runden nicht erfasst – CPU-Temperatur, -Leistung, Kerne und FPS gibt es nur, solange HWiNFO "
                                 "läuft, und jeder Wert braucht mindestens 10 Sekunden Messwerte in der Runde."),
-                  style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(6, 0))
+                  style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(6, 0))
         # 1.8.46: the characters met and how the survivors' matches ended (page data that was read but unused)
         box_o = self._stats_page(_("Gegner"), "foes", "_stats_part_opponents")
         self.stats_opp_var = ui.StringVar(value="")       # only when there is nothing to show
@@ -376,12 +376,12 @@ class StatsTab:
         # 1.8.73 right click; 1.8.74: the table must be selectable – the Qt view opens no row menu on a NoSelection
         # table (user: "das geht nicht")
         self._table_menu(self.stats_opp, self._stats_opp_menu_items, self._stats_opp_menu_act)
-        ui.Label(box_o, text=_("Laut Stats-Seite: als Killer die Survivor gegen dich und wie ihr Match endete, als "
+        ui.folded(ui.Label(box_o, text=_("Laut Stats-Seite: als Killer die Survivor gegen dich und wie ihr Match endete, als "
                                 "Survivor der Killer und wie dein Match endete. „Getötet“ = vom Killer direkt "
                                 "getötet (z. B. Mori), „Aufgegeben“ schließt verlassene Matches ein. „Ø Kills ohne "
                                 "Aufgaben“ zählt nur Matches, in denen kein Survivor aufgab oder ging. „Farming“ = "
                                 "Begegnungen in Farming-Runden, die „Begegnungen“ nicht zählen."),
-                  style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+                  style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
         # 1.8.48: the own loadouts from the stats page (userscript 3) and how those matches ended
         box_bu = self._stats_page(_("Builds"), "foes", "_stats_part_builds")
         self.stats_build_var = ui.StringVar(value="")
@@ -405,12 +405,12 @@ class StatsTab:
                                              4)
         self.stats_rating_var = ui.StringVar(value="")
         ui.Label(box_bu, textvariable=self.stats_rating_var, wraplength=520).pack(anchor="w", pady=(4, 0))
-        ui.Label(box_bu, text=_("Dein Loadout laut Stats-Seite (ab Userscript Version 3). „Ergebnis“ = als Killer "
+        ui.folded(ui.Label(box_bu, text=_("Dein Loadout laut Stats-Seite (ab Userscript Version 3). „Ergebnis“ = als Killer "
                                  "Ø Kills, als Survivor Anteil entkommen; „ohne“ = dasselbe in deinen Runden derselben "
                                  "Rolle ohne diesen Eintrag. Builds ab {n} Runden. Embleme: Ø Stufe von keins (0) bis "
                                  "Iri (4); „voll“ = Kategorie mit {max} Punkten.", n=builds.BUILD_MIN,
                                  max=f"{builds.SCORE_MAX:,}".replace(",", ".")),
-                  style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+                  style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
         # 1.8.64 (user: "wir haben so viele Kategorien, warum keine für Farming"): the farming rounds on a tab of
         # their own – whatever the role filter says (it keeps them out of every other evaluation). Last tab: the
         # saved tab order (tab_order) counts the tabs by position
@@ -423,7 +423,7 @@ class StatsTab:
                                                    ("dur", _("Dauer"), 60, "e"), ("wait", _("Warten"), 65, "e"),
                                                    ("role", _("Rolle/Killer"), 115, "w"), ("bp", _("BP"), 70, "e"),
                                                    ("srv", _("Server"), 100, "w")), 8)
-        ui.Label(box_f, text=_("Alle Farming-Runden der Auswahl (Zeitraum, Region, Map, Modus) – unabhängig vom Rollen-Filter und von „Farming ausblenden“. Farming = Crossplay war in der Lobby aus (oder die eingestellte Farming-Region); korrigieren unter „Letzte Runden“ mit „Farming an/aus“. Aufnahmen liegen im Unterordner „Farming“ des Aufnahmeordners. Wartezeit „sofort“: die Lobby war voll, bevor eine Suchzeit messbar war. Server nur, wenn „Verbunden mit“ auf der Seite Server läuft."), style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+        ui.folded(ui.Label(box_f, text=_("Alle Farming-Runden der Auswahl (Zeitraum, Region, Map, Modus) – unabhängig vom Rollen-Filter und von „Farming ausblenden“. Farming = Crossplay war in der Lobby aus (oder die eingestellte Farming-Region); korrigieren unter „Letzte Runden“ mit „Farming an/aus“. Aufnahmen liegen im Unterordner „Farming“ des Aufnahmeordners. Wartezeit „sofort“: die Lobby war voll, bevor eine Suchzeit messbar war. Server nur, wenn „Verbunden mit“ auf der Seite Server läuft."), style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
         self._stats_sort = ("n", True)
         return outer
 
