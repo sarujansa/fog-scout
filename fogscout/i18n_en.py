@@ -3642,4 +3642,10 @@ EN = {
         'Sends small stills of the cut (spread evenly and at the F8 marks, areas already censored stay censored) to Claude; Claude names up to three moments for a short. The pictures can show player names.',
     'Schlägt vor, nur diesen Teil zu behalten – erst „Übernehmen“ ändert den Schnitt.':
         'Suggests keeping only this part – only “Apply” changes the cut.',
+    'Namen beim Zuschauen':
+        'Names while spectating',
+    'Setzt Kästen auf die Namen, wie DBD sie beim Zuschauen zeigt: die Liste links weiter oben und den Namen oben in der Mitte – bei Bedarf verschieben.':
+        'Puts boxes on the names as DBD shows them while spectating: the list on the left, higher up, and the name at the top centre – move them if needed.',
+    'Setzt einen Kasten dorthin, wo DBD im Match die Namen der Survivor zeigt (links unten im Spielbild) – bei Bedarf verschieben.':
+        "Puts a box where DBD shows the survivors' names in a match (bottom left of the game picture) – move it if needed.",
 }
