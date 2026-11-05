@@ -146,6 +146,9 @@ TIPS = {
     "Suche leeren": "Leert das Suchfeld und zeigt wieder alle Maps.",       # 1.24.1: maps page, search without a hit
     "Anzeigen": "Blendet die gewählte Map jetzt als Overlay ein – die Erkennung übernimmt beim nächsten Match "
                 "wieder.",
+    "Notiz speichern": "Eigene Notiz zum markierten Killer, z. B. „Lithe, nicht vaulten“. Erscheint im Spiel unter der "
+                       "Map-Notiz, sobald dieser Killer in der Runde ist (eigener Killer oder, als Survivor, der aus der "
+                       "Lobby). Leer speichern löscht sie.",
     "Killer setzen": "Setzt den Killer nur für die markierte Runde und zählt sie als Killer-Runde – z. B. wenn sie "
                      "fälschlich als Survivor gezählt wurde oder der Name falsch gelesen wurde.",
     "Map setzen": "Setzt die Map nur für die markierten Runden – wenn das Banner falsch gelesen wurde. Statistik, "

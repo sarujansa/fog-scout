@@ -2680,7 +2680,12 @@ def test_page_keys_never_get_in_the_way_of_typing(qapp, keep):
     from PySide6.QtGui import QShortcut
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QSpinBox
-    from fogscout import qt_window
+    from fogscout import qt_pages, qt_window
+    # 1.38.30: a question another test left open (MessageBox is application-modal) blocks every window's shortcuts –
+    # the test then failed only after tests/test_uimodel.py in a full run
+    for w in qapp.topLevelWidgets():
+        if isinstance(w, qt_pages.MessageBox) and w.isVisible():
+            w.hide()
     win = keep(qt_window.MainWindow(lambda a, arg=None: None))
     win.show()
     win.activateWindow()
