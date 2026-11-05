@@ -834,40 +834,32 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
     def _style_tiles_changed(self):
         self._qt_maps_rev = getattr(self, "_qt_maps_rev", 0) + 1
 
-    def _style_map_all(self, mid):
-        """1.38.8 (user: right click on a tile): every style of this map's pictures, made in a thread."""
+    def _style_paths(self, mid) -> list:
+        """The pictures of map ``mid`` (every variant, each once)."""
         m = self.catalog.maps.get(mid)
         if m is None:
-            return
-        paths = [p for v in sorted(m.variants) for p in [self.catalog.image_path(mid, v)[0]] if p]
-        for path in dict.fromkeys(paths):
+            return []
+        return list(dict.fromkeys(p for v in sorted(m.variants) for p in [self.catalog.image_path(mid, v)[0]] if p))
+
+    def _style_map_all(self, mid):
+        """Right click → Map-Stile ▸ Alle auf einmal (1.38.8, submenu 1.38.10): every style of this map's pictures,
+        made in a thread."""
+        for path in self._style_paths(mid):
             self._style_all(path)
-        self._log(_("Kartenstile für {map} werden im Hintergrund erstellt.", map=m.name), "Overlay")
+        if mid in self.catalog.maps:
+            self._log(_("Kartenstile für {map} werden im Hintergrund erstellt.", map=self.catalog.maps[mid].name),
+                      "Overlay")
 
-    def _style_everything(self):
-        """1.38.8 (user: right click → „Alle Karten in allen Stilen erstellen“): one thread over every picture and
-        style, the chosen style first; once at a time. ~1 s per picture and style – minutes the first time."""
-        if self.__dict__.get("_style_everything_on"):
-            self._log(_("Die Kartenstile werden schon erstellt."), "Overlay")
+    def _style_map_one(self, mid, style):
+        """1.38.10 (user): Right click → Map-Stile ▸ one style – this map's pictures in that style, in a thread
+        (``_style_request``: once per picture and style)."""
+        if style not in mapstyle.STYLES or mid not in self.catalog.maps:
             return
-        self._style_everything_on = True
-        paths = sorted({p for m in self.catalog.maps.values() for v in m.variants
-                        for p in [self.catalog.image_path(m.id, v)[0]] if p})
-        now = self.settings["overlay"].get("map_style", "classic")
-        styles = sorted(mapstyle.STYLES, key=lambda s: s != now)
-        cache = os.path.join(self.data_dir, STYLE_CACHE)
-        self._log(_("Alle Karten werden in allen Stilen erstellt ({n} Bilder × {k} Stile) – das dauert beim ersten "
-                    "Mal einige Minuten.", n=len(paths), k=len(styles)), "Overlay")
-
-        def run():
-            try:
-                made = sum(mapstyle.warm(paths, cache, style=s, on_made=self._style_tiles_soon) for s in styles)
-            finally:
-                self._style_everything_on = False
-            self.events.put(("call", self._style_tiles_changed, ()))
-            self.events.put(("call", self._log, (_("Kartenstile fertig: {n} Bilder in allen Stilen.", n=made),
-                                                  "Overlay")))
-        threading.Thread(target=run, daemon=True, name="mapstyle-everything").start()
+        for path in self._style_paths(mid):
+            self._style_request(path, style)
+        from .app_overlay import MAP_STYLES
+        self._log(_("Kartenstil {style} für {map} wird im Hintergrund erstellt.", style=_(dict(MAP_STYLES)[style]),
+                    map=self.catalog.maps[mid].name), "Overlay")
 
 
     def _reload_picture(self):

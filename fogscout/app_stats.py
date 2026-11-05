@@ -1123,7 +1123,7 @@ class StatsTab:
             self._rec_render(force=True)
 
     def _show_round(self, t: float) -> bool:
-        """1.17.1: Statistik › Letzte Runden with the round that started at ``t`` marked and in view. False when the
+        """1.17.1: Statistik → Letzte Runden with the round that started at ``t`` marked and in view. False when the
         filters of the page hide it (the page opens all the same – the user's filters are not changed)."""
         self.qt.show_page("stats")
         self._stats_select(_("Letzte Runden"))

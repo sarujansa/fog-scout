@@ -354,8 +354,8 @@ TIPS = {
                       "gezählt. Geht auch im Spiel mit dem Hotkey (Standard Strg+Alt+X).",
     "Stimmt": "Die Map stimmt – Hinweis „unsicher“ ausblenden.",
     # maps tab
-    "Server-Tab öffnen": "Zum Tab Server: dort „Anzeigen, mit welchem Server DBD verbunden ist“ anhaken – Region "
-                         "und Ping stehen dann hier und im Overlay.",
+    "Server-Tab öffnen": "Zur Seite Server: dort „Spielserver anzeigen“ anhaken – Region und Ping stehen dann hier "
+                         "und im Overlay.",
     "Farming prüfen …": "Öffnet die Statistik-Übersicht mit der Zeile, die sagt, warum diese Runden nach Farming "
                         "aussehen – dort markieren oder ignorieren.",
     "Match-Daten einrichten …": "Zu Einstellungen → Match-Daten → Offizielle Match-Daten: einmal das Userscript in den "
@@ -418,9 +418,6 @@ TIPS = {
     "Diagnose kopieren": "Kopiert technische Infos (Fenster, Overlay, letzte Rundenende-Prüfungen) in die "
                          "Zwischenablage – zum Weitergeben bei Problemen.",
     # server tab
-    "Anzeigen, mit welchem Server DBD verbunden ist":
-        "Zeigt Region und Ping des Spielservers (liest nur Paketköpfe, nie Inhalte). Braucht "
-        "Administratorrechte.",
     "Ping messen": "Misst den Ping zu allen AWS-Regionen (UDP-Beacon von Amazon GameLift).",
     "Auswahl anwenden": "Nur die angehakten Regionen erlauben – trägt die übrigen in die Windows-hosts-Datei "
                         "ein (fragt nach Administratorrechten).",
@@ -508,9 +505,8 @@ TIPS = {
         "Ton und Hinweisfenster, sobald DBD eine Lobby gefunden hat. Die Erinnerung beim Countdown und „nur wenn DBD "
         "nicht vorne ist“ bleiben unter Einstellungen → Erkennung → Benachrichtigungen.",
     "Spielserver anzeigen":
-        "Zeigt Region und Ping des verbundenen Spielservers – hier, im Overlay und in der Statistik. Einschalten "
-        "fragt Windows einmal nach Administratorrechten; gelesen werden nur Paketköpfe, nie Inhalte. Mehr im Tab "
-        "Server.",
+        "Zeigt Region und Ping des verbundenen Spielservers – auf der Seite Server, im Overlay und in der Statistik. "
+        "Einschalten fragt Windows einmal nach Administratorrechten; gelesen werden nur Paketköpfe, nie Inhalte.",
     "Systemwerte im Spiel":
         "Die Karte mit CPU-/GPU-Temperatur, Last und Speicher im schwarzen Balken. Einschalten bringt sie an die "
         "Position, an der sie zuletzt stand; Position und Zeilen unter Overlay → Systemwerte.",
