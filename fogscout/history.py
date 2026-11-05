@@ -376,6 +376,28 @@ def wait_by(rounds, by: str) -> list:
     return sorted(rows)
 
 
+def regions_at(rounds, now: float, min_rounds: int = 3) -> tuple:
+    """1.38.31 (project review F7): which region found matches fastest at this time of day – the rounds of the
+    same HOUR_BLOCK (local time) with a known region and waiting time, per region: (code, rounds, median wait s,
+    Ø ping ms or None), regions with at least ``min_rounds`` only, shortest median wait first. Returns
+    (block start hour, rows). Pure."""
+    import datetime
+    block = datetime.datetime.fromtimestamp(now).hour // HOUR_BLOCK * HOUR_BLOCK
+    groups = {}
+    for r in rounds:
+        if r.wait is None or not r.region or not normal(r) or _wait_key(r, "hour") != block:
+            continue
+        groups.setdefault(r.region, []).append(r)
+    rows = []
+    for code, rs in groups.items():
+        if len(rs) < min_rounds:
+            continue
+        waits = sorted(r.wait for r in rs)
+        pings = [r.ping for r in rs if r.ping is not None]
+        rows.append((code, len(rs), waits[len(waits) // 2], sum(pings) / len(pings) if pings else None))
+    return block, sorted(rows, key=lambda row: (row[2], row[0]))
+
+
 def set_role(path: str, t: float, role: str):
     """Correct the role of the round that started at ``t`` (role: killer | survivor | custom).
     Rewrites the file; returns the changed round or None."""

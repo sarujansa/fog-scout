@@ -6,6 +6,7 @@ from __future__ import annotations
 from .media import wrap
 
 KEY = "map_notes"
+KILLER_KEY = "killer_notes"   # 1.38.30 (project review F5): {killer: text}, shown once the round's killer is known
 MAX_CHARS = 300          # what the maps page keeps of a note
 LINE_CHARS = 34          # characters per line in the game (the card stays about as wide as the record chip)
 MAX_LINES = 4            # lines in the game; more ends with "…"
@@ -41,3 +42,20 @@ def lines(text) -> tuple:
         last = out[MAX_LINES - 1]
         out = out[:MAX_LINES - 1] + [(last[:LINE_CHARS - 1].rstrip() if len(last) >= LINE_CHARS else last) + "…"]
     return tuple(out)
+
+
+def memo_lines(map_note, killer_note, killer: str = "") -> tuple:
+    """1.38.30: the overlay's note block – the map's note, then the killer's ("Nurse: …"); together at most
+    MAX_LINES (the map's note first, the killer's gets what is left – at least one line when there is one)."""
+    first = lines(map_note)
+    k = clean(killer_note)
+    if not k:
+        return first
+    head = f"{killer}: " if killer else ""
+    second = lines(head + k.replace("\n", " · "))
+    room = max(1, MAX_LINES - len(first))
+    first = first[:MAX_LINES - room] if len(first) + room > MAX_LINES else first
+    if len(second) > room:
+        last = second[room - 1]
+        second = second[:room - 1] + ((last[:LINE_CHARS - 1].rstrip() if len(last) >= LINE_CHARS else last) + "…",)
+    return tuple(first) + tuple(second)
