@@ -312,7 +312,15 @@ SPECS = {
                                              ("hint", "st.more.yt_status"),
                                              ("fold", N_("Erklärung"), (("hint", "st.more.yt_text"),
                                                            ("row", (("button", "st.more.yt_console"), ("stretch",))))))),
-                ("card", "st.more.claude", (("check", "st.more.cl_on"), ("check", "st.more.cl_editor"),   # 1.26/1.27
+                ("card", "st.more.claude", (("check", "st.more.cl_on"),                              # 1.26: search
+                                            ("check", "st.more.cl_stats"),                           # 1.35: statistics
+                                            ("check", "st.more.cl_editor"),                          # 1.27: clip editor
+                                            ("indent", (("check", "st.more.cl_frame"),)),            # 1.35: its stills
+                                            ("check", "st.more.cl_image"),                           # 1.35: image editor
+                                            ("hint", "st.more.cl_privacy"),
+                                            ("row", (("label", "st.more.cl_model.label"), ("combo", "st.more.cl_model"),
+                                                     ("stretch",))),                                  # 1.36: model
+                                            ("hint", "st.more.cl_cost"),                             # 1.36: this month
                                             ("row", (("label", "st.more.cl_key.label"), ("entry", "st.more.cl_key"),
                                                      ("button", "st.more.cl_test"), ("button", "st.more.cl_clear"),
                                                      ("stretch",))),
