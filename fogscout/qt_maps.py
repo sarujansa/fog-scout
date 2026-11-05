@@ -580,8 +580,7 @@ class MapsPage(QWidget):
     # ------------------------------------------------------------------ right click (1.2.18)
     MENU = (("show", N_("Anzeigen")), ("rotate", N_("Drehen")),
             ("size_reset", N_("Eigene Grösse und Drehung zurücksetzen")), ("picture", N_("Kartenbild ersetzen …")),
-            ("styles_one", N_("Alle Kartenstile für diese Karte erstellen")),       # 1.38.8 (user)
-            ("styles_all", N_("Alle Karten in allen Stilen erstellen")),
+            ("styles", N_("Map-Stile")),             # 1.38.10 (user): a submenu, see style_entries
             ("note", N_("Notiz bearbeiten …")))
 
     def menu_entries(self, key):
@@ -590,17 +589,35 @@ class MapsPage(QWidget):
         own = bool(mark and len(mark) > 2 and mark[2])
         return [(a, _(label), a != "size_reset" or own) for a, label in self.MENU]
 
+    @staticmethod
+    def style_entries():
+        """1.38.10 (user: „Map Stile → dann die Option zwischen den verschiedenen Mapstilen eine zu erstellen oder
+        alle auf einmal, nur die ausgewählte Map“): [(action, label)] of the submenu „Map-Stile“ – each style of the
+        style row (not „Original“: nothing to make), then all of them; every one for the map clicked only."""
+        return [("style:" + k, _(label)) for k, label, _tip in STYLE_BUTTONS if k != "classic"] + \
+            [("style:all", _("Alle auf einmal"))]
+
     def open_menu(self, key, pos):
         """A popup (no exec: no second event loop); every entry posts ("map_action", (action, key))."""
         menu = QMenu(self)
         menu.setAttribute(Qt.WA_DeleteOnClose)
+        post = lambda _c=False, a="", k=tuple(key): self._post("map_action", (a, k))    # noqa: E731
         for action, label, enabled in self.menu_entries(key):
+            if action == "styles":
+                menu.addSeparator()
+                sub = menu.addMenu(label)
+                for sa, slabel in self.style_entries():
+                    if sa == "style:all":
+                        sub.addSeparator()
+                    sub.addAction(slabel).triggered.connect(lambda _c=False, a=sa: post(a=a))
+                menu.addSeparator()
+                continue
             act = menu.addAction(label)
             act.setEnabled(enabled)
             if action == "note":                     # 1.8.54: here – the map big, the cursor in its note
                 act.triggered.connect(lambda _c=False, k=tuple(key): self.edit_note(k))
             else:
-                act.triggered.connect(lambda _c=False, a=action, k=tuple(key): self._post("map_action", (a, k)))
+                act.triggered.connect(lambda _c=False, a=action: post(a=a))
         self._menu = menu
         menu.popup(pos)
 

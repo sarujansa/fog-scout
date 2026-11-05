@@ -337,7 +337,6 @@ EN = {
 
     # ------------------------------------------------------------------ tab server
     "Verbundener Spielserver": "Connected game server",
-    "Anzeigen, mit welchem Server DBD verbunden ist": "Show which server DBD is connected to",
     "Serverregionen": "Server regions",
     "DBD sucht Matches nur in den angehakten Regionen (über die Windows-hosts-Datei, das Spiel wird nicht "
     "verändert). Nach „Auswahl anwenden“ DBD neu starten.":
@@ -519,12 +518,10 @@ EN = {
     "Eigene Notiz (im Spiel unter dem Timer)": "Own note (in the game below the timer)",
     "z. B. Shack links vom Main, Gen im Keller …": "e.g. shack left of main, gen in the basement …",
     "Notiz bearbeiten …": "Edit note …",
-    "Alle Kartenstile für diese Karte erstellen": "Make every map style of this map",
-    "Alle Karten in allen Stilen erstellen": "Make every map in every style",
+    "Map-Stile": "Map styles",
+    "Alle auf einmal": "All at once",
     "Kartenstile für {map} werden im Hintergrund erstellt.": "The map styles of {map} are being made in the background.",
-    "Die Kartenstile werden schon erstellt.": "The map styles are already being made.",
-    "Alle Karten werden in allen Stilen erstellt ({n} Bilder × {k} Stile) – das dauert beim ersten Mal einige Minuten.": "Every map is being made in every style ({n} pictures × {k} styles) – the first time this takes a few minutes.",
-    "Kartenstile fertig: {n} Bilder in allen Stilen.": "Map styles done: {n} pictures in every style.",
+    "Kartenstil {style} für {map} wird im Hintergrund erstellt.": "The map style {style} of {map} is being made in the background.",
     "Eigene Notiz": "Own note",
     "Eigene Notiz: {note}": "Own note: {note}",
     "Zeigt unter dem Rundentimer, wie es dir auf dieser Map bisher ging: als Killer Ø Kills, als Survivor den "
@@ -908,12 +905,8 @@ EN = {
     "nicht vorne ist“ bleiben unter Einstellungen → Erkennung → Benachrichtigungen.":
         "Sound and notification window as soon as DBD has found a lobby. The countdown reminder and “only while "
         "DBD is not in front” stay under Settings → Detection → Notifications.",
-    "Zeigt Region und Ping des verbundenen Spielservers – hier, im Overlay und in der Statistik. Einschalten "
-    "fragt Windows einmal nach Administratorrechten; gelesen werden nur Paketköpfe, nie Inhalte. Mehr im Tab "
-    "Server.":
-        "Shows region and ping of the connected game server – here, in the overlay and in the statistics. "
-        "Switching it on asks Windows once for administrator rights; only packet headers are read, never "
-        "contents. More in the Server tab.",
+    "Zeigt Region und Ping des verbundenen Spielservers – auf der Seite Server, im Overlay und in der Statistik. Einschalten fragt Windows einmal nach Administratorrechten; gelesen werden nur Paketköpfe, nie Inhalte.":
+        "Shows region and ping of the connected game server – on the Server page, in the overlay and in the statistics. Switching it on asks Windows once for administrator rights; only packet headers are read, never contents.",
     "Die Karte mit CPU-/GPU-Temperatur, Last und Speicher im schwarzen Balken. Einschalten bringt sie an die "
     "Position, an der sie zuletzt stand; Position und Zeilen unter Overlay → Systemwerte.":
         "The card with CPU/GPU temperature, load and memory in the black bar. Switching it on puts it back where "
@@ -1022,9 +1015,6 @@ EN = {
     "Weitergeben bei Problemen.":
         "Copies technical info (window, overlay, last end-of-round checks) to the clipboard – to pass on when "
         "something goes wrong.",
-    "Zeigt Region und Ping des Spielservers (liest nur Paketköpfe, nie Inhalte). Braucht Administratorrechte.":
-        "Shows region and ping of the game server (reads packet headers only, never contents). Needs "
-        "administrator rights.",
     "Misst den Ping zu allen AWS-Regionen (UDP-Beacon von Amazon GameLift).":
         "Measures the ping to all AWS regions (UDP beacon of Amazon GameLift).",
     "Nur die angehakten Regionen erlauben – trägt die übrigen in die Windows-hosts-Datei ein (fragt nach "
@@ -1352,8 +1342,8 @@ EN = {
     'Claude hat unverständlich geantwortet.': 'Claude gave an answer that could not be read.',
     'Claude ist nicht erreichbar – keine Internetverbindung?': 'Claude cannot be reached – no internet connection?',
     'Claude: Zu viele Anfragen – gleich noch einmal versuchen.': 'Claude: too many requests – try again in a moment.',
-    'Kein API-Key – unter Einstellungen › Verbindungen › Claude eintragen.':
-        'No API key – enter one under Settings › Connections › Claude.',
+    'Kein API-Key – unter Einstellungen → Verbindungen → Claude eintragen.':
+        'No API key – enter one under Settings → Connections → Claude.',
     # 1.27: Claude in the clip editor
     'Zeigt im grossen Clip-Editor den Abschnitt „Mit Claude bearbeiten“: Du schreibst, was mit dem Schnitt passieren soll, Claude schlägt Schritte vor, du übernimmst oder verwirfst sie. Gesendet werden nur deine Bitte und der Schnitt als Zahlen – kein Bild, kein Dateiname. Braucht einen eigenen API-Key.':
         'Shows the section “Edit with Claude” in the big clip editor: you write what should happen to the cut, Claude suggests steps, you apply or discard them. Only your wish and the cut as numbers are sent – no picture, no file name. Needs your own API key.',
@@ -1377,8 +1367,8 @@ EN = {
         'Discard',
     'Vergisst den Vorschlag; der Schnitt bleibt, wie er ist.':
         'Forgets the suggestion; the cut stays as it is.',
-    'Aus – in Einstellungen › Verbindungen › Claude „Im Clip-Editor Claude nutzen“ einschalten und einen API-Key eintragen.':
-        'Off – switch on “Use Claude in the clip editor” under Settings › Connections › Claude and enter an API key.',
+    'Aus – in Einstellungen → Verbindungen → Claude „Im Clip-Editor Claude nutzen“ einschalten und einen API-Key eintragen.':
+        'Off – switch on “Use Claude in the clip editor” under Settings → Connections → Claude and enter an API key.',
     'Der Schnitt hat sich inzwischen geändert – bitte neu vorschlagen.':
         'The cut has changed meanwhile – please suggest again.',
     'Claude hat keinen passenden Schritt gefunden.':
@@ -1442,10 +1432,10 @@ EN = {
         'too many subtitles',
     'Untertitel {a}–{b}':
         'subtitle {a}–{b}',
-    'Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen („API-Key holen“ öffnet die Anthropic Console).':
-        'Claude: the API key is not accepted – check it under Settings › Connections (“Get API key” opens the Anthropic Console).',
-    'Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › „Guthaben aufladen“.':
-        'Claude: no credit left on the API account – Settings › Connections › “Add credit”.',
+    'Claude: Der API-Key wird nicht angenommen – unter Einstellungen → Verbindungen prüfen („API-Key holen“ öffnet die Anthropic Console).':
+        'Claude: the API key is not accepted – check it under Settings → Connections (“Get API key” opens the Anthropic Console).',
+    'Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen → Verbindungen → „Guthaben aufladen“.':
+        'Claude: no credit left on the API account – Settings → Connections → “Add credit”.',
     'API-Key holen': 'Get API key',
     'Guthaben aufladen': 'Add credit',
     'Öffnet die Seite „API keys“ der Anthropic Console im Browser (platform.claude.com). Dort einen Key anlegen und hier einfügen – er beginnt mit sk-ant-.':
@@ -1755,9 +1745,8 @@ EN = {
     'Browser, nicht vom Programm. Lässt sich auch später einrichten (Einstellungen → Match-Daten → Offizielle Match-Daten).':
         'Kills, escapes and bloodpoints of your rounds come from stats.deadbydaylight.com – loaded by your browser, '
         'not by the program. Can be set up later too (Settings → Match data → Official match data).',
-    'Zum Tab Server: dort „Anzeigen, mit welchem Server DBD verbunden ist“ anhaken – Region und Ping stehen dann '
-    'hier und im Overlay.': 'To the server tab: tick "Show which server DBD is connected to" there – region and '
-                            'ping then show here and in the overlay.',
+    'Zur Seite Server: dort „Spielserver anzeigen“ anhaken – Region und Ping stehen dann hier und im Overlay.':
+        'To the Server page: tick "Show game server" there – region and ping then show here and in the overlay.',
     'Zu Einstellungen → Match-Daten → Offizielle Match-Daten: einmal das Userscript in den Browser, danach zählen Kills, '
     'Entkommen und Bloodpoints in der Statistik.': 'To Settings → Match data → Official match data: the userscript into '
                                                    'the browser once, then kills, escapes and bloodpoints count in '
@@ -1837,8 +1826,8 @@ EN = {
     'Platz für Aufnahmen': 'Room for recordings',
     'Ganze Platte (Älteste weg, wenn sie voll wird)': 'Whole drive (oldest go when it fills up)',
     "Vorlauf aus dem OBS-Wiederholungspuffer sichern": "Keep a lead-in from OBS's replay buffer",
-    'OBS nimmt auf, das Programm sagt nur wann: Start beim Map-Banner, Stopp beim erkannten Rundenende, Datei nach Datum, Map und Killer benannt. Dafür in OBS unter Werkzeuge → WebSocket-Servereinstellungen den Server einschalten und das Passwort hier eintragen; Verbindung nur auf diesem PC (127.0.0.1). Empfohlen: Aufnahmeformat MKV oder Hybrid-MP4 (bleibt bei Abbruch lesbar), Fenster- oder Bildschirmaufnahme statt Spielaufnahme. Der Ordner wird über sein Laufwerk gemerkt – ist die Platte nicht angeschlossen, wird nicht aufgenommen.':
-        'OBS records, the program only says when: start at the map banner, stop at the detected end of the round, file named after date, map and killer. In OBS enable the server under Tools → WebSocket Server Settings and enter its password here; the connection stays on this PC (127.0.0.1). Recommended: recording format MKV or hybrid MP4 (stays readable after a crash), window or display capture rather than game capture. The folder is remembered by its drive – with the drive unplugged nothing is recorded.',
+    'OBS nimmt auf, das Programm sagt nur wann: Start beim Map-Banner, Stopp beim erkannten Rundenende, Datei nach Datum, Map und Killer benannt. Dafür in OBS unter Werkzeuge → WebSocket-Servereinstellungen den Server einschalten und Port und Passwort unter Verbindungen → OBS-Verbindung eintragen; Verbindung nur auf diesem PC (127.0.0.1). Empfohlen: Aufnahmeformat MKV oder Hybrid-MP4 (bleibt bei Abbruch lesbar), Fenster- oder Bildschirmaufnahme statt Spielaufnahme. Der Ordner wird über sein Laufwerk gemerkt – ist die Platte nicht angeschlossen, wird nicht aufgenommen.':
+        'OBS records, the program only says when: start at the map banner, stop at the detected end of the round, file named after date, map and killer. In OBS enable the server under Tools → WebSocket Server Settings and enter port and password under Connections → OBS connection; the connection stays on this PC (127.0.0.1). Recommended: recording format MKV or hybrid MP4 (stays readable after a crash), window or display capture rather than game capture. The folder is remembered by its drive – with the drive unplugged nothing is recorded.',
     'Ordner für die Aufnahmen (z. B. auf der externen Platte)': 'Folder for the recordings (e.g. on the external drive)',
     'Aufnahmeordner: {path}': 'Recording folder: {path}',
     'Verbinde mit OBS …': 'Connecting to OBS …',
@@ -2779,8 +2768,8 @@ EN = {
     'OBS lässt Bilder aus ({n} von {total}, Kodierer überlastet) – in OBS Voreinstellung oder Auflösung senken.':
         'OBS is skipping frames ({n} of {total}, encoder overloaded) – lower the preset or resolution in OBS.',
     'OBS nicht erreichbar': 'OBS not reachable',
-    'OBS starten, WebSocket-Server einschalten, Port/Passwort prüfen (Einstellungen → Aufnahmen → Verbindung testen). {why}':
-        'Start OBS, enable its WebSocket server, check port/password (Settings → Recordings → Test connection). {why}',
+    'OBS starten, WebSocket-Server einschalten, Port/Passwort prüfen (Einstellungen → Verbindungen → OBS-Verbindung → Verbindung testen). {why}':
+        'Start OBS, enable its WebSocket server, check port/password (Settings → Connections → OBS connection → Test connection). {why}',
     'OBS verpasst Bilder beim Rendern ({n} von {total}, Grafikkarte ausgelastet).':
         'OBS is missing frames while rendering ({n} of {total}, graphics card busy).',
     'Pause': 'Pause',
@@ -3277,8 +3266,8 @@ EN = {
         "Select at least two videos for a montage.",
     "Höchstens {n} Aufnahmen in einer Montage.":
         "At most {n} recordings in a montage.",
-    "Jetzt eine Montage – sie wird unter Clips › Montagen gespeichert. Das Projekt der Runde bleibt, wie es zuletzt gespeichert war.":
-        "Now a montage – it is saved under Clips › Montagen. The round's project stays as it was last saved.",
+    "Jetzt eine Montage – sie wird unter Clips → Montagen gespeichert. Das Projekt der Runde bleibt, wie es zuletzt gespeichert war.":
+        "Now a montage – it is saved under Clips → Montagen. The round's project stays as it was last saved.",
     "Montage":
         "Montage",
     "Montage aus {n} Aufnahmen":
@@ -3413,8 +3402,8 @@ EN = {
     "Vorschläge": "Suggestions",
     # 1.28 (user): the connection to OBS on the tab "Verbindungen"
     "OBS-Verbindung": "OBS connection",
-    "Port und Passwort von OBS stehen unter Verbindungen › OBS-Verbindung.":
-        "OBS port and password are under Connections › OBS connection.",
+    "Port und Passwort von OBS stehen unter Verbindungen → OBS-Verbindung.":
+        "OBS port and password are under Connections → OBS connection.",
     # 1.29 (user: "OBS-Aufnahmen mit guter Qualität"): recquality, the recording card
     "Qualität: {word} – {mbps} Mbit/s bei {size}": "Quality: {word} – {mbps} Mbit/s at {size}",
     "Qualität: Einstellungen prüfen": "Quality: check the settings",
@@ -3507,7 +3496,6 @@ EN = {
         "An estimate from bitrate, resolution, frame rate and codec – picture content, motion, the encoder preset and "
         "the source change the result.",
     # 1.30: the setup assistant's new steps (start, OBS, connections, server)
-    "Tasten": "Keys",
     "Start und Meldungen": "Start and notifications",
     "Fog Scout kann mit Windows starten und still im Infobereich (neben der Uhr) warten, bis DBD läuft. Die Lobby-Meldung sagt dir mit einem Ton, wenn ein Match gefunden wurde.":
         "Fog Scout can start with Windows and wait quietly in the notification area (next to the clock) until DBD "
@@ -3537,8 +3525,8 @@ EN = {
         "Ends the setup and opens the Server page – tick the regions there in which DBD should look for matches.",
     "Öffnet den Ordner mit Einstellungen, Runden, Log und Sicherungen im Explorer.":
         "Opens the folder with the settings, rounds, log and backups in Explorer.",
-    'Aus – in Einstellungen › Verbindungen › Claude „Bilder im Bild-Editor an Claude schicken“ einschalten und einen API-Key eintragen.':
-        'Off – switch on “Send pictures in the image editor to Claude” under Settings › Connections › Claude and enter an API key.',
+    'Aus – in Einstellungen → Verbindungen → Claude „Bilder im Bild-Editor an Claude schicken“ einschalten und einen API-Key eintragen.':
+        'Off – switch on “Send pictures in the image editor to Claude” under Settings → Connections → Claude and enter an API key.',
     'Ausschnitt ausserhalb des Bildes':
         'crop outside the picture',
     'Bereich unkenntlich machen ({x} %, {y} %)':

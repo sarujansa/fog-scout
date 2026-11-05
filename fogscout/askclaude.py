@@ -66,10 +66,10 @@ OPENER = None                        # urllib opener; the tests set a fake one
 
 # 1.38.3: the user's words for AskError.kind – one table for the search, the clip editor and the image editor (there
 # were three copies of the same texts)
-ERRORS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
+ERRORS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter Einstellungen → Verbindungen prüfen "
                      "(„API-Key holen“ öffnet die Anthropic Console)."),
           "rate": N_("Claude: Zu viele Anfragen – gleich noch einmal versuchen."),
-          "quota": N_("Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › "
+          "quota": N_("Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen → Verbindungen → "
                       "„Guthaben aufladen“."),
           "refused": N_("Claude hat die Frage abgelehnt."),
           "bad": N_("Claude hat unverständlich geantwortet."),
