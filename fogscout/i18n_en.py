@@ -525,6 +525,19 @@ EN = {
     "Ohne Karte: „Warte auf Map“ und Lobby-Status anzeigen": "Without a map: show \"Waiting for map\" and the lobby state",
     "Killer der Runde:": "Killer of the round:",
     "Killer setzen": "Set killer",
+    "Notiz zum Killer:": "Note on the killer:",
+    "Um diese Tageszeit ({span} Uhr) am schnellsten: {region} – Wartezeit {wait} (Median), {n} Runden":
+        "Fastest at this time of day ({span} h): {region} – waiting {wait} (median), {n} rounds",
+    "Ø {ping} ms": "Ø {ping} ms",
+    "danach {region} ({wait})": "then {region} ({wait})",
+    "Notiz speichern": "Save note",
+    "Notiz zu {killer} gespeichert.": "Note on {killer} saved.",
+    "Notiz zu {killer} gelöscht.": "Note on {killer} removed.",
+    "Eigene Notiz zum markierten Killer, z. B. „Lithe, nicht vaulten“. Erscheint im Spiel unter der Map-Notiz, sobald "
+    "dieser Killer in der Runde ist (eigener Killer oder, als Survivor, der aus der Lobby). Leer speichern löscht sie.":
+        "Your own note on the marked killer, e.g. \"lithe, don't vault\". Shown in the game below the map note as soon "
+        "as this killer is in the round (your own killer or, as survivor, the one from the lobby). Saving it empty "
+        "removes it.",
     "Killer konnte nicht gespeichert werden: {error}": "Could not save the killer: {error}",
     "Killer für {map} ({when}) auf {killer} gesetzt.": "Killer for {map} ({when}) set to {killer}.",
     "Map der Runde:": "Map of the round:",

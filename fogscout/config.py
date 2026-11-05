@@ -138,6 +138,7 @@ DEFAULTS = {
     "auto_update": True,                # start.bat: pull the newest state from GitHub before starting
     "user_aliases": {},                 # own assignments of unknown banner texts: {map_id: [text, ...]}
     "map_notes": {},                    # 1.8.54: own notes per map, shown with the map: {map_id: text}
+    "killer_notes": {},                 # 1.38.30: own notes per killer, shown below the map's once the killer is known
     "welcome_seen": False,              # the setup assistant of the first start was finished or skipped
     "seen_version": "",                 # 1.8.79: the version last run – the overview lists what is new since
     "killer_aliases": {},               # killer names as read (skins, new killers): {fold(name): "The Nurse"}

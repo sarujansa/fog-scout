@@ -284,6 +284,15 @@ class StatsTab:
         ui.Label(box_k, text=_("Ein Skin oder neuer Killer steht unter seinem eigenen Namen? Zeile markieren, Killer "
                                 "wählen, „Zuordnen“ – gilt auch rückwirkend."),
                   style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+        nr = ui.Frame(box_k)                                # 1.38.30 (F5): an own note per killer, shown in the game
+        nr.pack(fill="x", pady=(8, 0))
+        ui.Label(nr, text=_("Notiz zum Killer:")).pack(side="left")
+        self.stats_knote_var = ui.StringVar(value="")
+        self.stats_knote_entry = ui.Entry(nr, textvariable=self.stats_knote_var, width=40, state="disabled")
+        self.stats_knote_entry.pack(side="left", padx=(6, 0), fill="x", expand=True)
+        self.stats_knote_btn = ui.Button(nr, text=_("Notiz speichern"), command=self._stats_killer_note_save,
+                                         state="disabled")
+        self.stats_knote_btn.pack(side="left", padx=(6, 0))
         box_b = self._stats_page(_("Bloodpoints"), "bp", "_stats_part_bp")   # 1.6.3: with the role filter "Farming" = the farming evaluation
         self.stats_bp_tiles = ui.Tiles(box_b)          # 1.7.1: a small dashboard above the table
         self.stats_bp_tiles.pack(fill="x", pady=(0, 6))
@@ -315,6 +324,8 @@ class StatsTab:
                                                    ("ping", _("Ø Ping"), 70, "e")), 5)
         ui.Label(box_r, text=_("Region nur bekannt, wenn im Tab Server „Verbundener Spielserver“ an war."),
                   style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+        self.stats_regs_now = ui.StringVar(value="")       # 1.38.31 (F7): the fastest region at this time of day
+        ui.Label(box_r, textvariable=self.stats_regs_now, wraplength=520).pack(anchor="w", pady=(6, 0))
         box_w = self._stats_page(_("Wartezeit"), "maps", "_stats_part_wait")
         self.stats_wait_tiles = ui.Tiles(box_w)          # 1.2.16: Ø / median / shortest / longest as tiles
         self.stats_wait_tiles.pack(fill="x", pady=(0, 6))
@@ -987,6 +998,28 @@ class StatsTab:
             p = pings.get(code)
             t.insert("", "end", values=(self._stats_region_name(code), n, fmt_duration(avg), f"{share:.0%}",
                                         f"{p:.0f} ms" if p is not None else "–"))
+        self.stats_regs_now.set(self._regions_now_text(time.time()))
+
+    def _regions_now_text(self, now) -> str:
+        """1.38.31 (F7): "Um diese Tageszeit (18–21 Uhr) am schnellsten: Frankfurt – Wartezeit 1:12 (Median), 31 ms,
+        8 Runden" from all own rounds (not the filter: a time of day needs every round); "" without enough."""
+        try:
+            block, rows = history.regions_at(self._joined().rounds, now)
+        except Exception:
+            return ""
+        if not rows:
+            return ""
+        code, n, wait, ping = rows[0]
+        span = f"{block:02d}–{(block + history.HOUR_BLOCK) % 24:02d}"
+        text = _("Um diese Tageszeit ({span} Uhr) am schnellsten: {region} – Wartezeit {wait} (Median), {n} Runden",
+                 span=span, region=self._stats_region_name(code), wait=fmt_duration(wait), n=n)
+        if ping is not None:
+            text += " · " + _("Ø {ping} ms", ping=f"{ping:.0f}")
+        if len(rows) > 1:
+            other = rows[1]
+            text += " · " + _("danach {region} ({wait})", region=self._stats_region_name(other[0]),
+                              wait=fmt_duration(other[2]))
+        return text
 
     def _stats_part_wait(self, c):
         rounds = c.rounds
@@ -1173,7 +1206,26 @@ class StatsTab:
         free = bool(sel) and sel[0] not in KILLERS           # only names that are not a listed killer
         self.stats_alias_cb.configure(state="readonly" if free else "disabled")
         self.stats_alias_btn.configure(state="normal" if free else "disabled")
+        killer = self._killer_of(sel[0]) if sel else ""      # 1.38.30: the note of the marked killer
+        if killer != getattr(self, "_knote_for", None):
+            self._knote_for = killer
+            self.stats_knote_var.set(mapnotes.get(self.settings.get(mapnotes.KILLER_KEY), killer) if killer else "")
+        self.stats_knote_entry.configure(state="normal" if killer else "disabled")
+        self.stats_knote_btn.configure(state="normal" if killer else "disabled")
         self.stats_alias_clear.configure(state="normal" if self.settings.get("killer_aliases") else "disabled")
+
+    def _stats_killer_note_save(self):
+        """1.38.30 (F5): the note of the killer marked in "Killer" – shown in the game below the map's note as soon
+        as this killer is the round's (own, or the lobby's as survivor); empty removes it."""
+        killer = getattr(self, "_knote_for", "")
+        if not killer:
+            return
+        notes = mapnotes.put(self.settings.get(mapnotes.KILLER_KEY), killer, self.stats_knote_var.get())
+        self.settings.set(mapnotes.KILLER_KEY, notes)
+        self._save_soon()
+        self._log(_("Notiz zu {killer} gespeichert.", killer=killer_label(killer)) if killer in notes
+                  else _("Notiz zu {killer} gelöscht.", killer=killer_label(killer)), "System")
+        self._update_memo()
 
     def _stats_alias_set(self):
         """Marked name (skin, new killer) -> the killer picked in the list; applies to all rounds."""
@@ -1661,11 +1713,20 @@ class StatsTab:
                 log.exception("record")
         self.overlay.set_record(text)
 
+    def _round_killer(self) -> str:
+        """1.38.30: the killer of the round on display – own as killer, the lobby's as survivor; "" when unknown."""
+        name = (self._hist or {}).get("killer") or (getattr(self, "_queue", None) or {}).get("killer") or ""
+        return self._killer_of(name) if name else ""
+
     def _update_memo(self):
-        """1.8.54: the own note on the map on display into the overlay (setting overlay.show_notes)."""
+        """1.8.54: the own note on the map on display into the overlay (setting overlay.show_notes); 1.38.30 (F5)
+        with the note on the round's killer below it."""
         lines = ()
         if self.current and self.settings["overlay"].get("show_notes", True):
-            lines = mapnotes.lines(mapnotes.get(self.settings.get(mapnotes.KEY), self.current[0]))
+            killer = self._round_killer()
+            lines = mapnotes.memo_lines(mapnotes.get(self.settings.get(mapnotes.KEY), self.current[0]),
+                                        mapnotes.get(self.settings.get(mapnotes.KILLER_KEY), killer) if killer else "",
+                                        killer_label(killer) if killer else "")
         self.overlay.set_memo(lines)
 
     # ---------------------------------------------------------- official match data (stats.deadbydaylight.com)
