@@ -27,6 +27,7 @@ LONGEST = 90                # characters kept of a title (beyond that "…")
 PLAYING = 4                 # GlobalSystemMediaTransportControlsSessionPlaybackStatus.PLAYING
 COVER_PX = 160              # cover kept at most this big (the card shows it at ~70 px on 1440p)
 MAX_COVER_BYTES = 4_000_000     # a bigger "thumbnail" is not read
+MAX_COVER_PX = 4096             # 1.38.20: … nor one whose header says it is bigger than this on a side (covers are ≤ 1000)
 ACCENT_SAT, ACCENT_VAL = 0.3, 0.25  # accent(): pixels at least this colourful / bright count
 ACCENT_SHARE = 0.03         # … and the main colour weighs at least this much (else the bar stays white)
 ACCENT_LIGHT = 0.62         # HLS lightness the accent is lifted to: readable on black
@@ -82,6 +83,8 @@ def decode_cover(data: bytes):
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(data))
+        if max(img.size) > MAX_COVER_PX:                # 1.38.20 (audit): the header is read, the pixels not yet – a
+            return None                                 # huge PNG from a web page's media session would cost 100s of MB
         img.draft("RGB", (COVER_PX, COVER_PX))          # JPEG: decode at a fraction of the size
         img = img.convert("RGBA")
         img.thumbnail((COVER_PX, COVER_PX))

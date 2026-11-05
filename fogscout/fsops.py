@@ -43,6 +43,19 @@ class UnsupportedFS(OSError):
     """This platform or file system cannot create/rename without the risk of replacing – the operation was not done."""
 
 
+def rel_path(folder: str, name: str) -> str | None:
+    """Absolute path of a file named relative to ``folder`` (an index entry, a queued upload): a plain name or one
+    inside one subfolder (``Farming/…``, ``Clips/…``), never outside ``folder`` – no absolute path, no drive, no
+    ``..``, no NUL – None for anything else. Names use "/" on every system. (1.38.20: from obsrec, so ytupload can
+    check its queue with the same rule without importing obsrec.)"""
+    if not name or os.path.isabs(name) or name.startswith(("/", "\\")) or ":" in name or "\x00" in name:
+        return None                                   # ":" = a drive letter; NUL: os.remove raises ValueError on it
+    parts = [p for p in re.split(r"[\\/]", name) if p]
+    if not parts or any(p in ("..", ".") for p in parts) or len(parts) > 2:
+        return None
+    return os.path.join(folder, *parts)
+
+
 def _unsupported(what: str, path: str, code: int = errno.ENOSYS) -> UnsupportedFS:
     return UnsupportedFS(code, f"{what} is not supported here", path)
 

@@ -312,6 +312,31 @@ def test_jobs_titles_and_metadata():
     assert yt.video_url("abc") == "https://youtu.be/abc"
 
 
+def test_a_queued_name_never_reaches_outside_the_recordings_folder(fake, tmp_path):
+    """1.38.20 (audit SEC-6): ``rel`` comes from settings.json (youtube_queue), which the user – or anything running
+    as the user – can edit; "../x" or an absolute path was joined as it was and would have read and uploaded any file.
+    Loading drops such a job, and the tick itself resolves the name only inside the folder."""
+    for bad in ("../a.mp4", "/etc/passwd", "C:/Users/x/a.mp4", "a/b/c.mp4", "Clips/../a.mp4", "a\x00.mp4"):
+        assert yt.Job.from_dict({"rel": bad, "kind": "clip"}) is None, bad
+    assert yt.Job.from_dict({"rel": "Clips/a.mp4"}).rel == "Clips/a.mp4"
+    folder = os.path.join(str(tmp_path), "rec")
+    os.makedirs(folder)
+    _video(str(tmp_path), "outside.mp4", 1024)              # exists – one level above the recordings folder
+    events = []
+    up = _uploader(events)
+    try:
+        up.configure(True, CID, SECRET, "private", spotify.protect("ref-ok"), [], {})
+        up.set_folder(folder)
+        up.add(yt.Job(rel="../outside.mp4", kind="clip", title="T"))      # straight into the queue, past from_dict
+        assert _wait(lambda: any(k == "failed" for k, _d in events))
+        failed = next(d for k, d in events if k == "failed")
+        assert failed["rel"] == "../outside.mp4" and "nicht gefunden" in failed["why"] and not up.jobs
+        assert not fake.sessions                             # no upload was ever opened
+    finally:
+        up.quit()
+        up.join(timeout=3)
+
+
 def test_the_resumable_protocol_in_chunks_and_the_resume_point(fake, tmp_path):
     path, data = _video(str(tmp_path), "Clips/a.mp4", 600 * 1024)
     tok = yt.refresh(CID, SECRET, "ref-x")
