@@ -333,6 +333,61 @@ def test_the_timeline_keeps_a_layer_while_only_the_playhead_moves_and_a_closed_e
             win.close()
 
 
+def _gone(app, seconds=3):
+    """Pump events, the deferred deletions included (WA_DeleteOnClose; processEvents alone may leave them queued)."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        app.processEvents()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        time.sleep(0.01)
+
+
+def test_a_closed_editor_is_freed_and_one_still_saving_only_after_its_save(qapp, clip, tmp_path, monkeypatch):
+    """1.38.4 (measured during 1.38.3): a closed editor stayed in memory until Fog Scout quit. The "Ton" box is never
+    shown in the big editor (the mute button stands for it) and had no Qt parent: its C++ object outlived the window,
+    and its two lambdas held the window. A save still running keeps the window until its result is handed over."""
+    import gc
+    import threading
+    import weakref
+    from fogscout import qt_clip
+    win = _window(qapp, clip, tmp_path)
+    win.mute_btn.click()                                     # every kind of slot the window connects, used once
+    win.mute_btn.click()
+    win.goto(3.0)
+    win.split_at_playhead()
+    win.volume.setValue(60)
+    win.close()
+    _gone(qapp)
+    ref = weakref.ref(win)
+    win = None
+    gc.collect()
+    assert ref() is None
+
+    saved = []
+    win = _window(qapp, clip, tmp_path, on_saved=saved.append)
+    gate = threading.Event()
+    real_run = qt_clip._SaveJob.run
+
+    def slow_run(job, args):
+        gate.wait(30)
+        return real_run(job, args)
+    monkeypatch.setattr(qt_clip._SaveJob, "run", slow_run)
+    win.save()
+    win.close()                                              # closed while ffmpeg still writes the clip
+    _gone(qapp, 0.5)
+    ref = weakref.ref(win)
+    win = None
+    gc.collect()
+    assert ref() is not None                                 # kept until the save is picked up …
+    gate.set()
+    assert _pump(qapp, lambda: saved, 60)                    # … through _drain_closed, so the App still hears of it
+    assert len(saved) == 1 and os.path.getsize(saved[0]) > 0 and not qt_clip._SAVES
+    _gone(qapp, 0.5)
+    gc.collect()
+    assert ref() is None
+
+
 def test_closing_the_editor_while_it_analyses_ends_its_threads_and_ffmpeg(qapp, clip, tmp_path, monkeypatch):
     """Post-review 1.16.2: closed at once after opening – the waveform/level analysis gets the cancel, its threads
     end, no ffmpeg it started is left running, and nothing arrives at the closed window afterwards."""
