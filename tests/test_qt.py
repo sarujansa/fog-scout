@@ -771,10 +771,20 @@ def test_narrow_window_wraps_instead_of_cutting_off(qapp, keep):
     win.resize(1200, 800)
     win.show()
     qapp.processEvents()
-    assert win.nav.maximumWidth() == qt_window.NAV_W and win.nav.item(0).text()
+    assert win.nav.maximumWidth() == qt_window.nav_w() and win.nav.item(0).text()
     win.resize(780, 800)
     qapp.processEvents()
-    assert win.nav.maximumWidth() == qt_window.NAV_COMPACT_W and not win.nav.item(0).text() and win.nav.item(0).toolTip()
+    assert win.nav.maximumWidth() == qt_window.nav_compact_w() and not win.nav.item(0).text() and win.nav.item(0).toolTip()
+    # 1.38.11: the navigation grows with the text zoom (fixed 190 px cut „Einstellungen“ at 1.5)
+    try:
+        win.resize(1200, 800)
+        qapp.processEvents()
+        win.apply_theme(True, 1.5)
+        assert win.nav.maximumWidth() == round(qt_window.NAV_W * 1.5) == qt_window.nav_w()
+        assert win.status_btn.maximumWidth() == round(qt_window.NAV_W * 1.5)
+    finally:
+        win.apply_theme(True, 1.0)
+    assert win.nav.maximumWidth() == qt_window.NAV_W
 
 
 def test_setup_assistant_goes_through_its_steps(qapp, keep):
@@ -1705,9 +1715,10 @@ def test_the_overlay_preview_and_its_tools_sit_side_by_side_on_a_wide_page(qapp,
     split.arrange(600)
     side.arrange(600)
     assert not split.beside() and not side.beside()
-    # 1.24.2 (phase 2: at 1280 px the tabs sat below the fold): SPLIT_FROM 1080 → 940 – a 1280 window's page
-    # (~1036 px) shows preview + tools | tabs; a 1100 window's (~860 px) keeps preview | tools above the tabs
-    assert 860 < qt_pages.SPLIT_FROM <= 1000
+    # 1.24.2 (phase 2: at 1280 px the tabs sat below the fold): SPLIT_FROM 1080 → 940. 1.38.11: → 840 – a 1100 window
+    # (the default; its split measured 856 px) shows preview + tools | tabs too, every setting of a tab without
+    # scrolling (checked in tools/screenshots.py pictures: nothing cut at 1100 px)
+    assert 800 <= qt_pages.SPLIT_FROM < 856
     page.show()                  # and in a real window, as wide as fits a Windows runner's screen
     page.resize(1100, 700)
     qapp.processEvents()
@@ -2699,7 +2710,7 @@ def test_the_navigation_shows_the_name_and_the_state_on_every_page(qapp, keep):
     ratio = win.devicePixelRatioF() or 1.0
     assert st.dot.pixmap().toImage() == qt_icons.pixmap("warning", colour, qt_theme.ICON["s"], ratio).toImage()
     assert st.dot.pixmap().toImage() != qt_icons.pixmap("record", colour, qt_theme.ICON["s"], ratio).toImage()
-    fm, width = st.text.fontMetrics(), qt_window.NAV_W - 58     # 1.24.6: a first word wider than the column (1.24.7: margins 26 + 10)
+    fm, width = st.text.fontMetrics(), qt_window.nav_w() - 58     # 1.24.6: a first word wider than the column (1.24.7: margins 26 + 10)
     win.show_status("err", "Bildschirmaufnahmeverbindungsfehlermeldung fehlgeschlagen: Zugriff verweigert")
     first = st.text.text().split("\n")[0]
     assert first.endswith("…") and fm.horizontalAdvance(first) <= width
