@@ -100,11 +100,13 @@ def _clean_environment(environ) -> dict:
 
 
 def _git(root, *args, timeout=15):
-    # 1.38.21: git runs as administrator in a folder the user writes to – no hooks, no fsmonitor command, no
-    # global/system config (both user-writable): only this repository's own config and the command line count
-    env = dict(_clean_environment(os.environ), GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never",   # never wait for a password
-               GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.path.join(root, ".venv", "no-gitconfig"))
-    hard = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.path.join(root, ".venv", "no-hooks")]
+    # 1.38.21: git runs as administrator in a folder the user writes to – the settings that make git run a program
+    # (hooks, the fsmonitor command, a credential helper) are overridden on the command line, which beats every
+    # config file. The system and global config stay in: without them Git for Windows' core.autocrlf is gone and
+    # every file counts as changed ("eigene Änderungen" – the Windows CI showed it).
+    env = dict(_clean_environment(os.environ), GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")   # never wait for a password
+    hard = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.path.join(root, ".venv", "no-hooks"),
+            "-c", "credential.helper="]
     try:
         r = subprocess.run(["git", *hard, *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=timeout, env=env,
