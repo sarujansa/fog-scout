@@ -1705,7 +1705,7 @@ class DialogWindow(QDialog):
         # 1.8.8: as tall as its content (the "Zuordnen" dialog was mostly empty at a fixed 560 px); 1.8.91: the content's
         # own size up to the screen (the export dialog is 750 px tall – capped at 560 it needed a scrollbar), wider too
         self._fit()
-        QTimer.singleShot(0, self._fit)           # once laid out (wrapped labels report their real height then)
+        QTimer.singleShot(0, self, self._fit)     # once laid out (wrapped labels report their real height then)
 
     def _fit(self):
         """Size the window to its content, up to the screen; it only grows (the content scrolls anyway)."""
