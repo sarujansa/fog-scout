@@ -626,7 +626,10 @@ def test_one_grab_per_match_tick_banner_and_round_end_look_share_it(tmp_path, mo
         deadline = time.time() + 60                                # generous: shared CI runners
         while not wk.end_history and time.time() < deadline:
             time.sleep(0.05)
-        time.sleep(2.5)                                            # a few more looks
+        # a few more looks – counted, not timed: a busy Windows runner made only two ticks in a fixed 2.5 s
+        while len([g for g in list(grabs) if g[1] == W * H]) < 3 and time.time() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.5)                                            # the strips of the last tick, if any
     finally:
         wk.stop()
         wk.join(timeout=10)
