@@ -426,3 +426,23 @@ def test_a_line_cut_inside_a_character_breaks_no_correction(tmp_path):
     assert [r.t for r in h.load_lost_rounds(path)] == [1800.0]
     assert h.set_role(path, 2000.0, "killer").role == "killer"
     assert [r.role for r in h.load(path)] == ["", "killer"] and len(h.load_lost(path)) == 1
+
+
+def test_the_fastest_region_at_this_time_of_day():
+    """1.38.31 (project review F7): per region, the rounds of the same 3-hour block with a known waiting time –
+    median wait, Ø ping; regions with fewer than min_rounds left out; custom/farming never count."""
+    import datetime
+    base = datetime.datetime(2026, 11, 2, 19, 10).timestamp()            # Monday 19:10 local
+    rs = []
+    for i, w in enumerate((60, 70, 400)):
+        rs.append(h.Round(t=base + i * 86400, seconds=600, map_id="a", map="A", region="eu-central-1", wait=w, ping=30.0))
+    for i, w in enumerate((200, 210, 220, 230)):
+        rs.append(h.Round(t=base + i * 86400 + 600, seconds=600, map_id="a", map="A", region="us-east-1", wait=w))
+    rs.append(h.Round(t=base + 3600 * 5, seconds=600, map_id="a", map="A", region="eu-west-2", wait=5))   # other block
+    rs.append(h.Round(t=base, seconds=600, map_id="a", map="A", region="eu-west-2", wait=1, custom=True))
+    block, rows = h.regions_at(rs, base + 1800)
+    assert block == datetime.datetime.fromtimestamp(base).hour // h.HOUR_BLOCK * h.HOUR_BLOCK
+    assert [(c, n, w) for c, n, w, _p in rows] == [("eu-central-1", 3, 70), ("us-east-1", 4, 220)]
+    assert rows[0][3] == 30.0 and rows[1][3] is None
+    assert h.regions_at(rs, base + 1800, min_rounds=4)[1][0][0] == "us-east-1"
+    assert h.regions_at([], base)[1] == []

@@ -526,6 +526,10 @@ EN = {
     "Killer der Runde:": "Killer of the round:",
     "Killer setzen": "Set killer",
     "Notiz zum Killer:": "Note on the killer:",
+    "Um diese Tageszeit ({span} Uhr) am schnellsten: {region} – Wartezeit {wait} (Median), {n} Runden":
+        "Fastest at this time of day ({span} h): {region} – waiting {wait} (median), {n} rounds",
+    "Ø {ping} ms": "Ø {ping} ms",
+    "danach {region} ({wait})": "then {region} ({wait})",
     "Notiz speichern": "Save note",
     "Notiz zu {killer} gespeichert.": "Note on {killer} saved.",
     "Notiz zu {killer} gelöscht.": "Note on {killer} removed.",
