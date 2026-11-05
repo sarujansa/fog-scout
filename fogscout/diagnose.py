@@ -153,7 +153,8 @@ def collect(app) -> str:
         lines.append(f"Lobby: letzter Blick {getattr(w, 'lobby_info', '?')} · Zustand "
                      f"{getattr(q, 'state', '?')}, Rolle {getattr(q, 'role', None)}, "
                      f"Crossplay aus={getattr(q, 'crossplay_off', None)} (Blicke mit/ohne Kreuz "
-                     f"{getattr(q, 'cross_looks', None)}), letzte Lobby={getattr(q, 'found', None)}")
+                     f"{getattr(q, 'cross_looks', None)}), letzte Lobby={getattr(q, 'found', None)}, "
+                     f"Blicke ohne neues Lesen {getattr(getattr(w, 'lobby_steady', None), 'reused', 0)}")
         lines.append(f"Matchbeginn (Aufnahme ab Ladebildschirm): {w.match_start.describe()}"
                      if getattr(w, "match_start", None) is not None else "Matchbeginn: –")
         bp = getattr(app, "bloodpoints", None)               # 1.13: balance from the lobby, cap check
