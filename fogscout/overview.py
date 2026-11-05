@@ -13,7 +13,7 @@ from . import dashboard, history, obsrec, official, records, sysinfo, theme
 from .connwatch import UNKNOWN, region_name
 from .i18n import N_, _
 from .lobby import killer_label
-from .overlay_win32 import ping_colour
+from .overlay_render import ping_colour
 from .status import DOT_STYLE, is_problem, user_state
 from .textnorm import fmt_duration, roman
 
