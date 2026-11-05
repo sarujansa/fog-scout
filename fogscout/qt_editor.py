@@ -532,6 +532,10 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
         self.mute_btn.setIcon(self._vol_icons[1 if self.mute_btn.isChecked() else 0])
         self.mute_btn.toggled.connect(self._mute_toggled)
         self.sound_box.toggled.connect(lambda on: self.mute_btn.setChecked(not on))
+        # 1.38.5: the box is never shown here (the mute button stands for it) – without a Qt parent its C++ object
+        # outlived the window, and its two lambdas (this one, ClipBase's setting) kept every closed editor alive
+        self.sound_box.setParent(self)
+        self.sound_box.hide()
         lay.addWidget(self.mute_btn)
         self.volume = guard_wheel(QSlider(Qt.Horizontal))
         self.volume.setRange(0, 100)
