@@ -367,17 +367,17 @@ class PaletteMixin:
         self._reg("st.more.cl_status", ui.Label(cc, textvariable=self.cl_status_var, wraplength=420,
                                                  style="Dim.TLabel")).pack(anchor="w", pady=(4, 0))
         self._reg("st.more.cl_text", ui.Label(cc, text=_(
-            "Findet die Suche (Strg+F) nichts Passendes, kann sie Claude fragen – nur wenn du die Zeile „Claude fragen“ "
-            "wählst, nie beim Tippen. Gesendet werden nur deine Frage und die Namen der Einstellungen, Seiten und "
-            "Aktionen von Fog Scout an api.anthropic.com – nie Runden, Maps, Killer, Pfade oder Spieldaten. Claude "
-            "schlägt nur Einträge vor; ausgeführt wird erst, was du wählst. Im Clip-Editor („Mit Claude bearbeiten“) "
-            "schreibst du, was mit dem Schnitt passieren soll; gesendet werden nur deine Bitte und der Schnitt als "
-            "Zahlen (Zeiten, Tempo, Blenden, eigene Short-Texte) – kein Bild, kein Dateiname –, Claudes Vorschlag "
-            "wird geprüft und erst auf „Übernehmen“ ausgeführt. Dafür einen eigenen API-Key aus der "
-            "Anthropic Console eintragen („API-Key holen“). Die API wird getrennt von einem Claude-Abo abgerechnet: "
-            "jede Frage kostet etwas von deinem Guthaben in der Console („Guthaben aufladen“, dort lässt sich auch "
-            "ein Ausgabenlimit setzen). Der Key wird mit der Windows-Verschlüsselung auf diesem PC gespeichert – geht "
-            "das nicht, gilt er nur bis zum Beenden. Er steht nie in der Sicherung, im Log oder in der Diagnose."),
+            "Jedes Häkchen ist eine Stelle, an der Claude auf deinen Klick hilft – nie von selbst, nie beim "
+            "Tippen: die Suche (Zeile „Claude fragen“: deine Frage und die Namen der Einstellungen, Seiten und "
+            "Aktionen), Statistik-Fragen (Zähler und Quoten), der Clip-Editor („Mit Claude bearbeiten“: deine "
+            "Bitte und der Schnitt als Zahlen, mit Häkchen auch ein Standbild) und der Bild-Editor (Reiter "
+            "„Claude“: deine Bitte und das Bild). Claude schlägt nur vor; ausgeführt wird erst, was du wählst oder "
+            "mit „Übernehmen“ bestätigst. Nie gesendet werden Runden, Maps, Killer, Pfade, Dateinamen, Server oder "
+            "Log. Dafür einen eigenen API-Key aus der Anthropic Console eintragen („API-Key holen“); die API wird "
+            "getrennt von einem Claude-Abo aus Guthaben bezahlt („Guthaben aufladen“, dort auch ein Ausgabenlimit) "
+            "– die Kosten je Frage schätzt das Programm aus der Antwort und zählt sie je Monat zusammen. Der Key "
+            "wird mit der Windows-Verschlüsselung auf diesem PC gespeichert (geht das nicht, gilt er nur bis zum "
+            "Beenden) und steht nie in der Sicherung, im Log oder in der Diagnose."),
             style="Dim.TLabel", wraplength=420)).pack(anchor="w", pady=(4, 0))
         self._claude_setting(save=False)
 

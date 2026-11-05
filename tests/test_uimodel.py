@@ -259,6 +259,11 @@ def test_the_program_starts_shows_every_page_and_quits(app_root):
     errors = []
     app._report_once = lambda key, text: errors.append((key, text))
     assert not (qt_window.page_keys() - set(app._qt_reg)), "a hand-made page names a widget the App never made"
+    # 1.38.2: and the other way round – a registered control of a hand-made page that no spec shows is invisible
+    # (the Claude card lost Bild/Standbild/Statistik/Modell/Kosten that way in 1.35/1.36, the search never lists it)
+    hand_made = {k.split(".")[0] for k in qt_window.page_keys()}
+    orphans = {k for k in app._qt_reg if k.split(".")[0] in hand_made} - qt_window.page_keys()
+    assert orphans == set(), "registered for a hand-made page, drawn nowhere"
     assert tooltip.missing(app.ui_root) == []                 # every button/checkbox has its info text
     keys = [k for k, _l in qt_window.PAGES]
     assert app.qt.current_key() == "setup"                    # first start: the setup assistant

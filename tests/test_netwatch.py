@@ -174,8 +174,11 @@ def test_in_process_when_already_admin(monkeypatch):
     w._rdns = {SERVER: ("eu-central-1", time.time())}
     assert w.start() is None and w.running
     thread = w.proc
-    time.sleep(0.1)
+    deadline = time.time() + 5          # 1.38.2: a busy shared runner wrote the first result later than 0.1 s
     w.poll()
+    while not w.server and time.time() < deadline:
+        time.sleep(0.02)
+        w.poll()
     assert w.server and w.server["ip"] == SERVER
     w.stop()
     thread.join(timeout=3)

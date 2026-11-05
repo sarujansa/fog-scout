@@ -80,8 +80,22 @@ def test_the_release_script_prints_the_notes_of_the_current_version():
     import sys
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = subprocess.run([sys.executable, os.path.join(root, "tools", "release_notes.py"),
-                          os.path.join(root, "HISTORY.md"), __version__, ""], capture_output=True, text=True,
-                         check=True).stdout
+                          os.path.join(root, "HISTORY.md"), __version__, ""], capture_output=True,
+                         check=True).stdout.decode("utf-8")
     assert out.startswith("- **") and f" {__version__}**" in out.splitlines()[0]
     assert subprocess.run([sys.executable, os.path.join(root, "tools", "release_notes.py")],
                           capture_output=True).returncode == 2
+
+
+def test_the_release_script_writes_utf8_whatever_the_console(tmp_path):
+    """1.38.2 (CI Windows): with a cp1252 console the script died on "→" in the newest row's sentence."""
+    import subprocess
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    hist = tmp_path / "HISTORY.md"
+    hist.write_text("| Version | Was |\n|---|---|\n| Pfeil 9.9 (Test) – Einstellungen → Verbindungen „Claude“. | x |\n",
+                    encoding="utf-8")
+    env = dict(os.environ, PYTHONIOENCODING="cp1252")
+    out = subprocess.run([sys.executable, os.path.join(root, "tools", "release_notes.py"), str(hist), "9.9", ""],
+                         capture_output=True, check=True, env=env).stdout.decode("utf-8")
+    assert out.strip() == "- **Pfeil 9.9** – Einstellungen → Verbindungen „Claude“."
