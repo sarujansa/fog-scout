@@ -109,7 +109,7 @@ class ClaudeMixin:
         self.cl_field.setEnabled(on)
         self.cl_ask_btn.setEnabled(on and self.history is not None and not self._claude_busy)
         if not on and self._claude_result is None:
-            self.cl_status.setText(_("Aus – in Einstellungen › Verbindungen › Claude „Im Clip-Editor Claude "
+            self.cl_status.setText(_("Aus – in Einstellungen → Verbindungen → Claude „Im Clip-Editor Claude "
                                      "nutzen“ einschalten und einen API-Key eintragen."))
             self._claude_off_shown = True
         elif on and getattr(self, "_claude_off_shown", False):
