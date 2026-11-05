@@ -871,13 +871,6 @@ class SysInfo:
         self._save_soon()
         self._tick_overlay(reschedule=False)
 
-    def _media_size_changed(self):
-        self._layout_mark()
-        self.settings["overlay"]["media_scale"] = round(float(self.media_size_var.get()) / 100, 2)
-        self._save_soon()
-        self._sel_sync()
-        self._tick_overlay(reschedule=False)
-
     # ---- 1.64.9: pick an element (preview or list), then one slider / the corner / the wheel sizes it
     def _sel_range(self, name):
         """(low, high, value) in percent of the element's size setting."""
