@@ -771,6 +771,29 @@ def detection(matches, linked_ids, since=None) -> tuple:
     return seen, missed
 
 
+class FolderWatch:
+    """1.38.7: whether the download folder may hold something new – pending() lists the whole folder (12.5 ms for
+    20 000 files on Linux, measured; a full Windows Downloads folder unknown) in the window's thread every 20 s.
+    Creating, renaming or deleting a file changes the folder's own time; only then, or every FULL_SCAN_S as a
+    fallback for file systems whose folder time does not follow, is the folder listed. Pure: ``stat`` injectable."""
+    FULL_SCAN_S = 300.0
+
+    def __init__(self, stat=os.stat):
+        self._stat = stat
+        self._seen = None                  # (folder, st_mtime_ns) of the last full look
+        self._full = float("-inf")         # time of the last full look
+
+    def due(self, folder: str, now: float) -> bool:
+        try:
+            mark = (folder, self._stat(folder).st_mtime_ns)
+        except OSError:
+            return True                    # gone or locked: pending() says [] itself, as before
+        if mark != self._seen or now - self._full >= self.FULL_SCAN_S:
+            self._seen, self._full = mark, now
+            return True
+        return False
+
+
 class OpenAfterGame:
     """Open the stats page once DBD was closed after rounds were played (pure logic, testable).
 
