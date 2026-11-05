@@ -639,3 +639,35 @@ def test_one_grab_per_match_tick_banner_and_round_end_look_share_it(tmp_path, mo
     later = [g for g in grabs if g[0] > wholes[0] + 0.3]          # (the tick the map came: no look prepared)
     strips = [t for t, size in later if size != W * H]
     assert not [t for t in strips if any(abs(t - u) < 0.3 for u in wholes)], grabs[:8]
+
+
+def test_an_unchanged_lobby_corner_is_not_read_again(reader):
+    """1.38.14 (plan stage 4, C2 – measured: LobbyReader.read 100–400 ms CPU per look, once a second also in a
+    still menu): while the corner is the same as at the last reading, the worker takes a copy of that reading;
+    a changed corner, a changed size or an older reading than LOBBY_STEADY_S is read again."""
+    img = cv2.imread(os.path.join(DATA, "k_search_nurse.jpg"))
+    st = lobby.SteadyCorner()
+    assert st.reuse(img, 0.0) is None                                   # nothing read yet
+    v = reader.read(img, W, H)
+    st.remember(img, v, 0.0)
+    again = st.reuse(img.copy(), 1.0)
+    assert again == v and again is not v and st.reused == 1              # a copy (crossplay_off is set on it)
+    again.crossplay_off = True
+    assert st.reuse(img, 2.0).crossplay_off is v.crossplay_off           # the kept reading stays as read
+    rng = np.random.default_rng(1)                                       # noise / JPEG: still the same corner
+    noisy = np.clip(img.astype(np.int16) + rng.normal(0, 4, img.shape).round(), 0, 255).astype(np.uint8)
+    jpeg = cv2.imdecode(cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 70])[1], 1)
+    assert st.reuse(noisy, 2.0) is not None and st.reuse(jpeg, 2.0) is not None
+    # the waiting time goes on by one second: one digit – read again
+    cx, cy = lobby.corner_box(W, H)[:2]
+    x, y, _w, h = lobby._right_box(lobby.TIME_ZONE, W, H)
+    a, b = img.copy(), img.copy()
+    for pic, text in ((a, "0:02"), (b, "0:03")):
+        cv2.putText(pic, text, (x - cx + 10, y - cy + int(h * 0.7)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (200, 200, 200), 1, cv2.LINE_AA)
+    st.remember(a, v, 10.0)
+    assert st.reuse(a, 11.0) is not None and st.reuse(b, 11.0) is None
+    assert st.reuse(a[:-2], 11.0) is None                               # another window size
+    assert st.reuse(a, 10.0 + lobby.LOBBY_STEADY_S) is None              # read again after LOBBY_STEADY_S
+    st.remember(None, v, 20.0)                                           # nothing grabbed: nothing kept
+    assert st.reuse(a, 20.5) is None
