@@ -219,8 +219,8 @@ class StatsTab:
         ui.Button(rr, text=_("Exportieren …"), command=self._export_open).pack(side="right", anchor="n")   # 1.8.91
         # 1.17.1: the buttons for marked rounds only once one is marked (as on the page Aufnahmen since 1.11.14) –
         # seven greyed-out controls were noise; until then a line says what marking offers; right click unchanged
-        self.stats_sel_hint = ui.Label(rr, text=_("Runde markieren: Rolle, Farming oder Killer korrigieren, löschen "
-                                                  "– oder Rechtsklick."), style="Dim.TLabel")
+        self.stats_sel_hint = ui.Label(rr, text=_("Runde markieren: Rolle, Farming, Killer oder Map korrigieren, "
+                                                  "löschen – oder Rechtsklick."), style="Dim.TLabel")
         self.stats_sel_hint.pack(side="left")
         self.stats_sel = sel = ui.Frame(rr)
         r1 = ui.Frame(sel)
@@ -247,6 +247,17 @@ class StatsTab:
         self.stats_round_killer_btn = ui.Button(kr, text=_("Killer setzen"), command=self._stats_set_killer,
                                                  state="disabled")
         self.stats_round_killer_btn.pack(side="left", padx=(6, 0))
+        mr = ui.Frame(sel)                                  # 1.38.26 (F3): a wrongly read map, corrected here
+        mr.pack(fill="x", pady=(6, 0))
+        ui.Label(mr, text=_("Map der Runde:")).pack(side="left")
+        self._stats_map_choices = sorted(self.catalog.maps.values(), key=lambda m: m.name.lower())
+        self.stats_round_map_var = ui.StringVar(value="")
+        self.stats_round_map_cb = ui.Combobox(mr, textvariable=self.stats_round_map_var, state="disabled",
+                                               width=22, values=[m.name for m in self._stats_map_choices])
+        self.stats_round_map_cb.pack(side="left", padx=(6, 0))
+        self.stats_round_map_btn = ui.Button(mr, text=_("Map setzen"), command=self._stats_set_map,
+                                              state="disabled")
+        self.stats_round_map_btn.pack(side="left", padx=(6, 0))
         box = self._stats_page(_("Maps"), "maps", "_stats_part_maps")
         self.stats_maps = self._stats_tree(box, (("map", _("Map"), 130, "w"), ("n", _("Runden"), 62, "e"),
                                                  ("k", _("Killer"), 58, "e"), ("kills", _("Ø Kills"), 62, "e"),
@@ -1145,6 +1156,8 @@ class StatsTab:
             b.configure(state=state)
         self.stats_round_killer_cb.configure(state="readonly" if state == "normal" else "disabled")
         self.stats_round_killer_btn.configure(state=state)
+        self.stats_round_map_cb.configure(state="readonly" if state == "normal" else "disabled")
+        self.stats_round_map_btn.configure(state=state)
         self.stats_delete_btn.configure(state=state)
         marked, sel_row, hint = bool(sel), self.stats_sel, self.stats_sel_hint     # 1.17.1: bar only when marked
         if marked and not sel_row.winfo_manager():
@@ -1427,6 +1440,28 @@ class StatsTab:
                         when=time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), killer=killer_label(target)),
                       "System")
         self.stats_round_killer_var.set("")
+        self._stats_render()
+
+    def _stats_set_map(self):
+        """1.38.26 (F3): the map of the rounds marked in "Letzte Runden" – a banner read as the wrong map. The
+        recording keeps its file name; statistics, overlay record and the official join follow the new map."""
+        ts = self._stats_selected_ts()
+        target = next((m for m in self._stats_map_choices if m.name == self.stats_round_map_var.get()), None)
+        if not ts or target is None:
+            return
+        try:
+            changed = []
+            for t in ts:
+                r = history.set_map(self._hist_path(), t, target.id, target.name)
+                if r is not None:
+                    changed.append(r)
+        except OSError as e:
+            self._log(_("Map konnte nicht gespeichert werden: {error}", error=e), "Fehler")
+            return
+        for r in changed:
+            self._log(_("Map der Runde vom {when} auf {map} gesetzt.",
+                        when=time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), map=target.name), "System")
+        self.stats_round_map_var.set("")
         self._stats_render()
 
     def _dash_clicked(self, value):
