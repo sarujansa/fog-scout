@@ -49,6 +49,8 @@ LOBBY_RATE = 1.0                  # banner scans per second while the lobby butt
 TICK_FAIL_LIMIT = 30               # 1.8.38: ticks in a row that raise before the detection counts as crashed
 TICK_FAIL_WAIT_S = 1.0            # … pause after one (no busy loop on a lasting fault)
 TICK_FAIL_LOG_S = 60.0            # … the same traceback goes to the log at most this often
+WORKER_RESTARTS = 2               # 1.38.9: a broken detection is started again this often before it counts as crashed
+WORKER_RESTART_S = 5.0            # … after this pause (a display change or the lock screen may be over by then)
 BP_STEADY_S = 5.0                 # 1.16.2 (A7): bloodpoint counter read this seldom once CONFIRM_LOOKS looks agree
 LOBBY_HOLD = 3.0                  # only comes after the loading screen; full rate again 3 s after the button went
 
@@ -125,6 +127,7 @@ class DetectionWorker(threading.Thread):
         self._scanner = None
         self._reported = set()
         self._fail_text, self._fail_logged = "", 0.0     # 1.8.38: last tick error logged, when
+        self._broken = None                              # 1.38.9: why the current run gave up (None: it did not)
         self._last_frame_save = 0.0
         self._last_sighting_save = 0.0
 
@@ -174,22 +177,39 @@ class DetectionWorker(threading.Thread):
     def _tick_failed(self, text: str, fails: int) -> bool:
         """1.8.38: a tick raised (OCR, capture, a tracker …). The full text goes to the log (a repeated one at most
         every TICK_FAIL_LOG_S), the UI hears it once; the loop goes on with the next frame. False after
-        TICK_FAIL_LIMIT ticks in a row: the detection is broken for good – reported as a crash."""
+        TICK_FAIL_LIMIT ticks in a row: this run of the detection is broken – ``run`` decides (1.38.9: start again)."""
         now = time.time()
         if text != self._fail_text or now - self._fail_logged >= TICK_FAIL_LOG_S:
             self._fail_text, self._fail_logged = text, now
             self._report("Erkennung", text)
         if fails >= TICK_FAIL_LIMIT:
-            self.post("error", text=text)
+            self._broken = text
             return False
         return True
 
     # ---------------------------------------------------------------- loop
     def run(self):
-        try:
-            self._run()
-        except Exception:
-            self.post("error", text=traceback.format_exc())
+        """1.38.9: a run that breaks (its setup raised, or TICK_FAIL_LIMIT ticks in a row) is started again up to
+        WORKER_RESTARTS times after WORKER_RESTART_S – before, the detection stayed off until Fog Scout was
+        restarted, also for a passing cause (a display change, the lock screen). Only the last failure is a crash."""
+        broken = None
+        for attempt in range(WORKER_RESTARTS + 1):
+            self._broken = None
+            try:
+                self._run()
+                broken = self._broken
+            except Exception:
+                broken = traceback.format_exc()
+            if broken is None or not self.running:
+                return                                   # stopped (quit) – nothing to report
+            if attempt == WORKER_RESTARTS:
+                break
+            log.error("Erkennung abgebrochen, Neustart %d/%d:\n%s", attempt + 1, WORKER_RESTARTS, broken)
+            self.post("warn", text=_("Erkennung neu gestartet ({n}/{total})", n=attempt + 1, total=WORKER_RESTARTS))
+            self._nap(WORKER_RESTART_S)                  # stop() ends the wait at once
+            if not self.running:
+                return
+        self.post("error", text=broken)
 
     def _run(self):
         models = os.path.join(self.root_dir, "models")
