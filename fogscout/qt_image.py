@@ -13,7 +13,7 @@ import os
 import threading
 
 from PIL import Image
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QTabWidget,
                                QVBoxLayout, QWidget)
@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit
 from . import annotate, askclaude, hudnames, imageclaude, imageedit, launch, qt_theme
 from .i18n import N_, _
 from .qt_clip import DRAW_TOOLS, SIZE_LABELS, PreviewView
-from .qt_common import PlainLabel, guard_wheel
+from .qt_common import Bridge, PlainLabel, guard_wheel
 from .qt_layouts import FlowRow
 
 CENSOR_LABELS = {"pixel": N_("Verpixelt"), "blur": N_("Verwischt"), "black": N_("Schwarz")}
@@ -32,6 +32,7 @@ UNDO_KEPT = 60                     # steps that can be undone
 ADJUST_DELAY_MS = 120              # a slider redraws the picture this long after it stopped
 PREVIEW_MAX = 1920                 # the canvas shows a copy at most this long (px) – saving uses the original
 SAVE_POLL_MS = 50                  # how often the window looks whether the saving thread is done
+CLAUDE_POLL_MS = 50                # 1.38.3: how often the window looks for Claude's answer while one is due
 RATIO_SAME = 0.005                 # a crop whose pixel aspect is this close to an offered ratio counts as it
 
 # Running saves: window -> the file it writes. Holds a window closed meanwhile until its save is picked up (the App
@@ -46,19 +47,12 @@ def qimage(img: Image.Image) -> QImage:
     return QImage(img.tobytes(), w, h, w * 3, QImage.Format_RGB888).copy()
 
 
-class _ClaudeBridge(QObject):
-    """1.35: Claude's answer from the asking thread into the window's thread."""
-    answer = Signal(object)
-
-
-CLAUDE_ERRORS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
-                         "(„API-Key holen“ öffnet die Anthropic Console)."),
-                 "rate": N_("Claude: Zu viele Anfragen – gleich noch einmal versuchen."),
-                 "quota": N_("Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › "
-                          "„Guthaben aufladen“."),
-                 "refused": N_("Claude hat die Frage abgelehnt."),
-                 "bad": N_("Claude hat unverständlich geantwortet."),
-                 "net": N_("Claude ist nicht erreichbar – keine Internetverbindung?")}
+class _ClaudeBridge(Bridge):
+    """1.35: Claude's answer from the asking thread into the window's thread. 1.38.3: was a QObject with a signal –
+    the thread (up to a minute for a picture) emitted on it after the window had been closed and freed; now a plain
+    queue the window's own timer drains (qt_common.Bridge, as the clip editor since 1.8.66)."""
+    NAMES = ("answer",)
+    LABEL = "Bild-Editor"
 
 
 class ImageWindow(QWidget):
@@ -99,8 +93,12 @@ class ImageWindow(QWidget):
         self._save_timer.timeout.connect(self._save_poll)
         self.claude_key = lambda: ""       # 1.35: set by the App – the key while „Bilder an Claude“ is on, else ""
         self._claude_seq, self._claude_base, self._claude_result, self._claude_busy = 0, None, None, False
-        self._claude_bridge = _ClaudeBridge(self)
+        self._claude_bridge = _ClaudeBridge()
         self._claude_bridge.answer.connect(self._claude_answer)
+        self._claude_pump = QTimer(self)                   # runs only while an answer is due; dies with the window
+        self._claude_pump.setInterval(CLAUDE_POLL_MS)
+        self._claude_pump.timeout.connect(self._claude_drain)
+        self._closed = False
         self._build()
         self.resize(1280, 860)
         self.setMinimumSize(900, 620)
@@ -437,10 +435,20 @@ class ImageWindow(QWidget):
                                                     e.__class__.__name__)
                 emit((seq, base, size, None, "bad"))
         threading.Thread(target=work, name="claude-image", daemon=True).start()
+        self._claude_pump.start()
+
+    def _claude_drain(self):
+        if self._closed:
+            self._claude_pump.stop()
+            self._claude_bridge.clear()
+            return
+        self._claude_bridge.drain()
+        if not self._claude_busy and not self._claude_bridge.pending():
+            self._claude_pump.stop()
 
     def _claude_answer(self, item):
         seq, base, size, data, error = item
-        if seq != self._claude_seq:
+        if self._closed or seq != self._claude_seq:
             return
         self._claude_busy = False
         try:
@@ -448,13 +456,13 @@ class ImageWindow(QWidget):
         except Exception:                                # never left on „Claude denkt nach …“
             self._claude_result = None
             self._claude_buttons(False)
-            self.cl_status.setText(_(CLAUDE_ERRORS["bad"]))
+            self.cl_status.setText(askclaude.error_text("bad"))
         finally:
             self._claude_refresh()
 
     def _claude_show(self, base, size, data, error):
         if error is not None:
-            self.cl_status.setText(_(CLAUDE_ERRORS.get(error, CLAUDE_ERRORS["net"])))
+            self.cl_status.setText(askclaude.error_text(error))
             return
         if self.edit != base:
             self.cl_status.setText(_("Das Bild hat sich inzwischen geändert – bitte neu vorschlagen."))
@@ -463,7 +471,7 @@ class ImageWindow(QWidget):
             new, done, skipped = imageclaude.apply(base, data.get("ops"), size)
         except ValueError:
             self.cl_list.hide()
-            self.cl_status.setText(_(CLAUDE_ERRORS["bad"]))
+            self.cl_status.setText(askclaude.error_text("bad"))
             return
         summary = " ".join(str(data.get("summary") or "").split())[:300]
         lines = ["• " + _(w, **kw) for _op, (w, kw) in done]
@@ -928,6 +936,14 @@ class ImageWindow(QWidget):
             launch.show_in_folder(self.last_out)
         else:
             self.status.setText(self.last_out)
+
+    def closeEvent(self, e):
+        """1.38.3: an answer still on its way is dropped – the thread only finds a plain queue, never the window."""
+        self._closed = True
+        self._claude_pump.stop()
+        self._claude_bridge.clear()
+        self._claude_bridge.handlers.clear()        # the thread keeps the bridge, not the window through its handler
+        super().closeEvent(e)
 
     def keyPressEvent(self, e):
         k = e.key()

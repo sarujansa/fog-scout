@@ -18,6 +18,8 @@ import threading
 import urllib.error
 import urllib.request
 
+from .i18n import N_, _
+
 ENDPOINT = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2026-10-21"
 MODEL = "claude-opus-5-5"            # the default model; effort low keeps the answer quick
@@ -60,6 +62,23 @@ SCHEMA = {"type": "object", "additionalProperties": False, "required": ["answer"
                          "ids": {"type": "array", "items": {"type": "string"}}}}
 
 OPENER = None                        # urllib opener; the tests set a fake one
+
+
+# 1.38.3: the user's words for AskError.kind – one table for the search, the clip editor and the image editor (there
+# were three copies of the same texts)
+ERRORS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
+                     "(„API-Key holen“ öffnet die Anthropic Console)."),
+          "rate": N_("Claude: Zu viele Anfragen – gleich noch einmal versuchen."),
+          "quota": N_("Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › "
+                      "„Guthaben aufladen“."),
+          "refused": N_("Claude hat die Frage abgelehnt."),
+          "bad": N_("Claude hat unverständlich geantwortet."),
+          "net": N_("Claude ist nicht erreichbar – keine Internetverbindung?")}
+
+
+def error_text(kind: str) -> str:
+    """The translated text for an AskError kind; an unknown kind reads as "not reachable"."""
+    return _(ERRORS.get(kind, ERRORS["net"]))
 
 
 class AskError(Exception):

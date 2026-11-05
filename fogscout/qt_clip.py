@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QHBox
 
 from . import annotate, clipedit, encoders, imageedit, launch, obsrec, qt_theme
 from .i18n import N_, _
-from .qt_common import guard_wheel
+from .qt_common import Bridge, Channel, guard_wheel
 from .qt_layouts import FlowRow
 
 log = logging.getLogger("fogscout")
@@ -83,21 +83,10 @@ def _qimage(img) -> QImage:
     return QImage(img.tobytes(), w, h, w * 3, QImage.Format_RGB888).copy()
 
 
-class _Channel:
-    """One kind of message: ``emit`` from any thread only queues it, the ``connect``-ed handlers run in the GUI
-    thread when the window's pump drains the bridge (the same names as the Qt signals before)."""
-
-    def __init__(self, bridge, name):
-        self._bridge, self._name = bridge, name
-
-    def emit(self, *args):
-        self._bridge.put(self._name, args)
-
-    def connect(self, fn):
-        self._bridge.handlers.setdefault(self._name, []).append(fn)
+_Channel = Channel                # 1.38.3: moved to qt_common (the image editor uses it too)
 
 
-class _Bridge:
+class _Bridge(Bridge):
     """What the worker threads hand to the window. 1.8.66 (user: "das Programm crasht ab und zu, wenn ich Videos
     öffne"): this was a QObject whose signals the threads emitted – a window closed (another recording picked in
     the preview, the editor shut) while a thread still sent a frame, the strip or the levels raised "Signal source
@@ -122,36 +111,7 @@ class _Bridge:
              "claude")       # 1.27: Claude's answer to a wish in the editor (editorclaude)
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._queue = []
-        self.handlers = {}
-        for name in self.NAMES:
-            setattr(self, name, _Channel(self, name))
-
-    def put(self, name, args):
-        with self._lock:
-            self._queue.append((name, args))
-
-    def clear(self, keep=()):
-        """Drop what is queued – but the kinds in ``keep``."""
-        with self._lock:
-            self._queue = [m for m in self._queue if m[0] in keep]
-
-    def drain(self):
-        """Run the handlers of everything queued so far (GUI thread); of the pictures only the newest per kind."""
-        with self._lock:
-            batch, self._queue = self._queue, []
-        last = {name: i for i, (name, _a) in enumerate(batch) if name in self.LATEST}
-        for i, (name, args) in enumerate(batch):
-            if name in last and last[name] != i:
-                continue
-            for fn in self.handlers.get(name, ()):
-                try:
-                    fn(*args)
-                except Exception:
-                    log.exception("Clip-Editor: %s", name)
+    LABEL = "Clip-Editor"
 
 
 class _SaveJob:
