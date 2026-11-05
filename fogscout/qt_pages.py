@@ -71,7 +71,8 @@ SETUP = (
                     "von deinem Browser, nicht vom Programm. Lässt sich auch später einrichten (Einstellungen → "
                     "Match-Daten → Offizielle Match-Daten).")),
         ("row", (("button", "setup.script"), ("button", "setup.open_site"), ("stretch",))),
-        ("check", "setup.off_notify"), ("check", "setup.off_open"), ("hint", "setup.off_text"))),
+        ("check", "setup.off_notify"), ("check", "setup.off_open"),
+        ("fold", N_("Erklärung"), (("hint", "setup.off_text"),)))),          # 1.38.13: 449 characters, shut
     (N_("Aufnahmen mit OBS"), (
         ("note", N_("Optional: OBS Studio nimmt jede Runde auf, Fog Scout sagt OBS nur, wann. Ohne OBS einfach "
                     "„Weiter“.")),
@@ -1388,30 +1389,9 @@ class FormPage(QWidget, _Arranged):
             lay.addWidget(box)
             return
         if kind == "fold":                          # 1.29.1: a long explanation behind "Erklärung" – shut at first
-            btn = QPushButton(_(item[1]))
-            btn.setObjectName("fold")
-            btn.setFlat(True)
-            btn.setCursor(Qt.PointingHandCursor)
-            body = QWidget()
-            body.setProperty("fold_body", True)
-            bl = QVBoxLayout(body)
-            bl.setContentsMargins(0, 0, 0, 0)
-            bl.setSpacing(4)
+            bl = make_fold(item[1], lay)
             for c in item[2]:
                 self._add(c, bl)
-            body.hide()
-
-            def flip(_checked=False, b=btn, w=body):
-                w.setVisible(not w.isVisibleTo(w.parentWidget()))
-                set_glyph(b, "chevron_down" if w.isVisibleTo(w.parentWidget()) else "chevron_right")
-            set_glyph(btn, "chevron_right")
-            btn.clicked.connect(flip)
-            btn._dbdms_fold = body
-            row = QHBoxLayout()
-            row.addWidget(btn)
-            row.addStretch(1)
-            lay.addLayout(row)
-            lay.addWidget(body)
             return
         if kind == "note":                          # a fixed text of the page itself (setup assistant)
             lay.addWidget(_label(_(item[1]), wrap=True))
@@ -1432,6 +1412,35 @@ class FormPage(QWidget, _Arranged):
                 show_control(kind, w, extra, st)
         for entry in getattr(self, "_groups", {}).values():   # 1.8.8: after the texts are in
             self._align_group(entry)
+
+
+def make_fold(title: str, lay) -> QVBoxLayout:
+    """A shut fold in ``lay``: a flat button "› title" and below it a body that it opens and shuts; returns the
+    body's layout for the content. 1.29.1 in FormPage, 1.38.13 also for AutoPage (a model label with ``_dbdms_fold``).
+    The search finds the content and opens it (qt_window: property "fold_body" + the button's ``_dbdms_fold``)."""
+    btn = QPushButton(_(title))
+    btn.setObjectName("fold")
+    btn.setFlat(True)
+    btn.setCursor(Qt.PointingHandCursor)
+    body = QWidget()
+    body.setProperty("fold_body", True)
+    bl = QVBoxLayout(body)
+    bl.setContentsMargins(0, 0, 0, 0)
+    bl.setSpacing(4)
+    body.hide()
+
+    def flip(_checked=False, b=btn, w=body):
+        w.setVisible(not w.isVisibleTo(w.parentWidget()))
+        set_glyph(b, "chevron_down" if w.isVisibleTo(w.parentWidget()) else "chevron_right")
+    set_glyph(btn, "chevron_right")
+    btn.clicked.connect(flip)
+    btn._dbdms_fold = body
+    row = QHBoxLayout()
+    row.addWidget(btn)
+    row.addStretch(1)
+    lay.addLayout(row)
+    lay.addWidget(body)
+    return bl
 
 
 class _GridCell(QWidget):
@@ -1629,6 +1638,8 @@ class AutoPage(QWidget, _Arranged):
             self._tabs.append((key, tw, pages, [ids[str(j)] for j in range(len(pages))]))
             self.controls[key] = ("tabs", tw, None)
             return
+        if n.get("fold") and not isinstance(lay, (QHBoxLayout, FlowRow)):
+            lay = make_fold(n["fold"], lay)               # 1.38.13: a long explanation shut behind "Erklärung"
         w, extra = make_control(kind, key, self._post)
         if n.get("note"):                                 # 1.23: a warning line of the model ("Note.TLabel")
             w.setProperty("class", "note")
