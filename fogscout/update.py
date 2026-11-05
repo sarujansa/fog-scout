@@ -88,10 +88,27 @@ def _t(root, text, **kw) -> str:
     return out.format(**kw) if kw else out
 
 
+UNSAFE_PREFIXES = ("SSL_CERT_", "PYTHON", "GIT_")         # 1.38.21 (audit SEC-2): as fogscout/launch.py – this
+UNSAFE_NAMES = ("REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")   # script runs as administrator from start.bat
+
+
+def _clean_environment(environ) -> dict:
+    """``environ`` without the variables a program of the user may set (HKCU\\Environment) to steer git or the
+    certificates it trusts. Proxies stay."""
+    return {k: v for k, v in environ.items()
+            if not (k.upper().startswith(UNSAFE_PREFIXES) or k.upper() in UNSAFE_NAMES)}
+
+
 def _git(root, *args, timeout=15):
-    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")   # never wait for a password
+    # 1.38.21: git runs as administrator in a folder the user writes to – the settings that make git run a program
+    # (hooks, the fsmonitor command, a credential helper) are overridden on the command line, which beats every
+    # config file. The system and global config stay in: without them Git for Windows' core.autocrlf is gone and
+    # every file counts as changed ("eigene Änderungen" – the Windows CI showed it).
+    env = dict(_clean_environment(os.environ), GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")   # never wait for a password
+    hard = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.path.join(root, ".venv", "no-hooks"),
+            "-c", "credential.helper="]
     try:
-        r = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
+        r = subprocess.run(["git", *hard, *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=timeout, env=env,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.TimeoutExpired) as e:

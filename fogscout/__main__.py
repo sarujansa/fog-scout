@@ -298,6 +298,8 @@ def _ask_yes_no(text: str) -> bool:
 
 
 def main():
+    from .launch import harden_start_environment
+    dropped = harden_start_environment()          # 1.38.21: first of all – as administrator, no SSL_CERT_*/PYTHON*/GIT_*
     if len(sys.argv) > 1 and sys.argv[1] == "--helper":      # before anything else: runs with administrator rights
         sys.exit(run_helper(sys.argv[2:]))
     if len(sys.argv) == 2 and sys.argv[1] in ("--install-tasks", "--remove-tasks"):   # 1.32: the installer
@@ -346,6 +348,9 @@ def main():
     _setup_logging(data)
     if taken:
         logging.getLogger("fogscout").info("Aus der start.bat-Installation übernommen: %s", ", ".join(taken))
+    if dropped:
+        logging.getLogger("fogscout").info("Umgebungsvariablen beim Start als Administrator verworfen: %s",
+                                           ", ".join(dropped))
     _log_thread_deaths()
     _log_uncaught()
     clock.step("Log")

@@ -1064,6 +1064,9 @@ class RecordingsTab:
         if not os.path.exists(path):
             self._log(_("Clip fehlt: {file}", file=os.path.basename(path)), "Fehler")
             return
+        if not path.lower().endswith(obsrec.CLIP_EXTS):      # 1.38.21 (audit SEC-5): only the clip kinds we make
+            self._log(_("Keine Videodatei: {file}", file=os.path.basename(path)), "Fehler")
+            return
         self._open(path)
 
     def _clip_edit(self, at=None):
@@ -1350,6 +1353,9 @@ class RecordingsTab:
             return
         if not os.path.exists(path):
             self._log(_("Aufnahme fehlt: {file}", file=r.file), "Fehler")
+            return
+        if not path.lower().endswith(obsrec.VIDEO_EXTS):     # 1.38.21 (audit SEC-5): the index is user-writable –
+            self._log(_("Keine Videodatei: {file}", file=r.file), "Fehler")   # "Abspielen" runs videos only
             return
         self._open(path)
 
