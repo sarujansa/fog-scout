@@ -35,6 +35,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 
 from . import fsops, launch, obsoverlay
+from .fsops import rel_path   # noqa: F401 – 1.38.20: lives in fsops now (ytupload shares it); callers keep obsrec.rel_path
 from .i18n import _
 
 log = logging.getLogger("fogscout")
@@ -53,6 +54,7 @@ RENAME_WAIT = 0.5
 REPLAY_WAIT = 4.0               # 1.5.4: s to wait for OBS to finish writing the replay buffer (it saves asynchronously)
 REPLAY_POLL = 0.2
 MAX_MESSAGE = 16 * 1024 * 1024  # 1.8.38: a WebSocket message larger than this ends the connection (OBS sends KBs)
+MAX_HANDSHAKE = 64 * 1024       # 1.38.20: the HTTP upgrade answer – obs-websocket's is a few hundred bytes
 MAX_ROUND_S = 45 * 60           # a recording longer than this is stopped (an end that was never detected)
 MAX_MANUAL_S = 4 * 3600         # 1.15: a recording started by hand (record_start) ends after this at the latest
 STATUS_POLL_S = 2.0             # 1.15: the recordings page asks OBS for its state this often, only while it is shown
@@ -329,6 +331,9 @@ class ObsClient:
             if not chunk:
                 raise ObsError(_("Keine Antwort von obs-websocket"))
             head += chunk
+            if len(head) > MAX_HANDSHAKE:       # 1.38.20 (audit): a foreign service on the port must not grow the buffer
+                self.close()
+                raise ObsError(_("Kein obs-websocket auf diesem Port"))
         head, self._buf = head.split(b"\r\n\r\n", 1)
         lines = head.decode("latin-1").split("\r\n")
         if " 101 " not in lines[0] + " ":
@@ -454,17 +459,6 @@ class Recording:
     farming: bool = False        # 1.4.2: a farming round (cross-play off) – goes first when room is needed
     pre_s: float = 0.0           # 1.4.2: seconds of pre-roll at the start of the file (0 = none or separate)
     yt: str = ""                 # 1.10: the YouTube video id once uploaded (ytupload)
-
-
-def rel_path(folder: str, name: str) -> str | None:
-    """Absolute path of an index entry's file: a plain name or one inside a subfolder (``Farming/…``), never
-    outside ``folder`` (no absolute path, no ``..``) – None for anything else. Entries use "/" on every system."""
-    if not name or os.path.isabs(name) or name.startswith(("/", "\\")) or ":" in name or "\x00" in name:
-        return None                                   # ":" = a drive letter; NUL: os.remove raises ValueError on it
-    parts = [p for p in re.split(r"[\\/]", name) if p]
-    if not parts or any(p in ("..", ".") for p in parts) or len(parts) > 2:
-        return None
-    return os.path.join(folder, *parts)
 
 
 def adopt_old_file(folder: str, old: str, new: str) -> bool:
@@ -1350,92 +1344,111 @@ class Recorder(threading.Thread):
     IDLE_WAIT_S = 5.0                 # how long the thread waits for a command before its idle work
 
     def run(self):
+        # 1.38.18 (audit, reproduced): the idle work ran only when the queue stayed empty for IDLE_WAIT_S – with the
+        # recordings page shown, a "poll" came every STATUS_POLL_S (2 s), so during a recording neither the full-drive
+        # check nor MAX_ROUND_S/MAX_MANUAL_S nor the recheck ever ran. Now it is due by time, whatever arrives.
+        idle_due = time.monotonic() + self.IDLE_WAIT_S
         while True:
-            wait = self.IDLE_WAIT_S if self._pending is None else max(0.05, min(self.IDLE_WAIT_S, self._pending[1] - time.time()))
+            wait = max(0.0, idle_due - time.monotonic())
+            if self._pending is not None:
+                wait = max(0.05, min(wait, self._pending[1] - time.time()))
             try:
                 cmd, arg = self.cmds.get(timeout=wait)
             except queue.Empty:
-                # 1.16.1 (audit, reproduced): only ObsError was caught here – an OSError while the index was written
-                # (drive unplugged between folder() and the write, disk full, a virus scanner holding the .tmp) ended
-                # the thread for good: no recording ever again, a running OBS recording never filed, nothing in the
-                # log. Every idle step is tried on its own; the thread never dies of one of them.
-                for step in (self._due, self._watchdog, self._recheck, self._look_at_space, self._expire_farming,
-                             self._settle_parts):
-                    try:
-                        step()
-                    except ObsError as e:
-                        self._say(str(e), False, err=True)          # 1.24.6: e.g. StopRecord at the round end
-                    except Exception:
-                        log.exception("OBS-Aufnahme: %s", step.__name__)
-                        self._say(_("Fehler in {step} – siehe Log.", step=step.__name__.strip("_")), False)
+                idle_due = time.monotonic() + self.IDLE_WAIT_S
+                self._idle_work()
                 continue
+            self._command(cmd, arg)
+            if cmd == "quit":
+                return
+            if time.monotonic() >= idle_due:
+                idle_due = time.monotonic() + self.IDLE_WAIT_S
+                self._idle_work()
+
+    def _idle_work(self):
+        # 1.16.1 (audit, reproduced): only ObsError was caught here – an OSError while the index was written
+        # (drive unplugged between folder() and the write, disk full, a virus scanner holding the .tmp) ended
+        # the thread for good: no recording ever again, a running OBS recording never filed, nothing in the
+        # log. Every idle step is tried on its own; the thread never dies of one of them.
+        for step in (self._due, self._watchdog, self._recheck, self._look_at_space, self._expire_farming,
+                     self._settle_parts):
             try:
-                if cmd == "quit":
-                    # 1.8.38: quitting mid-round (or in the tail) stops the recording and our replay buffer –
-                    # else OBS records on, the file is never filed and every later round finds "OBS nimmt schon
-                    # auf" and starts nothing
-                    try:
-                        self._game_changed(False)
-                    except Exception:
-                        log.exception("OBS-Aufnahme beim Beenden")
-                    return
-                if cmd == "config":
-                    changed = arg != self.cfg
-                    self.cfg = arg
-                    self._look_at_space(force=True)    # the tile follows a new folder/switch at once
-                    if changed and self._game:         # 1.8.42 (user: "Fenster wurde nicht hinterlegt"): a setting
-                        self._ready = False            # changed while DBD runs – OBS is set up again within seconds,
-                        self._next_check = 0.0         # not only at the next DBD start
-                elif cmd == "test":
-                    self._test()
-                elif cmd == "start":
-                    self._begin(arg)
-                elif cmd == "early":
-                    self._begin_early(arg)
-                elif cmd == "relabel":
-                    if self.active is not None:
-                        self.active.update({k: v for k, v in arg.items() if k in ("map_id", "label") and v})
-                elif cmd == "clip":
-                    self._instant_clip(arg)
-                elif cmd == "audio":
-                    self._audio_now()
-                elif cmd == "stop":
-                    self._stop_later(arg)
-                elif cmd == "game":
-                    if arg != self._game:               # 1.12.3: the ticks of a busy thread queued it again and
-                        self._game_changed(arg)         # again – each reset the once-per-DBD-start guards
-                elif cmd == "overlay":
-                    self._overlay_moved(arg)
-                elif cmd == "mark":
-                    self._mark()
-                elif cmd == "rec_start":
-                    self._manual_start(arg)
-                elif cmd == "rec_stop":
-                    self._manual_stop()
-                elif cmd == "rec_pause":
-                    self._pause(arg)
-                elif cmd == "quality":
-                    self._quality(arg)
-                elif cmd == "poll":
-                    self._poll_waiting = False
-                    self._poll()
-                elif cmd == "keep":
-                    self._set_keep(*arg)
-                elif cmd == "delete":
-                    self._delete_one(arg)
-                elif cmd == "farming":
-                    self._set_farming(*arg)
-                elif cmd == "link":
-                    self._set_link(*arg)
-                elif cmd == "clip_add":
-                    self._add_clip(arg)
-                elif cmd == "clip_delete":
-                    self._delete_clip(arg)
+                step()
             except ObsError as e:
-                self._say(str(e), False, err=True)
-            except Exception as e:                     # never let the thread die
-                log.exception("OBS-Aufnahme")
-                self._say(_("Fehler: {error}", error=e), False, err=True)
+                self._say(str(e), False, err=True)          # 1.24.6: e.g. StopRecord at the round end
+            except Exception:
+                log.exception("OBS-Aufnahme: %s", step.__name__)
+                self._say(_("Fehler in {step} – siehe Log.", step=step.__name__.strip("_")), False)
+
+    def _command(self, cmd, arg):
+        """One command from the queue; "quit" stops OBS's recording and our buffer (the caller ends the thread)."""
+        try:
+            if cmd == "quit":
+                # 1.8.38: quitting mid-round (or in the tail) stops the recording and our replay buffer –
+                # else OBS records on, the file is never filed and every later round finds "OBS nimmt schon
+                # auf" and starts nothing
+                try:
+                    self._game_changed(False)
+                except Exception:
+                    log.exception("OBS-Aufnahme beim Beenden")
+                return
+            if cmd == "config":
+                changed = arg != self.cfg
+                self.cfg = arg
+                self._look_at_space(force=True)    # the tile follows a new folder/switch at once
+                if changed and self._game:         # 1.8.42 (user: "Fenster wurde nicht hinterlegt"): a setting
+                    self._ready = False            # changed while DBD runs – OBS is set up again within seconds,
+                    self._next_check = 0.0         # not only at the next DBD start
+            elif cmd == "test":
+                self._test()
+            elif cmd == "start":
+                self._begin(arg)
+            elif cmd == "early":
+                self._begin_early(arg)
+            elif cmd == "relabel":
+                if self.active is not None:
+                    self.active.update({k: v for k, v in arg.items() if k in ("map_id", "label") and v})
+            elif cmd == "clip":
+                self._instant_clip(arg)
+            elif cmd == "audio":
+                self._audio_now()
+            elif cmd == "stop":
+                self._stop_later(arg)
+            elif cmd == "game":
+                if arg != self._game:               # 1.12.3: the ticks of a busy thread queued it again and
+                    self._game_changed(arg)         # again – each reset the once-per-DBD-start guards
+            elif cmd == "overlay":
+                self._overlay_moved(arg)
+            elif cmd == "mark":
+                self._mark()
+            elif cmd == "rec_start":
+                self._manual_start(arg)
+            elif cmd == "rec_stop":
+                self._manual_stop()
+            elif cmd == "rec_pause":
+                self._pause(arg)
+            elif cmd == "quality":
+                self._quality(arg)
+            elif cmd == "poll":
+                self._poll_waiting = False
+                self._poll()
+            elif cmd == "keep":
+                self._set_keep(*arg)
+            elif cmd == "delete":
+                self._delete_one(arg)
+            elif cmd == "farming":
+                self._set_farming(*arg)
+            elif cmd == "link":
+                self._set_link(*arg)
+            elif cmd == "clip_add":
+                self._add_clip(arg)
+            elif cmd == "clip_delete":
+                self._delete_clip(arg)
+        except ObsError as e:
+            self._say(str(e), False, err=True)
+        except Exception as e:                     # never let the thread die
+            log.exception("OBS-Aufnahme")
+            self._say(_("Fehler: {error}", error=e), False, err=True)
 
     def _say(self, text, ok, err=False):
         """``err`` (1.24.5): a failure (OBS away, password, protocol) – red in the settings, not a hint in amber;
