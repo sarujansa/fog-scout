@@ -214,3 +214,19 @@ def test_claude_switches_and_recent_picks_of_the_wrong_type_read_as_their_defaul
     s = config.Settings(str(p))
     assert s.get("palette_recent") == ["a:scan"] and s.get("claude_on") is True
     assert s.get("rec_port") == "4455"                  # only the TYPED keys are checked, nothing else changes
+
+
+def test_the_picked_claude_model_survives_a_restart(tmp_path):
+    """1.38.17 (audit): _typed knew bool and list only – every str fell through to the default, so "haiku" or
+    "sonnet" read back as "opus" at every start and each request cost the Opus price. A wrong type still reads as
+    the default; a stored non-dict for a dict key too."""
+    p = tmp_path / "model.json"
+    for stored, want in (("haiku", "haiku"), ("sonnet", "sonnet"), ("opus", "opus"), (7, "opus"), (None, "opus"),
+                         (["haiku"], "opus")):
+        p.write_text(json.dumps({"claude_model": stored, "settings_version": config.SETTINGS_VERSION}),
+                     encoding="utf-8")
+        assert config.Settings(str(p)).get("claude_model") == want, stored
+    p.write_text(json.dumps({"claude_spent": "3.5", "rec_obs_before": [1]}), encoding="utf-8")
+    s = config.Settings(str(p))
+    assert s.get("claude_spent") == config.DEFAULTS["claude_spent"]
+    assert s.get("rec_obs_before") == config.DEFAULTS["rec_obs_before"]
