@@ -56,3 +56,27 @@ def test_the_self_check_reports_the_start_times(tmp_path):
     c = starttime.StartClock(before=0.4)
     res = selftest.run(str(tmp_path), c)
     assert res["start"]["python_ms"] == 400 and res["start"]["modules_ms"] >= 0
+
+
+def test_steps_inside_the_phases_say_where_the_time_goes():
+    """1.38.15 (user's Windows diagnosis: "Ladebildschirm 1,18 · Aufbau 1,24", on Linux 0,16 s up to the splash): the
+    steps are a second line; each is the span since the point (step or mark) before it, the first time counts."""
+    c = starttime.StartClock(before=0.2, now=0.0)
+    c.step("Einstellungen", now=0.1)
+    c.step("Qt laden", now=0.5)
+    c.step("Qt laden", now=0.9)                                          # a second time: not counted
+    c.mark("splash", now=0.6)
+    c.mark("loaded", now=0.8)
+    c.step("Katalog", now=1.0)
+    c.mark("built", now=1.5)
+    c.mark("ready", now=1.6)
+    assert [(label, round(ms)) for label, ms in c.steps_ms()] == [("Einstellungen", 100), ("Qt laden", 400),
+                                                                   ("Katalog", 200)]
+    assert c.diag().splitlines() == ["Start: 1,80 s (bis Python 0,20 · Ladebildschirm 0,60 · Laden 0,20 · "
+                                     "Aufbau 0,70 · Fenster 0,10)",
+                                     "  Schritte: Einstellungen 0,10 · Qt laden 0,40 · Katalog 0,20"]
+    assert c.as_dict()["steps"] == {"Einstellungen": 100, "Qt laden": 400, "Katalog": 200}
+    plain = starttime.StartClock(before=None, now=0.0)
+    plain.mark("ready", now=1.0)
+    assert "Schritte" not in plain.diag() and "steps" not in plain.as_dict()
+
