@@ -1850,8 +1850,11 @@ class StatsTab:
                 and not self.simulate:
             self._official_open(True)
         if now >= self._off_next:
-            self._off_next = now + (3.0 if now < self._off_fast_until else 20.0)
-            self._official_take()
+            fast = now < self._off_fast_until
+            self._off_next = now + (3.0 if fast else 20.0)
+            # 1.38.7: list the folder only when it changed (the user waits for the file in the fast phase: always)
+            if fast or self._off_watch.due(self._official_folder(), now):
+                self._official_take()
 
     def _official_take(self):
         res = official.take_downloads(self._official_folder(), self._official_path(), time.time())
