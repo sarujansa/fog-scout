@@ -1636,21 +1636,18 @@ class StatsTab:
         if getattr(self, "_record_key", None) != key:
             j = self._joined()
             pairs = [(r, j.off[id(r)]) for r in j.rounds if id(r) in j.off and history.normal(r)]
-            self._record_cache, self._record_key = official.results(pairs, lambda r: r.map_id), key
+            # 1.38.28 (F2): by map and by map × killer (own killer, or the lobby's as survivor), in time order
+            self._record_cache = (records.record_groups(pairs, lambda r: r.map_id),
+                                  records.record_groups(pairs, lambda r: (r.map_id, r.killer)))
+            self._record_key = key
         return self._record_cache
 
-    def _record_text(self, map_id, role):
-        """Line under the timer: Ø kills (killer) or share escaped (survivor) on this map – the role of the
-        round if known, else the one played more often there; "" with fewer than RECORD_MIN rounds."""
-        g = self._map_records().get(map_id) or {}
-        ks, es = g.get("kills") or [], g.get("escaped") or []
-        if role not in ("killer", "survivor"):
-            role = "killer" if len(ks) >= len(es) else "survivor"
-        if role == "killer" and len(ks) >= RECORD_MIN:
-            return _("Ø {kills} Kills · {n} Runden", kills=f"{sum(ks) / len(ks):.1f}", n=len(ks))
-        if role == "survivor" and len(es) >= RECORD_MIN:
-            return _("{share} entkommen · {n} Runden", share=f"{sum(es) / len(es):.0%}", n=len(es))
-        return ""
+    def _record_text(self, map_id, role, killer=""):
+        """Line under the timer: Ø kills (killer) or share escaped (survivor) on this map – with this killer when
+        enough rounds say so (1.38.28), else the map alone; the role of the round if known, else the one played
+        more often there; "" with fewer than RECORD_MIN rounds (records.record_line)."""
+        by_map, by_pair = self._map_records()
+        return records.record_line(by_map, by_pair, map_id, role, killer or "", killer_label, RECORD_MIN)
 
     def _update_record(self):
         """Own record for the map on display into the overlay (setting overlay.show_record)."""
@@ -1658,7 +1655,8 @@ class StatsTab:
         hist = self._hist or {}
         if self.current and self.settings["overlay"].get("show_record", False) and not hist.get("custom"):
             try:
-                text = self._record_text(self.current[0], hist.get("role") or self._queue.get("role"))
+                text = self._record_text(self.current[0], hist.get("role") or self._queue.get("role"),
+                                         hist.get("killer") or self._queue.get("killer") or "")
             except Exception:
                 log.exception("record")
         self.overlay.set_record(text)

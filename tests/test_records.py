@@ -88,3 +88,31 @@ def test_fastest_4k_takes_the_pages_time_and_names_the_killer(monkeypatch):
     tiles = {t.title: t for t in records.tiles(rs, list(zip(rs, ms)), lambda k: k.title())}
     assert tiles["Schnellste 4K"].value == "07:00" and tiles["Schnellste 4K"].sub.startswith("Huntress · Badham ·")
     assert records.fastest_four([]) is None
+
+
+def test_the_overlay_record_line_prefers_this_map_with_this_killer_and_names_a_streak():
+    """1.38.28 (project review F2): the line under the timer counted the map over all killers; now map × killer
+    first (own killer, or the lobby's as survivor) when it has enough results, the map alone otherwise; a current
+    streak of two or more is named. Below the minimum: nothing."""
+    t0 = _t(2, 10)
+    rs = [Round(t=t0 + i * 1800, seconds=600, map_id="a", map="Coal Tower", role="killer",
+                killer="nurse" if i % 2 == 0 else "wraith") for i in range(8)]
+    ms = [_killer_match(r.t, k) for r, k in zip(rs, (4, 1, 4, 2, 4, 2, 4, 3))]       # nurse: 4,4,4,4 · wraith: 1,2,2,3
+    pairs = list(zip(rs, ms))
+    by_map = records.record_groups(pairs, lambda r: r.map_id)
+    by_pair = records.record_groups(pairs, lambda r: (r.map_id, r.killer))
+    name = lambda k: k.title()                                                   # noqa: E731
+    assert records.record_line(by_map, by_pair, "a", "killer", "nurse", name) == "Ø 4.0 Kills · 4 Runden als Nurse · 4K-Serie 4"
+    assert records.record_line(by_map, by_pair, "a", "killer", "wraith", name) == "Ø 2.0 Kills · 4 Runden als Wraith"
+    assert records.record_line(by_map, by_pair, "a", "killer", "", name) == "Ø 3.0 Kills · 8 Runden"       # no killer known
+    assert records.record_line(by_map, by_pair, "a", "killer", "hag", name) == "Ø 3.0 Kills · 8 Runden"    # none with her: the map
+    assert records.record_line(by_map, by_pair, "a", "", "nurse", name).startswith("Ø 4.0 Kills")          # role from the map
+    assert records.record_line(by_map, by_pair, "b", "killer", "nurse", name) == ""                        # never played there
+    # survivor: escapes against this killer, the escape streak; fewer than min_rounds → the map
+    sv = [Round(t=t0 + 90000 + i * 1800, seconds=600, map_id="a", map="Coal Tower", role="survivor", killer="nurse")
+          for i in range(3)]
+    sm = [_survivor_match(r.t, e) for r, e in zip(sv, (False, True, True))]
+    by_map = records.record_groups(list(zip(sv, sm)), lambda r: r.map_id)
+    by_pair = records.record_groups(list(zip(sv, sm)), lambda r: (r.map_id, r.killer))
+    assert records.record_line(by_map, by_pair, "a", "survivor", "nurse", name) == "67% entkommen · 3 Runden gegen Nurse · Entkommen-Serie 2"
+    assert records.record_line(by_map, by_pair, "a", "survivor", "nurse", name, min_rounds=4) == ""

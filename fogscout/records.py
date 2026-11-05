@@ -163,3 +163,46 @@ def tiles(rounds, pairs, killer_name=None) -> list:
         out.append(Tile(_("Schnellste 4K"), fmt_duration(seconds),
                         " · ".join(x for x in (who, r.map, _date(r.t)) if x)))
     return out
+
+
+# ---------------------------------------------------------------- 1.38.28 (project review F2): the overlay's record line
+def record_groups(pairs, key) -> dict:
+    """{key(round): [(start, kills, escaped)]} of rounds tied to an official match (pairs: [(round, match)]) –
+    the raw material of ``record_line``: averages and, in time order, streaks."""
+    out = {}
+    for r, m in pairs:
+        out.setdefault(key(r), []).append((r.t, official.kills(m), official.escaped(m)))
+    return out
+
+
+def record_line(by_map: dict, by_pair: dict, map_id: str, role: str, killer: str, killer_name=None,
+                min_rounds: int = 3) -> str:
+    """The line under the timer for the map on display. With a killer known for this round (own as killer, the
+    lobby's as survivor) and at least ``min_rounds`` results on this map with that killer: "Ø 3.2 Kills · 5 Runden
+    als Nurse" / "40 % entkommen · 5 Runden gegen Nurse"; else the map alone as before (1.8.x). A current streak of
+    two or more in the group shown is appended ("4K-Serie 3", "Entkommen-Serie 2"). "" below ``min_rounds``."""
+    name = (killer_name or (lambda k: k))(killer) if killer else ""
+    whole = by_map.get(map_id) or []
+    pair = (by_pair.get((map_id, killer)) or []) if killer else []
+    if role not in ("killer", "survivor"):
+        ks = [k for _t, k, _e in whole if k is not None]
+        es = [e for _t, _k, e in whole if e is not None]
+        role = "killer" if len(ks) >= len(es) else "survivor"
+    for group, with_killer in ((pair, True), (whole, False)):
+        if role == "killer":
+            ks = [(t, k) for t, k, _e in group if k is not None]
+            if len(ks) >= min_rounds:
+                avg = f"{sum(k for _t, k in ks) / len(ks):.1f}"
+                text = (_("Ø {kills} Kills · {n} Runden als {killer}", kills=avg, n=len(ks), killer=name) if with_killer
+                        else _("Ø {kills} Kills · {n} Runden", kills=avg, n=len(ks)))
+                run = streak([(t, k == 4) for t, k in ks]).current
+                return text + (" · " + _("4K-Serie {n}", n=run) if run >= 2 else "")
+        else:
+            es = [(t, e) for t, _k, e in group if e is not None]
+            if len(es) >= min_rounds:
+                share = f"{sum(1 for _t, e in es if e) / len(es):.0%}"
+                text = (_("{share} entkommen · {n} Runden gegen {killer}", share=share, n=len(es), killer=name)
+                        if with_killer else _("{share} entkommen · {n} Runden", share=share, n=len(es)))
+                run = streak(es).current
+                return text + (" · " + _("Entkommen-Serie {n}", n=run) if run >= 2 else "")
+    return ""
