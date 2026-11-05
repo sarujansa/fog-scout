@@ -227,6 +227,14 @@ EN = {
     "Keine Meldung, solange DBD im Vordergrund ist – dann siehst du die Lobby ja selbst.":
         "No notification while DBD is in front – then you see the lobby yourself.",
     # 1.13: bloodpoint cap
+    "Bilanz der Sitzung zeigen, wenn DBD beendet wurde": "Show the session's numbers when DBD is closed",
+    "Etwa 15 s nachdem DBD geschlossen wurde: eine Meldung mit den Runden der Sitzung, der Spielzeit und – mit "
+    "Match-Daten – Ø Kills, Entkommen und Bloodpoints. Steht auch im Log.":
+        "About 15 s after DBD was closed: a notification with the session's rounds, the play time and – with match "
+        "data – Ø kills, escapes and bloodpoints. Also in the log.",
+    "Sitzung beendet": "Session over",
+    "1 Runde": "1 round",
+    "{bp} BP": "{bp} BP",
     "Melden, wenn eine Runde keine Blutpunkte gebracht hat (Cap erreicht)":
         "Notify when a round brought no bloodpoints (cap reached)",
     "Fog Scout liest in der Lobby den Blutpunkte-Stand oben rechts. Ist er nach einer gezählten Runde derselbe wie "

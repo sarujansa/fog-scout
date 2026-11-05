@@ -115,6 +115,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.round = RoundTimer()        # runs while a map is on display
         self._hist = None                # round for the statistics: detected map -> detected end of the match
         self._off_open = OpenAfterGame()  # official match data: open the stats page once DBD was closed
+        self._session_end = OpenAfterGame()   # 1.38.27: the session's numbers once DBD was closed (same timing)
         self._off_watch = FolderWatch()          # 1.38.7: the download folder listed only when it changed
         self._off_next = self._off_fast_until = 0.0     # next look into the download folder / look often until
         self._off_script = 0             # version of the userscript that saved the last file
