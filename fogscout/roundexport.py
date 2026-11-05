@@ -7,6 +7,7 @@ a CSV file for Excel (semicolon, UTF-8 with BOM) or a plain text list, one line 
 from __future__ import annotations
 
 import csv
+import json
 import datetime
 import io
 import time
@@ -22,12 +23,16 @@ COLUMNS = (("start", N_("Start")), ("end", N_("Ende")), ("duration", N_("Dauer")
            ("realm", N_("Realm")), ("role", N_("Rolle")), ("killer", N_("Killer")), ("kind", N_("Art")),
            ("wait", N_("Wartezeit")), ("region", N_("Region")), ("ping", N_("Ping (ms)")), ("kills", N_("Kills")),
            ("escaped", N_("Entkommen")), ("bp", N_("Bloodpoints")), ("opponents", N_("Gegner")),
-           ("balance", N_("BP-Stand")))         # 1.13: balance read in the lobby after the round
+           ("balance", N_("BP-Stand")),         # 1.13: balance read in the lobby after the round
+           # 1.38.32 (project review F8): what the round and the match data knew but the export left out
+           ("stalls", N_("Aussetzer")), ("fps", N_("Ø FPS")), ("mode", N_("Spielmodus")),
+           ("character", N_("Eigener Charakter")), ("perks", N_("Eigene Perks")))
 DEFAULT_COLUMNS = ("start", "duration", "map", "role", "killer", "kills", "escaped", "bp")
 PRESETS = (("day", N_("Heute")), ("yesterday", N_("Gestern")), ("7d", N_("Letzte 7 Tage")),
            ("30d", N_("Letzte 30 Tage")), ("week", N_("Diese Woche")), ("month", N_("Dieser Monat")),
            ("year", N_("Dieses Jahr")), ("all", N_("Alles")), ("custom", N_("Eigener Zeitraum")))
-FORMATS = (("csv", N_("CSV-Datei (Excel)")), ("text", N_("Textliste (eine Zeile je Runde)")))
+FORMATS = (("csv", N_("CSV-Datei (Excel)")), ("text", N_("Textliste (eine Zeile je Runde)")),
+           ("json", N_("JSON (für eigene Auswertungen)")))      # 1.38.32
 WHEN = "%d.%m.%Y %H:%M"
 PREVIEW_LINES = 3
 
@@ -151,6 +156,19 @@ def cell(key: str, r, m, names: Names) -> str:
         return ", ".join(sorted(official.opponent_names(m))) if m is not None else ""
     if key == "balance":
         return str(r.balance) if r.balance is not None else ""
+    if key == "stalls":
+        return str(r.stalls) if r.stalls is not None else ""
+    if key == "fps":
+        fps = (r.sys or {}).get("fps")
+        return f"{fps:.0f}" if fps else ""
+    if key == "mode":
+        mode = m.mode if m is not None else None
+        return str(mode[1]) if isinstance(mode, list) and len(mode) > 1 and mode[1] else ""
+    if key == "character":
+        return m.character if m is not None and m.character else ""
+    if key == "perks":
+        perks = m.perks if m is not None else []
+        return ", ".join(str(p[1]) for p in perks if isinstance(p, list) and len(p) > 1 and p[1])
     return ""
 
 
@@ -177,16 +195,36 @@ def text_lines(rows) -> list:
     return [" · ".join(c for c in row if c) for row in rows]
 
 
+def json_text(head, rows) -> str:
+    """1.38.32 (F8): one object per round, the column titles as keys – for own evaluations (Python, Sheets, jq)."""
+    return json.dumps([dict(zip(head, row)) for row in rows], ensure_ascii=False, indent=1) + "\n"
+
+
+def text_of(fmt: str, head, rows) -> str:
+    if fmt == "csv":
+        return csv_text(head, rows)
+    if fmt == "json":
+        return json_text(head, rows)
+    return "\n".join(text_lines(rows)) + ("\n" if rows else "")
+
+
+SUFFIX = {"csv": ".csv", "text": ".txt", "json": ".json"}
+PATTERN = {"csv": "CSV (*.csv)", "text": "Text (*.txt)", "json": "JSON (*.json)"}
+
+
 def write(path: str, fmt: str, head, rows) -> int:
-    """The CSV (UTF-8 with BOM, so Excel reads the umlauts) or the text list into ``path``; rounds written."""
-    text = csv_text(head, rows) if fmt == "csv" else "\n".join(text_lines(rows)) + ("\n" if rows else "")
+    """The CSV (UTF-8 with BOM, so Excel reads the umlauts), the text list or JSON into ``path``; rounds written."""
+    text = text_of(fmt, head, rows)
     with open(path, "w", encoding="utf-8-sig" if fmt == "csv" else "utf-8", newline="") as fh:
         fh.write(text)
     return len(rows)
 
 
 def preview(fmt: str, head, rows, limit: int = PREVIEW_LINES) -> str:
-    lines = csv_text(head, rows[:limit]).splitlines() if fmt == "csv" else text_lines(rows[:limit])
+    if fmt == "json":
+        lines = json_text(head, rows[:limit]).splitlines()
+    else:
+        lines = csv_text(head, rows[:limit]).splitlines() if fmt == "csv" else text_lines(rows[:limit])
     if len(rows) > limit:
         lines.append("…")
     return "\n".join(lines)

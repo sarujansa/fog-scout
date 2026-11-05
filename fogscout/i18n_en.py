@@ -252,6 +252,21 @@ EN = {
     "Blutpunkte: +{gain} in dieser Runde, Stand {bp}.": "Bloodpoints: +{gain} this round, balance {bp}.",
     "Blutpunkte: Stand {bp} nach der Runde, vorher {before}.": "Bloodpoints: balance {bp} after the round, {before} before.",
     "BP-Stand": "BP balance",
+    "Aussetzer": "Stalls",
+    "Alles sichern (ZIP) …": "Back up everything (ZIP) …",
+    "Alles sichern": "Back up everything",
+    "Gesichert: {n} Dateien in {path}": "Backed up: {n} files to {path}",
+    "Sichern fehlgeschlagen: {error}": "Backup failed: {error}",
+    "Packt Runden, Match-Daten, die Einstellungen (ohne Passwörter und PC-eigene Werte), eigene Kartenbilder und den "
+    "Banner-Korpus in eine ZIP-Datei – zum Aufbewahren oder für einen anderen PC. Aufnahmen und Logs bleiben draussen.":
+        "Puts rounds, match data, the settings (without passwords and this PC's own values), own map pictures and the "
+        "banner corpus into one ZIP file – to keep or for another PC. Recordings and logs stay out.",
+    "Spielmodus": "Game mode",
+    "Eigener Charakter": "Own character",
+    "Eigene Perks": "Own perks",
+    "JSON (für eigene Auswertungen)": "JSON (for your own evaluations)",
+    "Eine Liste mit einem Objekt je Runde, die Spaltentitel als Schlüssel – für eigene Auswertungen (Python, Tabellen, jq).":
+        "A list with one object per round, the column titles as keys – for your own evaluations (Python, sheets, jq).",
     "Rolle für {map} ({when}) auf {role} geändert.": "Role for {map} ({when}) changed to {role}.",
     "Rolle konnte nicht gespeichert werden: {error}": "Could not save the role: {error}",
     "Diese Runde als Killer-Runde zählen (falls die Erkennung falsch lag).":
