@@ -84,3 +84,24 @@ def test_the_corpus_keeps_the_newest_decisions_skips_foreign_files_and_exports_a
     with zipfile.ZipFile(dest) as z:
         assert sorted(z.namelist()) == [stamps[4] + ".jpg", stamps[4] + ".json"]
     assert corpus.entries(str(tmp_path / "nowhere")) == [] and corpus.count(str(tmp_path / "nowhere")) == 0
+
+
+# ------------------------------------------------------------------ the real corpus (user export 05.11.2026)
+REAL = os.path.join(ROOT, "tests", "data")      # corpus.folder(REAL) = tests/data/corpus
+
+
+def test_the_real_corpus_holds_only_our_pairs_without_names():
+    """1.38.38: the banners Saru exported ("Korpus exportieren …") – each a JPEG of the strip around the line and its
+    JSON; the first 9, 3440×1440 and a 1071×601 window. Only map and realm are in the picture (checked by eye)."""
+    entries = corpus.entries(REAL)
+    names = sorted(os.listdir(corpus.folder(REAL)))
+    assert len(entries) >= 9 and len(names) == 2 * len(entries)
+    for e in entries:
+        assert set(e.meta) >= {"map_id", "frame", "roi", "offset"} and "path" not in json.dumps(e.meta).lower()
+
+
+def test_every_banner_of_the_real_corpus_is_read_as_its_map_again():
+    """1.38.38 (project review T1): the full banner pipeline on every exported crop, back on a black strip of the
+    original size – any change to the separator search, the crop or the scoring that loses one of them fails here."""
+    rep = corpus.check(REAL, _reader())
+    assert rep.broken == 0 and rep.misses == [] and rep.hits == rep.total >= 9

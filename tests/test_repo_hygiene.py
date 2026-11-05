@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNTIME = re.compile(r"(^|/)(settings\.json(\.broken)?|(fogscout|dbdmapscout)\.log|diagnose\.txt|rounds\.jsonl|"
                      r"official\.jsonl|update_status\.txt|(fogscout|dbdmapscout)-crash(-last)?\.txt|"
                      r"(fogscout|dbdmapscout)-matches.*\.json|(fogscout|dbdmapscout)-structure\.json)$|"
-                     r"(^|/)(debug|user_maps|cache|backup|\.venv)/")
+                     r"(^|/)(debug|user_maps|cache|backup|\.venv)/|^corpus/")
 SECRET = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|"
                     r"github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|"
                     r"sk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_-]{40,}")      # review F-02: the user's own Claude key
