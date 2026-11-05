@@ -6,10 +6,9 @@ import time
 
 from . import launch, spotify
 from . import uimodel as ui
-from .i18n import N_, _
+from .i18n import _
+from .appconst import MEDIA_NEXT_N, MEDIA_NEXT_SPOTS   # noqa: F401 – 1.38.36: shared choices live in appconst
 
-MEDIA_NEXT_SPOTS = [("below", N_("Unter dem Lied")), ("right", N_("Rechts neben dem Lied"))]
-MEDIA_NEXT_N = (1, 5)                      # tracks shown
 LIST_FRESH_S = spotify.POLL_S + 15.0       # 1.8.36: a list this old still counts for Spotify's own session
 SONG_LAG_S = 2.0                           # 1.8.37: …but only when read this long after the song started (a skip
                                            # is answered with the old queue for a moment)

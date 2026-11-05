@@ -15,7 +15,7 @@ from . import autostart
 from .connwatch import is_admin
 from .paths import frozen
 from .i18n import N_, _
-from .app_hotkeys import HOTKEY_LABELS
+from .appconst import HOTKEY_LABELS
 from .textnorm import fmt_duration
 
 log = logging.getLogger("fogscout")
@@ -737,7 +737,7 @@ class SettingsTab:
             self.conn_show_var.set(on)
             self._conn_toggled()
         elif key == "sysinfo":
-            from .app_sysinfo import HUD_SIDES
+            from .appconst import HUD_SIDES
             side = (getattr(self, "_sysinfo_last", "") or "right") if on else "off"   # back to where it was
             self.sysinfo_var.set(_(dict(HUD_SIDES)[side]))
             self._sysinfo_changed()

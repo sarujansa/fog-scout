@@ -8,24 +8,15 @@ import time
 
 from . import dashboard, history, layout, media, official, qt_theme, selfload, skin, spotify, sysinfo
 from .capture import IS_WIN
-from .i18n import N_, _
+from .i18n import _
 from .textnorm import fmt_duration
+from .appconst import BAR_ALIGNS, HUD_ROW_LABELS, HUD_SIDES, MAP_SCALE, MEDIA_SPOTS, MEDIA_STYLES, OPACITY_KEYS, PRESET_LABELS, SELECTABLE, TODAY_SPOTS   # noqa: F401 – 1.38.36: shared choices live in appconst
+_SHARED = (BAR_ALIGNS, HUD_ROW_LABELS, HUD_SIDES, MAP_SCALE, MEDIA_SPOTS, MEDIA_STYLES, OPACITY_KEYS, PRESET_LABELS, SELECTABLE, TODAY_SPOTS)   # re-exported for older imports (app_sysinfo.SELECTABLE …)
 
 log = logging.getLogger("fogscout")
 
-HUD_SIDES = [("off", N_("Aus")), ("above", N_("Direkt über der Karte (wandert mit)")),
-             ("left", N_("Links oben (über der Karte)")), ("right", N_("Rechts oben")),
-             ("custom", N_("Eigene Position (mit der Maus verschieben)"))]
 HUD_SHOWN = ("above", "left", "right", "custom")
 HWINFO_WAIT_S = 20       # 1.8.86: s the monitor runs without HWiNFO before the log says so
-
-BAR_ALIGNS = [("left", N_("Links")), ("centre", N_("Mittig")), ("right", N_("Rechts"))]     # 1.2.8
-PRESET_LABELS = [("left", N_("Alles links")), ("right", N_("Alles rechts")),           # 1.2.9 (layoutmem.PRESETS)
-                 ("spread", N_("Verteilt: Karte links, Werte rechts")),
-                 ("standard", N_("Standard (wie ausgeliefert)"))]                         # 1.2.17 (config.DEFAULTS)
-HUD_ROW_LABELS = [("cpu", N_("Zeile CPU (Temperatur, Last)")), ("gpu", N_("Zeile GPU (Temperatur, Last)")),
-                  ("spot", N_("Zeile Hotspot / GPU-Speicher (HWiNFO)")), ("vram", N_("Zeile VRAM")),
-                  ("ram", N_("Zeile RAM"))]
 
 
 def today_mode(hist, queue: dict, last, farm_on: bool) -> str:
@@ -73,21 +64,8 @@ def today_rows(j, now: float, mode: str | None = None) -> list:
     return rows
 
 
-MEDIA_SPOTS = [("below", N_("Unter den Systemwerten")), ("under_today", N_("Unter „Heute“")),
-               ("bottom_right", N_("Rechts unten im Balken")), ("bottom_left", N_("Links unten im Balken")),
-               ("custom", N_("Eigene Position (mit der Maus verschieben)"))]
-TODAY_SPOTS = [("below", N_("Unter den Systemwerten")), ("under_music", N_("Unter der Musik")),
-               ("bottom_right", N_("Rechts unten im Balken")), ("bottom_left", N_("Links unten im Balken")),
-               ("custom", N_("Eigene Position (mit der Maus verschieben)"))]
-OPACITY_KEYS = {"hud": "hud_opacity", "today": "today_opacity", "music": "media_opacity",   # 1.2.7; else "opacity"
-                "text": "info_opacity"}      # 1.8.24: the lines as their own element
-MEDIA_STYLES = [("big", N_("Gross – Cover oben, Titel darunter")), ("compact", N_("Kompakt – Cover links"))]
 MEDIA_SCALE = (60, 200)                     # slider of the music card, percent
 HUD_SCALE = (60, 200)                       # size of the system values / "today", percent (1.64.9)
-MAP_SCALE = (15, 90)                        # size of the map, percent of the game height
-# 1.64.9 (user: one size for what was picked instead of three sliders): the elements of the preview
-SELECTABLE = (("map", N_("Karte")), ("text", N_("Infos und Schrift (Name, Timer, Bilanz, Server)")),
-              ("hud", N_("Systemwerte")), ("today", N_("Heute")), ("music", N_("Musik")))
 TODAY_SCALE = (60, 200)                     # size of "today", percent (1.2.6)
 TEXT_SCALE = (50, 200)                      # size of the map's name/timer/info lines, percent (1.65)
 TEXT_BASE = 0.36                            # … of the text at the standard map size (share of the game height)
