@@ -3211,3 +3211,19 @@ def test_check_connection_opens_the_obs_card_on_connections_and_shows_the_test_t
         assert tabs[0][0].tabText(tabs[0][0].currentIndex()) == "Verbindungen"
     finally:
         app.quit()
+
+
+def test_the_app_marks_its_steps(app_root):
+    """1.38.15: App() with a clock records its build steps in order (the diagnosis' line "Schritte:")."""
+    import json
+    from fogscout import starttime
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    clock = starttime.StartClock(before=0.1)
+    app = App(str(app_root), simulate=str(app_root / "sim"), start_clock=clock)
+    try:
+        labels = [label for label, _ms in clock.steps_ms()]
+        assert labels == ["Einstellungen (App)", "Katalog", "Qt-Schleife", "OBS, Verbindung", "Overlay", "Seitenmodell",
+                          "Erkennung, Hotkeys", "Server, Updates, Sicherung", "Infobereich", "Steuerfenster"]
+    finally:
+        app.quit()
