@@ -1,0 +1,37 @@
+{
+"format": "fogscout-corpus",
+"version": 1,
+"program": "1.38.33",
+"t": 1793911926.372,
+"map_id": "shattered-square",
+"variant": 1,
+"probability": 1.0,
+"name_text": "THE SHATTERED SQUARE",
+"realm_text": "THEDECIMATEDBORGO",
+"name_fit": 0.03,
+"frame": [
+1071,
+601
+],
+"roi": [
+685,
+282
+],
+"offset": [
+0,
+109
+],
+"separator": {
+"x0": 61,
+"x1": 338,
+"y": 204,
+"frac": 0.2593,
+"thickness": 1.0
+},
+"letterboxed": false,
+"bars": null,
+"languages": [
+"en",
+"de"
+]
+}
