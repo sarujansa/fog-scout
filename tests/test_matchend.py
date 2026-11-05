@@ -234,6 +234,18 @@ def test_in_trial_for_scan_throttling():
     assert not MatchEndTracker().in_trial         # nothing on display
 
 
+def test_a_confirmed_search_is_looked_at_every_three_seconds_only():
+    """1.38.37 (Windows diagnosis: lobby OCR 207 ms on 112 of 120 looks while searching – the clock below CANCEL
+    changes every second): a search the tracker confirmed is read every SEARCH_INTERVAL; everything else, and a
+    first search look still to be confirmed, every second – READY, the countdown and the end of the search."""
+    from fogscout.worker import LOBBY_INTERVAL, SEARCH_INTERVAL, lobby_interval
+    assert SEARCH_INTERVAL == 3.0 and LOBBY_INTERVAL == 1.0
+    assert lobby_interval("search", "search") == SEARCH_INTERVAL
+    assert lobby_interval("search", "idle") == LOBBY_INTERVAL         # not confirmed yet
+    for kind in ("play", "lobby", "custom", None):
+        assert lobby_interval(kind, "search") == LOBBY_INTERVAL      # the search is over (or another screen)
+
+
 def test_banner_scans_slow_down_in_the_menus_only():
     """1.6.4 (user: optimise): full rate while reading a banner, after a loading screen and for two minutes after the
     lobby button; 1/s in the match, in the lobby and in the other menus; simulation keeps its full rate."""
