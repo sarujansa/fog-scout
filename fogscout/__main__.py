@@ -21,6 +21,31 @@ def _data() -> str:
     return data_root(ROOT)
 
 
+def _enable_dpi_awareness():
+    """Physical pixels everywhere (window rects, capture, overlay). 1.38.16: here, not in capture – importing capture
+    loads cv2 + numpy, which held the splash back (user's diagnosis: start steps "Log 0,48" / then "DPI")."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+    try:
+        f = ctypes.windll.user32.SetProcessDpiAwarenessContext
+        f.argtypes = [ctypes.c_void_p]
+        f.restype = ctypes.c_int
+        if f(ctypes.c_void_p(-4)):          # PER_MONITOR_AWARE_V2
+            return
+    except (AttributeError, OSError):
+        pass
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return
+    except (AttributeError, OSError):
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except (AttributeError, OSError):
+        pass
+
+
 def _setup_logging(data=None):
     data = data or _data()
     moved = []
@@ -324,8 +349,7 @@ def main():
     _log_thread_deaths()
     _log_uncaught()
     clock.step("Log")
-    from .capture import enable_dpi_awareness
-    enable_dpi_awareness()
+    _enable_dpi_awareness()
     clock.step("DPI")
     splash = None
     if not args.tray:                             # 1.14.2: the splash screen – not for the silent start in the tray

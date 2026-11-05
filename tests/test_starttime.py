@@ -80,3 +80,18 @@ def test_steps_inside_the_phases_say_where_the_time_goes():
     plain.mark("ready", now=1.0)
     assert "Schritte" not in plain.diag() and "steps" not in plain.as_dict()
 
+
+
+def test_nothing_before_the_splash_loads_cv2_or_numpy(tmp_path):
+    """1.38.16 (user's Windows diagnosis: start step "Log 0,48 s", Linux 0,07): the crash log imported diagnose, which
+    imported capture → cv2 + numpy before the splash; moved, the cost showed up under "DPI" (capture's
+    enable_dpi_awareness). The steps up to the splash – crash log, DPI, the splash's own modules – load neither."""
+    import subprocess
+    code = ("import sys; import fogscout.__main__ as m; m._enable_crash_log(sys.argv[1]); m._enable_dpi_awareness(); "
+            "import fogscout.splash, fogscout.qt_app, fogscout.appid, fogscout.restart, fogscout.takeover; "
+            "print(sorted(k for k in ('cv2', 'numpy', 'onnxruntime', 'mss') if k in sys.modules))")
+    env = dict(os.environ, PYTHONPATH=os.path.join(os.path.dirname(__file__), ".."))
+    out = subprocess.run([sys.executable, "-c", code, str(tmp_path)], capture_output=True, text=True, env=env,
+                         timeout=120)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "[]"
