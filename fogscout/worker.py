@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import collections
+import contextlib
 import logging
 import os
 import queue
@@ -756,7 +757,7 @@ class DetectionWorker(threading.Thread):
         if fw * 9 >= fh * 16 - 32:                   # 1.38.23 (PERF-3): 16:9 or wider has no bars above/below – the
             top, bottom = 0, 0                       # grey pass over the whole frame (~3 ms, 1.11.13) was thrown away
         else:                                        # by layout.vbars anyway (same test as _vbar_strip)
-            with self.times.measure("vbars"):
+            with self._measure("vbars"):
                 top, bottom = letterbox_rows(look)
         self._vbar_looks.append((top, bottom, (fw, fh)))
         self.vbars = (min(t for t, _b, _s in self._vbar_looks), min(b for _t, b, _s in self._vbar_looks),
@@ -795,8 +796,13 @@ class DetectionWorker(threading.Thread):
         this condition stood copied at every look (seven times, each a chance to forget a window)."""
         if not from_screen or not self._own_windows():
             return None
-        with self.times.measure("mask"):
+        with self._measure("mask"):
             return self._mask_overlay(img, left, top)
+
+    def _measure(self, step: str):
+        """``times.measure(step)`` – a no-op for a worker built without __init__ (tests call the helpers alone)."""
+        times = getattr(self, "times", None)
+        return times.measure(step) if times is not None else contextlib.nullcontext()
 
     def _mask_overlay(self, img, left, top):
         """Black out our own overlay in a screenshot (it is always on top and would
