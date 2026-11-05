@@ -485,6 +485,8 @@ class SettingsTab:
                                                command=self._export_settings)).pack(side="left")
         self._reg("st.more.import", ui.Button(bk, text=_("Einstellungen importieren …"),
                                                command=self._import_settings)).pack(side="left", padx=6)
+        self._reg("st.more.archive", ui.Button(bk, text=_("Alles sichern (ZIP) …"),       # 1.38.32 (F8)
+                                                command=self._archive_all)).pack(side="left")
         self._reg("st.more.clear_hist", ui.danger(ui.Button(bk, text=_("Alle Runden löschen …"),    # 1.2.16: moved; 1.23 named
                                                              command=self._stats_clear))).pack(side="right")
         self._reg("st.more.reset_all", ui.danger(ui.Button(bk, text=_("Alle Einstellungen zurücksetzen"),  # 1.2.19
@@ -527,6 +529,27 @@ class SettingsTab:
             self._log(_("Export fehlgeschlagen: {error}", error=e), "Fehler")
             return
         self._log(_("Einstellungen gesichert: {path}", path=path), "System")
+
+    def _archive_all(self, path=None):
+        """1.38.32 (F8): rounds, match data, settings (as exported), own map pictures and the corpus in one ZIP –
+        written in a thread, the result in the log."""
+        if path is None:
+            stamp = time.strftime("%Y-%m-%d")
+            self._qt_file("save", _("Alles sichern"), f"fogscout-sicherung-{stamp}.zip", self._archive_all,
+                          pattern="ZIP (*.zip)")
+            return
+        if not path.lower().endswith(".zip"):
+            path += ".zip"
+        data = dict(self.settings.data)
+
+        def run():
+            from . import backups
+            try:
+                n = backups.archive(self.data_dir, path, data)
+                self.events.put(("call", self._log, (_("Gesichert: {n} Dateien in {path}", n=n, path=path), "System")))
+            except OSError as e:
+                self.events.put(("call", self._log, (_("Sichern fehlgeschlagen: {error}", error=e), "Fehler")))
+        threading.Thread(target=run, daemon=True, name="archive").start()
 
     def _reset_all_settings(self):
         """1.2.19: back to the defaults (PC-specific values stay), then a restart like after an import."""
