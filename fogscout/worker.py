@@ -47,6 +47,9 @@ FAST_AFTER_LOBBY = 120.0          # … full rate for this long after the lobby 
 FAST_AFTER_LOADING = 90.0         # … and after a loading screen was seen (the banner follows it)
 START_LOOK_INTERVAL = 1.0         # 1.6: seconds between two looks for the end of the loading screen (armed only)
 LOBBY_INTERVAL = 1.0              # seconds between two looks at the lobby button (never during a match)
+SEARCH_INTERVAL = 3.0             # 1.38.37: … while a confirmed search shows CANCEL + EST. (the clock below the
+                                  # button changes every second, so the corner is never steady: 207 ms OCR on
+                                  # 112 of 120 looks, Windows diagnosis); any other button → LOBBY_INTERVAL again
 LOBBY_RATE = 1.0                  # banner scans per second while the lobby button is on screen: the banner
 TICK_FAIL_LIMIT = 30               # 1.8.38: ticks in a row that raise before the detection counts as crashed
 TICK_FAIL_WAIT_S = 1.0            # … pause after one (no busy loop on a lasting fault)
@@ -72,6 +75,14 @@ def _wgc_grab(cap, window, box):
 class Event:
     kind: str          # status | detected | unknown | banner | menu | match_end | watch_info | warn | scan_result | error
     data: dict
+
+
+def lobby_interval(kind, state) -> float:
+    """Seconds to the next look at the lobby button (pure, 1.38.37): SEARCH_INTERVAL while the last look showed the
+    search the tracker has confirmed – nothing there is waited for but its end, and DBD's own counter keeps the
+    waiting time exact (``QueueTracker`` takes the start from it) –, LOBBY_INTERVAL for everything else (PLAY,
+    READY, the lobby countdown, a first search look still to be confirmed)."""
+    return SEARCH_INTERVAL if kind == "search" and state == "search" else LOBBY_INTERVAL
 
 
 def scan_rate(base: float, *, in_match: bool, session: bool, since_button: float, since_loading: float,
@@ -226,6 +237,7 @@ class DetectionWorker(threading.Thread):
         steady = self.lobby_steady = SteadyCorner()   # 1.38.14: an unchanged corner is not read again
         last_lobby = 0.0
         lobby_button_t = -1e9             # last look that saw PLAY / CANCEL / READY
+        lobby_gap = LOBBY_INTERVAL        # 1.38.37: SEARCH_INTERVAL while a confirmed search is on screen
         last_start_look = -1e9            # 1.6: last look for the end of the loading screen
         last_loading = -1e9               # 1.6.4: last look that showed a loading screen (scan rate)
         source = ImageSource(self.simulate) if self.simulate else None
@@ -493,7 +505,7 @@ class DetectionWorker(threading.Thread):
 
                 # ------------------------------------- lobby: searching / found / role (never in a match)
                 if (self.settings.get("auto_detect", True) and sep is None and not session
-                        and tick - last_lobby >= LOBBY_INTERVAL and (source is not None or window is not None)
+                        and tick - last_lobby >= lobby_gap and (source is not None or window is not None)
                         and not (self.map_on_screen and tracker.in_trial)):
                     last_lobby = tick
                     try:
@@ -529,6 +541,7 @@ class DetectionWorker(threading.Thread):
                                                + (" · unverändert" if same else ""))
                             for ev in self.queue.update(view, tick):
                                 self._queue_event(ev, tick)
+                            lobby_gap = lobby_interval(view.kind, self.queue.state)
                     except Exception:
                         self._report("Lobby-Erkennung", traceback.format_exc())
 
@@ -655,7 +668,8 @@ class DetectionWorker(threading.Thread):
                 in_match = self.map_on_screen and tracker.in_trial
                 rate = scan_rate(float(self.settings.get("scans_per_second", 5)), in_match=in_match, session=session,
                                  since_button=tick - lobby_button_t, since_loading=tick - last_loading,
-                                 live=source is None, lobby_visible=tick - lobby_button_t < LOBBY_HOLD)
+                                 live=source is None,
+                                 lobby_visible=tick - lobby_button_t < LOBBY_HOLD + lobby_gap - LOBBY_INTERVAL)
                 if in_match and not session and watching and "Scan/s" not in self.watch_status:
                     self.watch_status += f" · {IN_MATCH_RATE:.0f} Scan/s"
                 if source is None and window is None:
