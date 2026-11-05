@@ -395,7 +395,7 @@ class ImageWindow(QWidget):
         self.cl_field.setEnabled(on)
         self.cl_ask_btn.setEnabled(on and not self._claude_busy)
         if not on and self._claude_result is None and not self._claude_busy:
-            self.cl_status.setText(_("Aus – in Einstellungen › Verbindungen › Claude „Bilder im Bild-Editor an "
+            self.cl_status.setText(_("Aus – in Einstellungen → Verbindungen → Claude „Bilder im Bild-Editor an "
                                      "Claude schicken“ einschalten und einen API-Key eintragen."))
             self._claude_off_shown = True
         elif on and getattr(self, "_claude_off_shown", False):

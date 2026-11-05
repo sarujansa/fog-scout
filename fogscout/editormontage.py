@@ -233,7 +233,7 @@ class MontageMixin:
         self.name_edit.setText(self._default_name())
         self.name_edit.setModified(True)                      # the name stays (no round name any more)
         self._source_known(0)
-        self.notice.show_notice("montage", _("Jetzt eine Montage – sie wird unter Clips › Montagen gespeichert. Das "
+        self.notice.show_notice("montage", _("Jetzt eine Montage – sie wird unter Clips → Montagen gespeichert. Das "
                                              "Projekt der Runde bleibt, wie es zuletzt gespeichert war."),
                                 [("ok", _("Verstanden"))])
         self._library_mark()

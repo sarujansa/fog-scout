@@ -213,7 +213,7 @@ class PaletteMixin:
             return
         key = self._claude_key()
         if not askclaude.valid_key(key):
-            self.qt.palette.show_error(_("Kein API-Key – unter Einstellungen › Verbindungen › Claude eintragen."))
+            self.qt.palette.show_error(_("Kein API-Key – unter Einstellungen → Verbindungen → Claude eintragen."))
             return
         catalogue, self._claude_ids = claude_catalogue(getattr(self, "_palette_by_id", {}).values())
         if not catalogue:                     # nothing fixed to offer: nothing is sent

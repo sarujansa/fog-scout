@@ -953,7 +953,7 @@ class MainWindow(QMainWindow):
         self.show_page(key)
         self.search.clearFocus()
         if isinstance(w, QPushButton) and w.property("glyph") == "chevron_right":   # 1.24: the fold's sign
-            w.click()                                  # 1.23: a closed fold opens (Log › Erweitert)
+            w.click()                                  # 1.23: a closed fold opens (Log → Erweitert)
         if self._nav_kept:
             self._nav_kept = False
             self._compact_nav(self.width() < NAV_COMPACT_BELOW)

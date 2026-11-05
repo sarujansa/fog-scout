@@ -799,8 +799,8 @@ def test_setup_assistant_goes_through_its_steps(qapp, keep):
     assert qt_window.page_keys("setup") >= {"setup.script", "setup.open_site", "setup.off_notify"}
     # 1.30 (user: "bei erstmaliger Installation … alles einrichten"): OBS, connections and the server follow
     assert [qt_window.SETUP[i][0] for i in range(len(qt_window.SETUP))] == [
-        "Sprache", "Overlay", "Tasten", "Start und Meldungen", "Match-Daten", "Aufnahmen mit OBS", "Verbindungen",
-        "Server"]
+        "Sprache", "Overlay", "Hotkeys", "Start und Meldungen", "Match-Daten", "Aufnahmen mit OBS", "Verbindungen",
+        "Server"]                                                  # 1.38.10: „Hotkeys“ as the settings tab says
     assert qt_window.page_keys("setup") >= {"st.autostart", "st.tray", "st.more.rec_port", "st.more.rec_pw",
                                             "st.more.rec_test", "st.more.rec_dir", "st.more.rec_on",
                                             "st.more.dc_on", "st.more.sp_login", "st.more.yt_login",
@@ -1390,15 +1390,24 @@ def test_map_tiles_show_marks_and_a_context_menu(qapp, keep):
     coal, pit = page._tiles[("coal", 1)], page._tiles[("pit", 1)]
     assert coal.info.text().startswith("6 Runden") and coal.info.toolTip().endswith("Eigene …") and pit.info.text() == ""
     entries = page.menu_entries(("coal", 1))
-    assert [a for a, _l, _e in entries] == ["show", "rotate", "size_reset", "picture", "styles_one", "styles_all",
-                                            "note"]                        # 1.38.8: the map styles on demand
+    assert [a for a, _l, _e in entries] == ["show", "rotate", "size_reset", "picture", "styles",
+                                            "note"]                        # 1.38.10: the map styles as a submenu
     assert all(e for _a, _l, e in entries)
-    assert [e for _a, _l, e in page.menu_entries(("pit", 1))] == [True, True, False, True, True, True, True]
+    assert [e for _a, _l, e in page.menu_entries(("pit", 1))] == [True, True, False, True, True, True]
     page.open_menu(("coal", 1), coal.mapToGlobal(coal.rect().center()))
     acts = page._menu.actions()
     assert [a.text() for a in acts][:2] == ["Anzeigen", "Drehen"]
     acts[1].trigger()
     assert posted.get_nowait() == ("map_action", ("rotate", ("coal", 1)))
+    styles = next(a.menu() for a in acts if a.menu() is not None)
+    assert next(a.text() for a in acts if a.menu() is not None) == "Map-Stile"
+    sub = [a for a in styles.actions() if not a.isSeparator()]
+    assert [a.text() for a in sub] == ["Dunkel", "Grau", "Grau mit Rand", "Lila dunkel", "Lila transparent",
+                                       "Alle auf einmal"]
+    sub[3].trigger()
+    assert posted.get_nowait() == ("map_action", ("style:lilac", ("coal", 1)))
+    sub[-1].trigger()
+    assert posted.get_nowait() == ("map_action", ("style:all", ("coal", 1)))
     page._menu.close()
     page.show_maps(items, None, marks={})                      # marks gone: the line empties
     assert coal.info.text() == ""
