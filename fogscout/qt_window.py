@@ -901,7 +901,7 @@ class MainWindow(QMainWindow):
         # the pages filled twice); the field takes focus by a click only (ClickFocus), the keyboard has Ctrl+F
         if obj is self.search and e.type() == QEvent.MouseButtonPress:
             if not self.palette.isVisible():
-                QTimer.singleShot(0, self.focus_search)            # 1.26: the field opens the palette
+                QTimer.singleShot(0, self, self.focus_search)            # 1.26: the field opens the palette
             return True
         return super().eventFilter(obj, e)
 
@@ -1019,6 +1019,7 @@ class MainWindow(QMainWindow):
         if dlg is not None:
             dlg.closing_from_app = True
             dlg.close()
+            dlg.deleteLater()           # 1.38.4: a closed dialog stayed a child of the window until Fog Scout quit
 
     def show_dialog_states(self, key, states):
         dlg = self.dialogs.get(key)
@@ -1265,7 +1266,7 @@ class MainWindow(QMainWindow):
     def event(self, e):
         # 1.24.5 (review): another screen scale – the drawn signs again in its pixel ratio (they are pixmaps)
         if e.type() == QEvent.DevicePixelRatioChange:
-            QTimer.singleShot(0, self._signs_paint)
+            QTimer.singleShot(0, self, self._signs_paint)
         return super().event(e)
 
     def _signs_paint(self):
