@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import collections
+import contextlib
 import logging
 import os
 import queue
@@ -20,6 +21,7 @@ from .detector import (ROI, Accumulator, BannerReader, OutOfMatchWatcher, curren
                        letterbox_rows)
 from .layout import MIN_VBAR
 from .lobby import LobbyReader, QueueTracker, SteadyCorner, corner_box, crossplay_box, crossplay_off, result_box
+from .ticktime import CpuShare, LookTimes
 from .matchstart import LOADING_LOOKS, MatchStart
 from .matchend import MatchEndTracker, Signals
 from .ocr import Recognizer
@@ -117,6 +119,8 @@ class DetectionWorker(threading.Thread):
         self.watch_status = _("keine Map angezeigt")
         self.capture_info = "Bildschirm"                     # where the pictures come from (diagnosis)
         self.end_history = collections.deque(maxlen=80)     # for the diagnosis
+        self.times = LookTimes()                             # 1.38.22: what each look costs (diagnosis)
+        self.cpu = CpuShare()                                # … and this thread's CPU share
         self.queue = QueueTracker()                          # lobby: search / waiting time / role
         self.match_start = MatchStart()                      # 1.6: end of the loading screen (recording start)
         self.lobby_info = "–"                                # last look at the lobby button (diagnosis)
@@ -259,6 +263,9 @@ class DetectionWorker(threading.Thread):
             try:
                 fails, failed = (fails if failed else 0), False   # a tick that ends in "continue" counts as fine
                 tick = time.time()
+                self.times.end()                 # 1.38.22: the previous look's steps (sum, without the sleep)
+                self.times.start()
+                self.cpu.note(tick, time.thread_time())
                 # --------------------------------------------------- commands
                 try:
                     while True:
@@ -286,7 +293,8 @@ class DetectionWorker(threading.Thread):
                 shot = []
                 # --------------------------------------------- where is DBD?
                 if source is None and tick - window_checked > 1.5:
-                    window = find_game_window(window)   # 1.34.1 (P4): the known window checked first
+                    with self.times.measure("window"):
+                        window = find_game_window(window)   # 1.34.1 (P4): the known window checked first
                     window_checked = tick
                 if source is not None:
                     frame = source.current()
@@ -295,7 +303,7 @@ class DetectionWorker(threading.Thread):
                         continue
                     fh, fw = frame.shape[:2]
                     status = f"Simulation: {os.path.basename(self.simulate)}"
-                    grab = lambda box: frame[box[1]:box[1] + box[3], box[0]:box[0] + box[2]]
+                    grab = self.times.timed("grab", lambda box: frame[box[1]:box[1] + box[3], box[0]:box[0] + box[2]])
                     origin = (0, 0)
                 else:
                     if window is not None and window.minimized:
@@ -368,6 +376,7 @@ class DetectionWorker(threading.Thread):
                                 self.hidden_looks += 1
                                 return None
                         return grabber.grab(*rect)
+                    grab = self.times.timed("grab", grab)
 
                 if not self.settings.get("auto_detect", True):
                     status = _("Automatische Erkennung ist aus")
@@ -433,7 +442,8 @@ class DetectionWorker(threading.Thread):
                         # 1.8.62: without a line, read at the banner's spot – not well into a round (game world)
                         mid = self.map_on_screen and tracker.in_trial and tick - trial_since >= MID_MATCH_AFTER
                         bars = self._vbar_looks[-1][:2] if boxed and not mid else None
-                        sep, res = reader.read(img, fw, fh, letterboxed=boxed, bars=bars)
+                        with self.times.measure("banner"):
+                            sep, res = reader.read(img, fw, fh, letterboxed=boxed, bars=bars)
                     if sep is not None:
                         if not session:
                             session, session_frames, session_t, session_saved = True, [], tick, None
@@ -488,7 +498,8 @@ class DetectionWorker(threading.Thread):
                             view = steady.reuse(corner, tick)
                             same = view is not None
                             if view is None:
-                                view = lobby_reader.read(corner, fw, fh)
+                                with self.times.measure("lobby"):
+                                    view = lobby_reader.read(corner, fw, fh)
                                 steady.remember(corner, view, tick)
                             if view.button is not None:
                                 lobby_button_t = tick
@@ -497,7 +508,8 @@ class DetectionWorker(threading.Thread):
                                 globe = grab(xb)
                                 if globe is not None:
                                     self._mask_screen(globe, from_screen(), origin[0] + xb[0], origin[1] + xb[1])
-                                    view.crossplay_off = crossplay_off(globe, fw, fh)
+                                    with self.times.measure("lobby"):
+                                        view.crossplay_off = crossplay_off(globe, fw, fh)
                                     if view.crossplay_off is None and tick - self._globe_saved > GLOBE_SAVE_EVERY:
                                         self._globe_saved = tick    # 1.5.4 (user: farming not recognised): keep the
                                         self._save_globe(globe, view.button)   # unreadable crop for a look
@@ -575,7 +587,8 @@ class DetectionWorker(threading.Thread):
                                 full = look = grab((0, 0, fw, fh))
                             if look is not None:                 # None: covered -> no observation, nothing changes
                                 ignore = self._mask_screen(look, from_screen(), origin[0], origin[1])   # in place: no 14 MB copy
-                                obs = out_of_match.observe(look, ignore)
+                                with self.times.measure("end"):
+                                    obs = out_of_match.observe(look, ignore)
                                 self._note_vbars(look, fw, fh)
                         except Exception:
                             self._report("Rundenende-Prüfung", traceback.format_exc())
@@ -741,7 +754,11 @@ class DetectionWorker(threading.Thread):
         dark scene at the picture edge does not count as bar; smaller bars apply at once (intro → gameplay)."""
         if self._vbar_looks and self._vbar_looks[-1][2] != (fw, fh):
             self._vbar_looks.clear()                 # window resized: old looks are void
-        top, bottom = letterbox_rows(look)
+        if fw * 9 >= fh * 16 - 32:                   # 1.38.23 (PERF-3): 16:9 or wider has no bars above/below – the
+            top, bottom = 0, 0                       # grey pass over the whole frame (~3 ms, 1.11.13) was thrown away
+        else:                                        # by layout.vbars anyway (same test as _vbar_strip)
+            with self._measure("vbars"):
+                top, bottom = letterbox_rows(look)
         self._vbar_looks.append((top, bottom, (fw, fh)))
         self.vbars = (min(t for t, _b, _s in self._vbar_looks), min(b for _t, b, _s in self._vbar_looks),
                       time.time(), (fw, fh))
@@ -779,7 +796,13 @@ class DetectionWorker(threading.Thread):
         this condition stood copied at every look (seven times, each a chance to forget a window)."""
         if not from_screen or not self._own_windows():
             return None
-        return self._mask_overlay(img, left, top)
+        with self._measure("mask"):
+            return self._mask_overlay(img, left, top)
+
+    def _measure(self, step: str):
+        """``times.measure(step)`` – a no-op for a worker built without __init__ (tests call the helpers alone)."""
+        times = getattr(self, "times", None)
+        return times.measure(step) if times is not None else contextlib.nullcontext()
 
     def _mask_overlay(self, img, left, top):
         """Black out our own overlay in a screenshot (it is always on top and would

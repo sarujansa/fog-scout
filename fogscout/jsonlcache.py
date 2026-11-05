@@ -48,6 +48,14 @@ class LineCache:
             last = self._parse(data[end:]) if end < len(data) else []    # a line still without its break
         return objs + last
 
+    def prime(self, path: str, data: bytes, objs: list) -> None:
+        """1.38.24 (project review PERF-1): the writer of a whole file (history._rewrite after a correction) hands
+        over what it wrote – the next ``items`` then finds the same bytes and parses nothing, instead of the whole
+        file again (the prefix hash no longer matched). ``objs`` in file order, only the lines ``parse`` keeps."""
+        end = data.rfind(b"\n") + 1
+        with self._lock:
+            self._files[path] = (end, _hash(data[:end]), list(objs))
+
     def forget(self, path: str) -> None:
         with self._lock:
             self._files.pop(path, None)

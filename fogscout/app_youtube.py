@@ -217,8 +217,8 @@ class YouTubeUpload:
         if yt is None:
             return
         now = time.time()
-        if now - self._yt_folder_at >= FOLDER_EVERY_S:
-            self._yt_folder, self._yt_folder_at = self.recorder.folder() or "", now
+        if (yt.on or yt.jobs) and now - self._yt_folder_at >= FOLDER_EVERY_S:   # 1.38.23 (PERF-7): off and nothing
+            self._yt_folder, self._yt_folder_at = self.recorder.folder() or "", now   # queued – no drive lookup
         state = (self._yt_pause_wanted(), self._yt_folder)
         if state != self._yt_sent:
             self._yt_sent = state
