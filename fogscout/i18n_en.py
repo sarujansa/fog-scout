@@ -519,6 +519,12 @@ EN = {
     "Eigene Notiz (im Spiel unter dem Timer)": "Own note (in the game below the timer)",
     "z. B. Shack links vom Main, Gen im Keller …": "e.g. shack left of main, gen in the basement …",
     "Notiz bearbeiten …": "Edit note …",
+    "Alle Kartenstile für diese Karte erstellen": "Make every map style of this map",
+    "Alle Karten in allen Stilen erstellen": "Make every map in every style",
+    "Kartenstile für {map} werden im Hintergrund erstellt.": "The map styles of {map} are being made in the background.",
+    "Die Kartenstile werden schon erstellt.": "The map styles are already being made.",
+    "Alle Karten werden in allen Stilen erstellt ({n} Bilder × {k} Stile) – das dauert beim ersten Mal einige Minuten.": "Every map is being made in every style ({n} pictures × {k} styles) – the first time this takes a few minutes.",
+    "Kartenstile fertig: {n} Bilder in allen Stilen.": "Map styles done: {n} pictures in every style.",
     "Eigene Notiz": "Own note",
     "Eigene Notiz: {note}": "Own note: {note}",
     "Zeigt unter dem Rundentimer, wie es dir auf dieser Map bisher ging: als Killer Ø Kills, als Survivor den "

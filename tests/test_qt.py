@@ -1390,9 +1390,10 @@ def test_map_tiles_show_marks_and_a_context_menu(qapp, keep):
     coal, pit = page._tiles[("coal", 1)], page._tiles[("pit", 1)]
     assert coal.info.text().startswith("6 Runden") and coal.info.toolTip().endswith("Eigene …") and pit.info.text() == ""
     entries = page.menu_entries(("coal", 1))
-    assert [a for a, _l, _e in entries] == ["show", "rotate", "size_reset", "picture", "note"]
+    assert [a for a, _l, _e in entries] == ["show", "rotate", "size_reset", "picture", "styles_one", "styles_all",
+                                            "note"]                        # 1.38.8: the map styles on demand
     assert all(e for _a, _l, e in entries)
-    assert [e for _a, _l, e in page.menu_entries(("pit", 1))] == [True, True, False, True, True]
+    assert [e for _a, _l, e in page.menu_entries(("pit", 1))] == [True, True, False, True, True, True, True]
     page.open_menu(("coal", 1), coal.mapToGlobal(coal.rect().center()))
     acts = page._menu.actions()
     assert [a.text() for a in acts][:2] == ["Anzeigen", "Drehen"]
