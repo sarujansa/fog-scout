@@ -18,7 +18,7 @@ from .config import DEFAULTS as CONFIG_DEFAULTS, Settings
 from .toast import Toast
 from .bloodpoints import BloodpointWatch
 from .connwatch import ConnectionWatch, IdlePause
-from .official import OpenAfterGame
+from .official import FolderWatch, OpenAfterGame
 from .i18n import N_, _
 from .hotkeys import pretty
 from .overlay import load_frames
@@ -112,6 +112,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.round = RoundTimer()        # runs while a map is on display
         self._hist = None                # round for the statistics: detected map -> detected end of the match
         self._off_open = OpenAfterGame()  # official match data: open the stats page once DBD was closed
+        self._off_watch = FolderWatch()          # 1.38.7: the download folder listed only when it changed
         self._off_next = self._off_fast_until = 0.0     # next look into the download folder / look often until
         self._off_script = 0             # version of the userscript that saved the last file
         self._off_told = set()           # files / statuses already reported in the log
