@@ -341,6 +341,39 @@ EN = {
     "Scans/Sek.": "Scans/sec.",
     "Rundenende-Erkennung: {state}": "End-of-round detection: {state}",
     "Debug-Bilder speichern": "Save debug pictures",
+    "Banner jeder Erkennung für „Erkennung prüfen“ sammeln": "Keep the banner of every detection for \"Check detection\"",
+    "{n} Banner gesammelt": "{n} banners kept",
+    "1 Banner gesammelt": "1 banner kept",
+    "letzte Prüfung: {hits} von {total} erkannt": "last check: {hits} of {total} recognised",
+    "Erkennung prüfen": "Check detection",
+    "Korpus exportieren …": "Export corpus …",
+    "Korpus exportieren": "Export corpus",
+    "Korpus-Ordner öffnen": "Open corpus folder",
+    "Noch keine Banner gesammelt – sie kommen mit jeder erkannten Map.": "No banners kept yet – they come with every detected map.",
+    "Erkennung prüfen: {n} Banner werden neu gelesen …": "Check detection: reading {n} banners again …",
+    "Erkennung prüfen fehlgeschlagen: {error}": "Check detection failed: {error}",
+    "{hits} von {total} Bannern wieder erkannt ({seconds} s).": "{hits} of {total} banners recognised again ({seconds} s).",
+    "{n} nicht lesbar.": "{n} unreadable.",
+    "Erkennung prüfen: {text}": "Check detection: {text}",
+    "Erkennung prüfen – {stamp}: erwartet {want}, gelesen „{read}“ → {got}": "Check detection – {stamp}: expected {want}, read \"{read}\" → {got}",
+    "Die Treffer, die fehlen, stehen im Log.": "The banners that were missed are in the log.",
+    "Korpus exportiert: {n} Dateien nach {path}": "Corpus exported: {n} files to {path}",
+    "Korpus exportieren fehlgeschlagen: {error}": "Exporting the corpus failed: {error}",
+    "Speichert bei jeder erkannten Map den Ausschnitt um die Banner-Linie (Name und Realm) im Datenordner unter corpus/, "
+    "höchstens 300 Stück – die Grundlage für „Erkennung prüfen“. Der Ausschnitt kann den linken HUD-Rand mit Spielernamen "
+    "zeigen; er bleibt auf diesem PC.":
+        "Keeps, for every detected map, the part around the banner line (name and realm) in the data folder under "
+        "corpus/, at most 300 – the base of \"Check detection\". The part can show the left HUD edge with player names; "
+        "it stays on this PC.",
+    "Liest alle gesammelten Banner mit der Erkennung neu und zählt, wie viele wieder die gespeicherte Map ergeben – "
+    "nach einem Update oder einer geänderten Spielsprache. Läuft im Hintergrund, Ergebnis im Log.":
+        "Reads all kept banners again with the detection and counts how many give the stored map again – after an "
+        "update or a changed game language. Runs in the background, result in the log.",
+    "Packt alle gesammelten Banner mit ihren Angaben in eine ZIP-Datei – z. B. um sie für die Tests des Projekts "
+    "weiterzugeben. Vorher die Bilder ansehen: sie können Spielernamen zeigen.":
+        "Puts all kept banners with their details into a ZIP file – e.g. to hand them to the project's tests. Look at "
+        "the pictures first: they can show player names.",
+    "Öffnet den Ordner corpus/ im Datenordner.": "Opens the corpus/ folder in the data folder.",
     "Bildschirm jetzt scannen": "Scan the screen now",
     "Diagnose kopieren": "Copy diagnostics",
 

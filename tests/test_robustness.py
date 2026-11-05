@@ -46,7 +46,7 @@ def _worker(tmp_path, monkeypatch, fails):
     monkeypatch.setattr(worker, "TICK_FAIL_WAIT_S", 0.01)
     events = queue.Queue()
     w = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
-                               events, simulate=str(tmp_path))
+                               events, simulate=str(tmp_path), data_dir=str(tmp_path))
     return w, events, calls
 
 
@@ -254,7 +254,7 @@ def test_stopping_the_worker_does_not_wait_for_its_nap(tmp_path, monkeypatch):
             return None
     monkeypatch.setattr(worker, "ImageSource", Empty)
     w = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
-                               events, simulate=str(tmp_path))
+                               events, simulate=str(tmp_path), data_dir=str(tmp_path))
     # 1.28 (audit F12): no time limit on a shared runner – every nap lasts ten minutes here; the worker ending at
     # all (join well before that) shows the stop command ended the nap
     import threading
