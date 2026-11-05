@@ -2057,8 +2057,9 @@ class Recorder(threading.Thread):
                               killer=rec.get("killer", ""), end=time.time(), extra=extra, marks=marks,
                               farming=bool(rec.get("farming")), pre_s=pre_s))
         limit = int(self.cfg.limit_gb) * 1024 ** 3
-        recs, deleted = prune(folder, recs, limit)
-        save_index(folder, recs)
+        save_index(folder, recs)         # 1.38.24 (review STAB-3): the new round is in the index before anything is
+        recs, deleted = prune(folder, recs, limit)   # deleted – a failing write after the prune left it out for good
+        save_index(folder, recs)         # … and again with the sizes prune measured and without what it deleted
         if bad:
             self._warn(_("Aufnahme sieht beschädigt aus ({why}): {file} – OBS-Einstellungen prüfen (Encoder, Platte).",
                          why=bad, file=os.path.basename(final)))
