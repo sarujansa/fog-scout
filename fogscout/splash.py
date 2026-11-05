@@ -184,16 +184,22 @@ class Splash(QWidget):
         p.end()
 
 
-def start(root_dir: str, version: str):
-    """The splash on screen, before anything heavy loads – None when it cannot be shown (the start goes on)."""
+def start(root_dir: str, version: str, clock=None):
+    """The splash on screen, before anything heavy loads – None when it cannot be shown (the start goes on).
+    ``clock``: starttime.StartClock – 1.38.15 marks Qt loaded, splash built and drawn as steps."""
+    step = clock.step if clock is not None else (lambda label: None)
     try:
         from .qt_app import application
+        step("Qt laden")                     # since "DPI": this module's and qt_app's PySide6 imports
         app = application()
+        step("QApplication")
         dark = theme_from_file(os.path.join(root_dir, "settings.json"))
         s = Splash(version, dark)
         s.progress(0.04, _("Wird gestartet …"))
+        step("Ladebildschirm bauen")
         s.show()
         app.processEvents()                  # the only pump before the App exists: puts the first frame on screen
+        step("Ladebildschirm zeigen")
         return s
     except Exception:
         log.exception("Ladebildschirm")
