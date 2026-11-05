@@ -215,6 +215,47 @@ def test_the_image_editor_sends_the_picture_only_on_a_click_and_applies_as_one_s
         win.close()
 
 
+def test_closing_the_image_editor_while_claude_thinks_drops_the_answer_and_frees_the_window(qapp, tmp_path,
+                                                                                            monkeypatch):
+    """1.38.3: the asking thread used to emit a Qt signal on an object of the window – after the window was closed and
+    freed (up to a minute later, a picture is slow). Now it only finds a plain queue: no error in the thread, the
+    window is gone while the request still runs, the late answer is dropped."""
+    import gc
+    import threading
+    import weakref
+    from fogscout import qt_image
+    path = tmp_path / "shot.png"
+    Image.new("RGB", (320, 180), (40, 90, 160)).save(path)
+    asked, release, crashes = threading.Event(), threading.Event(), []
+
+    def slow_request(*a, **k):
+        asked.set()
+        assert release.wait(10)
+        return {"summary": "spät", "ops": [{"op": "censor", "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.1}]}
+    monkeypatch.setattr(askclaude, "request", slow_request)
+    monkeypatch.setattr(threading, "excepthook", lambda args: crashes.append(args.exc_type))
+    win = qt_image.ImageWindow(str(path), str(tmp_path / "out"))
+    win.claude_key = lambda: KEY
+    win.show()
+    win._claude_refresh()
+    win.cl_field.setText("Namen verpixeln")
+    win.claude_ask()
+    assert asked.wait(5) and win._claude_pump.isActive()
+    thread = next(t for t in threading.enumerate() if t.name == "claude-image")
+    bridge = win._claude_bridge
+    win.close()
+    qapp.processEvents()
+    ref = weakref.ref(win)
+    win = None
+    gc.collect()
+    assert ref() is None                                     # freed while the thread still waits for Claude
+    release.set()
+    thread.join(5)
+    assert not thread.is_alive() and crashes == []
+    assert not bridge.pending() or bridge.handlers == {}     # queued for nobody: drained by no one, harmless
+    qapp.processEvents()
+
+
 @pytest.mark.skipif(FF is None, reason="imageio-ffmpeg not installed")
 def test_the_clip_editor_sends_a_still_only_when_allowed_and_ticked(qapp, tmp_path, monkeypatch):
     from fogscout import qt_editor

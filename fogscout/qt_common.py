@@ -2,6 +2,9 @@
 """
 from __future__ import annotations
 
+import logging
+import threading
+
 from PIL import Image
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QImage, QPixmap
@@ -10,6 +13,68 @@ from PySide6.QtWidgets import (QAbstractScrollArea, QAbstractSlider, QAbstractSp
 
 from . import qt_theme           # 1.24.6: at module level – an import statement in set_glyph cost ~1.9 µs per call
 from .i18n import N_, _
+
+log = logging.getLogger("fogscout")
+
+
+class Channel:
+    """One kind of message: ``emit`` from any thread only queues it, the ``connect``-ed handlers run in the GUI
+    thread when the window's pump drains the bridge (the same names as Qt signals)."""
+
+    def __init__(self, bridge, name):
+        self._bridge, self._name = bridge, name
+
+    def emit(self, *args):
+        self._bridge.put(self._name, args)
+
+    def connect(self, fn):
+        self._bridge.handlers.setdefault(self._name, []).append(fn)
+
+
+class Bridge:
+    """What worker threads hand to a window – never a QObject. 1.8.66 (clip editor) and 1.38.3 (image editor): a
+    thread that emitted a Qt signal on an object of a window closed meanwhile raised "Signal source has been
+    deleted", and when the deletion fell into the emit itself the whole program went down. The threads touch no Qt
+    object: they append to a plain locked queue, the window's own QTimer (it dies with the window) drains it."""
+    NAMES: tuple = ()
+    LATEST: tuple = ()          # pictures: only the newest of a batch is handled
+    AFTER_CLOSE: tuple = ()     # kinds a closed window still handles
+    LABEL = "Fenster"           # in the log line of a failing handler
+
+    def __init__(self, names: tuple = ()):
+        self._lock = threading.Lock()
+        self._queue = []
+        self.handlers = {}
+        for name in names or self.NAMES:
+            setattr(self, name, Channel(self, name))
+
+    def put(self, name, args):
+        with self._lock:
+            self._queue.append((name, args))
+
+    def clear(self, keep=()):
+        """Drop what is queued – but the kinds in ``keep``."""
+        with self._lock:
+            self._queue = [m for m in self._queue if m[0] in keep]
+
+    def pending(self) -> bool:
+        with self._lock:
+            return bool(self._queue)
+
+    def drain(self):
+        """Run the handlers of everything queued so far (GUI thread); of the pictures only the newest per kind."""
+        with self._lock:
+            batch, self._queue = self._queue, []
+        last = {name: i for i, (name, _a) in enumerate(batch) if name in self.LATEST}
+        for i, (name, args) in enumerate(batch):
+            if name in last and last[name] != i:
+                continue
+            for fn in self.handlers.get(name, ()):
+                try:
+                    fn(*args)
+                except Exception:
+                    log.exception("%s: %s", self.LABEL, name)
+
 
 # 1.24 (phase 2, prompt_phase2.md): one line under each page's title – what the page is for
 PAGE_SUBTITLES = {
