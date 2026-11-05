@@ -111,7 +111,17 @@ NAV_ICON = 18                     # px (logical): every icon of the navigation i
 
 NAV_SIGN_X = 24 + NAV_ICON // 2    # 1.24.7: centre of the icons' column – measured: list + item padding (qt_theme)
 #                                   6 + 12 and the style's own margin 6
-NAV_W, NAV_COMPACT_W = 190, 62    # px (logical): navigation with names / only icons
+NAV_W, NAV_COMPACT_W = 190, 62    # px (logical) at text zoom 1.0: navigation with names / only icons
+
+
+def nav_w() -> int:
+    """1.38.11: the navigation's width at the window's text zoom – fixed at NAV_W, a zoom of 1.5 cut „Einstellungen“
+    to „Einstellun…“ and the status line to „wartet auf da…“."""
+    return round(NAV_W * qt_theme.current_zoom())
+
+
+def nav_compact_w() -> int:
+    return round(NAV_COMPACT_W * qt_theme.current_zoom())
 
 
 NAV_COMPACT_BELOW = 960           # px (logical) window width from which the navigation shows only icons
@@ -560,7 +570,7 @@ class NavStatus(QFrame):
         self.text.ensurePolished()
         fm = self.text.fontMetrics()
         m = self.layout().contentsMargins()      # margins, the sign, the gap
-        width = NAV_W - m.left() - m.right() - qt_theme.ICON["s"] - self.layout().spacing()
+        width = nav_w() - m.left() - m.right() - qt_theme.ICON["s"] - self.layout().spacing()
         words, first = text.split(), ""
         for i, word in enumerate(words):
             t = f"{first} {word}" if first else word
@@ -611,7 +621,7 @@ class MainWindow(QMainWindow):
         lay.setSpacing(0)
         self.nav = _NavList()
         self.nav.setObjectName("nav")
-        self.nav.setFixedWidth(NAV_W)
+        self.nav.setFixedWidth(nav_w())
         self._nav_compact = False
         self._nav_kept = False
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -666,7 +676,7 @@ class MainWindow(QMainWindow):
         sl.addWidget(self.search_btn)
         sl.addWidget(self.nav, 1)
         self.status_btn = NavStatus(lambda: self.show_page("overview"))   # … what it does now at the foot
-        self.status_btn.setFixedWidth(NAV_W)
+        self.status_btn.setFixedWidth(nav_w())
         self._status = None                       # (kind, text) shown – status.user_state
         sl.addWidget(self.status_btn)
         self._found = {}                  # search entry text -> (page key, widget, folded)
@@ -1172,6 +1182,7 @@ class MainWindow(QMainWindow):
         pal.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(qt_theme.colours(dark)["fg_dis"]))
         QApplication.setPalette(pal)
         qt_theme.set_dark(dark, zoom)                              # 1.22.3: state colours, editor zoom
+        self._nav_widths()                                         # 1.38.11: the navigation grows with the zoom
         self._style_lazily(qt_theme.stylesheet(dark, zoom))
         self._dark = bool(dark)
         self._signs_paint()                               # 1.24: navigation icons, compass, state dot, drawn signs
@@ -1356,14 +1367,19 @@ class MainWindow(QMainWindow):
         self.search_btn.setVisible(on)
         if on:
             self._search_icon()
-        self.nav.setFixedWidth(NAV_COMPACT_W if on else NAV_W)
-        self.search.setFixedWidth(NAV_W)
-        self.search_btn.setFixedWidth(NAV_COMPACT_W)
+        self._nav_widths()
         self.brand_name.setVisible(not on)
-        self.status_btn.setFixedWidth(NAV_COMPACT_W if on else NAV_W)
         self._status_paint()
         self.overview.show_status_line(on)        # 1.24.5: narrow – the overview says the state in words again
         self._nav_texts()
+
+    def _nav_widths(self):
+        """1.38.11: the navigation's parts at the width of the text zoom (``nav_w``) – on a zoom change too."""
+        on = self._nav_compact
+        self.nav.setFixedWidth(nav_compact_w() if on else nav_w())
+        self.search.setFixedWidth(nav_w())
+        self.search_btn.setFixedWidth(nav_compact_w())
+        self.status_btn.setFixedWidth(nav_compact_w() if on else nav_w())
 
     def _nav_texts(self):
         """Names in the rows (or as hover text while the navigation is narrow), whatever their order."""

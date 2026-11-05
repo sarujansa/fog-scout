@@ -1092,7 +1092,7 @@ class HostView(QWidget):
         pass
 
 
-SPLIT_FROM = 940                  # px (logical): from this page width a "split" page shows its two columns beside
+SPLIT_FROM = 840                  # px (logical): from this page width a "split" page shows its two columns beside
                                   # 1.24.2 (phase 2): was 1080 – a 1280-px window (page ~1036) had the tabs below the fold
 
 
