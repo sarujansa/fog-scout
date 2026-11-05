@@ -216,7 +216,9 @@ def collect(app) -> str:
     if tt is not None:
         lines.append(tt.line())
     errs = getattr(app, "_errors_seen", set())
-    lines.append(f"Fehler seit Start: {sorted(errs) if errs else 'keine'}")
+    counts = getattr(app, "_error_counts", {}) or {}                 # 1.38.9: how often each kind came
+    lines.append("Fehler seit Start: " + (", ".join(f"{k} {counts.get(k, 1)}×" for k in sorted(errs)) if errs
+                                          else "keine"))
     data = getattr(app, "data_dir", None) or getattr(app, "root_dir", None)    # 1.30.1: crash files live there
     if data:
         lines.extend(crash_lines(data))
