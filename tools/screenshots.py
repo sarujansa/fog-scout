@@ -2,6 +2,7 @@
 
     python tools/screenshots.py                          # every page, dark, 1100×760, zoom 1.0 → a temp folder
     python tools/screenshots.py --out shots --light --zoom 1.5 --size 1100x760 --pages settings,overlay
+    python tools/screenshots.py --pages stats --rounds 300   # the statistics with synthetic rounds (tools/bench.py)
 
 Like tools/bench.py the program runs on a throw-away root (symlinked maps/models/maps.json, own settings.json,
 DBDMS_DATA_DIR, HOME) – the real program folder and the user's data are never touched. Per page one PNG of the window
@@ -123,13 +124,15 @@ def main():
     ap.add_argument("--zoom", type=float, default=1.0, help="ui_zoom (0.9 … 1.5)")
     ap.add_argument("--light", action="store_true", help="light theme instead of dark")
     ap.add_argument("--pages", default="", help="comma list of page keys (+ setup); default: all")
+    ap.add_argument("--rounds", type=int, default=0, help="synthetic rounds (tools/bench.py) – e.g. 300 for a filled "
+                                                          "statistics page; default 0 = empty""")
     args = ap.parse_args()
     w, h = (int(v) for v in args.size.lower().split("x"))
     out = args.out or tempfile.mkdtemp(prefix="fogscout-shots-")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.setdefault("DBDMS_LANG", "de")
     import bench                                  # the throw-away root of the measurements
-    root = bench._root()
+    root = bench._root(rounds=max(0, args.rounds))
     _settings(root, args.light, args.zoom)
     from fogscout.app import App
     app = App(root, simulate=os.path.join(root, "sim"))
