@@ -806,7 +806,7 @@ class SysInfo:
                             if g is not None]
             if len(self._guides) < 2:
                 return
-        from .overlay_win32 import guide_line
+        from .overlay_render import guide_line
         gx, gy, gw, gh = self._game_rect()
         v, hz = self._guides
         v.set_picture(guide_line(gh, True), ("v", gh))

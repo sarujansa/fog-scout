@@ -595,7 +595,7 @@ class OverlayTab:
     def _info_card(self, gh, margin, bar):
         """Render the lines' card for this tick (their own size, ``text_scale`` – never the map's) into
         ``info_win``; returns (w, h), or None when there is nothing to show. In a black bar never wider than it."""
-        from .overlay_win32 import add_border
+        from .overlay_render import add_border
         win, o = self.info_win, self.settings["overlay"]
         editing = bool(self.overlay.editing)
         win.set_editing(editing)

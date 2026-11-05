@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from . import layout, media, sysinfo
 from . import skin
 from .i18n import _
-from .overlay_win32 import (add_info, backdrop, backdrop_pad, body_cols, compose, info_card, lines_above,
+from .overlay_render import (add_info, backdrop, backdrop_pad, body_cols, compose, info_card, lines_above,
                             map_backdrop, map_body, music_body, music_card, pad_to, render_hud)
 
 SAMPLE_SNAPSHOT = dict(cpu_load=38, cpu_temp=64, gpu_temp=71, gpu_load=92, gpu_name="GPU",

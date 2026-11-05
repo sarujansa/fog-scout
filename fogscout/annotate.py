@@ -78,7 +78,7 @@ def text_box(shape: Shape, w: int, h: int) -> tuple:
     """(x0, y0, x1, y1) of a text shape in pixels: the anchor is its top-left corner."""
     if not shape.pts:
         return 0, 0, 0, 0
-    from .overlay_win32 import _char_len
+    from .overlay_render import _char_len
     size = max(6, int(shape.size * h))
     font = _font(size)
     lines = text_lines(shape.text or " ")
@@ -181,7 +181,7 @@ def _draw_strokes(d, shape: Shape, pts, s: float, colour, rim: bool):
 
 
 def _draw_text(tile: Image.Image, shape: Shape, ox: float, oy: float, w: int, h: int):
-    from .overlay_win32 import _draw_run
+    from .overlay_render import _draw_run
     size = max(6, int(shape.size * h)) * SS
     font = _font(size)
     stroke = max(SS, int(size * 0.09))
