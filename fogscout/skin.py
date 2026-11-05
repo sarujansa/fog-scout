@@ -19,7 +19,7 @@ from functools import lru_cache
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from .i18n import N_
-from .overlay_win32 import _draw_run, _run_len, cover_radius, fira
+from .overlay_render import _draw_run, _run_len, cover_radius, fira
 
 STYLES = ("classic", "glass", "chips", "line")
 STYLE_LABELS = [("classic", N_("Klassisch")), ("glass", N_("Glas-Karten")), ("chips", N_("Chips & Icons")),
@@ -770,7 +770,7 @@ def _map_card_base(body, name, realm, timer, note, record, server, ping, status,
     One drawing for every modern style (1.8.27), the surface comes from
     SURFACES. Returns (card without the timer's digits and without its shadow, (x, y) of the
     timer or None, timer font, unit)."""
-    from .overlay_win32 import INFO_WARN, REC_DOT, ping_colour
+    from .overlay_render import INFO_WARN, REC_DOT, ping_colour
     u = max(0.25, text_h / MAP_U)
     acc = accent_rgba(accent)
     s = surface(style)
