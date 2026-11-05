@@ -59,10 +59,28 @@ class StartClock:
         self.t0 = time.perf_counter() if now is None else now
         self.before = process_age_s() if before is None else before
         self.marks: dict[str, float] = {}
+        self.steps: list[tuple[str, float]] = []        # 1.38.15: finer steps inside the phases (label, time)
 
     def mark(self, name: str, now: float | None = None) -> None:
         if name not in self.marks:                       # the first time counts (a second window build does not)
             self.marks[name] = time.perf_counter() if now is None else now
+
+    def step(self, label: str, now: float | None = None) -> None:
+        """1.38.15 (user's diagnosis: "Ladebildschirm 1,18 · Aufbau 1,24" on Windows, 0,16 s on Linux – where?): a
+        point inside a phase; its time is the span since the step or mark before it. The first time counts."""
+        if all(name != label for name, _t in self.steps):
+            self.steps.append((label, time.perf_counter() if now is None else now))
+
+    def steps_ms(self) -> list:
+        """[(label, ms since the step or mark before)] in order of time."""
+        points = sorted([(t, None) for t in self.marks.values()] + [(t, label) for label, t in self.steps],
+                        key=lambda p: p[0])
+        out, last = [], self.t0
+        for t, label in points:
+            if label is not None:
+                out.append((label, max(0.0, t - last) * 1000))
+            last = t
+        return out
 
     def phases_ms(self) -> dict:
         out = {}
@@ -83,6 +101,8 @@ class StartClock:
 
     def as_dict(self) -> dict:
         d = {k: round(v) for k, v in self.phases_ms().items()}
+        if self.steps:
+            d["steps"] = {label: round(ms) for label, ms in self.steps_ms()}
         total = self.total_ms()
         if total is not None:
             d["total"] = round(total)
@@ -95,4 +115,8 @@ class StartClock:
             return "Start: nicht gemessen"
         parts = [f"{label} {self.phases_ms()[name] / 1000:.2f}".replace(".", ",")
                  for name, label in PHASES if name in self.phases_ms()]
-        return f"Start: {total / 1000:.2f} s".replace(".", ",") + (" (" + " · ".join(parts) + ")" if parts else "")
+        line = f"Start: {total / 1000:.2f} s".replace(".", ",") + (" (" + " · ".join(parts) + ")" if parts else "")
+        if self.steps:                                    # 1.38.15: the steps, each since the point before it
+            line += "\n  Schritte: " + " · ".join(f"{label} {ms / 1000:.2f}".replace(".", ",")
+                                                   for label, ms in self.steps_ms())
+        return line
