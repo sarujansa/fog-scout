@@ -815,9 +815,59 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             gone = mapstyle.prune(cache)                 # 1.25: old versions and source states of our cache
             if gone:
                 log.info("Kartenstil-Cache: %d alte Bilder entfernt", gone)
-            mapstyle.warm(paths, cache, stop, style)
-            self._qt_maps_rev = getattr(self, "_qt_maps_rev", 0) + 1     # the tiles of the maps page: dark now
+            mapstyle.warm(paths, cache, stop, style, on_made=self._style_tiles_soon)
+            self.events.put(("call", self._style_tiles_changed, ()))      # the tiles of the maps page: all now
         threading.Thread(target=run, daemon=True, name="mapstyle").start()
+
+    STYLE_TILES_GAP_S = 1.0          # 1.38.8: the maps page draws the tiles again at most this often while styling
+
+    def _style_tiles_soon(self):
+        """1.38.8 (user: switching the style the maps page often stayed in the old one): a picture of a style was
+        made (thread). The tiles were drawn again only after the last of ~56 pictures (~1 s each), so the page
+        showed the old pictures for a minute, and a style switched again meanwhile never finished. Now at most once
+        per STYLE_TILES_GAP_S through the window's event queue."""
+        now = time.monotonic()
+        if now - self.__dict__.get("_style_tiles_at", 0.0) >= self.STYLE_TILES_GAP_S:
+            self._style_tiles_at = now
+            self.events.put(("call", self._style_tiles_changed, ()))
+
+    def _style_tiles_changed(self):
+        self._qt_maps_rev = getattr(self, "_qt_maps_rev", 0) + 1
+
+    def _style_map_all(self, mid):
+        """1.38.8 (user: right click on a tile): every style of this map's pictures, made in a thread."""
+        m = self.catalog.maps.get(mid)
+        if m is None:
+            return
+        paths = [p for v in sorted(m.variants) for p in [self.catalog.image_path(mid, v)[0]] if p]
+        for path in dict.fromkeys(paths):
+            self._style_all(path)
+        self._log(_("Kartenstile für {map} werden im Hintergrund erstellt.", map=m.name), "Overlay")
+
+    def _style_everything(self):
+        """1.38.8 (user: right click → „Alle Karten in allen Stilen erstellen“): one thread over every picture and
+        style, the chosen style first; once at a time. ~1 s per picture and style – minutes the first time."""
+        if self.__dict__.get("_style_everything_on"):
+            self._log(_("Die Kartenstile werden schon erstellt."), "Overlay")
+            return
+        self._style_everything_on = True
+        paths = sorted({p for m in self.catalog.maps.values() for v in m.variants
+                        for p in [self.catalog.image_path(m.id, v)[0]] if p})
+        now = self.settings["overlay"].get("map_style", "classic")
+        styles = sorted(mapstyle.STYLES, key=lambda s: s != now)
+        cache = os.path.join(self.data_dir, STYLE_CACHE)
+        self._log(_("Alle Karten werden in allen Stilen erstellt ({n} Bilder × {k} Stile) – das dauert beim ersten "
+                    "Mal einige Minuten.", n=len(paths), k=len(styles)), "Overlay")
+
+        def run():
+            try:
+                made = sum(mapstyle.warm(paths, cache, style=s, on_made=self._style_tiles_soon) for s in styles)
+            finally:
+                self._style_everything_on = False
+            self.events.put(("call", self._style_tiles_changed, ()))
+            self.events.put(("call", self._log, (_("Kartenstile fertig: {n} Bilder in allen Stilen.", n=made),
+                                                  "Overlay")))
+        threading.Thread(target=run, daemon=True, name="mapstyle-everything").start()
 
 
     def _reload_picture(self):
