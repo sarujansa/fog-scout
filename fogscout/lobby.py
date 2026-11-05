@@ -30,7 +30,7 @@ from __future__ import annotations
 import difflib
 import functools
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -344,6 +344,49 @@ class LobbyReader:
         if survivor >= 2 and killer == 0:
             return "survivor"
         return None
+
+
+# ------------------------------------------------------------------ 1.38.14: an unchanged corner is not read again
+STEADY_PIXEL = 24         # grey difference (0–255) from which a pixel of the corner counts as changed
+STEADY_COUNT = 0          # more changed pixels than this: the corner changed (noise σ 4 / JPEG 70: 0 pixels)
+LOBBY_STEADY_S = 5.0      # an unchanged corner is still read again after this long
+
+
+class SteadyCorner:
+    """The lobby corner as it was at the last real reading (LobbyReader.read: 100–400 ms CPU per look, measured
+    1.38.14). ``reuse`` gives a copy of that reading while the corner is unchanged and the reading is younger than
+    ``max_age``; otherwise None – then the caller reads and hands the result to ``remember``. Compared with the
+    corner of the *reading* (not of the previous look), so a slow change still counts. Pure: numpy only."""
+
+    def __init__(self, pixel: int = STEADY_PIXEL, count: int = STEADY_COUNT, max_age: float = LOBBY_STEADY_S):
+        self.pixel, self.count, self.max_age = pixel, count, max_age
+        self._grey = None
+        self._view = None
+        self._t = -1e9
+        self.reused = 0                    # looks answered from the last reading (diagnosis)
+
+    @staticmethod
+    def _small(corner):
+        g = np.asarray(corner)             # full size: a thin stroke of a digit must not fall between the rows
+        if g.ndim == 3:
+            g = g[..., :3].astype(np.int16).sum(axis=2) // 3
+        return g.astype(np.int16)
+
+    def reuse(self, corner, tick: float):
+        if self._view is None or corner is None or tick - self._t >= self.max_age:
+            return None
+        g = self._small(corner)
+        if g.shape != self._grey.shape:
+            return None
+        if np.count_nonzero(np.abs(g - self._grey) > self.pixel) > self.count:
+            return None
+        self.reused += 1
+        return replace(self._view)         # a copy: the worker sets crossplay_off on it
+
+    def remember(self, corner, view, tick: float):
+        self._grey = self._small(corner) if corner is not None else None
+        self._view = replace(view) if self._grey is not None else None
+        self._t = tick
 
 
 # ------------------------------------------------------------------ queue logic (pure)
