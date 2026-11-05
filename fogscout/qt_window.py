@@ -222,7 +222,7 @@ SPECS = {
                     ("hint", "st.version"))),                 # 1.2.19: the version where the updates are
                 # 1.29.1 (user: "unübersichtlich, Gemeinsamkeiten zusammentun"): backup and folders in one card
                 ("card", "st.more.backup", (("row", (("button", "st.more.export"), ("button", "st.more.import"),
-                                                     ("button", "st.more.archive"),
+                                                     ("button", "st.more.archive"), ("button", "st.more.selftest"),
                                                      ("button", "st.more.dir"), ("button", "st.more.maps_dir"), ("stretch",))),
                                             ("hint", "st.more.backup_hint"),
                                             ("row", (("button", "st.more.clear_hist"), ("button", "st.more.reset_all"),

@@ -254,6 +254,20 @@ EN = {
     "BP-Stand": "BP balance",
     "Aussetzer": "Stalls",
     "Alles sichern (ZIP) …": "Back up everything (ZIP) …",
+    "Installation prüfen": "Check installation",
+    "Installation wird geprüft …": "Checking the installation …",
+    "Installation prüfen – Fehler: {line}": "Check installation – failure: {line}",
+    "{n} von {total} Prüfungen fehlgeschlagen – Einzelheiten im Log. Eine Neuinstallation (Setup erneut ausführen) "
+    "behebt fehlende Dateien meist.":
+        "{n} of {total} checks failed – details in the log. Reinstalling (running the setup again) usually fixes "
+        "missing files.",
+    "Alle {n} Prüfungen bestanden: {names}.": "All {n} checks passed: {names}.",
+    "Installation prüfen: {text}": "Check installation: {text}",
+    "Prüft, ob alles da ist und läuft: Programmdateien, Kartenbilder, Bibliotheken, alle Module, Telemetrie aus, "
+    "Texterkennung, ffmpeg, Qt – derselbe Selbsttest wie bei jedem Build. Läuft als eigener Prozess, Ergebnis im Log.":
+        "Checks that everything is there and works: program files, map pictures, libraries, every module, telemetry "
+        "off, text recognition, ffmpeg, Qt – the same self-check as on every build. Runs as its own process, result in "
+        "the log.",
     "Alles sichern": "Back up everything",
     "Gesichert: {n} Dateien in {path}": "Backed up: {n} files to {path}",
     "Sichern fehlgeschlagen: {error}": "Backup failed: {error}",

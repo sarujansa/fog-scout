@@ -189,3 +189,41 @@ def test_the_bundle_leaves_out_only_what_is_never_used():
             with open(os.path.join(pkg, name), encoding="utf-8") as fh:
                 hit = needs.search(fh.read())
             assert hit is None, f"{name} uses {hit.group(0)} – the spec leaves it out of the .exe"
+
+
+def test_the_running_program_checks_its_installation_in_a_child_process(tmp_path):
+    """1.38.33 (project review F10): "Installation prüfen" runs the self-check as its own process – the .exe itself
+    or this Python with -E – and reads its result file; a missing, broken or hung child is a failed result."""
+    import json
+    import subprocess
+    from fogscout import selftest
+    out = str(tmp_path / "selftest.json")
+    assert selftest.child_args(out, frozen=True, python="C:/FS/FogScout.exe") == ["C:/FS/FogScout.exe", "--selftest", out]
+    assert selftest.child_args(out, frozen=False, python="py") == ["py", "-E", "-m", "fogscout", "--selftest", out]
+    seen = {}
+
+    def ok(args, **kw):
+        seen.update(args=args, cwd=kw["cwd"], timeout=kw["timeout"])
+        with open(args[-1], "w", encoding="utf-8") as fh:
+            json.dump({"ok": True, "passed": ["Dateien", "OCR: 4 ms"], "failed": []}, fh)
+    assert selftest.run_child("/root", out, run=ok)["passed"] == ["Dateien", "OCR: 4 ms"]
+    assert seen["cwd"] == "/root" and seen["args"][-1] == out and seen["timeout"] == selftest.CHILD_TIMEOUT_S
+    assert selftest.run_child("/root", out, run=lambda args, **kw: None)["failed"][0].startswith("Selbsttest: kein")
+
+    def hang(args, **kw):
+        raise subprocess.TimeoutExpired(args, kw["timeout"])
+    assert "abgebrochen" in selftest.run_child("/root", out, timeout=3, run=hang)["failed"][0]
+
+
+def test_the_self_check_really_runs_as_a_child_from_the_source_tree(tmp_path):
+    """The real command, from the source checkout: the child writes a result with every check named."""
+    import os
+    import sys
+    from fogscout import selftest
+    pytest.importorskip("onnxruntime")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = str(tmp_path / "r.json")
+    res = selftest.run_child(root, out, timeout=300, run=lambda args, **kw: __import__("subprocess").run(
+        [sys.executable] + args[1:], env=dict(os.environ, QT_QPA_PLATFORM="offscreen"), **kw))
+    names = [p.split(":", 1)[0] for p in res["passed"]] + [f.split(":", 1)[0] for f in res["failed"]]
+    assert {"Dateien", "Kartenbilder", "Module", "OCR", "Qt"} <= set(names), res
