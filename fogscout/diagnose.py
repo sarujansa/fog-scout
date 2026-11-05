@@ -221,6 +221,10 @@ def collect(app) -> str:
     tt = getattr(app, "_ticktimes", None)                 # 1.8.31: where the overlay's tick spends its time
     if tt is not None:
         lines.append(tt.line())
+    wk = getattr(app, "worker", None)                    # 1.38.22: the detection's looks and its thread's CPU
+    if getattr(wk, "times", None) is not None:
+        lines.append(wk.times.line())
+        lines.append(wk.cpu.line())
     errs = getattr(app, "_errors_seen", set())
     counts = getattr(app, "_error_counts", {}) or {}                 # 1.38.9: how often each kind came
     lines.append("Fehler seit Start: " + (", ".join(f"{k} {counts.get(k, 1)}×" for k in sorted(errs)) if errs

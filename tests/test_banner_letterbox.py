@@ -77,6 +77,8 @@ def test_worker_keeps_the_smallest_bars_of_the_last_looks():
     import collections
     from fogscout import worker
     w._vbar_looks = collections.deque(maxlen=worker.VBAR_LOOKS)
+    from fogscout.ticktime import LookTimes
+    w.times = LookTimes()                                  # 1.38.22: _note_vbars times itself
 
     def look(bar):
         f = np.zeros((1359, 1718, 3), np.uint8)
@@ -181,3 +183,7 @@ def test_the_worker_reads_a_letterboxed_banner_with_no_map_on_display(tmp_path, 
         wk.join(timeout=10)
     assert found is not None and found["map_id"] == "rpd-east"
     assert wk._letterboxed(w, h)
+    # 1.38.22: every look is timed for the diagnosis – the grab and the banner OCR ran, the lobby was read
+    steps = {k for t in wk.times.ticks for k in t}
+    assert {"grab", "banner", "total"} <= steps and "Erkennungs-Takt" in wk.times.line(), steps
+    assert len(wk.cpu.samples) >= 2
