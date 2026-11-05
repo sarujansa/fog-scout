@@ -9,9 +9,10 @@ import logging
 import os
 import threading
 import time
+import traceback
 from types import SimpleNamespace
 
-from . import builds, dashboard, history, launch, mapnotes, official, records, regions, sysinfo
+from . import builds, dashboard, history, launch, mapnotes, official, overview, records, regions, sysinfo
 from . import uimodel as ui
 from .capture import foreground_root, is_game_window
 from .i18n import N_, _
@@ -219,8 +220,8 @@ class StatsTab:
         ui.Button(rr, text=_("Exportieren …"), command=self._export_open).pack(side="right", anchor="n")   # 1.8.91
         # 1.17.1: the buttons for marked rounds only once one is marked (as on the page Aufnahmen since 1.11.14) –
         # seven greyed-out controls were noise; until then a line says what marking offers; right click unchanged
-        self.stats_sel_hint = ui.Label(rr, text=_("Runde markieren: Rolle, Farming oder Killer korrigieren, löschen "
-                                                  "– oder Rechtsklick."), style="Dim.TLabel")
+        self.stats_sel_hint = ui.Label(rr, text=_("Runde markieren: Rolle, Farming, Killer oder Map korrigieren, "
+                                                  "löschen – oder Rechtsklick."), style="Dim.TLabel")
         self.stats_sel_hint.pack(side="left")
         self.stats_sel = sel = ui.Frame(rr)
         r1 = ui.Frame(sel)
@@ -247,6 +248,17 @@ class StatsTab:
         self.stats_round_killer_btn = ui.Button(kr, text=_("Killer setzen"), command=self._stats_set_killer,
                                                  state="disabled")
         self.stats_round_killer_btn.pack(side="left", padx=(6, 0))
+        mr = ui.Frame(sel)                                  # 1.38.26 (F3): a wrongly read map, corrected here
+        mr.pack(fill="x", pady=(6, 0))
+        ui.Label(mr, text=_("Map der Runde:")).pack(side="left")
+        self._stats_map_choices = sorted(self.catalog.maps.values(), key=lambda m: m.name.lower())
+        self.stats_round_map_var = ui.StringVar(value="")
+        self.stats_round_map_cb = ui.Combobox(mr, textvariable=self.stats_round_map_var, state="disabled",
+                                               width=22, values=[m.name for m in self._stats_map_choices])
+        self.stats_round_map_cb.pack(side="left", padx=(6, 0))
+        self.stats_round_map_btn = ui.Button(mr, text=_("Map setzen"), command=self._stats_set_map,
+                                              state="disabled")
+        self.stats_round_map_btn.pack(side="left", padx=(6, 0))
         box = self._stats_page(_("Maps"), "maps", "_stats_part_maps")
         self.stats_maps = self._stats_tree(box, (("map", _("Map"), 130, "w"), ("n", _("Runden"), 62, "e"),
                                                  ("k", _("Killer"), 58, "e"), ("kills", _("Ø Kills"), 62, "e"),
@@ -1145,6 +1157,8 @@ class StatsTab:
             b.configure(state=state)
         self.stats_round_killer_cb.configure(state="readonly" if state == "normal" else "disabled")
         self.stats_round_killer_btn.configure(state=state)
+        self.stats_round_map_cb.configure(state="readonly" if state == "normal" else "disabled")
+        self.stats_round_map_btn.configure(state=state)
         self.stats_delete_btn.configure(state=state)
         marked, sel_row, hint = bool(sel), self.stats_sel, self.stats_sel_hint     # 1.17.1: bar only when marked
         if marked and not sel_row.winfo_manager():
@@ -1429,6 +1443,28 @@ class StatsTab:
         self.stats_round_killer_var.set("")
         self._stats_render()
 
+    def _stats_set_map(self):
+        """1.38.26 (F3): the map of the rounds marked in "Letzte Runden" – a banner read as the wrong map. The
+        recording keeps its file name; statistics, overlay record and the official join follow the new map."""
+        ts = self._stats_selected_ts()
+        target = next((m for m in self._stats_map_choices if m.name == self.stats_round_map_var.get()), None)
+        if not ts or target is None:
+            return
+        try:
+            changed = []
+            for t in ts:
+                r = history.set_map(self._hist_path(), t, target.id, target.name)
+                if r is not None:
+                    changed.append(r)
+        except OSError as e:
+            self._log(_("Map konnte nicht gespeichert werden: {error}", error=e), "Fehler")
+            return
+        for r in changed:
+            self._log(_("Map der Runde vom {when} auf {map} gesetzt.",
+                        when=time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), map=target.name), "System")
+        self.stats_round_map_var.set("")
+        self._stats_render()
+
     def _dash_clicked(self, value):
         """1.2.16: a click on the dashboard filters – a map bar sets the map, a heatmap cell map and killer."""
         if not value or value[0] not in ("map", "cell"):
@@ -1557,6 +1593,7 @@ class StatsTab:
         # 1.13: the next balance read in the lobby tells what the round brought (a custom game brings nothing)
         self.bloodpoints.round_ended(t, counts=not rec.get("custom"))
         self._off_open.round_recorded()              # worth opening the stats page once DBD is closed
+        self._session_end.round_recorded()
         if self.nb.select() == str(self.tab_stats):
             self._stats_render()
 
@@ -1599,21 +1636,18 @@ class StatsTab:
         if getattr(self, "_record_key", None) != key:
             j = self._joined()
             pairs = [(r, j.off[id(r)]) for r in j.rounds if id(r) in j.off and history.normal(r)]
-            self._record_cache, self._record_key = official.results(pairs, lambda r: r.map_id), key
+            # 1.38.28 (F2): by map and by map × killer (own killer, or the lobby's as survivor), in time order
+            self._record_cache = (records.record_groups(pairs, lambda r: r.map_id),
+                                  records.record_groups(pairs, lambda r: (r.map_id, r.killer)))
+            self._record_key = key
         return self._record_cache
 
-    def _record_text(self, map_id, role):
-        """Line under the timer: Ø kills (killer) or share escaped (survivor) on this map – the role of the
-        round if known, else the one played more often there; "" with fewer than RECORD_MIN rounds."""
-        g = self._map_records().get(map_id) or {}
-        ks, es = g.get("kills") or [], g.get("escaped") or []
-        if role not in ("killer", "survivor"):
-            role = "killer" if len(ks) >= len(es) else "survivor"
-        if role == "killer" and len(ks) >= RECORD_MIN:
-            return _("Ø {kills} Kills · {n} Runden", kills=f"{sum(ks) / len(ks):.1f}", n=len(ks))
-        if role == "survivor" and len(es) >= RECORD_MIN:
-            return _("{share} entkommen · {n} Runden", share=f"{sum(es) / len(es):.0%}", n=len(es))
-        return ""
+    def _record_text(self, map_id, role, killer=""):
+        """Line under the timer: Ø kills (killer) or share escaped (survivor) on this map – with this killer when
+        enough rounds say so (1.38.28), else the map alone; the role of the round if known, else the one played
+        more often there; "" with fewer than RECORD_MIN rounds (records.record_line)."""
+        by_map, by_pair = self._map_records()
+        return records.record_line(by_map, by_pair, map_id, role, killer or "", killer_label, RECORD_MIN)
 
     def _update_record(self):
         """Own record for the map on display into the overlay (setting overlay.show_record)."""
@@ -1621,7 +1655,8 @@ class StatsTab:
         hist = self._hist or {}
         if self.current and self.settings["overlay"].get("show_record", False) and not hist.get("custom"):
             try:
-                text = self._record_text(self.current[0], hist.get("role") or self._queue.get("role"))
+                text = self._record_text(self.current[0], hist.get("role") or self._queue.get("role"),
+                                         hist.get("killer") or self._queue.get("killer") or "")
             except Exception:
                 log.exception("record")
         self.overlay.set_record(text)
@@ -1851,12 +1886,29 @@ class StatsTab:
         self._log(msg, "System")
         self._inform(_("Userscript kopieren"), msg)
 
+    def _session_summary(self, now: float):
+        """1.38.27 (F1): once DBD is closed after at least one round – the session as one line: notification (sound
+        as for a found lobby) and a log line. Nothing is stored; the numbers come from the rounds and their matches."""
+        try:
+            got = overview.session_text(self._joined(), now)
+        except Exception:
+            self._report_once("Sitzungsbilanz", traceback.format_exc())
+            return
+        if got is None:
+            return
+        title, text = got
+        self._log(f"{title}: {text}", "System")
+        if self.settings.get("session_notify", True):
+            self._notify(title, text, force=True)
+
     def _official_tick(self):
         """Every tick: open the stats page once DBD was closed (if wanted), look for the userscript's files."""
         now = time.time()
         if self._off_open.update(now, self.game is not None) and self.settings.get("official_open_after_dbd") \
                 and not self.simulate:
             self._official_open(True)
+        if self._session_end.update(now, self.game is not None):
+            self._session_summary(now)
         if now >= self._off_next:
             fast = now < self._off_fast_until
             self._off_next = now + (3.0 if fast else 20.0)

@@ -133,6 +133,7 @@ DEFAULTS = {
     "lobby_remind": True,               # … and when its countdown runs out while READY is not pressed
     "notify_background_only": True,     # only while DBD is not the active window
     "bp_cap_notify": True,              # 1.13: sound + notification when a round left the bloodpoint balance unchanged (cap)
+    "session_notify": True,             # 1.38.27: notification with the session's numbers once DBD was closed
     "auto_update": True,                # start.bat: pull the newest state from GitHub before starting
     "user_aliases": {},                 # own assignments of unknown banner texts: {map_id: [text, ...]}
     "map_notes": {},                    # 1.8.54: own notes per map, shown with the map: {map_id: text}

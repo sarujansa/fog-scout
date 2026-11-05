@@ -189,6 +189,23 @@ def test_killer_of_one_round_can_be_set(tmp_path):
         h.set_killer(p, 1.0, "")
 
 
+def test_the_map_of_a_stored_round_can_be_corrected(tmp_path):
+    """1.38.26 (project review F3): a banner read as the wrong map could not be corrected in the history – every
+    other field had a setter (role, killer, farming, balance), the map had none."""
+    p = str(tmp_path / h.FILE)
+    h.append(p, h.Round(t=1.0, seconds=600, map_id="coal-tower", map="Coal Tower", role="killer", killer="The Nurse"))
+    h.append_lost(p, 2.0, "Ormond", "banner")
+    r = h.set_map(p, 1.0, "ironworks", "Ironworks of Misery")
+    assert (r.map_id, r.map, r.role, r.killer) == ("ironworks", "Ironworks of Misery", "killer", "The Nurse")
+    assert [(x.map_id, x.map) for x in h.load(p)] == [("ironworks", "Ironworks of Misery")]
+    assert h.set_map(p, 1.0, "ironworks", "Ironworks of Misery") is None       # already that map: nothing written
+    assert h.set_map(p, 9.0, "ironworks", "Ironworks of Misery") is None       # no such round
+    assert len(h.load_lost(p)) == 1                                            # the lost line survived the rewrite
+    import pytest
+    with pytest.raises(ValueError):
+        h.set_map(p, 1.0, "", "x")
+
+
 def test_roles_per_map():
     rs = [h.Round(1, 600, "a", "Coal Tower", role="killer"), h.Round(2, 600, "a", "Coal Tower", role="survivor"),
           h.Round(3, 600, "a", "Coal Tower", role="killer"), h.Round(4, 600, "a", "Coal Tower", custom=True),
