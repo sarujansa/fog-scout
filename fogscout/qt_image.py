@@ -18,7 +18,7 @@ from PySide6.QtGui import QGuiApplication, QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QTabWidget,
                                QVBoxLayout, QWidget)
 
-from . import annotate, askclaude, imageclaude, imageedit, launch, qt_theme
+from . import annotate, askclaude, hudnames, imageclaude, imageedit, launch, qt_theme
 from .i18n import N_, _
 from .qt_clip import DRAW_TOOLS, SIZE_LABELS, PreviewView
 from .qt_common import PlainLabel, guard_wheel
@@ -311,11 +311,20 @@ class ImageWindow(QWidget):
                                         _("Wie der Bereich unkenntlich wird."), self._censor_style_changed)
         r.addStretch()
         pl.addLayout(r)
+        r = FlowRow(spacing=6)                    # 1.38: the HUD's name places (hudnames), no Claude
+        self._btn(r, _("Namen links unten"), self._names_match,
+                  _("Setzt einen Kasten dorthin, wo DBD im Match die Namen der Survivor zeigt (links unten im "
+                    "Spielbild) – bei Bedarf verschieben."))
+        self._btn(r, _("Namen beim Zuschauen"), self._names_spectate,
+                  _("Setzt Kästen auf die Namen, wie DBD sie beim Zuschauen zeigt: die Liste links weiter oben und "
+                    "den Namen oben in der Mitte – bei Bedarf verschieben."))
+        pl.addLayout(r)
         r = QHBoxLayout()
         self._btn(r, _("Kasten entfernen"), self._censor_remove, _("Entfernt den markierten Kasten (Entf)."))
         self._btn(r, _("Alle entfernen"), self._censor_clear, "")
         r.addStretch()
         pl.addLayout(r)
+        pl.addStretch()                           # 1.38: spare height below the rows, not between them
         return page
 
     def _colour_page(self):
@@ -779,6 +788,35 @@ class ImageWindow(QWidget):
             self._snapshot()
             self.edit.censor_style = style
         self.canvas.set_look(True, style)
+
+    def _names_match(self):
+        self._names("match")
+
+    def _names_spectate(self):
+        self._names("spectate")
+
+    def _names(self, kind: str):
+        """1.38: censor boxes on the HUD's name places of the picture as it came (hudnames), turned and mirrored
+        like the picture – one undo step; boxes already there are not added twice."""
+        if self.original is None:
+            return
+        w, h = self.original.size
+        placed = imageedit.ImageEdit(censor=hudnames.boxes(kind, (w, h)))
+        if self.edit.rotate:
+            placed = imageedit.turned(placed, self.edit.rotate, (w, h))
+        size = (h, w) if self.edit.rotate % 2 else (w, h)
+        if self.edit.flip_h:
+            placed = imageedit.flipped(placed, True, size)
+        if self.edit.flip_v:
+            placed = imageedit.flipped(placed, False, size)
+        new = self.edit.copy()
+        new.censor = [imageedit.clamp_box(b) for b in hudnames.add(self.edit.censor, placed.censor)]
+        if new.censor == self.edit.censor:
+            return
+        self._snapshot()
+        self.edit = new
+        self._step = None
+        self._refresh()
 
     def _censor_remove(self):
         if not self.canvas.remove_selected() and self.canvas.boxes:
