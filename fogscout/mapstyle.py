@@ -465,12 +465,16 @@ def prune(cache_dir: str) -> int:
     return gone
 
 
-def warm(paths, cache_dir: str, stop=lambda: False, style: str = "dark") -> int:
+def warm(paths, cache_dir: str, stop=lambda: False, style: str = "dark", on_made=None) -> int:
     """Make the dark pictures ahead (thread at start / when the style is switched on), so that showing a map at the
-    start of a match does not wait for it. Returns how many pictures are in the dark style."""
+    start of a match does not wait for it. Returns how many pictures are in the dark style. 1.38.8: ``on_made()``
+    after each picture that has the style now – the maps page draws the tiles as they come, not after the last."""
     n = 0
     for path in paths:
         if stop():
             break
-        n += styled_path(path, cache_dir, style=style) != path
+        made = styled_path(path, cache_dir, style=style) != path
+        n += made
+        if made and on_made is not None:
+            on_made()
     return n
