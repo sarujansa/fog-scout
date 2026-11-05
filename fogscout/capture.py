@@ -87,29 +87,6 @@ if IS_WIN:
     user32.GetCursorInfo.restype = wintypes.BOOL
 
 
-def enable_dpi_awareness():
-    """Physical pixels everywhere (window rects, capture, overlay)."""
-    if not IS_WIN:
-        return
-    try:
-        f = ctypes.windll.user32.SetProcessDpiAwarenessContext
-        f.argtypes = [ctypes.c_void_p]
-        f.restype = ctypes.c_int
-        if f(ctypes.c_void_p(-4)):          # PER_MONITOR_AWARE_V2
-            return
-    except (AttributeError, OSError):
-        pass
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
-        return
-    except (AttributeError, OSError):
-        pass
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()
-    except (AttributeError, OSError):
-        pass
-
-
 def _window_text(hwnd) -> str:
     n = user32.GetWindowTextLengthW(hwnd)
     buf = ctypes.create_unicode_buffer(n + 1)
