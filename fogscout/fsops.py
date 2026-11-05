@@ -16,12 +16,16 @@ import ctypes
 import errno
 import hashlib
 import os
+import re
 import secrets
 import sys
+import threading
+import time
 
 WIN = sys.platform == "win32"
 LINUX = sys.platform.startswith("linux")
 TMP_SUFFIX = ".tmp"
+STALE_TMP_S = 3600.0      # 1.38.5: a temp file of write_atomic this old was left by a hard stop – it goes
 
 # Windows
 GENERIC_READ, GENERIC_WRITE, DELETE = 0x80000000, 0x40000000, 0x00010000
@@ -133,11 +137,48 @@ def write_new(path: str, data: bytes):
         raise
 
 
+_SWEPT = set()
+_SWEPT_LOCK = threading.Lock()
+
+
+def sweep_stale_tmp(path: str, now: float | None = None) -> int:
+    """1.38.5: temp files of ``path`` (``.<name>.<pid>.<hex>.tmp``, tmp_name) older than STALE_TMP_S removed – the
+    random names are not overwritten by the next save as the old fixed ``<name>.tmp`` was, so a hard stop between
+    write and replace would leave one for good. Only this exact pattern, only through discard_tmp; the count."""
+    folder, name = os.path.split(path)
+    pattern = re.compile(r"\." + re.escape(name) + r"\.\d+\.[0-9a-f]{8}" + re.escape(TMP_SUFFIX) + r"\Z")
+    now = time.time() if now is None else now
+    try:
+        names = os.listdir(folder or ".")
+    except OSError:
+        return 0
+    gone = 0
+    for n in names:
+        if not pattern.match(n):
+            continue
+        full = os.path.join(folder, n)
+        try:
+            old = now - os.stat(full).st_mtime > STALE_TMP_S
+        except OSError:
+            continue
+        if old:
+            discard_tmp(full)
+            gone += not os.path.exists(full)
+    return gone
+
+
 def write_atomic(path: str, data: bytes) -> None:
     """1.34.2 (review W8): ``path`` replaced by ``data`` – complete or not at all: a temp file beside it (write_tmp:
     exclusive, fsync'ed), then one replace. The one replacing write here, for files that are the program's own and
-    meant to be overwritten (a settings backup, a format-1 project); everything of the project saving never replaces.
-    A failure leaves the old file and no temp file."""
+    meant to be overwritten (settings, rounds, official matches, the recordings/clips index, backups, a format-1
+    project); everything of the project saving never replaces. A failure leaves the old file and no temp file.
+    1.38.5: the first write of a path in this process also sweeps its stale temp files (sweep_stale_tmp)."""
+    key = os.path.abspath(path)
+    with _SWEPT_LOCK:
+        first = key not in _SWEPT
+        _SWEPT.add(key)
+    if first:
+        sweep_stale_tmp(path)
     tmp = write_tmp(path, data)
     try:
         os.replace(tmp, path)
