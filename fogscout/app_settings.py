@@ -485,6 +485,11 @@ class SettingsTab:
                                                command=self._export_settings)).pack(side="left")
         self._reg("st.more.import", ui.Button(bk, text=_("Einstellungen importieren …"),
                                                command=self._import_settings)).pack(side="left", padx=6)
+        self._reg("st.more.archive", ui.Button(bk, text=_("Alles sichern (ZIP) …"),       # 1.38.32 (F8)
+                                                command=self._archive_all)).pack(side="left")
+        self.install_check_btn = self._reg("st.more.selftest", ui.Button(bk, text=_("Installation prüfen"),   # 1.38.33
+                                                                       command=self._install_check))
+        self.install_check_btn.pack(side="left", padx=6)
         self._reg("st.more.clear_hist", ui.danger(ui.Button(bk, text=_("Alle Runden löschen …"),    # 1.2.16: moved; 1.23 named
                                                              command=self._stats_clear))).pack(side="right")
         self._reg("st.more.reset_all", ui.danger(ui.Button(bk, text=_("Alle Einstellungen zurücksetzen"),  # 1.2.19
@@ -527,6 +532,59 @@ class SettingsTab:
             self._log(_("Export fehlgeschlagen: {error}", error=e), "Fehler")
             return
         self._log(_("Einstellungen gesichert: {path}", path=path), "System")
+
+    def _install_check(self):
+        """1.38.33 (F10): the self-check CI runs on every build (files, map pictures, libraries, every module,
+        telemetry off, OCR, ffmpeg, Qt) – here as a child process on this PC, the result in the log and a note."""
+        if getattr(self, "_install_checking", False):
+            return
+        self._install_checking = True
+        self.install_check_btn.configure(state="disabled")
+        self._log(_("Installation wird geprüft …"), "System")
+        out = os.path.join(self.data_dir, "cache", "selftest.json")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+
+        def run():
+            from . import selftest
+            res = selftest.run_child(self.root_dir, out)
+            self.events.put(("call", self._install_checked, (res,)))
+        threading.Thread(target=run, daemon=True, name="selftest").start()
+
+    def _install_checked(self, res):
+        self._install_checking = False
+        self.install_check_btn.configure(state="normal")
+        passed, failed = list(res.get("passed") or []), list(res.get("failed") or [])
+        for line in failed:
+            self._log(_("Installation prüfen – Fehler: {line}", line=line), "Fehler")
+        if failed:
+            text = _("{n} von {total} Prüfungen fehlgeschlagen – Einzelheiten im Log. Eine Neuinstallation (Setup "
+                     "erneut ausführen) behebt fehlende Dateien meist.", n=len(failed), total=len(passed) + len(failed))
+        else:
+            text = _("Alle {n} Prüfungen bestanden: {names}.", n=len(passed),
+                     names=", ".join(p.split(":", 1)[0] for p in passed))
+        self._log(_("Installation prüfen: {text}", text=text), "System")
+        self._inform(_("Installation prüfen"), text)
+
+    def _archive_all(self, path=None):
+        """1.38.32 (F8): rounds, match data, settings (as exported), own map pictures and the corpus in one ZIP –
+        written in a thread, the result in the log."""
+        if path is None:
+            stamp = time.strftime("%Y-%m-%d")
+            self._qt_file("save", _("Alles sichern"), f"fogscout-sicherung-{stamp}.zip", self._archive_all,
+                          pattern="ZIP (*.zip)")
+            return
+        if not path.lower().endswith(".zip"):
+            path += ".zip"
+        data = dict(self.settings.data)
+
+        def run():
+            from . import backups
+            try:
+                n = backups.archive(self.data_dir, path, data)
+                self.events.put(("call", self._log, (_("Gesichert: {n} Dateien in {path}", n=n, path=path), "System")))
+            except OSError as e:
+                self.events.put(("call", self._log, (_("Sichern fehlgeschlagen: {error}", error=e), "Fehler")))
+        threading.Thread(target=run, daemon=True, name="archive").start()
 
     def _reset_all_settings(self):
         """1.2.19: back to the defaults (PC-specific values stay), then a restart like after an import."""

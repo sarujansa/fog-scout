@@ -383,6 +383,14 @@ TIPS = {
     "Custom Games einschliessen": "Aus: Custom Games (eigene Lobbys, Bots) bleiben draussen.",
     "Farming-Runden einschliessen": "Aus: Farming-Runden (Crossplay aus bzw. Farming-Region) bleiben draussen.",
     "CSV-Datei (Excel)": "Eine Zeile je Runde, Spalten durch Semikolon getrennt, mit Kopfzeile.",
+    "Installation prüfen": "Prüft, ob alles da ist und läuft: Programmdateien, Kartenbilder, Bibliotheken, alle Module, "
+                           "Telemetrie aus, Texterkennung, ffmpeg, Qt – derselbe Selbsttest wie bei jedem Build. Läuft "
+                           "als eigener Prozess, Ergebnis im Log.",
+    "Alles sichern (ZIP) …": "Packt Runden, Match-Daten, die Einstellungen (ohne Passwörter und PC-eigene Werte), "
+                             "eigene Kartenbilder und den Banner-Korpus in eine ZIP-Datei – zum Aufbewahren oder für "
+                             "einen anderen PC. Aufnahmen und Logs bleiben draussen.",
+    "JSON (für eigene Auswertungen)": "Eine Liste mit einem Objekt je Runde, die Spaltentitel als Schlüssel – für "
+                                      "eigene Auswertungen (Python, Tabellen, jq).",
     "Textliste (eine Zeile je Runde)": "Eine Zeile je Runde, die gewählten Spalten mit „ · “ getrennt, ohne Kopfzeile – "
                                        "zum Einfügen in einen Chat.",
     "Alle Einstellungen zurücksetzen": "Setzt jede Einstellung auf die Auslieferung zurück (Overlay, Hotkeys, Erkennung, "
