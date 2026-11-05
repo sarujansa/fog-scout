@@ -8,7 +8,7 @@ from . import uimodel as ui
 from .i18n import N_, _
 from .skin import STYLE_LABELS
 from .app_spotify import MEDIA_NEXT_N, MEDIA_NEXT_SPOTS
-from .app_sysinfo import (BAR_ALIGNS, HUD_ROW_LABELS, HUD_SIDES, MAP_SCALE, MEDIA_SCALE, MEDIA_SPOTS, MEDIA_STYLES,
+from .app_sysinfo import (BAR_ALIGNS, HUD_ROW_LABELS, HUD_SIDES, MAP_SCALE, MEDIA_SPOTS, MEDIA_STYLES,
                           OPACITY_KEYS, PRESET_LABELS, SELECTABLE, TODAY_SPOTS)
 
 ANCHORS = [("auto", N_("automatisch")), ("top-left", N_("oben links")), ("top-right", N_("oben rechts")),
@@ -318,9 +318,7 @@ class OverlayTab:
                                                        width=38, values=[_(t) for _k, t in MEDIA_STYLES]))
         scb.pack(side="left", padx=6)
         scb.bind("<<ComboboxSelected>>", lambda e: self._media_style_changed())
-        self.media_size_var = ui.DoubleVar(value=round(float(o.get("media_scale", 1.0)) * 100))
-        self._slider(mf, _("Grösse Musik"), self.media_size_var, *MEDIA_SCALE, self._media_size_changed,
-                     key="ov.media_size")
+        self.media_size_var = ui.DoubleVar(value=round(float(o.get("media_scale", 1.0)) * 100))   # set by ov.sel_size
         cr = ui.Frame(mf)                                    # 1.8.24: round or square cover
         cr.pack(fill="x", pady=(4, 0))
         self._reg("ov.media_shape.label", ui.Label(cr, text=_("Cover"), width=12)).pack(side="left")
