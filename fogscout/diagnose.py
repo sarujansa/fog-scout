@@ -167,6 +167,14 @@ def collect(app) -> str:
                      f"{getattr(w, 'bp_info', '–')}")
         lines.append(f"Runde: {getattr(app, '_hist', None)} · Lobby der App: "
                      f"{ {k: v for k, v in getattr(app, '_queue', {}).items() if k != 'since'} }")
+        try:                                                  # 1.38.29: the corpus of decided banners
+            from . import corpus
+            rep = getattr(app, "_corpus_last", None)
+            lines.append(f"Korpus: {corpus.count(app.data_dir)} Banner" + (
+                f" · letzte Prüfung {rep.hits}/{rep.total} ({rep.broken} unlesbar, {rep.seconds:.1f} s)" if rep else
+                " · noch nicht geprüft"))
+        except Exception as e:
+            lines.append(f"Korpus: {e}")
         seen = list(getattr(w, "banner_history", []))
         lines.append(f"Letzte Banner ({len(seen)}):" if seen else "Letzte Banner: keine")
         lines.extend("  " + h for h in seen)

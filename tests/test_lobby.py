@@ -570,7 +570,7 @@ def test_the_lobby_is_read_from_one_grab_per_tick_and_as_before(tmp_path, monkey
     monkeypatch.setattr(worker, "find_game_window", lambda known=None: game)
     monkeypatch.setattr(worker, "foreground_root", lambda: grabs.append((time.time(), "tick")) or 1)   # once a tick
     wk = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
-                                queue.Queue())
+                                queue.Queue(), data_dir=str(tmp_path))
     wk.start()
     try:
         deadline = time.time() + 60                                # generous: shared CI runners
@@ -619,7 +619,7 @@ def test_one_grab_per_match_tick_banner_and_round_end_look_share_it(tmp_path, mo
     monkeypatch.setattr(worker, "foreground_root", lambda: 1)
     monkeypatch.setattr(worker, "cursor_state", lambda: None)
     wk = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en"]),
-                                queue.Queue())
+                                queue.Queue(), data_dir=str(tmp_path))
     wk.map_on_screen, wk.watch_gen = True, (1, "auto")              # a map shown: the trial runs
     wk.start()
     try:

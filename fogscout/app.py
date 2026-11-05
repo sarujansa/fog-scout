@@ -10,7 +10,7 @@ import threading
 import time
 import traceback
 
-from . import i18n, launch, layout, mapimage, mapnotes, mapstyle, obsrec, regions, restart, tooltip
+from . import corpus, i18n, launch, layout, mapimage, mapnotes, mapstyle, obsrec, regions, restart, tooltip
 from . import uimodel as ui
 from .capture import IS_WIN, find_game_window
 from .catalog import Catalog
@@ -350,6 +350,20 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         r = ui.Frame(adv)
         r.pack(fill="x", pady=(6, 0))
         ui.Button(r, text=_("Bildschirm jetzt scannen"), command=self.scan_now).pack(side="left")
+        # 1.38.29 (F4): the corpus of decided banners – collect, check the detection against it, export
+        self.corpus_var = ui.BooleanVar(value=bool(self.settings.get("corpus_save", True)))
+        ui.Checkbutton(adv, text=_("Banner jeder Erkennung für „Erkennung prüfen“ sammeln"), variable=self.corpus_var,
+                        command=self._detect_flags_changed).pack(anchor="w", pady=(8, 0))
+        self.corpus_text = ui.StringVar(value="")
+        ui.Label(adv, textvariable=self.corpus_text, style="Dim.TLabel", wraplength=420).pack(anchor="w", padx=(22, 0))
+        rc = ui.Frame(adv)
+        rc.pack(fill="x", pady=(4, 0))
+        self.corpus_check_btn = ui.Button(rc, text=_("Erkennung prüfen"), command=self.corpus_check)
+        self.corpus_check_btn.pack(side="left")
+        ui.Button(rc, text=_("Korpus exportieren …"), command=self.corpus_export).pack(side="left", padx=(6, 0))
+        ui.Button(rc, text=_("Korpus-Ordner öffnen"), command=lambda: self._open(corpus.folder(self.data_dir))).pack(
+            side="left", padx=(6, 0))
+        self._corpus_last = None
         self._show_advanced()
 
     def _toggle_advanced(self):
@@ -358,8 +372,82 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._save_soon()
         self._show_advanced()
 
+    def _corpus_status(self):
+        """The line under the corpus switch: how many banners, the last check."""
+        n = corpus.count(self.data_dir)
+        text = _("{n} Banner gesammelt", n=n) if n != 1 else _("1 Banner gesammelt")
+        rep = self._corpus_last
+        if rep is not None:
+            text += " · " + _("letzte Prüfung: {hits} von {total} erkannt", hits=rep.hits, total=rep.total)
+        self.corpus_text.set(text)
+
+    def corpus_check(self):
+        """1.38.29: read every stored banner again with a fresh reader (own OCR session, off the window's thread)
+        and report hits and misses – the detection checked against real pictures, on a click."""
+        if getattr(self, "_corpus_busy", False):
+            return
+        if not corpus.count(self.data_dir):
+            self._inform(_("Erkennung prüfen"), _("Noch keine Banner gesammelt – sie kommen mit jeder erkannten Map."))
+            return
+        self._corpus_busy = True
+        self.corpus_check_btn.configure(state="disabled")
+        self._log(_("Erkennung prüfen: {n} Banner werden neu gelesen …", n=corpus.count(self.data_dir)), "System")
+
+        def run():
+            try:
+                from .detector import BannerReader
+                from .ocr import Recognizer
+                reader = BannerReader(Recognizer(os.path.join(self.root_dir, "models", "ch_PP-OCRv4_rec_infer.onnx")),
+                                      self.catalog)
+                rep = corpus.check(self.data_dir, reader)
+            except Exception as e:
+                rep = e
+            self.events.put(("call", self._corpus_checked, (rep,)))
+        threading.Thread(target=run, daemon=True, name="corpus-check").start()
+
+    def _corpus_checked(self, rep):
+        self._corpus_busy = False
+        self.corpus_check_btn.configure(state="normal")
+        if isinstance(rep, Exception):
+            self._log(_("Erkennung prüfen fehlgeschlagen: {error}", error=rep), "Fehler")
+            return
+        self._corpus_last = rep
+        text = _("{hits} von {total} Bannern wieder erkannt ({seconds} s).", hits=rep.hits, total=rep.total,
+                 seconds=f"{rep.seconds:.1f}")
+        if rep.broken:
+            text += " " + _("{n} nicht lesbar.", n=rep.broken)
+        self._log(_("Erkennung prüfen: {text}", text=text), "System")
+        for stamp, want, got, read, fit in rep.misses[:50]:
+            self._log(_("Erkennung prüfen – {stamp}: erwartet {want}, gelesen „{read}“ → {got}",
+                        stamp=stamp, want=want, read=read, got=got or "–"), "Erkennung")
+        self._corpus_status()
+        self._inform(_("Erkennung prüfen"), text + ("" if not rep.misses else "\n" + _("Die Treffer, die fehlen, stehen im Log.")))
+
+    def corpus_export(self):
+        """1.38.29: all stored banners into a ZIP the user picks (to share them for the repository's test corpus)."""
+        from .official import downloads_dir
+        start = downloads_dir()
+        initial = os.path.join(start if os.path.isdir(start) else self.data_dir, "fogscout-korpus.zip")
+        self._qt_file("save", _("Korpus exportieren"), initial, self._corpus_export_to, pattern="ZIP (*.zip)")
+
+    def _corpus_export_to(self, path):
+        if not path:
+            return
+        if not path.lower().endswith(".zip"):
+            path += ".zip"
+
+        def run():
+            try:
+                n = corpus.export_zip(self.data_dir, path)
+                self.events.put(("call", self._log, (_("Korpus exportiert: {n} Dateien nach {path}", n=n, path=path),
+                                                      "System")))
+            except OSError as e:
+                self.events.put(("call", self._log, (_("Korpus exportieren fehlgeschlagen: {error}", error=e), "Fehler")))
+        threading.Thread(target=run, daemon=True, name="corpus-export").start()
+
     def _show_advanced(self):
         if self.adv_open.get():
+            self._corpus_status()
             self.adv_btn.configure(text=_("Erweitert (Fehlersuche)"))
             ui.glyph(self.adv_btn, "chevron_down")                 # 1.24: a drawn chevron, not "▾"
             self.adv_frame.pack(fill="x", pady=(4, 0))
@@ -1469,6 +1557,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self.menu_paused = False
             self._tick_overlay(reschedule=False)
         self.settings.set("save_debug_images", bool(self.debug_var.get()))
+        self.settings.set("corpus_save", bool(self.corpus_var.get()))
         self._save_soon()
 
     # ---------------------------------------------------------- own map assignments

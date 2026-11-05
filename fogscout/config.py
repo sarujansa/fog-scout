@@ -126,6 +126,7 @@ DEFAULTS = {
     "log_categories": ["Erkennung", "Overlay", "System", "Fehler"],
     "ocr_threads": 2,
     "save_debug_images": False,
+    "corpus_save": True,                # 1.38.29: keep the banner of every detection (corpus/) for "Erkennung prüfen"
     "show_advanced": False,             # log page (1.8.78; before: detection tab): technical options unfolded
     "tray": True,                       # minimise into the notification area
     "autostart": True,                  # start with Windows (logon task, set up as admin) unless switched off
