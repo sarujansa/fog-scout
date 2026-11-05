@@ -21,14 +21,7 @@ from .qt_views import ElideButton
 
 log = logging.getLogger(__name__)
 
-ERROR_WORDS = {"auth": N_("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
-                       "(„API-Key holen“ öffnet die Anthropic Console)."),
-               "rate": N_("Claude: Zu viele Anfragen – gleich noch einmal versuchen."),
-               "quota": N_("Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › "
-                        "„Guthaben aufladen“."),
-               "refused": N_("Claude hat die Frage abgelehnt."),
-               "bad": N_("Claude hat unverständlich geantwortet."),
-               "net": N_("Claude ist nicht erreichbar – keine Internetverbindung?"),
+ERROR_WORDS = {**askclaude.ERRORS,                                           # 1.38.3: the one table
                "still": N_("Das Standbild liess sich nicht lesen – nichts gesendet.")}
 
 

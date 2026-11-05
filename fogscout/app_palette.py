@@ -290,14 +290,7 @@ class PaletteMixin:
 
     @staticmethod
     def _claude_words(kind: str) -> str:
-        return {"auth": _("Claude: Der API-Key wird nicht angenommen – unter Einstellungen › Verbindungen prüfen "
-                         "(„API-Key holen“ öffnet die Anthropic Console)."),
-                "rate": _("Claude: Zu viele Anfragen – gleich noch einmal versuchen."),
-                "quota": _("Claude: Kein Guthaben mehr auf dem API-Konto – Einstellungen › Verbindungen › "
-                          "„Guthaben aufladen“."),
-                "refused": _("Claude hat die Frage abgelehnt."),
-                "bad": _("Claude hat unverständlich geantwortet.")}.get(
-            kind, _("Claude ist nicht erreichbar – keine Internetverbindung?"))
+        return askclaude.error_text(kind)
 
     # ---------------------------------------------------------- settings card (Einstellungen → Verbindungen)
     def _claude_card(self, more):
