@@ -27,6 +27,12 @@ class Tile:
     sub: str = ""
     frac: float | None = None          # bar below the value (0..1), None = no bar
     colour: object = None              # value in this colour (None = text colour)
+    open: str = ""                     # 1.38.54: a click shows what the tile counts (App._open_tile), "" = none
+
+
+def rounds_target(ts) -> str:
+    """1.38.54: the click target "rounds:<t>,<t>…" – these rounds (start times) marked under „Letzte Runden“."""
+    return "rounds:" + ",".join(repr(float(t)) for t in ts) if ts else ""
 
 
 @dataclass
@@ -121,7 +127,7 @@ def bp_tiles(pairs, role_label=lambda r: r) -> list:
     sub = best_r.map + " · " + time.strftime("%d.%m.%y", time.localtime(best_r.t))
     if best_r.role in ("killer", "survivor"):
         sub += " · " + role_label(best_r.role)
-    out.append(Tile(_("Beste Runde"), _bp(best_m.bp), sub))
+    out.append(Tile(_("Beste Runde"), _bp(best_m.bp), sub, open=rounds_target([best_r.t])))
     per = {role: bp_rate([(r, m) for r, m in pairs if r.role == role]) for role in ("killer", "survivor")}
     top = max((x.per_round or 0 for x in per.values()), default=0)
     for role, label in (("killer", _("Ø BP als Killer")), ("survivor", _("Ø BP als Survivor"))):
@@ -191,28 +197,30 @@ def tiles(rounds, pairs) -> list:
     s = history.summary(rounds)
     o = official.summary([m for _r, m in pairs])
     ws = history.wait_summary(rounds)
-    out = [Tile(_("Runden"), str(s["count"]), _("{time} gespielt", time=play_time(s["total"])))]
+    out = [Tile(_("Runden"), str(s["count"]), _("{time} gespielt", time=play_time(s["total"])), open="tab:last")]
     # 1.24.2 (phase 2 audit: four of eight tiles said "–" without match data): a value the selection does not
     # have gets no tile – the statistics page says once what is missing and how to get it (App: stats_data_row)
     if o["killer"]:
         sub = _("4K: {n} von {total}", n=o["four"], total=o["killer"])
         if o["abandons"]:
             sub += " · " + _("{n}× Abandon", n=o["abandons"])
-        out.append(Tile(_("Ø Kills"), f"{o['kills']:.2f}", sub, frac=o["kills"] / 4))
+        out.append(Tile(_("Ø Kills"), f"{o['kills']:.2f}", sub, frac=o["kills"] / 4, open="tab:last:killer"))
     if o["survivor"]:
         out.append(Tile(_("Entkommen"), f"{o['escaped']:.0%}", _("{n} Survivor-Runden", n=o["survivor"]),
-                        frac=o["escaped"]))
+                        frac=o["escaped"], open="tab:last:survivor"))
     if s["count"]:
-        out.append(Tile(_("Ø Rundendauer"), fmt_duration(s["avg"])))
+        out.append(Tile(_("Ø Rundendauer"), fmt_duration(s["avg"]), open="tab:last"))
     if ws["count"]:
         out.append(Tile(_("Ø Wartezeit"), fmt_duration(ws["avg"]),
-                        _("Median {time}", time=fmt_duration(ws["median"]))))
+                        _("Median {time}", time=fmt_duration(ws["median"])), open="tab:wait"))
     if o["bp_matches"]:
-        out.append(Tile(_("Ø Bloodpoints"), _bp(o["bp"] / o["bp_matches"]), _("{n} Matches", n=o["bp_matches"])))
+        out.append(Tile(_("Ø Bloodpoints"), _bp(o["bp"] / o["bp_matches"]), _("{n} Matches", n=o["bp_matches"]),
+                        open="tab:bp"))
     rate = bp_rate(pairs)                                       # 1.6.3: what farming earns
     if rate.per_hour:
         out.append(Tile(_("Bloodpoints pro Stunde"), _bp(rate.per_hour),
-                        _("mit Wartezeit {bp}", bp=_bp(rate.per_hour_waiting)) if rate.per_hour_waiting else ""))
+                        _("mit Wartezeit {bp}", bp=_bp(rate.per_hour_waiting)) if rate.per_hour_waiting else "",
+                        open="tab:bp"))
     return out
 
 
