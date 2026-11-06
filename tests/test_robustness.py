@@ -654,3 +654,39 @@ def test_the_overview_tiles_open_their_rounds(tmp_path):
         assert a.qt.current_key() == "recordings"
     finally:
         a.quit()
+
+
+def test_record_and_dashboard_tiles_open_their_rounds_with_the_filters_kept(tmp_path):
+    """1.38.54 (user: "mach das auch für die anderen Kacheln, wo es Sinn macht"): in the statistics a click on
+    "Längste Runde" marks exactly that round under „Letzte Runden“, "Meiste Runden an einem Tag" all rounds of that
+    day, and "Ø Wartezeit" of the overview opens the tab Wartezeit – the user's period filter stays as it was."""
+    now = time.time()
+    day = __import__("fogscout.history", fromlist=["x"]).period_start("day", now)
+    start = day - 3 * 86400 + 20 * 3600                                   # three days ago, 20:00
+    plan = [(start, 600), (start + 900, 1500), (start + 2700, 700), (start - 86400, 800)]
+    rounds = b"".join(json.dumps({"t": t, "seconds": s, "map_id": "coal-tower", "map": "Coal Tower", "role": "killer",
+                                  "wait": 60, "source": "auto"}).encode() + b"\n" for t, s in plan)
+    a = _start(tmp_path, {"welcome_seen": True}, rounds=rounds)
+    try:
+        _pump_app(a, 0.3)
+        a.qt.show_page("stats")
+        a.stats_period_var.set(dict(a._stats_periods)["30d"])              # the user's own filter
+        a._stats_select("Rekorde")
+        a._stats_render()
+        a._stats_render_tab()
+        tiles = {t.title: t for t in a.stats_records.data}
+        a._qt_event("tile_open", tiles["Längste Runde"].open)
+        assert a._stats_current_title() == "Letzte Runden" and a.stats_last.selection() == (repr(float(start + 900)),)
+        assert a.stats_period_var.get() == dict(a._stats_periods)["30d"]
+        a._qt_event("tile_open", tiles["Meiste Runden an einem Tag"].open)
+        assert sorted(a.stats_last.selection()) == sorted(repr(float(t)) for t, _s in plan[:3])
+        a._stats_select("Übersicht")
+        a._stats_render()
+        a._stats_render_tab()
+        wait = next(t for t in a.stats_dash.data.tiles if t.title == "Ø Wartezeit")
+        a._qt_event("tile_open", wait.open)
+        assert a._stats_current_title() == "Wartezeit" and a.stats_period_var.get() == dict(a._stats_periods)["30d"]
+        a._qt_event("tile_open", "rounds:not-a-number")                      # broken target: nothing happens
+        assert a._stats_current_title() == "Wartezeit"
+    finally:
+        a.quit()

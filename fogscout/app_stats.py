@@ -578,6 +578,26 @@ class StatsTab:
         if kind == "page":
             self.qt.show_page(rest)
             return
+        if kind == "rounds":                     # 1.38.54: a record's rounds – the user's filters stay as they are
+            try:
+                ts = [float(t) for t in rest.split(",") if t]
+            except ValueError:
+                return
+            if ts and not self._show_rounds(ts):
+                self._log(_("Diese Runden sind durch die Filter der Statistik ausgeblendet."), "System")
+            return
+        if kind == "tab":                        # 1.38.54: a tile of the statistics – its part, filters kept
+            part, _sep, role = rest.partition(":")
+            title = self.TILE_PARTS.get(part)
+            if title is None:
+                return
+            if role:
+                self.stats_role_var.set(dict(self._stats_roles).get(role, self._stats_roles[0][1]))
+            self.qt.show_page("stats")
+            self._stats_select(_(title))
+            self._stats_render()
+            self._stats_render_tab()
+            return
         part, _sep, role = rest.partition(":")
         title = self.TILE_PARTS.get(part)
         if title is None or kind not in dict(self._stats_periods):

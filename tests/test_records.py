@@ -145,3 +145,24 @@ def test_sessions_split_after_the_gap_and_sum_their_rounds():
     tiles = records.session_tiles(rows)
     assert [t.title for t in tiles][:3] == ["Sitzungen", "Ø Runden je Sitzung", "Ø Dauer einer Sitzung"]
     assert tiles[0].value == "2" and tiles[1].value == "2.0"
+
+
+def test_record_tiles_open_the_rounds_they_come_from():
+    """1.38.54 (user: "mach das auch für die anderen Kacheln, wo es Sinn macht"): every record that comes from rounds
+    carries their start times as its click target; streak_rounds = the first longest run, unknown results skipped."""
+    assert records.streak_rounds([(5, True), (1, True), (2, None), (3, True), (4, False), (6, True)]) == [1, 3]
+    assert records.streak_rounds([(1, False), (2, None)]) == []
+    rs = [Round(_t(3, 20), 600, "coal", "Coal Tower", role="killer"),
+          Round(_t(3, 20, 15), 900, "coal", "Coal Tower", role="killer"),
+          Round(_t(4, 20), 1500, "game", "The Game", role="killer")]
+    pairs = [(r, _killer_match(r.t, 4)) for r in rs]
+    got = {t.title: t.open for t in records.tiles(rs, pairs)}
+    ts = lambda *rounds: "rounds:" + ",".join(repr(float(r.t)) for r in rounds)   # noqa: E731
+    assert got["4K-Serie"] == ts(*rs)
+    assert got["Meiste Runden an einem Tag"] == ts(rs[0], rs[1])
+    assert got["Längste Sitzung"] == ts(rs[0], rs[1])
+    assert got["Längste Runde"] == ts(rs[2]) and got["Schnellste 4K"] == ts(rs[0])
+    assert got["Entkommen-Serie"] == "" and got["Beste Woche als Survivor"] == ""   # no survivor rounds: no target
+    from fogscout import dashboard
+    dash = {t.title: t.open for t in dashboard.tiles(rs, pairs)}
+    assert dash["Runden"] == "tab:last" and dash["Ø Kills"] == "tab:last:killer"
