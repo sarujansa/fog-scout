@@ -731,6 +731,8 @@ EN = {
     "liest nur Bildschirmpixel, sendet keine Eingaben ans Spiel.": "reads screen pixels only, sends no input to the game.",
     "Inoffizielles Fan-Tool, nicht von Behaviour Interactive genehmigt – Nutzung auf eigene Gefahr (siehe LICENSE).":
         "Unofficial fan tool, not approved by Behaviour Interactive – use at your own risk (see LICENSE).",
+    "Kartenbilder: Lethia (hens333.com/callouts, mit Erlaubnis von Hens) · Map-Namen: Luca Fontanot (DBD Map Overlay).":
+        "Map pictures: Lethia (hens333.com/callouts, with permission from Hens) · map names: Luca Fontanot (DBD Map Overlay).",
     "Keine. Unbekannte Map-Namen lassen sich nach dem Match im Hauptfenster zuordnen.":
         "None. Unknown map names can be assigned in the main window after the match.",
     "Eigene Zuordnungen": "Own assignments",
