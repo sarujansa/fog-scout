@@ -25,6 +25,7 @@ datas = [
     (os.path.join(ROOT, "THIRD_PARTY.md"), "."),
     (os.path.join(ROOT, "PRIVACY.md"), "."),
     (os.path.join(ROOT, "LICENSE"), "."),               # 1.38.43: the terms, next to the program
+    (os.path.join(ROOT, "licenses"), "licenses"),       # 1.38.44: Apache-2.0 text (maps.json, OCR models)
     (os.path.join(ROOT, "maps"), "maps"),
     (os.path.join(ROOT, "models"), "models"),
     (os.path.join(PACKAGE, "fonts"), os.path.join("fogscout", "fonts")),

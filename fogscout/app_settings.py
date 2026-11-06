@@ -511,7 +511,9 @@ class SettingsTab:
             side="left", padx=6)
         self.version_label = self._reg("st.version", ui.Label(f, text=f"Fog Scout {__version__} · " + _("liest nur Bildschirmpixel, sendet keine Eingaben ans Spiel.")
                   + " " + _("Inoffizielles Fan-Tool, nicht von Behaviour Interactive genehmigt – Nutzung auf eigene "
-                            "Gefahr (siehe LICENSE)."),
+                            "Gefahr (siehe LICENSE).")
+                  + " " + _("Kartenbilder: Lethia (hens333.com/callouts, mit Erlaubnis von Hens) · Map-Namen: Luca "
+                            "Fontanot (DBD Map Overlay)."),
                   style="Dim.TLabel", wraplength=430))
         self.version_label.pack(anchor="w", pady=(10, 0))
         return outer
