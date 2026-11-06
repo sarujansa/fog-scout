@@ -629,3 +629,19 @@ def test_a_layered_window_keeps_its_bitmap_while_its_size_stays(root):
     assert surf._size == hud.size and not hud.last_error      # another size: a new bitmap
     hud.destroy()
     assert surf._dc is None
+
+
+def test_the_input_reader_loads_and_reads_nothing_for_a_window_not_in_front():
+    """1.39: the real Windows look – user32 and XInput (System32) load; a window that is not the foreground window
+    (here: none / a made-up handle) gives no state at all, so nothing typed elsewhere is ever seen."""
+    from fogscout import inputs
+    poll = inputs.Win32Poll()
+    assert poll(0) is None and poll(0x7FFF0001) is None
+    front = poll._user32.GetForegroundWindow()
+    if front:                                           # the runner's own foreground window: a state, keys unheld
+        st = poll(int(poll._user32.GetAncestor(front, 2) or front))
+        assert st is None or isinstance(st, inputs.InputState)
+    r = inputs.Reader(poll=poll)
+    r.allow(None)
+    r.look()
+    assert r.state == inputs.EMPTY

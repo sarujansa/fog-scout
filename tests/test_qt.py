@@ -225,8 +225,8 @@ def test_form_page_shows_states_and_posts_clicks(qapp, keep):
     assert page.controls["ov.map_size_reset"][1].isHidden() and page.controls["ov.pos_hint"][1].isHidden()
     kind, tabs, body = page.controls["ov.pos"]                 # 1.66.4: the cards of the page are tabs
     index = tabs.indexOf(body)                                 # 1.7.6: addressed by widget – tabs can be moved
-    assert kind == "tab" and tabs.tabText(index) == "Allgemein" and tabs.count() == 5   # 1.2.12: one per element
-    assert [tabs.tabText(i) for i in range(5)] == ["Karte", "Systemwerte", "Heute", "Musik", "Allgemein"]
+    assert kind == "tab" and tabs.tabText(index) == "Allgemein" and tabs.count() == 6   # 1.2.12: one per element
+    assert [tabs.tabText(i) for i in range(6)] == ["Karte", "Systemwerte", "Heute", "Musik", "Eingaben", "Allgemein"]
     page.show_states({"ov.sys": {"text": "Systemwerte", "visible": False}})
     assert not tabs.isTabVisible(tabs.indexOf(page.controls["ov.sys"][2])) and tabs.isTabVisible(index)
     assert posted.empty()                                   # showing a state never sends anything back
@@ -1606,7 +1606,8 @@ def test_the_navigation_and_the_overlay_tabs_can_be_reordered_and_remembered(qap
     assert tabs_id == frames[0] and tabs.tabBar().isMovable()
     form.apply_tab_order({tabs_id: list(reversed(frames))})
     assert form._tab_ids(tabs, ids) == list(reversed(frames))
-    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Allgemein", "Musik", "Heute", "Systemwerte", "Karte"]
+    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Allgemein", "Eingaben", "Musik", "Heute", "Systemwerte",
+                                                              "Karte"]
     win.open_tab("overlay", frames[0])
     assert tabs.currentWidget() is form.controls[frames[0]][2]
     form.show_states({"ov.sys": {"text": "Systemwerte", "visible": False}})
@@ -2093,17 +2094,18 @@ def test_the_overview_offers_quick_switches_for_what_is_set_up():
     (Discord, Spotify, YouTube) only with a client id; the server switch waits while Windows asks for rights."""
     app = fake_app()
     sw = {s.key: s for s in overview.switches(app)}
-    assert list(sw) == ["detect", "notify", "conn", "sysinfo", "today", "media"]
+    assert list(sw) == ["detect", "notify", "conn", "sysinfo", "today", "media", "inputs"]
     assert sw["detect"].on and sw["notify"].on and not sw["conn"].on and not sw["sysinfo"].on
-    assert sw["today"].on and sw["media"].on and all(s.enabled for s in sw.values())
+    assert sw["today"].on and sw["media"].on and not sw["inputs"].on and all(s.enabled for s in sw.values())
     assert [s.label for s in sw.values()] == ["Automatische Erkennung", "Lobby-Meldung", "Spielserver anzeigen",
-                                              "Systemwerte im Spiel", "„Heute“ im Spiel", "Musik im Spiel"]
+                                              "Systemwerte im Spiel", "„Heute“ im Spiel", "Musik im Spiel",
+                                              "Eingaben im Spiel"]
     app.settings.update({"rec_folder": "D:\\Aufnahmen", "discord_client_id": "123", "spotify_client_id": "abc",
                          "youtube_client_id": "x.apps.googleusercontent.com", "sysinfo": "right", "youtube_on": True,
                          "overlay": {"show_today": False}})
     app._conn_busy = True
     sw = {s.key: s for s in overview.switches(app)}
-    assert list(sw) == ["detect", "rec", "notify", "conn", "sysinfo", "today", "media", "discord", "spotify",
+    assert list(sw) == ["detect", "rec", "notify", "conn", "sysinfo", "today", "media", "inputs", "discord", "spotify",
                         "youtube"]
     assert not sw["rec"].on and not sw["conn"].enabled and sw["sysinfo"].on and not sw["today"].on
     assert not sw["discord"].on and not sw["spotify"].on and sw["youtube"].on
@@ -2130,7 +2132,7 @@ def test_the_overview_shows_the_quick_switches_and_posts_only_a_click(qapp, keep
     shown = [w for w in page.switches if not w.isHidden()]
     assert [w.text() for w in shown] == ["Automatische Erkennung", "Aufnahmen mit OBS", "Lobby-Meldung",
                                          "Spielserver anzeigen", "Systemwerte im Spiel", "„Heute“ im Spiel",
-                                         "Musik im Spiel"]
+                                         "Musik im Spiel", "Eingaben im Spiel"]
     assert shown[0].isChecked() and not shown[1].isChecked() and "OBS" in shown[1].toolTip()
     shown[1].click()
     assert posted.get_nowait() == ("switch", ("rec", True))
@@ -2144,7 +2146,7 @@ def test_the_overview_shows_the_quick_switches_and_posts_only_a_click(qapp, keep
     app._conn_busy = False
     win.show_model(overview.overview_model(app, now, is_win=True))
     assert [w.text() for w in page.switches if not w.isHidden()][1] == "Lobby-Meldung" and shown[3].isEnabled()
-    assert len(page.switches) == 7 and page.switches[6].isHidden()           # boxes by position: the last one rests
+    assert len(page.switches) == 8 and page.switches[7].isHidden()           # boxes by position: the last one rests
 
 
 def test_each_feature_says_whether_it_works_now_and_what_is_missing():

@@ -8,7 +8,7 @@ import copy
 OVERLAY_KEYS = ("anchor", "pos_x", "pos_y", "height", "map_heights", "text_scale", "hud_scale", "media_scale",
                 "media_pos", "media_xy", "today_pos", "today_xy", "today_scale", "stack_gap", "bar_align",
                 "bar_limits_on", "bar_limits", "bar_limits_same", "info_pos", "info_xy",
-                "keep_out_on", "cards_same_width")
+                "keep_out_on", "cards_same_width", "inputs_pos", "inputs_xy", "inputs_scale")     # 1.39
 TOP_KEYS = ("sysinfo", "sysinfo_pos")
 # 1.2.9 (user's pick: "Layout-Vorlagen"): ready-made arrangements – partial layouts, applied like an undo step
 PRESETS = {

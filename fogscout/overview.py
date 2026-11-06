@@ -215,6 +215,11 @@ def switch_state(app, key: str, on: bool, is_win: bool = True) -> tuple[str, str
         if getattr(mon, "hwinfo_seen", False) or getattr(app, "_hwinfo_told", False):
             return "warn", _("HWiNFO fehlt")
         return "ok", _("aktiv")
+    if key == "inputs":                                       # 1.39: reading only while a round runs
+        if not is_win:
+            return "off", _("nur unter Windows")
+        reader = getattr(app, "inputs", None)
+        return ("ok", _("aktiv")) if getattr(reader, "allowed", False) else ("off", _("wartet auf eine Runde"))
     if key == "media":
         err = getattr(getattr(app, "media", None), "error", "")
         return ("warn", _("Mediensteuerung nicht verfügbar")) if err else ("", "")
@@ -245,6 +250,7 @@ def switches(app, is_win: bool = True) -> list:
     out.append(Switch("sysinfo", _("Systemwerte im Spiel"), st.get("sysinfo", "off") != "off"))
     out.append(Switch("today", _("„Heute“ im Spiel"), bool(o.get("show_today", True))))
     out.append(Switch("media", _("Musik im Spiel"), bool(o.get("show_media", True))))
+    out.append(Switch("inputs", _("Eingaben im Spiel"), bool(o.get("show_inputs", False))))       # 1.39
     if st.get("discord_client_id"):
         out.append(Switch("discord", _("Discord-Status"), bool(st.get("discord_on", False))))
     if st.get("spotify_client_id"):

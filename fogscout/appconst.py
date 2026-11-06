@@ -38,7 +38,8 @@ TODAY_SPOTS = [("below", N_("Unter den Systemwerten")), ("under_music", N_("Unte
 
 # from app_sysinfo
 OPACITY_KEYS = {"hud": "hud_opacity", "today": "today_opacity", "music": "media_opacity",   # 1.2.7; else "opacity"
-                "text": "info_opacity"}      # 1.8.24: the lines as their own element
+                "text": "info_opacity",      # 1.8.24: the lines as their own element
+                "inputs": "inputs_opacity"}  # 1.39: the input card
 
 # from app_sysinfo
 MEDIA_STYLES = [("big", N_("Gross – Cover oben, Titel darunter")), ("compact", N_("Kompakt – Cover links"))]
@@ -49,7 +50,14 @@ MAP_SCALE = (15, 90)                        # size of the map, percent of the ga
 # from app_sysinfo
 # 1.64.9 (user: one size for what was picked instead of three sliders): the elements of the preview
 SELECTABLE = (("map", N_("Karte")), ("text", N_("Infos und Schrift (Name, Timer, Bilanz, Server)")),
-              ("hud", N_("Systemwerte")), ("today", N_("Heute")), ("music", N_("Musik")))
+              ("hud", N_("Systemwerte")), ("today", N_("Heute")), ("music", N_("Musik")),
+              ("inputs", N_("Eingaben")))                                                     # 1.39
+
+# from app_inputs (1.39): the input card's place and device
+INPUT_SPOTS = [("bottom_left", N_("Links unten im Balken")), ("bottom_right", N_("Rechts unten im Balken")),
+               ("custom", N_("Eigene Position (mit der Maus verschieben)"))]
+INPUT_LAYOUTS = [("auto", N_("Automatisch (zuletzt benutztes Gerät)")), ("keyboard", N_("Tastatur und Maus")),
+                 ("gamepad", N_("Gamepad"))]
 
 # from app_overlay
 # 1.8.24: where the map's lines (timer, record, server) go – an element of their own, or drawn with the map as before

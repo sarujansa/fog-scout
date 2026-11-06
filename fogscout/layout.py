@@ -259,6 +259,49 @@ def media_xy(spot: str, game, size, margin: int, hud=None, own=None, align: str 
     return hud_x("right", gx, gw, margin, w, bar, align), gy + margin
 
 
+INPUT_SPOTS = ("bottom_left", "bottom_right", "custom")
+INPUT_SCALE = (60, 200)        # 1.39: size slider of the input card, percent
+INPUT_BASE = 0.08              # … its height at 100 %, share of the game height (115 px at 1440p)
+
+
+def inputs_height(o: dict, game, margin: int, ratio: float) -> int:
+    """1.39: pixel height of the input card (``ratio`` = its width / height) – its size setting, and in a black bar
+    never wider than the bar (smaller instead), like every card."""
+    _gx, _gy, gw, gh = game
+    scale = min(INPUT_SCALE[1], max(INPUT_SCALE[0], float(o.get("inputs_scale", 1.0)) * 100)) / 100
+    h = max(24, int(gh * INPUT_BASE * scale))
+    bar = bar_width(gw, gh)
+    if o.get("inputs_pos", "bottom_right") != "custom" and bar >= MIN_BAR:
+        fit = max_width(bar, margin)
+        if round(h * ratio) > fit:
+            h = max(24, int(fit / ratio))
+    return h
+
+
+def inputs_xy(spot: str, game, size, margin: int, own=None, bands=None):
+    """1.39: top-left corner of the input card – "bottom_left" / "bottom_right" = centred at the bottom of that black
+    bar (between its limiter lines); without bars in that corner of the game window; "custom" = ``own`` (share of
+    the window where its centre is, like the music card). Never outside the game window."""
+    gx, gy, gw, gh = game
+    w, h = size
+    if spot == "custom":
+        fx, fy = own or (0.0, 1.0)
+        x, y = gx + fx * gw - w / 2, gy + fy * gh - h / 2
+    else:
+        left = spot != "bottom_right"
+        bar = bar_width(gw, gh)
+        if bar >= MIN_BAR and w <= bar - 2 * margin:
+            x = gx + (bar - w) / 2 if left else gx + gw - bar + (bar - w) / 2
+        else:
+            x = gx + margin if left else gx + gw - margin - w
+        y = gy + gh - margin - h
+    x = min(max(x, gx), gx + max(0, gw - w))
+    y = min(max(y, gy), gy + max(0, gh - h))
+    if spot != "custom":
+        x, y = clamp_box((x, y, w, h), game, bands)[:2]
+    return int(x), int(y)
+
+
 STACK_ANCHORS = {"below": "hud", "under_today": "today", "under_music": "music"}
 
 

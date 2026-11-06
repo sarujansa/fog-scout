@@ -12,8 +12,9 @@ from PIL import Image, ImageDraw
 from . import layout, media, sysinfo
 from . import skin
 from .i18n import _
-from .overlay_render import (add_info, backdrop, backdrop_pad, body_cols, compose, info_card, lines_above,
-                            map_backdrop, map_body, music_body, music_card, pad_to, render_hud)
+from .overlay_render import (INPUT_RATIO, add_info, backdrop, backdrop_pad, body_cols, compose, info_card,
+                            input_card, lines_above, map_backdrop, map_body, music_body, music_card, pad_to,
+                            render_hud)
 
 SAMPLE_SNAPSHOT = dict(cpu_load=38, cpu_temp=64, gpu_temp=71, gpu_load=92, gpu_name="GPU",
                        vram_used=7.1, vram_total=16, ram_used=17.2, ram_total=32, gpu_power=241)
@@ -146,10 +147,11 @@ def music_rows(now: media.NowPlaying, wall: float):
 
 def layers(gw: int, gh: int, o: dict, hud_side: str, hud_rows: list, hud_own, map_pic, caption: str,
            info: dict, height_frac: float, music=None, today=None, editing: bool = False, accent=None,
-           upnext=None, fits=None):
+           upnext=None, fits=None, inputs=None):
     """[(name, picture, x, y)] in screen pixels, bottom to top, + the map's (x, y, w, h) for clicks.
     ``o`` = settings["overlay"], ``hud_side`` = settings["sysinfo"] ("" for none), ``info`` = timer/server/ping/
     record lines, ``music`` = (rows, cover) or None, ``today`` = rows of "today" (its own card, 1.2.6) or None,
+    ``inputs`` = the layout of the input card (1.39: "keyboard" / "gamepad", drawn with made-up keys) or None,
     ``upnext`` = (label, items) of the Spotify queue on the music card (1.8) or None, ``fits`` (1.8.24): a dict
     that gets {element: shown size / asked size} – "map", "text", "hud", "today", "music"."""
     fits = {} if fits is None else fits
@@ -333,9 +335,16 @@ def layers(gw: int, gh: int, o: dict, hud_side: str, hud_rows: list, hud_own, ma
         out.append(("hud", hud, hud_rect[0], hud_rect[1]))
     for name, (cx, cy, _w, _h) in placed.items():       # stacked in order (1.2.7), like the App
         out.append((name, cards[name][0], cx, cy))
+    if inputs:                                          # 1.39: like App._inputs_place
+        from .inputs import SAMPLE
+        ih = layout.inputs_height(o, game, margin, INPUT_RATIO)
+        ipic = input_card(SAMPLE, inputs, ih, accent, bool(o.get("inputs_backdrop", True)))
+        ix, iy = layout.inputs_xy(o.get("inputs_pos", "bottom_right"), game, ipic.size, margin, o.get("inputs_xy"),
+                                  bands)
+        out.append(("inputs", ipic, ix, iy))
     # 1.8.25: like App._el_resolve – nothing on the map, on another element or on a keep-out area (Discord)
     names = {n: i for i, (n, *_r) in enumerate(out)}
-    order = [n for n in ("hud", "text", "today", "music") if n in names]
+    order = [n for n in ("hud", "text", "today", "music", "inputs") if n in names]
     boxes = [(n, (out[names[n]][2], out[names[n]][3], out[names[n]][1].width, out[names[n]][1].height))
              for n in order]
     shift = layout.resolve(boxes, [map_rect], game, bands, gap, soft=layout.keep_out_boxes(o, game))

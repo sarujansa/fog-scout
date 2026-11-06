@@ -57,12 +57,13 @@ class OverlayPlacement:
         self._fade_hide("today", bool(o.get("fade", True)))
         self._fade_hide("music", bool(o.get("media_fade", True)))
         self._info_hide(bool(o.get("fade", True)))
+        self._inputs_hide(stop_reading=True)        # 1.39: no card, and the keys are not looked at
         self.worker.overlay_rect = self.worker.today_rect = self.worker.media_rect = None
         self._vis_state = "aus"                     # set_overlay_on logged it already
         self._guides_place()
 
     TIMED_STEPS = {"hud": "_hud_place", "today": "_today_card", "music": "_media_card", "info": "_info_card",
-                   "resolve": "_el_resolve", "guides": "_guides_place"}
+                   "inputs": "_inputs_place", "resolve": "_el_resolve", "guides": "_guides_place"}
 
     def _tick_times(self):
         """1.8.31: the tick's steps timed for the diagnosis (ticktime.TickTimes) – the methods wrapped once on
@@ -97,6 +98,7 @@ class OverlayPlacement:
             if not getattr(self, "_cards_done", False):
                 self._cards_place()                 # "today" and the music card, stacked (1.2.6 / 1.2.7)
             self._cards_done = False
+            self._inputs_place()                    # 1.39: the input card (its own place, never moves the map)
             self._el_resolve()                      # 1.8.25: nothing on top of anything else
             self._guides_place()                    # centre cross while moving (1.64.5)
 

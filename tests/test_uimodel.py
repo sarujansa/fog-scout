@@ -1813,7 +1813,7 @@ def test_the_quick_switches_flip_the_same_boxes_as_the_settings_pages(app_root):
     app = App(str(app_root), simulate=str(app_root / "sim"))
     try:
         state = lambda: {s.key: s.on for s in overview.switches(app)}
-        assert list(state()) == ["detect", "notify", "conn", "sysinfo", "today", "media"]   # no OBS, Discord, …
+        assert list(state()) == ["detect", "notify", "conn", "sysinfo", "today", "media", "inputs"]   # no OBS, …
         n = len(app._log_entries)
         app._qt_event("switch", ("detect", True))                             # already on: nothing, no log line
         assert len(app._log_entries) == n and app.settings["auto_detect"] is True
@@ -1833,11 +1833,17 @@ def test_the_quick_switches_flip_the_same_boxes_as_the_settings_pages(app_root):
         app._qt_event("switch", ("media", False))
         assert app.settings["overlay"]["show_today"] is False and app.settings["overlay"]["show_media"] is False
         assert app.today_var.get() is False and app.media_var.get() is False
+        app._qt_event("switch", ("inputs", True))                             # 1.39: the overlay page's box, once told
+        assert app.settings["overlay"]["show_inputs"] is True and app.inputs_on_var.get() is True and state()["inputs"]
+        assert app._log_entries[-1][1:] == ("Overlay", "Eingaben im Spiel eingeschaltet.")
+        assert app.settings["inputs_told"] is True and app._qt_question[0] == "Eingaben im Spiel"
+        app._qt_event("switch", ("inputs", False))
+        assert app.settings["overlay"]["show_inputs"] is False and not app.inputs.allowed
         app._qt_event("switch", ("rec", True))                                # no switch without a folder: ignored
         assert app.settings["rec_on"] is False
         app.settings.set("rec_folder", str(app_root))
         app.dc_id_var.set("123456789")                                        # typed on the settings page
-        assert list(state()) == ["detect", "rec", "notify", "conn", "sysinfo", "today", "media", "discord"]
+        assert list(state()) == ["detect", "rec", "notify", "conn", "sysinfo", "today", "media", "inputs", "discord"]
         app._qt_event("switch", ("rec", True))
         assert app.settings["rec_on"] is True and app.rec_on_var.get() is True and state()["rec"]
         assert app._log_entries[-1][2] == "Aufnahmen mit OBS eingeschaltet."
