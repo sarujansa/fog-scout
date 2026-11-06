@@ -446,3 +446,25 @@ def test_the_fastest_region_at_this_time_of_day():
     assert rows[0][3] == 30.0 and rows[1][3] is None
     assert h.regions_at(rs, base + 1800, min_rounds=4)[1][0][0] == "us-east-1"
     assert h.regions_at([], base)[1] == []
+
+
+def test_the_round_count_of_today_says_what_it_is_made_of():
+    """1.38.52 (user's screenshot: "Rounds 20 · 0 killer / 0 survivor" beside 20 farming rounds): the line under
+    today's round count names only the parts that are there and they add up to the count – killer, survivor,
+    farming, custom games and rounds whose role was not read."""
+    import time as _time
+    from fogscout import history as h, overview
+    now = _time.time()
+    t = h.period_start("day", now) + 60
+    farm = [h.Round(t + i, 600, "coal", "Coal Tower", role="killer", farming=True) for i in range(20)]
+    d = h.today(farm, now)
+    assert d["count"] == 20 and d["custom"] == 0
+    assert overview.rounds_parts(d) == "20× Farming"
+    mixed = farm[:2] + [h.Round(t + 100, 600, "c", "C", role="killer"), h.Round(t + 101, 600, "c", "C", role="killer"),
+                        h.Round(t + 102, 600, "c", "C", role="survivor"), h.Round(t + 103, 600, "c", "C", custom=True),
+                        h.Round(t + 104, 600, "c", "C")]
+    d = h.today(mixed, now)
+    assert overview.rounds_parts(d) == "2× Killer · 1× Survivor · 2× Farming · 1× Custom Game · 1× ohne Rolle"
+    assert d["count"] == 7
+    d = h.today(mixed + [h.Round(t + 105, 600, "c", "C", custom=True)], now)
+    assert "2× Custom Game" in overview.rounds_parts(d)
