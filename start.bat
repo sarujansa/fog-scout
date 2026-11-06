@@ -14,12 +14,13 @@ if not defined PY (python -c "import sys; sys.exit(not (3, 12) <= sys.version_in
 if not defined PY goto nopython
 
 rem Nur fertige Pakete (Wheels), nie ein Quellpaket bauen: dessen setup.py liefe mit Administratorrechten.
+rem Nur von PyPI, ohne pip.ini/PIP_*-Variablen des Nutzers, und nur Dateien mit der Pruefsumme aus der Datei.
 rem Eine abgebrochene Ersteinrichtung (kein installed.ok) neu beginnen, z. B. mit einer anderen Python-Version
 if exist "%VENV%" rd /s /q "%VENV%"
 %PY% -m venv "%VENV%"
 if errorlevel 1 goto nopython
-"%VENV%\Scripts\python.exe" -m pip install --only-binary=:all: pip==26.2.1
-"%VENV%\Scripts\python.exe" -m pip install --only-binary=:all: -r requirements.txt
+"%VENV%\Scripts\python.exe" -m pip install --isolated --index-url https://pypi.org/simple --only-binary=:all: --require-hashes -r requirements-pip.txt
+"%VENV%\Scripts\python.exe" -m pip install --isolated --index-url https://pypi.org/simple --only-binary=:all: --require-hashes -r requirements.txt
 if errorlevel 1 goto piperror
 echo ok> "%VENV%\installed.ok"
 
@@ -27,7 +28,7 @@ echo ok> "%VENV%\installed.ok"
 rem Neuen Stand von GitHub holen (fogscout\update.py: nur auf main, nur ohne eigene Aenderungen,
 rem nur Nachziehen). Exit-Code 3 = aktualisiert. Weil cmd diese Datei waehrend der Ausfuehrung
 rem weiterliest, das Update sie aber geaendert haben kann, startet sie sich IN DERSELBEN ZEILE neu.
-if not defined DBDMS_UPDATED ("%VENV%\Scripts\python.exe" -E "%~dp0fogscout\update.py" & if errorlevel 3 (set "DBDMS_UPDATED=1" & cmd /c "".\%~nx0" %*" & exit /b))
+if not defined DBDMS_UPDATED ("%VENV%\Scripts\python.exe" -E "%~dp0fogscout\update.py" & if errorlevel 3 (set "DBDMS_UPDATED=1" & cmd /d /c "".\%~nx0" %*" & exit /b))
 
 rem Pakete nachinstallieren, wenn sich requirements.txt / requirements-extra.txt geaendert haben
 rem (Zusatzpaket ohne Abhaengigkeiten, siehe requirements-extra.txt). Fehlschlag: Start trotzdem.

@@ -252,3 +252,26 @@ def test_a_stuck_presence_thread_does_not_pile_up_the_same_state():
     assert p.cmds.qsize() == 1
     p.update(GameState())
     assert p.cmds.qsize() == 2
+
+
+def test_a_message_from_the_pipe_reaches_the_status_clipped_and_on_one_line():
+    """1.38.57 (security review): anything local can serve discord-ipc-N – its error text never fakes a log line
+    (no new lines, no bidi overrides) and never floods one (at most PEER_TEXT characters)."""
+    class Ipc:
+        def __init__(self, answer):
+            self.answer = answer
+
+        def send(self, op, d):
+            pass
+
+        def recv(self):
+            return self.answer
+    forged = "bad\n12:00:00 INFO Fog Scout: alles gut‮" + "x" * 500
+    for answer in ((dc.OP_FRAME, {"evt": "ERROR", "data": {"message": forged}}), (dc.OP_CLOSE, {"message": forged})):
+        with pytest.raises(dc.IpcError) as e:
+            dc.set_activity(Ipc(answer), None)
+        text = e.value.args[0]
+        assert "\n" not in text and "‮" not in text and len(text) == dc.PEER_TEXT and text.startswith("bad ")
+    with pytest.raises(dc.IpcError) as e:                    # a malformed answer is an error, not a crash
+        dc.set_activity(Ipc((dc.OP_FRAME, {"evt": "ERROR", "data": "nope"})), None)
+    assert e.value.args[0] == "error"

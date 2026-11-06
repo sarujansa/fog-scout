@@ -242,3 +242,22 @@ def test_a_broken_file_does_not_break_the_catalog(tmp_path):
     entries = project.scan(str(tmp_path))
     assert sorted(e.ok for e in entries) == [False, True]
     assert project.resolve(rec, entries).kind == "auto"
+
+
+def test_a_project_names_only_local_media_files():
+    """1.38.57 (security review): a project or montage can come from a shared/synced recordings folder – a network
+    share in it would make Windows send the login hash to that server when the editor looks at the file, an URL
+    or an ffmpeg protocol would make ffmpeg fetch something. Such a montage opens no file at all; such a music
+    clip drops out."""
+    from fogscout import fsops, musictrack
+    for bad in ("\\\\attacker\\share\\a.mkv", "//attacker/share/a.mkv", "\\\\?\\C:\\a.mkv", "\\\\.\\pipe\\x.mkv",
+                "http://x/a.mkv", "file:C:/a.mkv", "concat:a.mkv|b.mkv", "C:\\a.m3u8", "C:\\a.txt", "", None, 3):
+        assert not fsops.local_media_path(bad, project.MEDIA_EXTS), bad
+        assert project.montage_sources({"sources": ["C:\\Aufnahmen\\a.mkv", bad]}) == []
+    for good in ("C:\\Aufnahmen\\a.mkv", "D:/Clips/b.mp4", "/home/x/c.webm", "a.mkv"):
+        assert fsops.local_media_path(good, project.MEDIA_EXTS), good
+    assert project.montage_sources({"sources": ["C:\\Aufnahmen\\a.mkv", "D:/Clips/b.mp4"]}) == [
+        "C:\\Aufnahmen\\a.mkv", "D:/Clips/b.mp4"]
+    spec = musictrack.from_dict({"clips": [["\\\\attacker\\share\\song.mp3", 0, 0, 10],
+                                           ["C:\\Musik\\song.mp3", 0, 0, 10]]})
+    assert spec is not None and [c.path for c in spec.clips] == ["C:\\Musik\\song.mp3"]

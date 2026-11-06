@@ -86,6 +86,30 @@ def test_the_corpus_keeps_the_newest_decisions_skips_foreign_files_and_exports_a
     assert corpus.entries(str(tmp_path / "nowhere")) == [] and corpus.count(str(tmp_path / "nowhere")) == 0
 
 
+def test_a_side_file_with_a_huge_strip_is_broken_and_never_allocated(tmp_path):
+    """1.38.57 (security review): "roi" comes from a user-writable side file – before, [100000, 100000] made check()
+    allocate a 30 GB canvas."""
+    import numpy as np
+    from fogscout import fsops
+    dst = corpus.folder(str(tmp_path))
+    os.makedirs(dst)
+    ok, buf = cv2.imencode(".jpg", np.full((20, 40, 3), 90, np.uint8))
+    calls = []
+
+    class Reader:
+        def read(self, canvas, *a, **k):
+            calls.append(canvas.shape)
+            return None, None
+    for i, (roi, offset) in enumerate((([100000, 100000], [0, 0]), ([corpus.MAX_ROI + 1, 50], [0, 0]),
+                                       ([40, 20], [-5, 0]), ([0, 20], [0, 0]), ([200, 100], [10, 10]))):
+        stamp = f"20250101-000000-{i:03d}"
+        meta = {"format": corpus.FORMAT, "map_id": "coal-tower", "frame": [1920, 1080], "roi": roi, "offset": offset}
+        fsops.write_new(os.path.join(dst, stamp + ".json"), json.dumps(meta).encode())
+        fsops.write_new(os.path.join(dst, stamp + ".jpg"), buf.tobytes())
+    rep = corpus.check(str(tmp_path), Reader())
+    assert (rep.total, rep.broken) == (5, 4) and calls == [(100, 200, 3)]
+
+
 # ------------------------------------------------------------------ the real corpus (user export 05.11.2026)
 REAL = os.path.join(ROOT, "tests", "data")      # corpus.folder(REAL) = tests/data/corpus
 

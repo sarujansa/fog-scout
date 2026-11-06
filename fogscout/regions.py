@@ -258,6 +258,16 @@ def run_job(job: dict, hwnd: int | None = None, timeout: float = 90.0) -> dict:
     reads the job and overwrites the result file, so the program can read the
     result back (files created by an elevated process belong to Administrators).
     """
+    if IS_WIN and _already_elevated():
+        # 1.38.57 (security review): the program already has administrator rights (the scheduled task) – the job runs
+        # here, without "runas": ShellExecute would look up how to run the helper in HKCU\\Software\\Classes first,
+        # which any program of the user may change, and start that with our rights
+        try:
+            return helper_result(hostsedit.apply_job(job))
+        except PermissionError:
+            return helper_result(hostsedit._failed(hostsedit.NO_RIGHTS))
+        except Exception as e:                      # report everything, as the helper does
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
     fd, job_f = tempfile.mkstemp(prefix="fogscout-job-", suffix=".json")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(job, fh)
@@ -284,6 +294,11 @@ def run_job(job: dict, hwnd: int | None = None, timeout: float = 90.0) -> dict:
                 os.remove(f)
             except OSError:
                 pass
+
+
+def _already_elevated() -> bool:
+    from .launch import elevated
+    return elevated()
 
 
 def _python_exe() -> str:

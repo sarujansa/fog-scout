@@ -43,6 +43,22 @@ class UnsupportedFS(OSError):
     """This platform or file system cannot create/rename without the risk of replacing – the operation was not done."""
 
 
+_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]+:")          # "file:", "http:", "concat:" – not "C:"
+
+
+def local_media_path(path, exts) -> bool:
+    """1.38.57 (security review): a path from a file the program did not write itself (a project, a montage, its
+    music) may name a local file only – never a network share (\\\\server\\…, //server/…: opening it sends the
+    Windows login hash to that server), a device path (\\\\?\\, \\\\.\\), an URL or an ffmpeg protocol
+    ("concat:", "http:") – and only one of ``exts`` (lower-case, with dot). Plain names and drive paths pass."""
+    if not isinstance(path, str) or not path or "\0" in path or len(path) > 4096:
+        return False
+    p = path.strip()
+    if p.startswith(("\\\\", "//", "\\/", "/\\")) or _SCHEME.match(p) or "://" in p:
+        return False
+    return p.lower().endswith(tuple(exts))
+
+
 def rel_path(folder: str, name: str) -> str | None:
     """Absolute path of a file named relative to ``folder`` (an index entry, a queued upload): a plain name or one
     inside one subfolder (``Farming/…``, ``Clips/…``), never outside ``folder`` – no absolute path, no drive, no

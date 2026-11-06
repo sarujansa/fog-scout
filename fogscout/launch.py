@@ -85,8 +85,13 @@ def harden_start_environment() -> list:
     built later and reads SSL_CERT_*; children inherit the rest). Returns the names dropped; [] when not elevated."""
     if not elevated():
         return []
+    from . import paths                       # (paths only needs the standard library at import)
     with _LOCK:
         clean = clean_elevated_environment(os.environ, bundle_dir())
+        if paths.installed():
+            # 1.38.57 (security review): a user-level DBDMS_DATA_DIR would redirect where the elevated, installed
+            # program writes. Only installed: CI runs the bare FogScout.exe --selftest elevated with it set.
+            clean = {k: v for k, v in clean.items() if k.upper() != paths.ENV}
         gone = sorted(k for k in os.environ if k not in clean)
         for key in gone:
             del os.environ[key]

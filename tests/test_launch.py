@@ -149,6 +149,21 @@ def test_the_elevated_start_drops_what_the_user_environment_could_steer(tmp_path
     assert not any(k.upper().startswith(("SSL_CERT_", "GIT_")) for k in os.environ)
 
 
+def test_the_installed_elevated_program_drops_a_user_data_folder_variable(monkeypatch):
+    """1.38.57 (security review): DBDMS_DATA_DIR from HKCU\\Environment would redirect the elevated program's writes –
+    dropped when installed; the bare folder (CI's elevated --selftest) keeps it."""
+    from fogscout import paths
+    monkeypatch.setenv(paths.ENV, "C:/elsewhere")
+    monkeypatch.setattr(launch, "elevated", lambda: True)
+    monkeypatch.setattr(paths, "installed", lambda: False)
+    assert paths.ENV not in launch.harden_start_environment() and os.environ[paths.ENV] == "C:/elsewhere"
+    monkeypatch.setattr(launch, "elevated", lambda: False)
+    monkeypatch.setattr(paths, "installed", lambda: True)
+    assert launch.harden_start_environment() == [] and os.environ[paths.ENV] == "C:/elsewhere"
+    monkeypatch.setattr(launch, "elevated", lambda: True)
+    assert paths.ENV in launch.harden_start_environment() and paths.ENV not in os.environ
+
+
 def test_elevated_is_false_outside_windows():
     if sys.platform != "win32":
         assert launch.elevated() is False

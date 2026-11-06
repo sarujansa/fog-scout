@@ -51,3 +51,33 @@ def test_the_match_data_line_of_the_diagnosis_shows_the_download_folder_with_a_t
         assert "Ordner ~" + os.sep + "Downloads" in line and os.path.expanduser("~") + os.sep not in line
     finally:
         app.quit()
+
+
+def test_the_log_shows_the_home_folder_as_tilde_in_message_and_traceback(monkeypatch, tmp_path):
+    """1.38.57 (security review): log lines and exception text are pasted into issues – the home folder (account
+    name) becomes "~", also inside a message and in the traceback; a longer folder name is not ours."""
+    import logging
+    from fogscout.__main__ import HomeFilter
+    home = str(tmp_path / "Saru")
+    monkeypatch.setattr(os.path, "expanduser", lambda p: home if p == "~" else p)
+    target = os.path.join(home, "Videos", "clip.mp4")
+    try:
+        raise OSError(f"cannot open {target}")
+    except OSError:
+        import sys
+        exc = sys.exc_info()
+    rec = logging.LogRecord("fogscout", logging.ERROR, __file__, 1, "Datei %s fehlt (%s)", (target, home + "man"),
+                            exc)
+    assert HomeFilter().filter(rec)
+    text = logging.Formatter("%(message)s").format(rec)
+    assert home + os.sep not in text and home + "man" in text
+    assert rec.getMessage() == f"Datei ~{os.sep}Videos{os.sep}clip.mp4 fehlt ({home}man)"
+    assert f"cannot open ~{os.sep}Videos" in rec.exc_text
+
+
+def test_crash_lines_show_the_home_folder_as_tilde(monkeypatch, tmp_path):
+    home = str(tmp_path / "Saru")
+    monkeypatch.setattr(os.path, "expanduser", lambda p: home if p == "~" else p)
+    (tmp_path / diagnose.CRASH_LAST).write_text(f'  File "{home}{os.sep}app.py", line 3\n', encoding="utf-8")
+    text = "\n".join(diagnose.crash_lines(str(tmp_path)))
+    assert home not in text and f'"~{os.sep}app.py"' in text

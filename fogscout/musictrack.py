@@ -10,6 +10,8 @@ import math
 import os
 from dataclasses import dataclass, field
 
+from . import fsops
+
 AUDIO_EXTS = (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".wma", ".mp4", ".mkv", ".mov", ".webm")
 DUCKS = {                      # sidechaincompress settings: the game sound gets quieter while the music plays
     "off": None,
@@ -128,6 +130,8 @@ def from_dict(d) -> MusicSpec | None:
     clips = []
     for raw in list(d.get("clips") or [])[:MAX_CLIPS] if isinstance(d.get("clips"), list) else []:
         if not isinstance(raw, (list, tuple)) or len(raw) < 4 or not isinstance(raw[0], str) or not raw[0]:
+            continue
+        if not fsops.local_media_path(raw[0], AUDIO_EXTS):        # 1.38.57: no share, URL or protocol from a file
             continue
         at, s, e = _f(raw[1]), _f(raw[2]), _f(raw[3])
         if at is None or s is None or e is None or at < 0 or s < 0 or e - s < MIN_LEN:

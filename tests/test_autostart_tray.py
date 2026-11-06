@@ -1,6 +1,7 @@
 """Task Scheduler start (no UAC prompt), autostart, desktop shortcut and the tray icon."""
 import base64
 import os
+import re
 import sys
 import types
 
@@ -18,7 +19,8 @@ def test_on_demand_task_runs_start_bat_elevated_without_trigger():
     assert "-RunLevel Highest" in s and "-LogonType Interactive" in s
     assert "New-ScheduledTaskTrigger" not in s and "-Trigger" not in s
     # via start.bat (updates/packages keep working), explicit cmd /c so the minimised console closes again
-    assert """-Argument '/c start "" /min cmd /c .\\start.bat'""" in s
+    # 1.38.57: /d on both cmd (no AutoRun from HKCU with the task's rights), the inner one by its full path
+    assert re.search(r"""-Argument '/d /c start "" /min "[^"]*cmd\.exe" /d /c \.\\start\.bat'""", s)
     assert " tray'" not in s
     assert f"-TaskName '{au.TASK}'" in s and "-MultipleInstances IgnoreNew" in s
 
@@ -187,7 +189,7 @@ def test_task_command_line_never_carries_the_folder():
     for at_logon, tail in ((False, ""), (True, " tray")):
         s = au.task_script(root, au.TASK, at_logon)
         arg = re.search(r"-Argument '([^']*)'", s).group(1)
-        assert arg == '/c start "" /min cmd /c .\\start.bat' + tail
+        assert re.fullmatch(r'/d /c start "" /min "[^"&%]*cmd\.exe" /d /c \.\\start\.bat' + tail, arg), arg
         assert f"-WorkingDirectory '{os.path.abspath(root)}'" in s
 
 
@@ -256,7 +258,7 @@ def test_ensure_keeps_an_autostart_that_ran_under_the_old_name(monkeypatch):
     monkeypatch.setattr(au, "install", lambda root: calls.append("install") or (True, "ok"))
     monkeypatch.setattr(au, "set_autostart", lambda root, on: calls.append(("autostart", on)) or (True, ""))
     assert au.ensure(ROOT, 5, ROOT) == (True, "ok") and calls == ["install", ("autostart", True)]
-    assert au.SETUP_VERSION == 8                                  # 1.33.5: tasks renewed with cmd.exe by its real path
+    assert au.SETUP_VERSION == 9                                  # 1.38.57: tasks renewed with cmd /d
 
 
 def test_the_shortcut_and_the_window_point_at_the_same_task_and_icon(monkeypatch, tmp_path):
@@ -272,3 +274,28 @@ def test_the_shortcut_and_the_window_point_at_the_same_task_and_icon(monkeypatch
     assert icon.FILE == "fogscout-2.ico" and icon.FILE not in icon.OLD_FILES
     s = au.shortcut_script(ROOT, os.path.join(ROOT, icon.FILE))
     assert "fogscout-2.ico,0'" in s
+
+
+def test_powershell_finds_its_modules_only_in_windows_own_folder(monkeypatch):
+    """1.38.57 (security review): the elevated PowerShell searched modules in the user's Documents first (and in
+    whatever PSModulePath HKCU\\Environment holds) – an own "ScheduledTasks" there would have run with our rights.
+    Now only System32's module folder, and the task cmdlets are imported from there by their full path."""
+    env = au.powershell_env({"PSModulePath": "C:\\Users\\x\\Documents\\WindowsPowerShell\\Modules",
+                             "psmodulepath": "C:\\evil", "PATH": "x"})
+    assert [k for k in env if k.upper() == "PSMODULEPATH"] == ["PSModulePath"]
+    assert env["PSModulePath"] == au.system_modules() and "system32" in env["PSModulePath"].lower()
+    assert env["PATH"] == "x"
+    seen = {}
+
+    class R:
+        returncode, stdout, stderr = 0, "ok", ""
+
+    def fake_run(args, **kw):
+        seen["script"] = base64.b64decode(args[-1]).decode("utf-16-le")
+        seen["env"] = kw["env"]
+        return R()
+    monkeypatch.setattr(au.subprocess, "run", fake_run)
+    au.powershell(au.task_script(ROOT, au.TASK, False))
+    first = seen["script"].splitlines()[0]
+    assert first.startswith("Import-Module -Name '") and first.endswith("ScheduledTasks.psd1' -ErrorAction Stop")
+    assert seen["env"]["PSModulePath"] == au.system_modules()

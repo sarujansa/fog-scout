@@ -302,3 +302,53 @@ def test_a_map_is_decoded_once_until_its_file_changes(tmp_path, monkeypatch):
         raise AssertionError("a missing file must raise")
     overlay.clear_frames()
     assert not overlay._frames
+
+
+def test_a_crafted_picture_is_refused_as_broken(tmp_path, monkeypatch):
+    """1.38.57 (security review): user_maps/ is user-writable – a picture over the pixel, frame or file limit, or one
+    PIL calls a decompression bomb, is a broken picture (OSError; the callers log it), never decoded."""
+    import pytest
+    from fogscout import overlay
+    overlay.clear_frames()
+    big = tmp_path / "big.png"
+    Image.new("RGBA", (100, 100)).save(big)
+    monkeypatch.setattr(overlay, "MAX_PIXELS", 99 * 100)
+    with pytest.raises(OSError):
+        overlay.load_frames(str(big))
+    monkeypatch.undo()
+    monkeypatch.setattr(overlay, "MAX_FILE_BYTES", 10)
+    with pytest.raises(OSError):
+        overlay.load_frames(str(big))
+    monkeypatch.undo()
+    anim = tmp_path / "anim.gif"
+    frames = [Image.new("RGB", (10, 10), (i * 40, 0, 0)) for i in range(5)]
+    frames[0].save(anim, save_all=True, append_images=frames[1:], duration=100)
+    assert len(overlay.load_frames(str(anim))) == 5
+    overlay.clear_frames()
+    monkeypatch.setattr(overlay, "MAX_FRAMES", 4)
+    with pytest.raises(OSError):
+        overlay.load_frames(str(anim))
+    monkeypatch.undo()
+    overlay.clear_frames()
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)      # 100 × 100 > 2 × 100: PIL's DecompressionBombError
+    with pytest.raises(OSError):
+        overlay.load_frames(str(big))
+    assert mi.is_animated(str(big)) is False
+    with pytest.raises(ValueError):                          # picturedlg shows it as "Speichern fehlgeschlagen"
+        mi.save(str(big), str(tmp_path / "out" / "x.webp"))
+
+
+def test_the_picture_dialog_shows_a_huge_picture_as_unreadable(tmp_path, monkeypatch):
+    """1.38.57 (security review): PIL's DecompressionBombError is no OSError – it escaped the dialog's handler."""
+    from types import SimpleNamespace
+    from fogscout import picturedlg
+    big = tmp_path / "big.png"
+    Image.new("RGB", (100, 100)).save(big)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+    said = []
+    dlg = object.__new__(picturedlg.PictureDialog)
+    dlg.dlg = SimpleNamespace(winfo_exists=lambda: True)
+    dlg.msg = SimpleNamespace(set=said.append)
+    dlg.src = None
+    dlg.choose(str(big))
+    assert dlg.src is None and len(said) == 1 and "kein lesbares Bild" in said[0]

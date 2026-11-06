@@ -166,7 +166,7 @@ class PictureDialog:
         try:
             with Image.open(path) as im:
                 im.load()
-        except OSError as e:
+        except (OSError, Image.DecompressionBombError) as e:     # 1.38.57: a huge picture, the normal message
             self.msg.set(_("Das ist kein lesbares Bild: {error}", error=e))
             return
         self.src = path
@@ -201,7 +201,7 @@ class PictureDialog:
                         note = _("Das Bild hat oben schon einen Namen – es wird keiner hinzugefügt.")
                     result = mi.convert(self._base, height=PREVIEW_H, title=self._title(), prepared=True)
                 before = preview(im)
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, Image.DecompressionBombError) as e:
             self.msg.set(_("Bild konnte nicht verarbeitet werden: {error}", error=e))
             return
         self.before._dbdms_pil, self.after._dbdms_pil = before, preview(result)
@@ -240,7 +240,7 @@ class PictureDialog:
         dest = mi.target_path(self.app.data_dir, stem, mi.is_animated(self.src))
         try:
             mi.save(self.src, dest, self.bg_var.get(), self._title())
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, Image.DecompressionBombError) as e:
             self.msg.set(_("Speichern fehlgeschlagen: {error}", error=e))
             return
         self.app.picture_saved(dest, map_id, variant)

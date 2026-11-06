@@ -200,3 +200,21 @@ def test_the_month_total_adds_up_and_keeps_twelve_months(tmp_path, monkeypatch):
     assert spent["2026-11"] == pytest.approx(1.5) and len(spent) == 12 and "2025-01" not in spent
     assert "kaputt" not in spent and s.saved == 1
     assert "1,50 $" in s.cl_cost_var.get() and app_palette.usd(0.004) == "< 0,01 $"
+
+
+def test_an_oversized_answer_is_a_network_error_never_read_whole(monkeypatch):
+    """1.38.57 (security review): the reply is read only up to MAX_BODY; more is a network error. An error body is
+    read only up to MAX_ERROR_BODY (an unreadable one still gives the kind from the status)."""
+    class Big:
+        def open(self, req, timeout=None):
+            return _Reply(b"{" + b" " * askclaude.MAX_BODY + b"}")
+    monkeypatch.setattr(askclaude, "OPENER", Big())
+    with pytest.raises(askclaude.AskError) as e:
+        askclaude.send(KEY, {"model": "m"})
+    assert e.value.kind == "net"
+    big_error = urllib.error.HTTPError(askclaude.ENDPOINT, 500, "x", {},
+                                       io.BytesIO(b'{"error": "' + b"c" * (askclaude.MAX_ERROR_BODY + 10) + b'"}'))
+    monkeypatch.setattr(askclaude, "OPENER", FakeOpener(error=big_error))
+    with pytest.raises(askclaude.AskError) as e:
+        askclaude.send(KEY, {"model": "m"})
+    assert e.value.kind == "net" and str(e.value) == "HTTP 500"

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fog Scout – match export
 // @namespace    fog-scout
-// @version      5
+// @version      6
 // @description  Saves the recent match history of stats.deadbydaylight.com as fogscout-matches.json (download folder) for Fog Scout. Only match data (time, map, mode, role, character, status, your own loadout, emblems and score) – no account or login data, nothing about other players but character and status. Sends nothing anywhere. On request (Fog Scout opens the page with #fogscout-structure) once the structure of the page's answer: field names and types, no values; with #fogscout-resave once the matches again although none is new.
 // @match        https://stats.deadbydaylight.com/*
 // @run-at       document-start
@@ -27,7 +27,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = 5;
+    const SCRIPT_VERSION = 6;
     const FORMAT = 'fogscout-matches';
     const FILE_NAME = 'fogscout-matches.json';
     const API = /\/player-stats\/match-history\/games\/dbd\//;
@@ -55,14 +55,19 @@
         return typeof v === 'number' && isFinite(v) ? v : null;
     }
 
-    // status object -> its plain fields and the picture path (nothing else)
+    // status object -> only the fields Fog Scout reads (official._status) and the picture path (nothing else);
+    // version 6 (security review): before, every plain field of the object went along
+    const STATUS_FIELDS = ['name', 'status', 'id', 'key', 'type', 'label'];
+
     function status(o) {
         if (!o || typeof o !== 'object') return null;
         const out = {};
-        for (const [k, v] of Object.entries(o)) {
-            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+        for (const k of STATUS_FIELDS) {
+            const v = o[k];
+            if (typeof v === 'string') out[k] = v.slice(0, 60);
+            else if (typeof v === 'number' && isFinite(v)) out[k] = v;
         }
-        if (o.image && typeof o.image.path === 'string') out.image = o.image.path;
+        if (o.image && typeof o.image.path === 'string') out.image = o.image.path.slice(0, 200);
         return out;
     }
 
