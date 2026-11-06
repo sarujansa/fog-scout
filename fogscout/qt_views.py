@@ -101,6 +101,35 @@ class FactBox(QWidget):
         lay.addWidget(self.link, 0, Qt.AlignLeft)
         lay.addStretch(1)                        # 1.8.8: top-aligned – tiles of one row keep their titles level
         self._colour = None
+        self._open = ""                          # 1.38.53: a click on the tile shows what it counts
+
+    def _set_open(self, key: str):
+        """1.38.53 (user: "auf Rounds 8 heute klicken soll mir diese zeigen"): a tile with a target – pointing hand,
+        tooltip, Tab focus, the card lights its border on hover (qt_theme: [link="true"]); a click or Enter posts
+        ("tile_open", key)."""
+        if key == self._open:
+            return
+        self._open = key
+        self.setCursor(Qt.PointingHandCursor if key else Qt.ArrowCursor)
+        self.setToolTip(_("Zeigt, was diese Kachel zählt") if key else "")
+        self.setFocusPolicy(Qt.TabFocus if key else Qt.NoFocus)
+        card = self.parentWidget()
+        if card is not None and card.property("class") == "card":
+            card.setProperty("link", "true" if key else "false")
+            card.style().unpolish(card)
+            card.style().polish(card)
+
+    def mouseReleaseEvent(self, e):
+        if self._open and self._post and e.button() == Qt.LeftButton and self.rect().contains(e.position().toPoint()):
+            self._post("tile_open", self._open)
+            return
+        super().mouseReleaseEvent(e)
+
+    def keyPressEvent(self, e):
+        if self._open and self._post and e.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self._post("tile_open", self._open)
+            return
+        super().keyPressEvent(e)
 
     def show_fact(self, f):
         _set(self.title, f.title)
@@ -114,6 +143,7 @@ class FactBox(QWidget):
             self.link.set_full_text(f.action_label if action else "")
             self.link.setToolTip(_tip(f.action_label) if action else "")
             self.link.setVisible(bool(action))
+        self._set_open(getattr(f, "open", "") if self._post else "")
         colour = qt_theme.readable(f.colour) if f.colour is not None else None    # 1.22.3: readable on light
         if colour != self._colour:
             self._colour = colour
