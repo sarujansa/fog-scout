@@ -1,5 +1,6 @@
 """1.66 map style "Dunkel" (user: "Stil von Fallen Refuge oder Freddy Fazbear Pizza", only as an option)."""
 import os
+import shutil
 import sys
 import types
 
@@ -415,15 +416,19 @@ def test_tricksters_delusion_is_a_callout_map_like_the_others(tmp_path):
 
 def test_the_style_cache_keeps_only_the_current_version_and_newest_source(tmp_path):
     """1.25: prune removes our cached pictures of another STYLE_VERSION and older source states of the same picture
-    and style – nothing else (other names, other files) is touched."""
+    and style – nothing else (other names, other files) is touched. 1.38.45: the source part is a content key (hex)
+    or, in older names, an mtime (digits); "newest" is the cache file made last."""
     from fogscout import mapstyle
     v = mapstyle.STYLE_VERSION
     sub = tmp_path / "coal"
     sub.mkdir()
-    keep = [f"coal-tower-200-5-v{v}.webp", f"coal-tower-200-5-grey-v{v}.webp", "notes.txt", "other.webp"]
-    drop = [f"coal-tower-100-5-v{v}.webp", f"coal-tower-200-5-v{v - 1}.webp", f"coal-tower-150-5-grey-v{v}.webp"]
-    for name in keep + drop:
+    keep = [f"coal-tower-9f2c04ab11de7a30-5-v{v}.webp", f"coal-tower-0be1d2c3a4f50617-5-grey-v{v}.webp",
+            "notes.txt", "other.webp"]
+    drop = [f"coal-tower-1730000000-5-v{v}.webp", f"coal-tower-9f2c04ab11de7a30-5-v{v - 1}.webp",
+            f"coal-tower-1730000000-5-grey-v{v}.webp"]
+    for i, name in enumerate(drop + keep):                  # the ones kept were made last
         (sub / name).write_bytes(b"x")
+        os.utime(sub / name, ns=(1_000_000_000 * (i + 1),) * 2)
     assert mapstyle.prune(str(tmp_path)) == len(drop)
     assert sorted(p.name for p in sub.iterdir()) == sorted(keep)
     assert mapstyle.prune(str(tmp_path / "missing")) == 0
@@ -479,3 +484,20 @@ def test_right_click_makes_one_style_or_all_styles_of_the_map_clicked(tmp_path, 
     assert logs[-1] == "Kartenstil Lila dunkel für Coal Tower wird im Hintergrund erstellt."
     appmod.App._style_map_one(fake, "coal", "classic")                                  # nothing to make
     assert len(one_of) == 2
+
+
+def test_a_reinstalled_map_keeps_its_style_picture(tmp_path):
+    """1.38.45 (user: Maps-Seite lädt immer noch langsam): an update writes every map file again with a new mtime.
+    The style picture is keyed by the file's bytes, so the same picture is found again instead of made anew; a
+    changed picture still gets a new one."""
+    from PIL import Image
+    src = tmp_path / "maps" / "Coal Tower.webp"
+    src.parent.mkdir()
+    shutil.copyfile(os.path.join(MAPS, "McMillan", "Coal Tower.webp"), src)
+    cache = str(tmp_path / "cache")
+    first = mapstyle.styled_path(str(src), cache, style="grey")
+    assert first != str(src)
+    os.utime(src, (2_000_000_000, 2_000_000_000))                     # the installer: same bytes, new date
+    assert mapstyle.styled_path(str(src), cache, make=False, style="grey") == first
+    Image.new("RGBA", (64, 48), (90, 60, 120, 255)).save(src, "WEBP")  # another picture: never the old one
+    assert mapstyle.styled_path(str(src), cache, make=False, style="grey") == str(src)
