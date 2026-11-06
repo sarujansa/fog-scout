@@ -309,7 +309,11 @@ QFrame[class="card"] QLabel {{ background: transparent; }}
 QFrame[class="card"][dragging="true"], QFrame[class="card"][found="true"] {{ border: 1px solid {c['accent']}; }}
 QFrame[class="card"][link="true"]:hover {{ border: 1px solid {c['accent']}; }}
 QWidget#navside {{ background: {c['nav']}; }}
-QLineEdit#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; }}
+QPushButton#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; border: 1px solid {c['border']};
+    border-radius: {RADIUS['m']}px; padding: 5px 8px; text-align: left; color: {c['dim']}; }}  /* 1.38.55: a search button */
+QPushButton#navsearch:hover {{ background: {c['hover']}; color: {c['fg']}; }}
+QPushButton#navsearch:pressed {{ background: {c['press']}; }}
+QPushButton#navsearch:focus {{ border: 1px solid {c['accent']}; }}
 QPushButton#navsearchbtn {{ background: transparent; border: none; margin-top: 10px; padding: 8px; }}
 QPushButton#navsearchbtn:hover {{ background: {c['hover']}; }}
 QPushButton#navsearchbtn:focus {{ border: 1px solid {c['accent']}; }}
