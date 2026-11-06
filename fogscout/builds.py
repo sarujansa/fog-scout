@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import official
+from .i18n import _
 
 KINDS = ("perk", "addon", "offering", "power")
 BUILD_MIN = 2                # a build (the same four perks) is listed from this many matches on
@@ -218,3 +219,78 @@ def ratings(pairs) -> list:
             name = _title(m.killer_status)
             count[name] = count.get(name, 0) + 1
     return sorted(count.items(), key=lambda kv: (-kv[1], kv[0].lower()))
+
+
+# ------------------------------------------------------------------ 1.38.49: prestige and level per character
+LEVELS = 50                  # levels per prestige grade (the page's characterLevel runs 1–50)
+
+
+@dataclass
+class Prestige:
+    """1.38.49 (user's pick "Prestige- und Level-Verlauf"): one own character – its grade now (the newest match of
+    all) and what the selection added (oldest to newest match of the selection)."""
+    character: str
+    role: str
+    prestige: int
+    level: int
+    gained: int = 0              # levels gained in the selection (prestige × LEVELS + level, newest − oldest)
+    gained_prestige: int = 0     # prestige grades gained in the selection
+    matches: int = 0             # matches of the selection with this character and a grade
+    last: float = 0.0            # start of the newest match of all
+
+
+def _graded(m) -> bool:
+    return bool(m.character) and m.prestige is not None and m.level is not None
+
+
+def progress(m) -> int:
+    """A match's grade as one number: prestige × LEVELS + level."""
+    return m.prestige * LEVELS + m.level
+
+
+def prestige_rows(matches, selected) -> list:
+    """1.38.49: [Prestige] of the own characters played in ``selected`` (the statistics' matches), newest played
+    first; the grade now from ``matches`` (every match the program knows). Matches without a grade (userscript
+    older than version 3) are left out."""
+    now = {}
+    for m in matches:
+        if _graded(m) and (m.character not in now or m.t > now[m.character].t):
+            now[m.character] = m
+    sel = {}
+    for m in selected:
+        if _graded(m):
+            sel.setdefault(m.character, []).append(m)
+    out = []
+    for name, ms in sel.items():
+        ms.sort(key=lambda m: m.t)
+        cur = now.get(name, ms[-1])
+        out.append(Prestige(character=name, role=cur.role, prestige=cur.prestige, level=cur.level,
+                            gained=max(0, progress(ms[-1]) - progress(ms[0])),
+                            gained_prestige=max(0, ms[-1].prestige - ms[0].prestige), matches=len(ms), last=cur.t))
+    out.sort(key=lambda p: -p.last)
+    return out
+
+
+def gain_text(p: Prestige) -> str:
+    """"+2 P" when grades were gained, else "+37 Level"; "–" for none."""
+    if p.gained_prestige:
+        return _("+{n} P", n=p.gained_prestige)
+    return _("+{n} Level", n=p.gained) if p.gained else "–"
+
+
+def prestige_series(matches, character: str, unit: str) -> list:
+    """1.38.49: the character's grade over time – [(bucket start, (prestige, level) of the last match of the bucket
+    or None)] per hour / day / week, empty buckets included, the newest official.MAX_BUCKETS."""
+    last = {}
+    for m in matches:
+        if _graded(m) and m.character == character:
+            b = official.bucket_start(m.t, unit)
+            if b not in last or m.t >= last[b].t:
+                last[b] = m
+    if not last:
+        return []
+    out, b, end = [], min(last), max(last)
+    while b <= end:
+        out.append((b, (last[b].prestige, last[b].level) if b in last else None))
+        b = official._next_bucket(b, unit)
+    return out[-official.MAX_BUCKETS:]
