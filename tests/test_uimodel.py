@@ -1382,9 +1382,9 @@ def test_the_statistics_tabs_are_short_and_the_last_rounds_come_second(app_root)
         parts = {g: [nb.tab(t, "text") for t in nb.tabs()] for g, nb in zip(groups, app._stats_groups.values())}
         assert parts["Runden"] == ["Übersicht", "Letzte Runden", "Rekorde", "Verlauf", "Sitzungen"]   # 1.38.47: last
         assert parts["Bloodpoints & Farming"] == ["Bloodpoints", "Farming"]
-        assert parts["Gegner & Builds"] == ["Killer", "Gegner", "Builds"]
+        assert parts["Gegner & Builds"] == ["Killer", "Gegner", "Builds", "Prestige"]   # 1.38.49: last
         assert parts["Maps, Server & PC"] == ["Maps", "Regionen", "Wartezeit", "System"]
-        assert sum(len(v) for v in parts.values()) == 14 and app._stats_current_title() == "Übersicht"   # 1.38.47
+        assert sum(len(v) for v in parts.values()) == 15 and app._stats_current_title() == "Übersicht"   # 1.38.47, 1.38.49
         app._stats_render()
         app._stats_select("Letzte Runden")
         app._stats_render_tab()
