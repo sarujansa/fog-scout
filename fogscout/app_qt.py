@@ -568,6 +568,8 @@ class QtShell:
             self.qt.show_page("stats")
             self._stats_select("Übersicht")
             self._stats_render()
+            self._qt_refresh(force=True)             # 1.38.41: the list of rounds scrolled into view and lit up
+            self.qt.reveal("stats", str(self.stats_farm_row))
         elif action == "ov_round":                   # 1.17.1: a row of the overview's "Letzte Runden"
             self._show_round(arg)
         elif action == "ov_recording":               # … its ▶: the round on the page Aufnahmen
