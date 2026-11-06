@@ -444,6 +444,25 @@ def test_the_setup_starts_fog_scout_again_after_an_update_finished_or_not():
     assert "function InitializeUninstall" in code and "WizardSilent" in code
 
 
+def test_the_shown_build_counts_from_one_but_the_run_number_decides(tmp_path):
+    """1.38.56 (Saru: "Das Build soll zurück auf 1 gehen"): messages show the new count from the release title and
+    build-info.json; whether an update is offered still compares the run number of the tag, so an installed
+    Build 134 (old count) takes build-140 titled "(Build 2)", and one without ``shown`` keeps showing its number."""
+    def Titled():
+        return FakeGitHub(release=dict(_release(build=140), name="Fog Scout 1.38.57 (Build 2)"))
+    state, msg, can, rel = relupdate.check(_info(tmp_path, build=134), opener=Titled())
+    assert state == "available" and can and rel.build == 140 and rel.shown == 2 and "(Build 2)" in msg
+    (tmp_path / relupdate.INFO_FILE).write_text(json.dumps({"build": 140, "shown": 2, "version": "1.38.57"}),
+                                                encoding="utf-8")
+    state, msg, _can, _rel = relupdate.check(str(tmp_path), opener=Titled())
+    assert state == "current" and "(Build 2)" in msg
+    assert relupdate.own_build(str(tmp_path))["shown"] == 2
+    state, msg, _can, _rel = relupdate.check(_info(tmp_path, build=150), opener=Titled())
+    assert state == "current" and "(Build 150)" in msg                    # a build from before keeps its number
+    assert relupdate.parse_release(_release(build=42)).shown == 0 and relupdate.shown_build(
+        relupdate.parse_release(_release(build=42))) == 42                 # no title: the run number
+
+
 def test_only_a_push_to_main_publishes_and_only_that_job_may_write():
     with open(os.path.join(ROOT, ".github", "workflows", "build.yml"), encoding="utf-8") as fh:
         wf = fh.read()
@@ -464,6 +483,9 @@ def test_only_a_push_to_main_publishes_and_only_that_job_may_write():
     assert release.count('[[ "$t" =~ ^build-[0-9]+$ ]] && [ "$t" != "$TAG" ]') == 2
     assert relupdate.TAG.match("build-123") and relupdate.SETUP.match("FogScout-Setup-1.33.exe")
     assert "build-info.json" in wf and "GITHUB_RUN_NUMBER" in wf
+    # 1.38.56: the title shows the merges since BUILD_BASE; the tag and the comparison keep the run number
+    assert "fetch-depth: 0" in wf and 'git rev-list --count --first-parent "$env:BUILD_BASE..HEAD"' in wf
+    assert "SHOWN: ${{ needs.exe.outputs.shown }}" in release and '--title "Fog Scout $version (Build $SHOWN)"' in release
     with open(os.path.join(ROOT, "installer", "fogscout.spec"), encoding="utf-8") as fh:
         assert '"build-info.json"' in fh.read()
     assert re.search(r"/build-info\.json", open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read())
