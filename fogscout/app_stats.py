@@ -51,6 +51,13 @@ SYS_PEAK_ROWS = {"gpu_temp_max": (N_("GPU-Temperatur"), " °C"), "gpu_hot_max": 
                  "fps_low": (N_("Niedrigstes FPS-Tief"), " FPS")}
 
 
+def _bucket_label(b: float, unit: str) -> str:
+    """1.38.49: the label of a chart bucket – "KW 45" per week, "06.11." per day, "21:00" per hour."""
+    if unit == "week":
+        return _("KW {n}", n=datetime.date.fromtimestamp(b).isocalendar()[1])
+    return time.strftime("%H:00" if unit == "hour" else "%d.%m.", time.localtime(b))
+
+
 def sys_tiles(avg) -> list:
     """Tiles of the System sub-tab from history.sys_average(): averages over the rounds, throttling."""
     n = avg["n"]
@@ -459,6 +466,22 @@ class StatsTab:
                                  "Iri (4); „voll“ = Kategorie mit {max} Punkten.", n=builds.BUILD_MIN,
                                  max=f"{builds.SCORE_MAX:,}".replace(",", ".")),
                   style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
+        # 1.38.49 (user's pick "Prestige- und Level-Verlauf": a table per character, a click shows its line): last
+        # tab of the group "Gegner & Builds" – tab_order counts by position
+        box_pr = self._stats_page(_("Prestige"), "foes", "_stats_part_prestige")
+        self.stats_prestige_var = ui.StringVar(value="")
+        ui.Label(box_pr, textvariable=self.stats_prestige_var, wraplength=520).pack(anchor="w")
+        self.stats_prestige = self._stats_tree(box_pr, (("char", _("Charakter"), 170, "w"), ("role", _("Rolle"), 70, "w"),
+                                                        ("p", _("Prestige"), 65, "e"), ("lvl", _("Level"), 55, "e"),
+                                                        ("gain", _("Zuwachs"), 80, "e"), ("n", _("Matches"), 65, "e"),
+                                                        ("last", _("Zuletzt"), 95, "w")), 7, select=True)
+        self.stats_prestige.bind("<<TreeviewSelect>>", lambda e: self._stats_prestige_chart())
+        self._stats_prestige_names = {}                  # row -> character
+        self.prestige_trend = TrendChart(box_pr, bool(self.settings.get("dark_mode", True)), panels=("prestige",))
+        ui.folded(ui.Label(box_pr, text=_("Prestige und Level deiner Charaktere laut Stats-Seite (ab Userscript Version 3). "
+                                           "„Prestige“ und „Level“ = der neueste Stand; „Zuwachs“ und „Matches“ gelten für "
+                                           "die Filter oben. Eine Zeile anklicken zeigt darunter den Verlauf dieses "
+                                           "Charakters."), style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
         # 1.8.64 (user: "wir haben so viele Kategorien, warum keine für Farming"): the farming rounds on a tab of
         # their own – whatever the role filter says (it keeps them out of every other evaluation). Last tab: the
         # saved tab order (tab_order) counts the tabs by position
@@ -1058,6 +1081,60 @@ class StatsTab:
         ts = self._stats_sess_ts.get(str(iid))
         if ts:
             self._show_rounds(ts)
+
+    def _stats_part_prestige(self, c):
+        """1.38.49: the own characters of the selection with their prestige and level (builds.prestige_rows)."""
+        j = self._joined()
+        rows = builds.prestige_rows(j.matches, [m for _r, m in c.pairs])
+        t = self.stats_prestige
+        keep = [self._stats_prestige_names.get(i) for i in t.selection()]
+        t.delete(*t.get_children())
+        self._stats_prestige_names = {}
+        for i, p in enumerate(rows):
+            iid = str(i)
+            self._stats_prestige_names[iid] = p.character
+            t.insert("", "end", iid=iid, values=(p.character, self._role_name(p.role) or "–", p.prestige, p.level,
+                                                 builds.gain_text(p), p.matches,
+                                                 time.strftime("%d.%m.%y", time.localtime(p.last))))
+        self.stats_prestige_var.set("" if rows else _("Noch kein Prestige in dieser Auswahl – es kommt aus den "
+                                                      "Match-Daten (Userscript ab Version 3)."))
+        pick = next((i for i, n in self._stats_prestige_names.items() if n in keep), None)
+        if pick is None and rows:
+            pick = "0"
+        if pick is not None:
+            t.selection_set(pick)
+        self._stats_prestige_chart()
+
+    def _stats_prestige_chart(self):
+        """1.38.49: the line of the character marked in the prestige table – prestige + (level − 1) / 50 per bucket,
+        the axis in whole prestige grades."""
+        c = self._stats_ctx
+        sel = self.stats_prestige.selection()
+        name = self._stats_prestige_names.get(sel[0]) if sel else None
+        unit = TREND_UNIT.get(c.period, "week") if c is not None else "week"
+        per = {"hour": _("pro Stunde"), "day": _("pro Tag"), "week": _("pro Woche")}[unit]
+        bars, last = [], None
+        if name and c is not None:
+            for b, grade in builds.prestige_series([m for _r, m in c.pairs], name, unit):
+                when = _bucket_label(b, unit)
+                if grade is None:
+                    bars.append((None, when, ""))
+                    continue
+                p, lvl = last = grade
+                bars.append((p + (lvl - 1) / builds.LEVELS, when,
+                             _("{when}: Prestige {p} · Level {level}", when=when, p=p, level=lvl)))
+        values = [v for v, _l, _t in bars if v is not None]
+        lo = max(0, int(min(values) - 0.2)) if values else 0         # air below a value on a whole grade
+        hi = int(max(values)) + 1 if values else 1
+        step = max(1, -(-(hi - lo) // 5))
+        self.prestige_trend.dark = bool(self.settings.get("dark_mode", True))
+        self.prestige_trend.draw({"prestige": {
+            "title": _("Prestige von {name} {per}", name=name, per=per) if name else _("Prestige"),
+            "bars": bars, "kind": "line", "min": lo, "max": hi,
+            "ticks": [(v, f"P{v}") for v in range(lo, hi + 1, step)],
+            "last": f"P{last[0]} · {last[1]}" if last else "",
+            "empty": _("Eine Zeile oben anklicken, um den Verlauf zu sehen.") if not name
+            else _("Keine Matches mit Prestige in dieser Auswahl.")}})
 
     def _stats_part_trend(self, c):
         self._trend_render(c.pairs, TREND_UNIT.get(c.period, "week"))

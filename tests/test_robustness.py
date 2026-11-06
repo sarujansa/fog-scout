@@ -540,3 +540,38 @@ def test_a_session_opens_its_rounds_in_last_rounds(tmp_path):
 def _tab_title(a, title):
     assert title in [t for t, _p in a._stats_parts.values()]
     return title
+
+
+def test_the_prestige_tab_lists_own_characters_and_draws_the_marked_one(tmp_path):
+    """1.38.49 (user's pick "Prestige- und Level-Verlauf", table + line of the clicked character): Statistik ›
+    Gegner & Builds › Prestige – one row per own character from the linked matches, the newest first and marked,
+    its line drawn; marking the other row draws that one; without any grade a hint and an empty line."""
+    from dataclasses import asdict
+    from fogscout.official import Match
+    now = time.time()
+    plays = [(now - 7200, "The Nurse", "killer", 4, 10), (now - 5400, "Meg Thomas", "survivor", 10, 20),
+             (now - 3600, "The Nurse", "killer", 4, 30)]
+    rounds = b"".join(json.dumps({"t": t, "seconds": 600, "map_id": "coal-tower", "map": "Coal Tower", "role": role,
+                                  "source": "auto"}).encode() + b"\n" for t, _c, role, _p, _l in plays)
+    matches = b"".join(json.dumps(asdict(Match(t=t - 38, map="Coal Tower", role=role, character=c, seconds=600,
+                                               prestige=p, level=lvl))).encode() + b"\n"
+                       for t, c, role, p, lvl in plays)
+    a = _start(tmp_path, {"welcome_seen": True}, rounds=rounds, matches=matches)
+    try:
+        _pump_app(a, 0.3)
+        a.qt.show_page("stats")
+        a._stats_select("Prestige")
+        a._stats_render()
+        a._stats_render_tab()
+        t = a.stats_prestige
+        names = [t.item(i, "values")[0] for i in t.get_children()]
+        assert names == ["The Nurse", "Meg Thomas"] and t.selection() == ("0",)
+        assert list(t.item("0", "values"))[2:5] == [4, 30, "+20 Level"]
+        panel = a.prestige_trend.data["prestige"]
+        assert "The Nurse" in panel["title"] and panel["last"] == "P4 · 30"
+        t.selection_set("1")
+        t.event_generate("<<TreeviewSelect>>")
+        assert "Meg Thomas" in a.prestige_trend.data["prestige"]["title"]
+        assert not a.stats_prestige_var.get()
+    finally:
+        a.quit()
