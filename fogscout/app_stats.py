@@ -466,9 +466,22 @@ class StatsTab:
                                  "Iri (4); „voll“ = Kategorie mit {max} Punkten.", n=builds.BUILD_MIN,
                                  max=f"{builds.SCORE_MAX:,}".replace(",", ".")),
                   style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
-        # 1.38.49 (user's pick "Prestige- und Level-Verlauf": a table per character, a click shows its line): last
-        # tab of the group "Gegner & Builds" – tab_order counts by position
-        box_pr = self._stats_page(_("Prestige"), "foes", "_stats_part_prestige")
+        # 1.8.64 (user: "wir haben so viele Kategorien, warum keine für Farming"): the farming rounds on a tab of
+        # their own – whatever the role filter says (it keeps them out of every other evaluation). Last tab: the
+        # saved tab order (tab_order) counts the tabs by position
+        box_f = self._stats_page(_("Farming"), "bp", "_stats_part_farming")
+        self.stats_farm_note = ui.StringVar(value="")
+        ui.Label(box_f, textvariable=self.stats_farm_note, wraplength=520).pack(anchor="w")
+        self.stats_farm_tiles = ui.Tiles(box_f)
+        self.stats_farm_tiles.pack(fill="x", pady=(0, 6))
+        self.stats_farm = self._stats_tree(box_f, (("when", _("Wann"), 120, "w"), ("map", _("Map"), 130, "w"),
+                                                   ("dur", _("Dauer"), 60, "e"), ("wait", _("Warten"), 65, "e"),
+                                                   ("role", _("Rolle/Killer"), 115, "w"), ("bp", _("BP"), 70, "e"),
+                                                   ("srv", _("Server"), 100, "w")), 8)
+        ui.folded(ui.Label(box_f, text=_("Alle Farming-Runden der Auswahl (Zeitraum, Region, Map, Modus) – unabhängig vom Rollen-Filter und von „Farming ausblenden“. Farming = Crossplay war in der Lobby aus (oder die eingestellte Farming-Region); korrigieren unter „Letzte Runden“ mit „Farming an/aus“. Aufnahmen liegen im Unterordner „Farming“ des Aufnahmeordners. Wartezeit „sofort“: die Lobby war voll, bevor eine Suchzeit messbar war. Server nur, wenn „Verbunden mit“ auf der Seite Server läuft."), style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
+        # 1.38.49 (user's pick "Prestige- und Level-Verlauf": a table per character, a click shows its line);
+        # 1.38.51 (user: "pack die Prestigesparte in Bloodpoints & Farming rein"): last tab of that group, after Farming – tab_order counts by position
+        box_pr = self._stats_page(_("Prestige"), "bp", "_stats_part_prestige")
         self.stats_prestige_var = ui.StringVar(value="")
         ui.Label(box_pr, textvariable=self.stats_prestige_var, wraplength=520).pack(anchor="w")
         self.stats_prestige_tiles = ui.Tiles(box_pr)      # 1.38.50 (user's pick "Fortschritts-Übersicht")
@@ -491,21 +504,9 @@ class StatsTab:
                                            "{days} Tage, „Nächstes P“ = wie lange es bei diesem Tempo bis zur nächsten "
                                            "Stufe dauert. Level steigen nur, wenn du Blutpunkte im Blutnetz ausgibst – die "
                                            "Prognose sagt, was bisher geschah, keine Zusage. „Main“ = dein Charakter mit den "
-                                           "meisten Matches je Rolle.", days=builds.PACE_DAYS),
+                                           "meisten Matches je Rolle. „P100“ und „Höchster“ zählen nur Charaktere, die in deinen "
+                                           "Match-Daten vorkommen.", days=builds.PACE_DAYS),
                            style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
-        # 1.8.64 (user: "wir haben so viele Kategorien, warum keine für Farming"): the farming rounds on a tab of
-        # their own – whatever the role filter says (it keeps them out of every other evaluation). Last tab: the
-        # saved tab order (tab_order) counts the tabs by position
-        box_f = self._stats_page(_("Farming"), "bp", "_stats_part_farming")
-        self.stats_farm_note = ui.StringVar(value="")
-        ui.Label(box_f, textvariable=self.stats_farm_note, wraplength=520).pack(anchor="w")
-        self.stats_farm_tiles = ui.Tiles(box_f)
-        self.stats_farm_tiles.pack(fill="x", pady=(0, 6))
-        self.stats_farm = self._stats_tree(box_f, (("when", _("Wann"), 120, "w"), ("map", _("Map"), 130, "w"),
-                                                   ("dur", _("Dauer"), 60, "e"), ("wait", _("Warten"), 65, "e"),
-                                                   ("role", _("Rolle/Killer"), 115, "w"), ("bp", _("BP"), 70, "e"),
-                                                   ("srv", _("Server"), 100, "w")), 8)
-        ui.folded(ui.Label(box_f, text=_("Alle Farming-Runden der Auswahl (Zeitraum, Region, Map, Modus) – unabhängig vom Rollen-Filter und von „Farming ausblenden“. Farming = Crossplay war in der Lobby aus (oder die eingestellte Farming-Region); korrigieren unter „Letzte Runden“ mit „Farming an/aus“. Aufnahmen liegen im Unterordner „Farming“ des Aufnahmeordners. Wartezeit „sofort“: die Lobby war voll, bevor eine Suchzeit messbar war. Server nur, wenn „Verbunden mit“ auf der Seite Server läuft."), style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
         self._stats_sort = ("n", True)
         return outer
 
