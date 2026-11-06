@@ -13,14 +13,14 @@ import collections
 from PySide6.QtCore import QByteArray, QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (QAbstractItemView, QApplication,
-                               QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
+                               QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
                                QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget)
 
 from . import i18n, qt_icons, qt_theme
 from .status import DOT_STYLE
 from .i18n import N_, _
 from .qt_app import FIRA, application          # 1.14.2: made before the heavy imports (splash)
-from .qt_common import (SLIDER_MAX, WheelGuard, guard_wheel, pixmap_from_pil, _label, _tip, _card, _set,
+from .qt_common import (SLIDER_MAX, WheelGuard, guard_wheel, pixmap_from_pil, set_glyph, _label, _tip, _card, _set,
                         _scroll_page)
 from .qt_views import (FactBox, CHECKS, _check, Table, LogView, HotkeyButton, Chart, HEAT_RAMP,
                        heat_colour, ink_on, MapBars, Heatmap, SwatchView, TilesView, DashboardView)
@@ -666,11 +666,22 @@ class MainWindow(QMainWindow):
         sl = QVBoxLayout(side)
         sl.setContentsMargins(0, 0, 0, 0)
         sl.setSpacing(0)
-        self.search = QLineEdit()
+        # 1.38.55 (user: "die Maus bleibt gleich, und beim Klick macht es die grosse Suche auf – sauberer?"): a button
+        # that looks like a search field – magnifier, "Suchen …", the shortcut on the right, a hand and a hover state;
+        # it opens the palette (1.26) like any button. Before: a read-only QLineEdit opened by an event filter
+        self.search = QPushButton(_("Suchen …"))
         self.search.setObjectName("navsearch")
-        self.search.setPlaceholderText(_("Suchen … (Strg+F)"))
-        self.search.setFocusPolicy(Qt.ClickFocus)  # not the window's first focus: only by a click or Ctrl+F
-        self.search.setReadOnly(True)              # 1.26: a door to the palette – typing happens there
+        self.search.setCursor(Qt.PointingHandCursor)
+        self.search.setToolTip(_("Suchen (Strg+F)"))
+        self.search.setFocusPolicy(Qt.TabFocus)    # not the window's first focus; Tab, a click or Ctrl+F
+        self.search.clicked.connect(self.focus_search)
+        set_glyph(self.search, "search", tone="dim")
+        keys = QHBoxLayout(self.search)
+        keys.setContentsMargins(0, 12, 20, 2)               # inside the box: the sheet margin 12/10/2 + padding
+        keys.addStretch(1)
+        self.search_keys = _label(_("Strg+F"), "dim")
+        self.search_keys.setAttribute(Qt.WA_TransparentForMouseEvents)
+        keys.addWidget(self.search_keys)
         self.search_btn = QPushButton()
         self.search_btn.setObjectName("navsearchbtn")
         self.search_btn.setToolTip(_("Suchen (Strg+F)"))
@@ -687,7 +698,6 @@ class MainWindow(QMainWindow):
         self._found = {}                  # search entry text -> (page key, widget, folded)
         self._found_hay = {}              # 1.26: … -> what it is matched against (both languages, SEARCH_ALSO)
         self._found_static = {}           # 1.28: … -> a fixed program text of an allowed kind (may go to Claude)
-        self.search.installEventFilter(self)
         from PySide6.QtGui import QKeySequence, QShortcut
         QShortcut(QKeySequence.Find, self, activated=self.focus_search)
         # 1.65: undo of place/size on the overlay page (a text field keeps its own Ctrl+Z)
@@ -910,15 +920,6 @@ class MainWindow(QMainWindow):
                     static = static and i18n.is_program_text(tab)
             out.setdefault(f"{text}{where}  ·  {_(labels[key])}", (key, w, folded, hay, static))
         return out
-
-    def eventFilter(self, obj, e):
-        # 1.28 (audit F7): only the click opens it – the click's FocusIn opened it a second time (two palette_open,
-        # the pages filled twice); the field takes focus by a click only (ClickFocus), the keyboard has Ctrl+F
-        if obj is self.search and e.type() == QEvent.MouseButtonPress:
-            if not self.palette.isVisible():
-                QTimer.singleShot(0, self, self.focus_search)            # 1.26: the field opens the palette
-            return True
-        return super().eventFilter(obj, e)
 
     def update_search_index(self):
         """After the App filled the pages: what the search offers (open parts, the language now …)."""

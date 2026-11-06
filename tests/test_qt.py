@@ -2933,12 +2933,40 @@ def test_placeholders_grips_and_handles_are_readable_in_every_theme(qapp, keep):
         win.apply_theme(False, 1.0)
         win.show()
         qapp.processEvents()
-        field = win.search                                   # styled by the window's sheet (sets `color`)
+        from PySide6.QtWidgets import QLineEdit
+        field = QLineEdit(win)                               # styled by the window's sheet (sets `color`)
+        field.setPlaceholderText("x")
         field.ensurePolished()
         got = field.palette().color(QPalette.PlaceholderText)
         assert got.name() == qt_theme.colours(False)["dim"] and got.alpha() == 255
+        win.search_keys.ensurePolished()                     # 1.38.55: the search button's "Ctrl+F" sign is dim
+        got = win.search_keys.palette().color(QPalette.WindowText)
+        assert got.name() == qt_theme.colours(False)["dim"]
     finally:
         qt_theme.set_theme("gold")
+
+
+def test_the_search_box_is_a_button_with_a_hand_and_the_keyboard(qapp, keep):
+    """1.38.55 (Saru: the arrow stayed over the search field and a click opened the big search anyway): the box
+    above the navigation is a button – hand cursor, reachable with Tab, Enter/click open the palette once."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QPushButton
+    from PySide6.QtTest import QTest
+    from fogscout import qt_window
+    posted = queue.Queue()
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.put((a, arg))))
+    win.resize(1100, 800)
+    win.show()
+    qapp.processEvents()
+    assert isinstance(win.search, QPushButton) and win.search.objectName() == "navsearch"
+    assert win.search.cursor().shape() == Qt.PointingHandCursor
+    assert win.search.focusPolicy() == Qt.TabFocus
+    assert win.search.text() == "Suchen …" and win.search_keys.text() == "Strg+F"
+    win.search.setFocus()
+    QTest.keyClick(win.search, Qt.Key_Space)
+    qapp.processEvents()
+    opens = [a for a, _arg in (posted.get_nowait() for _i in range(posted.qsize())) if a == "palette_open"]
+    assert opens == ["palette_open"] and win.palette.isVisible()
 
 
 def test_status_signs_are_drawn_glyphs_with_words(qapp, keep):
