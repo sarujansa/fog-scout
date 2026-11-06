@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 
 from . import official
-from .dashboard import Tile, play_time
+from .dashboard import Tile, play_time, rounds_target
 from .i18n import _
 from .textnorm import fmt_duration
 
@@ -38,6 +38,17 @@ def streak(items) -> Streak:
             s.best, s.best_end = run, t
     s.current = run
     return s
+
+
+def streak_rounds(items) -> list:
+    """1.38.54: the start times of the best streak of ``items`` ([(start, hit)], as ``streak``: unknown results
+    skipped) – the first of equally long ones, as ``streak`` counts it; [] without a hit."""
+    best, run = [], []
+    for t, hit in sorted((i for i in items if i[1] is not None), key=lambda i: i[0]):
+        run = run + [t] if hit else []
+        if len(run) > len(best):
+            best = list(run)
+    return best
 
 
 def _day(t: float) -> float:
@@ -151,7 +162,8 @@ def session_tiles(rows) -> list:
             Tile(_("Ø Runden je Sitzung"), f"{sum(len(s.rounds) for s in rows) / n:.1f}"),
             Tile(_("Ø Dauer einer Sitzung"), play_time(sum(s.end - s.start for s in rows) / n)),
             Tile(_("Längste Sitzung"), play_time(longest.end - longest.start),
-                 _date(longest.start) + " · " + _("{n} Runden", n=len(longest.rounds)))]
+                 _date(longest.start) + " · " + _("{n} Runden", n=len(longest.rounds)),
+                 open=rounds_target([r.t for r in longest.rounds]))]
 
 
 def longest_session(rounds, gap=SESSION_GAP):
@@ -181,14 +193,14 @@ def _date(t: float) -> str:
     return time.strftime("%d.%m.%y", time.localtime(t))
 
 
-def _streak_tile(title: str, s: Streak, empty: str) -> Tile:
+def _streak_tile(title: str, s: Streak, empty: str, items=()) -> Tile:
     if not s.rounds:
         return Tile(title, sub=empty)
     sub = _("aktuell {n}", n=s.current)
     if s.best:
         sub += " · " + _("zuletzt {date}", date=_date(s.best_end))
     sub += " · " + _("{n} Runden", n=s.rounds)
-    return Tile(title, str(s.best), sub)
+    return Tile(title, str(s.best), sub, open=rounds_target(streak_rounds(items)))   # 1.38.54: its rounds
 
 
 def tiles(rounds, pairs, killer_name=None) -> list:
@@ -196,34 +208,44 @@ def tiles(rounds, pairs, killer_name=None) -> list:
     ``killer_name`` turns a killer id into its display name."""
     kills = [(r.t, official.kills(m)) for r, m in pairs]
     esc = [(r.t, official.escaped(m)) for r, m in pairs]
-    out = [_streak_tile(_("4K-Serie"), streak([(t, None if k is None else k == 4) for t, k in kills]),
-                        _("keine Killer-Runden mit Stats-Daten")),
-           _streak_tile(_("Entkommen-Serie"), streak(esc), _("keine Survivor-Runden mit Stats-Daten"))]
+    # 1.38.54 (user: "mach das auch für die anderen Kacheln, wo es Sinn macht"): every record that comes from rounds
+    # marks them under „Letzte Runden“ on a click (dashboard.rounds_target)
+    four = [(t, None if k is None else k == 4) for t, k in kills]
+    out = [_streak_tile(_("4K-Serie"), streak(four), _("keine Killer-Runden mit Stats-Daten"), four),
+           _streak_tile(_("Entkommen-Serie"), streak(esc), _("keine Survivor-Runden mit Stats-Daten"), esc)]
+
+    def week_rounds(items, start):
+        return rounds_target([t for t, v in items if v is not None and week_start(t) == start])
     bw = best_week(kills)
     out.append(Tile(_("Beste Woche als Killer"), _("Ø {kills} Kills", kills=f"{bw[1]:.2f}"),
-                    _("ab {date} · {n} Runden", date=_date(bw[0]), n=bw[2]), frac=bw[1] / 4) if bw
+                    _("ab {date} · {n} Runden", date=_date(bw[0]), n=bw[2]), frac=bw[1] / 4,
+                    open=week_rounds(kills, bw[0])) if bw
                else Tile(_("Beste Woche als Killer"), sub=_("ab {n} Killer-Runden in einer Woche", n=WEEK_MIN)))
     bw = best_week([(t, None if e is None else int(e)) for t, e in esc])
     out.append(Tile(_("Beste Woche als Survivor"), _("{share} entkommen", share=f"{bw[1]:.0%}"),
-                    _("ab {date} · {n} Runden", date=_date(bw[0]), n=bw[2]), frac=bw[1]) if bw
+                    _("ab {date} · {n} Runden", date=_date(bw[0]), n=bw[2]), frac=bw[1],
+                    open=week_rounds(esc, bw[0])) if bw
                else Tile(_("Beste Woche als Survivor"), sub=_("ab {n} Survivor-Runden in einer Woche", n=WEEK_MIN)))
     day = busiest_day(rounds)
     if day:
         out.append(Tile(_("Meiste Runden an einem Tag"), str(day[1]),
-                        _date(day[0]) + " · " + _("{time} gespielt", time=play_time(day[2]))))
+                        _date(day[0]) + " · " + _("{time} gespielt", time=play_time(day[2])),
+                        open=rounds_target([r.t for r in rounds if _day(r.t) == day[0]])))
     ses = longest_session(rounds)
     if ses:
         out.append(Tile(_("Längste Sitzung"), play_time(ses[1] - ses[0]),
-                        _date(ses[0]) + " · " + _("{n} Runden", n=ses[2])))
+                        _date(ses[0]) + " · " + _("{n} Runden", n=ses[2]),
+                        open=rounds_target([r.t for r in rounds if ses[0] <= r.t <= ses[1]])))
     r = longest_round(rounds)
     if r is not None:
-        out.append(Tile(_("Längste Runde"), fmt_duration(r.seconds), f"{r.map} · {_date(r.t)}"))
+        out.append(Tile(_("Längste Runde"), fmt_duration(r.seconds), f"{r.map} · {_date(r.t)}",
+                        open=rounds_target([r.t])))
     fast = fastest_four(pairs)
     if fast is not None:
         r, _m, seconds = fast
         who = (killer_name or str)(r.killer) if r.killer else ""
         out.append(Tile(_("Schnellste 4K"), fmt_duration(seconds),
-                        " · ".join(x for x in (who, r.map, _date(r.t)) if x)))
+                        " · ".join(x for x in (who, r.map, _date(r.t)) if x), open=rounds_target([r.t])))
     return out
 
 
