@@ -8,7 +8,9 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from . import history, official
+import math
+
+from . import bloodpoints, history, official
 from .i18n import _, current as _language
 from .textnorm import fmt_duration
 
@@ -144,6 +146,45 @@ def bp_trend(pairs, unit: str) -> list:
         out.append((b, groups.get(b, [])))
         b = official._next_bucket(b, unit)
     return out[-official.MAX_BUCKETS:]
+
+
+def balance_trend(rounds, unit: str) -> list:
+    """1.38.48 (user's pick "Blutpunkte-Stand als Verlauf"): the bloodpoint balance read in the lobby after each
+    round (Round.balance) over time – [(bucket start, the last balance of the bucket or None)] per hour / day / week
+    from the first to the last bucket with a reading, the newest MAX_BUCKETS (like bp_trend)."""
+    last = {}
+    for r in rounds:
+        if r.balance is None:
+            continue
+        b = official.bucket_start(r.t, unit)
+        if b not in last or r.t >= last[b][0]:
+            last[b] = (r.t, r.balance)
+    if not last:
+        return []
+    out, b, end = [], min(last), max(last)
+    while b <= end:
+        out.append((b, last[b][1] if b in last else None))
+        b = official._next_bucket(b, unit)
+    return out[-official.MAX_BUCKETS:]
+
+
+def balance_tile(rounds, per_round, cap: int = bloodpoints.CAP):
+    """1.38.48: the tile "BP-Stand" – the newest balance read (of ``rounds``: all of them, not the filtered ones –
+    a balance is a state, not a sum) and how many rounds to the cap at ``per_round`` (Ø BP of the selection);
+    None without a reading."""
+    read = [r for r in rounds if r.balance is not None]
+    if not read:
+        return None
+    newest = max(read, key=lambda r: r.t)
+    bal = newest.balance
+    if bal >= cap:
+        sub = _("Cap erreicht")
+    elif per_round:
+        sub = _("Cap in ≈ {n} Runden", n=math.ceil((cap - bal) / per_round))
+    else:
+        sub = _("Cap: {cap}", cap=_bp(cap))
+    return Tile(_("BP-Stand"), _bp(bal), sub + " · " + time.strftime("%d.%m. %H:%M", time.localtime(newest.t)),
+                frac=min(1.0, bal / cap))
 
 
 def tiles(rounds, pairs) -> list:
