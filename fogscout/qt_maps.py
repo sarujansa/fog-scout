@@ -167,7 +167,8 @@ class MapsPage(QWidget):
         # 1.8.72: the thumbnails in the tile's size in device pixels (sharp on a scaled screen, a pixmap without
         # another resize), made in a thread, kept on disk
         ratio = self.devicePixelRatioF()
-        self._loader = thumbs.Loader((round((TILE_W - 24) * ratio), round((TILE_PIC - 8) * ratio)), cache_dir)
+        self._loader = thumbs.Loader((round((TILE_W - 24) * ratio), round((TILE_PIC - 8) * ratio)), cache_dir,
+                                     workers=thumbs.WORKERS, by_content=True)        # 1.38.45: see thumbs
         page, lay = _scroll_page("Maps", scroll=False, page_key="maps")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
