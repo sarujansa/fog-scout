@@ -92,6 +92,68 @@ def sessions(rounds, gap=SESSION_GAP) -> list:
     return out
 
 
+@dataclass
+class Session:
+    """1.38.47: one session of the sub-tab "Sitzungen" – its rounds and their sums (official numbers from the
+    rounds tied to a match; None without any)."""
+    start: float
+    end: float
+    rounds: list
+    play_s: float = 0.0
+    killer: int = 0
+    survivor: int = 0
+    farming: int = 0
+    kills: float | None = None
+    killer_matches: int = 0
+    escaped: float | None = None
+    survivor_matches: int = 0
+    bp: int = 0
+    bp_matches: int = 0
+    wait: float | None = None
+
+
+def session_rows(rounds, off: dict, gap=SESSION_GAP) -> list:
+    """1.38.47 (user's pick from the feature report: "Sitzungen als eigener Reiter"): the sessions of ``rounds``,
+    newest first – the same split as ``sessions`` (a gap of more than ``gap`` from one round's end to the next
+    one's start), each with its rounds, play time, roles, farming rounds, Ø waiting time and, from the official
+    matches (``off``: id(round) -> Match), Ø kills, share escaped and bloodpoints."""
+    groups = []
+    for r in sorted(rounds, key=lambda r: r.t):
+        end = r.t + r.seconds
+        if groups and r.t - groups[-1][1] <= gap:
+            groups[-1][1] = max(groups[-1][1], end)
+            groups[-1][2].append(r)
+        else:
+            groups.append([r.t, end, [r]])
+    out = []
+    for start, end, rs in groups:
+        s = official.summary([off[id(r)] for r in rs if id(r) in off])
+        waits = [r.wait for r in rs if r.wait is not None]
+        out.append(Session(start=start, end=end, rounds=rs, play_s=sum(r.seconds for r in rs),
+                           killer=sum(1 for r in rs if r.role == "killer" and not r.custom),
+                           survivor=sum(1 for r in rs if r.role == "survivor" and not r.custom),
+                           farming=sum(1 for r in rs if r.farming and not r.custom),
+                           kills=s["kills"] if s["killer"] else None, killer_matches=s["killer"],
+                           escaped=s["escaped"] if s["survivor"] else None, survivor_matches=s["survivor"],
+                           bp=s["bp"], bp_matches=s["bp_matches"],
+                           wait=sum(waits) / len(waits) if waits else None))
+    out.reverse()
+    return out
+
+
+def session_tiles(rows) -> list:
+    """1.38.47: the tiles above the sessions table – how many, Ø rounds and length per session, the longest."""
+    if not rows:
+        return []
+    n = len(rows)
+    longest = max(rows, key=lambda s: (s.end - s.start, s.start))
+    return [Tile(_("Sitzungen"), str(n), _("{n} Runden", n=sum(len(s.rounds) for s in rows))),
+            Tile(_("Ø Runden je Sitzung"), f"{sum(len(s.rounds) for s in rows) / n:.1f}"),
+            Tile(_("Ø Dauer einer Sitzung"), play_time(sum(s.end - s.start for s in rows) / n)),
+            Tile(_("Längste Sitzung"), play_time(longest.end - longest.start),
+                 _date(longest.start) + " · " + _("{n} Runden", n=len(longest.rounds)))]
+
+
 def longest_session(rounds, gap=SESSION_GAP):
     """The session that lasted longest (first banner to last end): (start, end, rounds) or None."""
     ss = sessions(rounds, gap)
