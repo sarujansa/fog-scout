@@ -565,6 +565,41 @@ class StatsTab:
         self._stats_more_open = False
         self._stats_render()
 
+    # 1.38.53 (user: "auf Rounds 8 heute klicken soll es mir diese zeigen – genau gleich bei den anderen Kacheln"):
+    # the tiles of the overview's "Heute" / "Diese Woche" → the statistics with the matching period, role and part
+    TILE_PARTS = {"last": N_("Letzte Runden"), "farming": N_("Farming"), "wait": N_("Wartezeit"),
+                  "bp": N_("Bloodpoints")}
+
+    def _open_tile(self, key: str):
+        """A tile's target "period:part:role" (overview.Fact.open) or "page:<key>": the other filters (region, killer,
+        map, mode) are reset so that the rounds shown are the ones the tile counts. "Farming ausblenden" is only
+        switched off (today's round count holds farming rounds), never on – it is one setting with the recordings."""
+        kind, _sep, rest = str(key).partition(":")
+        if kind == "page":
+            self.qt.show_page(rest)
+            return
+        part, _sep, role = rest.partition(":")
+        title = self.TILE_PARTS.get(part)
+        if title is None or kind not in dict(self._stats_periods):
+            return
+        pick = lambda var, choices, want: var.set(dict(choices).get(want, choices[0][1]))   # noqa: E731
+        pick(self.stats_period_var, self._stats_periods, kind)
+        pick(self.stats_role_var, self._stats_roles, role or "all")
+        for var, choices in ((self.stats_region_var, self._stats_regions), (self.stats_killer_var, self._stats_killers),
+                             (self.stats_map_var, self._stats_maps_f), (self.stats_mode_var, self._stats_modes)):
+            var.set(choices[0][1])
+        self._stats_mode_want = None
+        self.settings.set("stats_mode", "")
+        if kind == "day" and part in ("last", "farming") and role in ("", "all") and self._farming_hidden():
+            self._farming_set(False)
+            if hasattr(self, "_rec_render"):
+                self._rec_render(force=True)
+        self.settings.save()
+        self.qt.show_page("stats")
+        self._stats_select(_(title))
+        self._stats_render()
+        self._stats_render_tab()
+
     def _stats_page(self, title, group, part):
         """A part of the statistics: a page in the notebook of ``group`` (STATS_GROUPS), drawn by method ``part``."""
         nb = self._stats_groups[group]
