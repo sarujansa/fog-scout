@@ -149,6 +149,18 @@ def test_poll_reads_result_and_loses_server(tmp_path, monkeypatch):
     assert w.text() == "keine Daten vom Mitschnitt"
 
 
+def test_poll_says_how_long_each_part_took(tmp_path, monkeypatch):
+    """1.38.40 (user diagnosis: "Takt: verbindung" up to 1719 ms in the window thread): every poll gives the
+    milliseconds of its parts for the lag list; a poll without a capture gives none (no stale value noted again)."""
+    w, control, result = _watch(tmp_path, monkeypatch)
+    result.write_text(json.dumps({"ok": True, "t": 1000.0, "flows": []}))
+    w.poll(1001.0)
+    assert set(w.poll_ms) == {"Ports", "Dateien", "Auswertung"} and all(v >= 0 for v in w.poll_ms.values())
+    w.proc = None                                                 # not running any more
+    w.poll(1002.0)
+    assert w.poll_ms == {}
+
+
 def test_poll_reports_helper_error(tmp_path, monkeypatch):
     w, control, result = _watch(tmp_path, monkeypatch, exit_code=1)
     result.write_text(json.dumps({"ok": False, "t": 1.0, "error": "Keine Berechtigung"}))
