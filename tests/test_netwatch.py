@@ -558,3 +558,33 @@ def test_the_servers_gaps_count_once_and_only_the_servers(tmp_path, monkeypatch)
     assert not hasattr(w, "lagging") and not hasattr(connwatch, "LAG_LIVE_S")
     text = "\n".join(w.diag_lines(1011.0))
     assert "Aussetzer des Servers" in text and ": 2, längster 0.90 s" in text
+
+
+def test_left_over_capture_files_of_a_crash_are_removed_only_our_own_and_old(tmp_path):
+    """1.38.57 (security review): the capture's temp files (the result names the server's address) survive a crash –
+    start() removes our own older than STALE_TEMP_S; fresh ones, other names, folders and links stay."""
+    now = time.time()
+    old = now - connwatch.STALE_TEMP_S - 60
+
+    def make(name, t=old):
+        p = tmp_path / name
+        p.write_text("{}", encoding="utf-8")
+        os.utime(p, (t, t))
+        return p
+    stale = [make("fogscout-net-a1b2c3d4.json"), make("fogscout-netres-x9y8z7w6.json")]
+    keep = [make("fogscout-netres-fresh123.json", now), make("fogscout-netres-a1b2c3d4.txt"),
+            make("other-netres-a1b2c3d4.json"), make("fogscout-netres-.json")]
+    (tmp_path / "fogscout-net-folder1.json").mkdir()
+    target = make("precious.json")
+    link = tmp_path / "fogscout-netres-link1234.json"
+    try:
+        os.symlink(target, link)
+        os.utime(link, (old, old), follow_symlinks=False)
+    except (OSError, NotImplementedError):
+        link = None
+    assert connwatch.remove_stale_temp(str(tmp_path), now) == 2
+    assert not any(p.exists() for p in stale)
+    assert all(p.exists() for p in keep) and target.exists() and (tmp_path / "fogscout-net-folder1.json").is_dir()
+    if link is not None:
+        assert os.path.lexists(link)
+    assert connwatch.remove_stale_temp(str(tmp_path / "missing"), now) == 0

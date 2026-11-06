@@ -48,6 +48,8 @@ PEAK_KEEP = 1800.0     # diagnostics: busiest partners of the last 30 min (the m
 PEAK_MAX = 8
 PORTS_EVERY = 2.0      # 1.11.6: DBD's UDP ports looked up again this often (a new match may open a new socket)
 GAPS_KEPT = 500        # diagnostics: gaps of the server kept since the start
+TEMP_PREFIXES = ("fogscout-net-", "fogscout-netres-")   # the control and result files of the capture (mkstemp)
+STALE_TEMP_S = 3600.0  # 1.38.57: own temp files older than this are left over from a crash – removed at start()
 UNKNOWN = "?"          # region of a game server that AWS does not tell (see AWS_GLOBAL_EC2)
 # EC2 address ranges AWS publishes with region "GLOBAL" (ip-ranges.json, service EC2, as of 2026-10-09): machines
 # there have no reverse DNS name, so the region cannot be read from the address. GameLift runs DBD servers in
@@ -252,10 +254,11 @@ class ConnectionWatch:
             return None
         if not IS_WIN:
             return {"error": _("Nur unter Windows verfügbar.")}
-        fd, control = tempfile.mkstemp(prefix="fogscout-net-", suffix=".json")
+        remove_stale_temp()
+        fd, control = tempfile.mkstemp(prefix=TEMP_PREFIXES[0], suffix=".json")
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump({"stop": False}, fh)
-        fd, result = tempfile.mkstemp(prefix="fogscout-netres-", suffix=".json")
+        fd, result = tempfile.mkstemp(prefix=TEMP_PREFIXES[1], suffix=".json")
         os.close(fd)
         if is_admin():
             proc = threading.Thread(target=netwatch.main, args=(["netwatch.py", control, result],),
@@ -518,6 +521,34 @@ def _mask_local(ip: str) -> str:
 def _mask_name(name: str) -> str:
     """Reverse DNS name without the address in it (ec2-3-120-1-2.eu-… → ec2-….eu-…)."""
     return re.sub(r"\d{1,3}([-.])\d{1,3}\1\d{1,3}\1\d{1,3}", "…", name)
+
+
+def remove_stale_temp(folder: str | None = None, now: float | None = None) -> int:
+    """1.38.57 (security review): a crash leaves the capture's control/result files (the result names the game
+    server's address) in the temp folder – remove our own older than STALE_TEMP_S: only regular files (never a
+    link, never followed) named exactly like mkstemp's with our prefixes. Returns how many went."""
+    folder = folder or tempfile.gettempdir()
+    now = time.time() if now is None else now
+    gone = 0
+    try:
+        entries = list(os.scandir(folder))
+    except OSError:
+        return 0
+    for e in entries:
+        name = e.name
+        if not (name.endswith(".json") and any(name.startswith(p) and len(name) > len(p) + 5 for p in TEMP_PREFIXES)):
+            continue
+        try:
+            if e.is_symlink() or not e.is_file(follow_symlinks=False):
+                continue
+            if now - e.stat(follow_symlinks=False).st_mtime < STALE_TEMP_S:
+                continue
+        except OSError:
+            continue
+        before = os.path.lexists(e.path)
+        _remove(e.path)
+        gone += before and not os.path.lexists(e.path)
+    return gone
 
 
 def _remove(*paths):
