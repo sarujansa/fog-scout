@@ -3833,4 +3833,5 @@ EN = {
     "{n}× Farming": "{n}× farming",
     "{n}× Custom Game": "{n}× custom game",
     "{n}× ohne Rolle": "{n}× without a role",
+    "Zeigt, was diese Kachel zählt": "Shows what this tile counts",
 }
