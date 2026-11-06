@@ -3229,3 +3229,47 @@ def test_the_app_marks_its_steps(app_root):
                           "Erkennung, Hotkeys", "Server, Updates, Sicherung", "Infobereich", "Steuerfenster"]
     finally:
         app.quit()
+
+
+def test_farming_is_answered_per_round_in_the_list(app_root):
+    """1.38.41 (user: "Farming prüfen" should let me check each round – yes or no): the candidates are rows of a
+    list (newest first, with reason and opponent); "Ist Farming" marks only the marked rows, "Kein Farming" keeps
+    them as they are and never suggests them again; the button of the overview tile scrolls to the list."""
+    import json
+    from fogscout import history, official
+    from fogscout.app import App
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    t0 = time.time() - 7200
+    ms = []
+    for i, (seconds, killer) in enumerate([(120, "Slasher"), (120, "Slasher"), (150, "Slasher"), (600, "Nurse")]):
+        history.append(str(app_root / history.FILE), history.Round(t0 + i * 300, seconds, "coal", "Coal Tower",
+                                                                   role="survivor"))
+        ms.append(official.Match(t=t0 + i * 300 - 38, map="Coal Tower", role="survivor", seconds=seconds,
+                                 status="Escaped", opp=[official.Player(role="killer", character=killer)]))
+    official.merge(str(app_root / official.FILE), ms)
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    moved, revealed = [], []
+    app.recorder.set_farming = lambda t, on: moved.append((t, on))
+    app.qt.reveal = lambda page, key: revealed.append((page, key))
+    try:
+        app._stats_render()
+        tree = app.stats_farm_tree
+        assert list(tree.get_children()) == [repr(t0 + 600), repr(t0 + 300), repr(t0)]       # newest first
+        row = tree.item(repr(t0), "values")
+        assert row[1].startswith("Coal Tower") and "Slasher" in row[4] and row[5] == "kurze Serie, gleicher Gegner"
+        app._qt_event("farm_suggest")
+        assert revealed == [("stats", str(app.stats_farm_row))]
+        app._stats_farm_pick(True)                                      # nothing marked: nothing happens
+        assert moved == [] and len(app._stats_farm_candidates()) == 3
+        tree.selection_set([repr(t0)])
+        app._stats_farm_pick(True)
+        saved = {r.t: r for r in history.load(str(app_root / history.FILE))}
+        assert saved[t0].farming and not saved[t0 + 300].farming and moved == [(t0, True)]
+        tree.selection_set([repr(t0 + 300)])
+        app._stats_farm_pick(False)
+        assert app.settings.get("farming_ignored") == [repr(t0 + 300)]
+        assert [r.t for r in app._stats_farm_candidates()] == [t0 + 600]
+        assert list(tree.get_children()) == [repr(t0 + 600)]
+        assert not history.load(str(app_root / history.FILE))[1].farming
+    finally:
+        app.quit()
