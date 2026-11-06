@@ -192,10 +192,18 @@ class StatsTab:
         self.stats_farm_row = ui.Frame(box_d)        # 1.6.1: old farming rounds saved as custom games
         self.stats_farm_var = ui.StringVar(value="")
         ui.Label(self.stats_farm_row, textvariable=self.stats_farm_var, wraplength=540).pack(anchor="w")
+        # 1.38.41 (user: "Farming prüfen" should let me say yes or no per round): the rounds themselves, one answer each
+        self.stats_farm_tree = self._stats_tree(self.stats_farm_row, (
+            ("when", _("Wann"), 110, "w"), ("map", _("Map"), 130, "w"), ("dur", _("Dauer"), 55, "e"),
+            ("role", _("Rolle/Killer"), 110, "w"), ("opp", _("Gegner"), 110, "w"), ("why", _("Grund"), 190, "w")),
+            5, select=True, multi=True)
         fr = ui.Frame(self.stats_farm_row)
         fr.pack(anchor="w", pady=(4, 0))
-        ui.Button(fr, text=_("Als Farming markieren"), command=self._stats_farm_found).pack(side="left")
-        ui.Button(fr, text=_("Ignorieren"), command=self._stats_farm_ignore).pack(side="left", padx=(6, 0))
+        ui.Button(fr, text=_("Ist Farming"), command=lambda: self._stats_farm_pick(True)).pack(side="left")
+        ui.Button(fr, text=_("Kein Farming"), command=lambda: self._stats_farm_pick(False)).pack(side="left",
+                                                                                               padx=(6, 0))
+        ui.Button(fr, text=_("Alle als Farming"), command=self._stats_farm_found).pack(side="left", padx=(18, 0))
+        ui.Button(fr, text=_("Alle ignorieren"), command=self._stats_farm_ignore).pack(side="left", padx=(6, 0))
         ui.Label(box_d, text=_("Runden vom Map-Banner bis zum Rundenende (ab 1 min), nur lokal gespeichert. Kills, "
                                 "Escapes und Bloodpoints laut stats.deadbydaylight.com, sobald eine Runde dort "
                                 "zugeordnet ist."),
@@ -601,7 +609,10 @@ class StatsTab:
         phantoms = [all_rounds[i] for i in sorted(ghost)]
         kept = [r for i, r in enumerate(all_rounds) if i not in ghost]
         # 1.8.88: runs of short rounds against the same character – farming the lobby look missed (a suggestion)
-        short_runs = official.farming_runs([(r, off[id(r)]) for r in kept if id(r) in off and history.normal(r)])
+        # 1.38.41: the run counts its rounds already marked as farming too (one "Ist Farming" must not make the
+        # rest of the run vanish from the list); suggested are only the rounds not marked yet
+        short_runs = [r for r in official.farming_runs([(r, off[id(r)]) for r in kept if id(r) in off
+                                                        and not r.custom]) if history.normal(r)]
         return SimpleNamespace(rounds=sorted(kept + rescued, key=lambda r: r.t), off=off, tied=tied,
                                other=other, fixed=fixed, rescued=rescued, matches=matches, candidates=candidates,
                                phantoms=phantoms, public_custom=public_custom, short_runs=short_runs)
@@ -750,6 +761,7 @@ class StatsTab:
             self.stats_farm_row.pack(anchor="w", fill="x", after=self.stats_dash, pady=(6, 0))
         else:
             self.stats_farm_row.pack_forget()
+        self._stats_farm_rows(found)
         dash = dashboard.build(rounds, pairs, lambda k: killer_label(k))
         if not all_rounds:
             dash.empty = _("Noch keine Runden gespeichert.")
@@ -1413,6 +1425,58 @@ class StatsTab:
         if n_runs:
             parts.append(_("{n} kurze Runden (bis 3 min) hintereinander gegen denselben Charakter", n=n_runs))
         return "; ".join(parts)
+
+    def _stats_farm_why(self, r) -> str:
+        """1.38.41: the reason of one candidate, for its row."""
+        j = self._joined()
+        if any(x.t == r.t for x in j.public_custom):
+            return _("Custom Game, laut Stats-Seite öffentlich")
+        return _("kurze Serie, gleicher Gegner")
+
+    def _stats_farm_rows(self, found):
+        """1.38.41: one row per candidate (newest first); the marked rows stay marked."""
+        t = self.stats_farm_tree
+        keep = t.selection()
+        t.delete(*t.get_children())
+        off = self._joined().off
+        for r in sorted(found, key=lambda r: -r.t):
+            role = killer_label(r.killer) if r.role == "killer" and r.killer else self._role_name(r.role) or "–"
+            if r.custom:
+                role = _("Custom Game")
+            m = off.get(id(r))
+            opp = ", ".join(killer_label(o.name) if o.role == "killer" else o.name
+                            for o in official.opponents([(r, m)])[:2]) if m is not None else "–"
+            t.insert("", "end", iid=repr(r.t), values=(time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), r.map,
+                                                       fmt_duration(r.seconds), role, opp or "–",
+                                                       self._stats_farm_why(r)))
+        kept = [k for k in keep if t.exists(k)]
+        if kept:
+            t.selection_set(kept)
+
+    def _stats_farm_pick(self, farming: bool):
+        """1.38.41: the answer for the marked rows – "Ist Farming" marks them (custom dropped, the recordings
+        follow), "Kein Farming" leaves them as they are and never suggests them again. No question: one click on
+        rows the user picked, and "Farming an/aus" under "Letzte Runden" takes it back."""
+        picked = set(self.stats_farm_tree.selection())
+        rounds = [r for r in self._stats_farm_candidates() if repr(r.t) in picked]
+        if not rounds:
+            return
+        if farming:
+            done = 0
+            try:
+                for r in rounds:
+                    if history.set_farming(self._hist_path(), r.t, True) is not None:
+                        self.recorder.set_farming(r.t, True)
+                        done += 1
+            except OSError as e:
+                self._log(_("Runden nicht geändert: {error}", error=e), "Fehler")
+            self._log(_("{n} Runden als Farming markiert.", n=done), "System")
+        else:
+            ignored = list(self.settings.get("farming_ignored") or []) + [repr(r.t) for r in rounds]
+            self.settings.set("farming_ignored", ignored[-5000:])
+            self._save_soon()
+            self._log(_("{n} Runden bleiben normale Runden (kein Farming).", n=len(rounds)), "System")
+        self._stats_render()
 
     def _stats_farm_found(self):
         """1.6.1: mark them all as farming rounds (that also drops "custom game"); the recordings follow."""
