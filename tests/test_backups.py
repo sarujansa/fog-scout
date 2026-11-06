@@ -90,3 +90,77 @@ def test_everything_goes_into_one_zip_without_secrets_logs_or_links(tmp_path):
     assert names == ["corpus/20260101-000000-000.json", "fogscout-einstellungen.json", "official.jsonl", "rounds.jsonl",
                      "user_maps/a.webp"] and n == 5
     assert cfg == {"overlay": {"x": 1}}
+
+
+# ---------------------------------------------------------------- 1.38.42: back from the ZIP, merged
+def _data(folder, rounds=(), lost=(), matches=(), files=None):
+    from fogscout import history, official
+    os.makedirs(folder, exist_ok=True)
+    for r in rounds:
+        history.append(os.path.join(folder, history.FILE), r)
+    for t, m in lost:
+        history.append_lost(os.path.join(folder, history.FILE), t, m, "kein Ende")
+    if matches:
+        official.merge(os.path.join(folder, official.FILE), list(matches))
+    for name, data in (files or {}).items():
+        p = os.path.join(folder, *name.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "wb") as fh:
+            fh.write(data)
+
+
+def test_a_backup_is_merged_and_nothing_that_is_there_changes(tmp_path):
+    """1.38.42 (user: "zusammenführen macht am meisten Sinn"): rounds, lost rounds and matches the backup has
+    and the data folder not are added; a round in both stays as it is now (a later correction wins); files of
+    user_maps/ and corpus/ are only added, never written over; the settings are handed back, not applied; a copy
+    of the files goes to backup/ first."""
+    import json
+    import zipfile
+    from fogscout import history, official
+    R = history.Round
+    old, now = str(tmp_path / "old"), str(tmp_path / "now")
+    _data(old, rounds=[R(1000.0, 600, "coal", "Coal Tower", role="survivor"), R(2000.0, 600, "coal", "Coal Tower")],
+          lost=[(3000.0, "Badham")], matches=[official.Match(t=962.0, map="Coal Tower"), official.Match(t=1962.0, map="X")],
+          files={"user_maps/a.webp": b"OLD", "user_maps/b.webp": b"B", "corpus/c.json": b"{}"})
+    _data(now, rounds=[R(2000.0, 600, "coal", "Coal Tower", role="killer"), R(5000.0, 300, "coal", "Coal Tower")],
+          matches=[official.Match(t=1962.0, map="X")], files={"user_maps/a.webp": b"NEW"})
+    zpath = str(tmp_path / "s.zip")
+    backups.archive(old, zpath, {"overlay": {}, "hotkeys": {}})
+    with zipfile.ZipFile(zpath, "a") as z:                       # what a crafted file could hold – never taken
+        z.writestr("../evil.txt", b"x")
+        z.writestr("user_maps/../../evil.txt", b"x")
+        z.writestr("corpus/sub/deep.json", b"x")
+        z.writestr("C:/evil.txt", b"x")
+    assert backups.inspect(now, zpath) == {"rounds": 1, "lost": 1, "matches": 1, "files": 2, "known": 3,
+                                          "settings": True}
+    got = backups.restore(now, zpath, now=time.mktime((2026, 11, 6, 12, 0, 0, 0, 0, -1)))
+    assert {k: v for k, v in got.items() if k != "settings"} == {"rounds": 1, "lost": 1, "matches": 1, "files": 2,
+                                                                 "known": 3}
+    assert json.loads(got["settings"]) == {"overlay": {}, "hotkeys": {}}
+    rounds = history.load(os.path.join(now, history.FILE))
+    assert [(r.t, r.role) for r in rounds] == [(1000.0, "survivor"), (2000.0, "killer"), (5000.0, "")]
+    assert [t for t, _m, _r in history.load_lost(os.path.join(now, history.FILE))] == [3000.0]
+    assert [m.t for m in official.load(os.path.join(now, official.FILE))] == [962.0, 1962.0]
+    assert open(os.path.join(now, "user_maps", "a.webp"), "rb").read() == b"NEW"         # never written over
+    assert open(os.path.join(now, "user_maps", "b.webp"), "rb").read() == b"B"
+    assert os.path.isfile(os.path.join(now, "corpus", "c.json"))
+    assert not (tmp_path / "evil.txt").exists() and not os.path.exists(os.path.join(now, "corpus", "sub"))
+    assert backups.copies(os.path.join(now, backups.DIR), "rounds") == ["rounds-2026-11-06-restore.jsonl"]
+    again = backups.restore(now, zpath)                          # a second time adds nothing
+    assert (again["rounds"], again["lost"], again["matches"], again["files"]) == (0, 0, 0, 0)
+    assert len(history.load(os.path.join(now, history.FILE))) == 3
+
+
+def test_a_zip_that_is_no_backup_of_ours_is_refused(tmp_path):
+    import zipfile
+    import pytest
+    for content in ({"readme.txt": b"hi"}, {"user_maps/a.webp": b"x"}):        # nothing of ours / pictures only
+        p = str(tmp_path / "x.zip")
+        with zipfile.ZipFile(p, "w") as z:
+            for name, data in content.items():
+                z.writestr(name, data)
+        with pytest.raises(backups.NotOurs):
+            backups.inspect(str(tmp_path), p)
+    (tmp_path / "broken.zip").write_bytes(b"no zip")
+    with pytest.raises(backups.NotOurs):
+        backups.restore(str(tmp_path), str(tmp_path / "broken.zip"))
