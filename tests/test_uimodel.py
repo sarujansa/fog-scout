@@ -1675,7 +1675,10 @@ def test_right_click_menus_of_recordings_last_rounds_and_the_overlay_preview(app
         app.stats_last.event_generate("<<TreeviewSelect>>")
         ui_act(app.stats_last, ("menu", (1, 2)))
         items, _pos = shown[-1]
-        assert [i[0] for i in items if i] == ["killer", "survivor", "custom", "farming", "site", "delete"]
+        # 1.38.46: one round marked – its recording first (greyed out here: t2 has none of its own)
+        assert [i[0] for i in items if i] == ["rec_show", "rec_play", "rec_clip", "killer", "survivor", "custom",
+                                              "farming", "site", "delete"]
+        assert not any(i[2] for i in items if i and i[0].startswith("rec_"))
         app._menu_act("killer")
         assert history.load(str(app_root / "rounds.jsonl"))[0].role == "killer"
         # 1.8.12 (user: "rechtsklick auf eine zeile – kommt nichts"): a real right click on the drawn table
