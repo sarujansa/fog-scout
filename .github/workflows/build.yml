@@ -27,8 +27,13 @@ jobs:
     name: exe
     runs-on: windows-latest
     timeout-minutes: 30
+    outputs:
+      shown: ${{ steps.info.outputs.shown }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0          # 1.38.56: the merges since BUILD_BASE give the shown build number
+          filter: tree:0          # commits only – trees and files of old commits are not fetched
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
@@ -39,10 +44,19 @@ jobs:
           python -m pip install --only-binary=:all: -r requirements.txt -r requirements-build.txt
           python -m pip install --only-binary=:all: --no-deps -r requirements-extra.txt
       - name: Build-Nummer für die Update-Prüfung
+        id: info
         shell: pwsh
+        env:
+          # 1.38.56 (Saru: "Das Build soll zurück auf 1 gehen"): the shown number counts the merges to main since
+          # this commit (the 1.38.55 merge = Build 0, the next one Build 1). `build` stays the run number – tags
+          # build-<run number> and the update check compare it, so installed copies keep finding updates.
+          BUILD_BASE: d8b8f98f3301a9964d6bf67298079757b601eb28
         run: |
           $version = python -c "import fogscout; print(fogscout.__version__)"
-          $info = @{ build = [int]$env:GITHUB_RUN_NUMBER; version = $version; commit = $env:GITHUB_SHA } | ConvertTo-Json -Compress
+          $shown = git rev-list --count --first-parent "$env:BUILD_BASE..HEAD"
+          if ($LASTEXITCODE -ne 0 -or $shown -notmatch '^[0-9]{1,9}$') { throw "Build-Nummer nicht zählbar" }
+          "shown=$shown" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $info = @{ build = [int]$env:GITHUB_RUN_NUMBER; shown = [int]$shown; version = $version; commit = $env:GITHUB_SHA } | ConvertTo-Json -Compress
           [IO.File]::WriteAllText("build-info.json", $info)
           Get-Content build-info.json
       - name: PyInstaller
@@ -194,8 +208,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: build-${{ github.run_number }}
           RUN: ${{ github.run_number }}
+          SHOWN: ${{ needs.exe.outputs.shown }}
         run: |
           set -euo pipefail
+          [[ "$SHOWN" =~ ^[0-9]{1,9}$ ]]
           if gh release view "$TAG" >/dev/null 2>&1; then echo "$TAG gibt es schon (erneuter Lauf)"; exit 0; fi
           # the version the newest release had ("Fog Scout 1.33.3 (Build 13)") – the notes list what came since
           prev=$(gh release view --json name -q .name 2>/dev/null | sed -n 's/^Fog Scout \([0-9][0-9.]*\) (Build [0-9]*)$/\1/p' || true)
@@ -207,13 +223,13 @@ jobs:
           sum=$(cut -d' ' -f1 "$setup.sha256")
           news=$(python3 ../tools/release_notes.py ../HISTORY.md "$version" "$prev")
           {
-            printf 'Fog Scout %s (Build %s), Commit %s\n\n' "$version" "$RUN" "$GITHUB_SHA"
+            printf 'Fog Scout %s (Build %s), Commit %s\n\n' "$version" "$SHOWN" "$GITHUB_SHA"
             if [ -n "$news" ]; then printf '## Neu\n\n%s\n\n' "$news"; fi
             printf 'SHA-256 von %s: %s\n\n' "$setup" "$sum"
             printf 'Nicht signiert: Windows SmartScreen fragt beim ersten Start (Weitere Informationen → Trotzdem ausführen). Alle Versionen: [HISTORY.md](https://github.com/%s/blob/%s/HISTORY.md)\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA"
           } > notes.md
           gh release create "$TAG" "$setup" "$setup.sha256" --target "$GITHUB_SHA" \
-            --title "Fog Scout $version (Build $RUN)" --notes-file notes.md --latest
+            --title "Fog Scout $version (Build $SHOWN)" --notes-file notes.md --latest
           # 1.33.4 (Saru: "alte Builds entfernen"): only the newest release stays – Fog Scout only asks for it.
           # Only our own build-<N> releases and their tags, never this one; a failure here leaves the new release.
           for t in $(gh release list --limit 100 --json tagName -q '.[].tagName'); do
