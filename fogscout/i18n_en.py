@@ -3793,4 +3793,19 @@ EN = {
     "Noch kein Blutpunkte-Stand gelesen – er kommt aus der Lobby nach der Runde.":
         "No bloodpoint balance read yet – it comes from the lobby after the round.",
     "{when}: Stand {bp} BP": "{when}: balance {bp} BP",
+    "+{n} Level": "+{n} levels",
+    "+{n} P": "+{n} P",
+    "Eine Zeile oben anklicken, um den Verlauf zu sehen.": "Click a row above to see the trend.",
+    "Keine Matches mit Prestige in dieser Auswahl.": "No matches with prestige in this selection.",
+    "Level": "Level",
+    "Matches": "Matches",
+    "Noch kein Prestige in dieser Auswahl – es kommt aus den Match-Daten (Userscript ab Version 3).":
+        "No prestige in this selection yet – it comes from the match data (userscript version 3 or newer).",
+    "Prestige": "Prestige",
+    "Prestige und Level deiner Charaktere laut Stats-Seite (ab Userscript Version 3). „Prestige“ und „Level“ = der neueste Stand; „Zuwachs“ und „Matches“ gelten für die Filter oben. Eine Zeile anklicken zeigt darunter den Verlauf dieses Charakters.":
+        "Prestige and level of your characters from the stats page (userscript version 3 or newer). \"Prestige\" and \"Level\" = the newest state; \"Gain\" and \"Matches\" follow the filters above. Click a row to see that character's trend below.",
+    "Prestige von {name} {per}": "Prestige of {name} {per}",
+    "Zuletzt": "Last played",
+    "Zuwachs": "Gain",
+    "{when}: Prestige {p} · Level {level}": "{when}: prestige {p} · level {level}",
 }
