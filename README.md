@@ -411,4 +411,4 @@ fogscout/               Programmcode (Python); hostsedit.py schreibt die hosts-D
 tests/                  Selbsttests (optional: pip install pytest, dann python -m pytest tests)
 ```
 
-Lizenzen und Quellen: siehe `THIRD_PARTY.md`.
+**Danke:** Die Callout-Karten sind von **Lethia** ([hens333.com/callouts](https://hens333.com/callouts/)) – Nutzung hier mit Erlaubnis von Hens. Die Map- und Realm-Namen mit Übersetzungen stammen von **Luca Fontanot** ([DBD Map Overlay](https://github.com/LucaFontanot/dbd-map-overlay), Apache 2.0). Lizenzen und Quellen: siehe `THIRD_PARTY.md`.
