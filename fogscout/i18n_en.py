@@ -729,6 +729,8 @@ EN = {
     "Datenordner öffnen": "Open data folder",
     "Karten-Ordner öffnen": "Open maps folder",
     "liest nur Bildschirmpixel, sendet keine Eingaben ans Spiel.": "reads screen pixels only, sends no input to the game.",
+    "Inoffizielles Fan-Tool, nicht von Behaviour Interactive genehmigt – Nutzung auf eigene Gefahr (siehe LICENSE).":
+        "Unofficial fan tool, not approved by Behaviour Interactive – use at your own risk (see LICENSE).",
     "Keine. Unbekannte Map-Namen lassen sich nach dem Match im Hauptfenster zuordnen.":
         "None. Unknown map names can be assigned in the main window after the match.",
     "Eigene Zuordnungen": "Own assignments",
