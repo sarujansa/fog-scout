@@ -125,3 +125,26 @@ def test_a_loader_with_several_workers_makes_every_picture(tmp_path):
     warm = thumbs.Loader((126, 116), cache, workers=3, by_content=True)
     assert run(warm) == 1                                                       # all cached: one thread only
     assert not warm._cold(pics[0]) and warm._cold(str(tmp_path / "missing.png"))
+
+
+def test_pruning_never_follows_a_link_out_of_the_cache(tmp_path):
+    """1.38.57 (security review): old thumbnails go through fsops.delete_inside – a link in the user-writable cache
+    is never followed or taken for one of ours."""
+    import pytest
+    if not hasattr(os, "symlink"):
+        pytest.skip("no symlinks")
+    cache, outside = tmp_path / "cache", tmp_path / "outside"
+    cache.mkdir()
+    outside.mkdir()
+    target = outside / "precious.png"
+    target.write_bytes(b"x")
+    old = cache / "old.png"
+    old.write_bytes(b"x")
+    os.utime(old, (1, 1))
+    try:
+        os.symlink(target, cache / "link.png")
+    except OSError:
+        pytest.skip("no symlinks")
+    os.utime(cache / "link.png", (1, 1), follow_symlinks=False)
+    assert thumbs.prune(str(cache), now=10 ** 9) == 1
+    assert not old.exists() and target.exists() and os.path.lexists(cache / "link.png")

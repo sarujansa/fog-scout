@@ -23,7 +23,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
-from . import thumbs
+from . import fsops, thumbs
 from .mapimage import FONT, title_split
 
 STYLE_VERSION = 9                     # raise when the conversion changes: the cache is made anew
@@ -468,7 +468,8 @@ def prune(cache_dir: str) -> int:
                 drop.append(name)
         for name in drop:
             try:
-                os.remove(os.path.join(folder, name))
+                # 1.38.57 (security review): checked from cache_dir – a sub folder that is a junction is not followed
+                fsops.delete_inside(cache_dir, os.path.join(folder, name))
                 gone += 1
             except OSError:
                 pass

@@ -568,3 +568,22 @@ def test_a_project_shape_that_the_painter_cannot_draw_is_mended_or_dropped():
     assert neg is not None and neg.size == annotate.DEFAULT_SIZE and math.isfinite(neg.size)
     img = annotate.draw(Image.new("RGBA", (160, 90), (0, 0, 0, 0)), [s, t, neg])   # draws without raising
     assert img.getbbox() is not None
+
+
+def test_stale_temporary_files_go_but_never_through_a_link(tmp_path):
+    """1.38.57 (security review): _drop_stale_tmp deletes through fsops.delete_inside."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.png.1-1.tmp").write_bytes(b"x")
+    folder = tmp_path / "shots"
+    folder.mkdir()
+    stale = folder / "a.png.1-2.tmp"
+    stale.write_bytes(b"x")
+    os.utime(stale, (1, 1))
+    try:
+        os.symlink(outside / "keep.png.1-1.tmp", folder / "b.png.1-3.tmp")
+    except (OSError, NotImplementedError):
+        pytest.skip("no symlinks")
+    os.utime(folder / "b.png.1-3.tmp", (1, 1), follow_symlinks=False)
+    imageedit._drop_stale_tmp(str(folder), now=10 ** 9)
+    assert not stale.exists() and os.path.lexists(folder / "b.png.1-3.tmp") and (outside / "keep.png.1-1.tmp").exists()
