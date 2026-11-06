@@ -316,3 +316,35 @@ def test_the_counter_is_read_seldom_once_the_looks_agree_and_at_once_after_a_rou
     w._bp_look(grab, W, H, 129.0, (0, 0), False, watcher)
     assert w._bp_due(129.5)
     assert [v["value"] for k, v in w.posted][-2:] == [5100000, 5100000]
+
+
+def test_the_balance_over_time_takes_the_last_reading_of_each_bucket():
+    """1.38.48 (user's pick "Blutpunkte-Stand als Verlauf"): dashboard.balance_trend – the last balance read in
+    each day, empty days in between as None, rounds without a reading left out."""
+    import datetime
+    from fogscout import dashboard
+    from fogscout.history import Round
+    day = lambda d, h: datetime.datetime(2026, 11, d, h).timestamp()      # noqa: E731
+    rs = [Round(day(3, 20), 600, "coal", "Coal Tower", balance=1_200_000),
+          Round(day(3, 22), 600, "coal", "Coal Tower", balance=1_250_000),
+          Round(day(3, 21), 600, "coal", "Coal Tower", balance=1_230_000),    # older than the 22:00 one: not last
+          Round(day(5, 20), 600, "coal", "Coal Tower", balance=900_000),      # spent in the bloodweb
+          Round(day(5, 21), 600, "coal", "Coal Tower")]                       # not read
+    got = dashboard.balance_trend(rs, "day")
+    assert [v for _b, v in got] == [1_250_000, None, 900_000]
+    assert dashboard.balance_trend([Round(day(3, 20), 600, "coal", "Coal Tower")], "day") == []
+
+
+def test_the_balance_tile_says_how_many_rounds_to_the_cap():
+    """1.38.48: dashboard.balance_tile – the newest reading of all rounds, rounds to the cap rounded up at the Ø BP
+    of the selection, "Cap erreicht" at or above it (tome rewards can lift it higher), None without a reading."""
+    from fogscout import bloodpoints, dashboard
+    from fogscout.history import Round
+    rs = [Round(100.0, 600, "coal", "Coal Tower", balance=4_000_000),
+          Round(200.0, 600, "coal", "Coal Tower", balance=4_900_000), Round(300.0, 600, "coal", "Coal Tower")]
+    t = dashboard.balance_tile(rs, 30_000)
+    assert t.title == "BP-Stand" and t.value == dashboard._bp(4_900_000) and "Cap in ≈ 4 Runden" in t.sub
+    assert abs(t.frac - 4_900_000 / bloodpoints.CAP) < 1e-9
+    assert "Cap erreicht" in dashboard.balance_tile([Round(1.0, 600, "c", "C", balance=5_100_000)], 30_000).sub
+    assert "Cap:" in dashboard.balance_tile(rs, None).sub                   # no Ø BP: just the cap
+    assert dashboard.balance_tile([Round(1.0, 600, "c", "C")], 30_000) is None and dashboard.balance_tile([], 1) is None

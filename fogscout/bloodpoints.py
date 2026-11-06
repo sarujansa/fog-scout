@@ -26,6 +26,7 @@ CONFIRM_LOOKS = 2           # identical readings in a row before a value counts
 BEFORE_MAX_S = 15 * 60      # a reading older than this when the banner comes says nothing about the round
 AFTER_MAX_S = 10 * 60       # … and the first reading after the end counts only within this time
 CAP_FLOOR = 1_000_000       # an unchanged balance below this is no cap (it was never below a million: 1 → 2 → 5)
+CAP = 5_000_000             # 1.38.48: the normal cap (tome and rift rewards can lift a balance above it)
 MAX_DIGITS = 9              # longer than any balance: a misread group
 MIN_DIGITS = 3              # what _currency counts as a group
 HISTORY_KEPT = 12           # confirmed changes kept for the diagnosis
