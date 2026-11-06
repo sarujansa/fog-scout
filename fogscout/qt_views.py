@@ -1031,11 +1031,12 @@ class SwatchView(QWidget):
 class TilesView(QWidget):
     """Key figure tiles (uimodel.Tiles): as many side by side as fit (TileGrid), each a FactBox on a card."""
 
-    def __init__(self):
+    def __init__(self, post=None):
         super().__init__()
         self._grid = TileGrid(self, min_width=150, columns=6)
         self._tiles = []
         self._shown = None
+        self._post = post                          # 1.38.54: tiles with a target (Tile.open) post "tile_open"
 
     def show_state(self, st):
         data = st.get("data") or []
@@ -1046,7 +1047,7 @@ class TilesView(QWidget):
             card = _card()
             cl = QVBoxLayout(card)
             cl.setContentsMargins(*qt_theme.PAD_CARD)
-            box = FactBox(bar=True)
+            box = FactBox(bar=True, post=self._post)
             box.sub.setWordWrap(True)
             cl.addWidget(box)
             self._grid.addWidget(card)
@@ -1077,7 +1078,7 @@ class DashboardView(QWidget):
             card = _card()
             cl = QVBoxLayout(card)
             cl.setContentsMargins(*qt_theme.PAD_CARD)
-            box = FactBox(bar=True)
+            box = FactBox(bar=True, post=post)        # 1.38.54: a tile with a target opens what it counts
             box.sub.setWordWrap(True)                 # "no killer rounds with stats data": wraps in a narrow window
             cl.addWidget(box)
             self.grid.addWidget(card)
