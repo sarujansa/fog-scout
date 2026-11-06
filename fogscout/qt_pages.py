@@ -700,7 +700,7 @@ def make_control(kind, key, post):
     elif kind == "dashboard":
         w = DashboardView(key, post)
     elif kind == "tiles":
-        w = TilesView()
+        w = TilesView(post)                       # 1.38.54: clickable tiles (Tile.open)
     elif kind == "preview":
         w = PreviewView(key, post)
     elif kind == "swatches":
