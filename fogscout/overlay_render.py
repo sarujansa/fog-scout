@@ -879,3 +879,250 @@ def info_card(timer: str, server: str, ping, note: str, record: str, text_h: int
     pic = add_info(Image.new("RGBA", (1, 1), (0, 0, 0, 0)), timer, server, text_h, backdrop=not transparent,
                    ping=ping, note=note, record=record, rec=rec, memo=memo)
     return map_backdrop([pic], text_h)[0] if dark_area else pic
+
+
+# ---- 1.39: the input card ("Eingaben") – keys / mouse or gamepad, drawn from inputs.InputState
+INPUT_GAP = 0.14                       # gap between keys, in key widths (u)
+INPUT_PAD = 0.30                       # card padding (u)
+INPUT_W = 5 + 6 * INPUT_GAP + 1.75     # content: five key columns, a double gap, the mouse
+INPUT_H = 3 + 2 * INPUT_GAP            # three key rows
+INPUT_RATIO = (INPUT_W + 2 * INPUT_PAD) / (INPUT_H + 2 * INPUT_PAD)    # width / height – the same for both layouts
+INPUT_SS = 2                           # drawn at twice the size, then scaled down: smooth round corners
+INPUT_BG = (16, 18, 22, 210)
+INPUT_IDLE = (255, 255, 255, 26)
+INPUT_EDGE = (255, 255, 255, 70)
+INPUT_CAP = (225, 228, 235, 215)
+INPUT_CAP_DOWN = (18, 18, 20, 255)
+PAD_FACE = {"a": (96, 186, 70, 255), "b": (222, 74, 64, 255), "x": (64, 128, 226, 255), "y": (238, 190, 52, 255)}
+_INPUT_MEMO: dict = {}
+INPUT_KEPT = 128                       # whole cards kept by state (a round has a few dozen different ones)
+_INPUT_PATCHES: dict = {}             # idle cards and the patch of each control state drawn so far
+INPUT_PATCHES_KEPT = 600
+
+
+def _input_keys():
+    """(id, x, y, w, h, cap) of the keyboard cluster in key units: Q W E R over A S D, SHIFT / CTRL on the left,
+    SPACE under A–R."""
+    from .inputs import KEYS
+    caps = {k: cap for k, _vk, cap in KEYS}
+    col = lambda i: i * (1 + INPUT_GAP)      # noqa: E731
+    row = col
+    out = [(k, col(i + 1), row(0), 1, 1) for i, k in enumerate(("q", "w", "e", "r"))]
+    out += [("shift", col(0), row(1), 1, 1)] + [(k, col(i + 1), row(1), 1, 1) for i, k in enumerate(("a", "s", "d"))]
+    out += [("ctrl", col(0), row(2), 1, 1), ("space", col(1), row(2), 4 + 3 * INPUT_GAP, 1)]
+    return [(k, x, y, w, h, caps[k]) for k, x, y, w, h in out]
+
+
+def _cap_font(size: float):
+    from .skin import inter
+    return inter("Bold", max(6, int(size)))
+
+
+def _centred_text(d, cx, cy, text, font, fill):
+    if not text:
+        return
+    box = d.textbbox((0, 0), text, font=font)
+    d.text((cx - (box[0] + box[2]) / 2, cy - (box[1] + box[3]) / 2), text, font=font, fill=fill)
+
+
+def _draw_keyboard(d, pic, st, u, ox, oy, accent):
+    down = st.keys
+    for k, x, y, w, h, cap in _input_keys():
+        x0, y0 = ox + x * u, oy + y * u
+        box = [x0, y0, x0 + w * u, y0 + h * u]
+        on = k in down
+        d.rounded_rectangle(box, radius=0.18 * u, fill=accent if on else INPUT_IDLE,
+                            outline=None if on else INPUT_EDGE, width=max(1, int(0.04 * u)))
+        _centred_text(d, (box[0] + box[2]) / 2, (box[1] + box[3]) / 2, cap,
+                      _cap_font((0.42 if len(cap) == 1 else 0.24) * u), INPUT_CAP_DOWN if on else INPUT_CAP)
+    # the mouse: a rounded body, the top split into left / right, the wheel button in the middle
+    mx, mw, mh = ox + (5 + 6 * INPUT_GAP) * u, 1.75 * u, INPUT_H * u
+    body = [mx, oy, mx + mw, oy + mh]
+    split = oy + 1.35 * u
+    mask = Image.new("L", pic.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle(body, radius=0.85 * u, fill=255)
+    fill = Image.new("RGBA", pic.size, (0, 0, 0, 0))
+    fd = ImageDraw.Draw(fill)
+    fd.rectangle(body, fill=INPUT_IDLE)
+    for k, x0, x1 in (("lmb", mx, mx + mw / 2), ("rmb", mx + mw / 2, mx + mw)):
+        if k in down:
+            fd.rectangle([x0, oy, x1, split], fill=accent)
+    pic.alpha_composite(Image.composite(fill, Image.new("RGBA", pic.size, (0, 0, 0, 0)), mask))
+    line = max(1, int(0.04 * u))
+    d.rounded_rectangle(body, radius=0.85 * u, outline=INPUT_EDGE, width=line)
+    d.line([mx, split, mx + mw, split], fill=INPUT_EDGE, width=line)
+    d.line([mx + mw / 2, oy, mx + mw / 2, split], fill=INPUT_EDGE, width=line)
+    wx, ww = mx + mw / 2, 0.30 * u
+    wheel = [wx - ww / 2, oy + 0.32 * u, wx + ww / 2, oy + 0.95 * u]
+    d.rounded_rectangle(wheel, radius=ww / 2, fill=accent if "mmb" in down else (34, 36, 42, 255),
+                        outline=INPUT_EDGE, width=line)
+
+
+def _draw_gamepad(d, st, u, ox, oy, accent):
+    line = max(1, int(0.04 * u))
+    small = _cap_font(0.24 * u)
+
+    def at(x, y):
+        return ox + x * u, oy + y * u
+
+    for name, x0, x1, value, rtl in (("LT", 0.2, 2.3, st.lt, False), ("RT", INPUT_W - 2.3, INPUT_W - 0.2, st.rt,
+                                                                          True)):
+        a, b = at(x0, 0.0), at(x1, 0.34)
+        d.rounded_rectangle([a[0], a[1], b[0], b[1]], radius=0.1 * u, fill=INPUT_IDLE, outline=INPUT_EDGE,
+                            width=line)
+        if value > 0:
+            wfill = (b[0] - a[0]) * value
+            fx0, fx1 = (b[0] - wfill, b[0]) if rtl else (a[0], a[0] + wfill)
+            d.rounded_rectangle([fx0, a[1], fx1, b[1]], radius=0.1 * u, fill=accent)
+        _centred_text(d, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, name, small,
+                      INPUT_CAP_DOWN if value >= 0.5 else INPUT_CAP)
+    for k, x0, x1 in (("lb", 0.2, 2.3), ("rb", INPUT_W - 2.3, INPUT_W - 0.2)):
+        a, b = at(x0, 0.48), at(x1, 0.88)
+        on = k in st.pad
+        d.rounded_rectangle([a[0], a[1], b[0], b[1]], radius=0.2 * u, fill=accent if on else INPUT_IDLE,
+                            outline=None if on else INPUT_EDGE, width=line)
+        _centred_text(d, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, k.upper(), small,
+                      INPUT_CAP_DOWN if on else INPUT_CAP)
+    for k, x in (("back", 3.3), ("start", INPUT_W - 3.3 - 0.5)):
+        a, b = at(x, 1.15), at(x + 0.5, 1.41)
+        d.rounded_rectangle([a[0], a[1], b[0], b[1]], radius=0.13 * u, fill=accent if k in st.pad else INPUT_IDLE,
+                            outline=INPUT_EDGE, width=line)
+    for k, (cx, cy), r, knob, travel, sx, sy in (("ls", (1.25, 2.3), 0.78, 0.36, 0.42, st.lx, st.ly),
+                                                 ("rs", (4.65, 2.62), 0.62, 0.30, 0.32, st.rx, st.ry)):
+        c = at(cx, cy)
+        d.ellipse([c[0] - r * u, c[1] - r * u, c[0] + r * u, c[1] + r * u], fill=INPUT_IDLE,
+                  outline=accent if k in st.pad else INPUT_EDGE, width=line * (3 if k in st.pad else 1))
+        kx, ky = c[0] + sx * travel * u, c[1] - sy * travel * u
+        moved = k in st.pad or sx or sy
+        d.ellipse([kx - knob * u, ky - knob * u, kx + knob * u, ky + knob * u],
+                  fill=accent if moved else (60, 63, 72, 255), outline=INPUT_EDGE, width=line)
+    cx, cy = at(2.95, 2.62)
+    arm, half = 0.55 * u, 0.19 * u
+    for k, box in (("up", [cx - half, cy - arm, cx + half, cy - half]), ("down", [cx - half, cy + half, cx + half,
+                                                                                    cy + arm]),
+                   ("left", [cx - arm, cy - half, cx - half, cy + half]),
+                   ("right", [cx + half, cy - half, cx + arm, cy + half])):
+        d.rectangle(box, fill=accent if k in st.pad else INPUT_IDLE, outline=INPUT_EDGE, width=line)
+    d.rectangle([cx - half, cy - half, cx + half, cy + half], fill=INPUT_IDLE)
+    face = _cap_font(0.34 * u)
+    bx, by = at(6.35, 2.12)
+    for k, dx, dy in (("y", 0, -0.6), ("a", 0, 0.6), ("x", -0.6, 0), ("b", 0.6, 0)):
+        x, y, r = bx + dx * u, by + dy * u, 0.32 * u
+        on = k in st.pad
+        d.ellipse([x - r, y - r, x + r, y + r], fill=PAD_FACE[k] if on else INPUT_IDLE,
+                  outline=None if on else INPUT_EDGE, width=line)
+        _centred_text(d, x, y, k.upper(), face, INPUT_CAP_DOWN if on else PAD_FACE[k])
+
+
+def input_size(height: int) -> tuple:
+    """(w, h) of the input card at ``height`` px – the same for keyboard and gamepad (switching moves nothing)."""
+    h = max(24, int(height))
+    return int(round(h * INPUT_RATIO)), h
+
+
+def _input_full(st, layout: str, w: int, h: int, acc, backdrop: bool) -> Image.Image:
+    """The whole card drawn for ``st`` (supersampled, box-filtered down: a control changes only its own pixels)."""
+    S = INPUT_SS
+    pic = Image.new("RGBA", (w * S, h * S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(pic)
+    u = h * S / (INPUT_H + 2 * INPUT_PAD)
+    if backdrop:
+        d.rounded_rectangle([0, 0, pic.width - 1, pic.height - 1], radius=0.35 * u, fill=INPUT_BG)
+    ox = (pic.width - INPUT_W * u) / 2
+    oy = INPUT_PAD * u
+    if layout == "gamepad":
+        _draw_gamepad(d, st, u, ox, oy, acc)
+    else:
+        _draw_keyboard(d, pic, st, u, ox, oy, acc)
+    return pic.reduce(S)
+
+
+def _input_controls(layout: str):
+    """(name, unit box (x, y, w, h), part(st) -> hashable, state(part) -> InputState) of every control that can
+    change – a control's part is what the card shows of it; ``state`` = an InputState with only that part."""
+    from .inputs import KEY_IDS, MOUSE_IDS, InputState, stick_steps
+    E = frozenset()
+    if layout != "gamepad":
+        out = [(k, (x, y, w, h), (lambda st, k=k: k in st.keys),
+                (lambda part, k=k: InputState(keys=frozenset({k}) if part else E)))
+               for k, x, y, w, h, _cap in _input_keys()]
+        out.append(("mouse", (5 + 6 * INPUT_GAP, 0, 1.75, INPUT_H),
+                    lambda st: tuple(sorted(st.keys & frozenset(MOUSE_IDS))),
+                    lambda part: InputState(keys=frozenset(part))))
+        assert all(k in KEY_IDS for k, *_r in out if k != "mouse")
+        return out
+    W = INPUT_W
+    out = []
+    for k, box in (("lb", (0.2, 0.48, 2.1, 0.4)), ("rb", (W - 2.3, 0.48, 2.1, 0.4)),
+                   ("back", (3.3, 1.15, 0.5, 0.26)), ("start", (W - 3.8, 1.15, 0.5, 0.26)),
+                   ("y", (6.03, 1.2, 0.64, 0.64)), ("a", (6.03, 2.4, 0.64, 0.64)),
+                   ("x", (5.43, 1.8, 0.64, 0.64)), ("b", (6.63, 1.8, 0.64, 0.64))):
+        out.append((k, box, (lambda st, k=k: k in st.pad), (lambda part, k=k: InputState(pad=frozenset({k}) if part
+                                                                                          else E))))
+    dirs = frozenset(("up", "down", "left", "right"))
+    out.append(("dpad", (2.4, 2.07, 1.1, 1.1), lambda st: tuple(sorted(st.pad & dirs)),
+                lambda part: InputState(pad=frozenset(part))))
+    out.append(("lt", (0.2, 0.0, 2.1, 0.34), lambda st: round(st.lt * 8), lambda q: InputState(lt=q / 8)))
+    out.append(("rt", (W - 2.3, 0.0, 2.1, 0.34), lambda st: round(st.rt * 8), lambda q: InputState(rt=q / 8)))
+    out.append(("ls", (0.47, 1.52, 1.56, 1.56), lambda st: (stick_steps(st.lx, st.ly), "ls" in st.pad),
+                lambda part: InputState(lx=part[0][0], ly=part[0][1], pad=frozenset({"ls"}) if part[1] else E)))
+    out.append(("rs", (4.03, 2.0, 1.24, 1.24), lambda st: (stick_steps(st.rx, st.ry), "rs" in st.pad),
+                lambda part: InputState(rx=part[0][0], ry=part[0][1], pad=frozenset({"rs"}) if part[1] else E)))
+    return out
+
+
+INPUT_EDGE_PX = 2                      # pixels around a control's box that its patch takes along
+
+
+def _input_box(box, w: int, h: int) -> tuple:
+    """A control's unit box → its pixel box on the card (with INPUT_EDGE_PX), clipped to the card."""
+    u = h / (INPUT_H + 2 * INPUT_PAD)
+    ox, oy = (w - INPUT_W * u) / 2, INPUT_PAD * u
+    x, y, bw, bh = box
+    m = INPUT_EDGE_PX
+    return (max(0, int(ox + x * u) - m), max(0, int(oy + y * u) - m),
+            min(w, int(math.ceil(ox + (x + bw) * u)) + m), min(h, int(math.ceil(oy + (y + bh) * u)) + m))
+
+
+def input_card(st, layout: str, height: int, accent=None, backdrop: bool = True) -> Image.Image:
+    """1.39: the card "Eingaben" – ``st`` (inputs.InputState) as a keyboard cluster with the mouse or as a gamepad
+    (``layout``), ``height`` px tall, held keys in ``accent``. Always the same size for a height (never breathes).
+    Put together from the idle card and one patch per control that shows something (each patch drawn once, the
+    first time that control is in that state) – a new state costs a few pastes, not a whole drawing; the result is
+    the same as drawing the whole card (test_the_input_card_from_patches_is_the_whole_drawing). Returns a copy."""
+    from .skin import accent_rgba
+    acc = accent_rgba(accent)
+    w, h = input_size(height)
+    layout = "gamepad" if layout == "gamepad" else "keyboard"
+    base_key = (layout, w, h, acc, bool(backdrop))
+    controls = _input_controls(layout)
+    parts = tuple((name, part(st)) for name, _box, part, _state in controls)
+    key = (base_key, tuple(p for p in parts if p[1]))
+    hit = _INPUT_MEMO.get(key)
+    if hit is not None:
+        _INPUT_MEMO[key] = _INPUT_MEMO.pop(key)                       # recently used: kept longest
+        return hit.copy()
+    base = _INPUT_PATCHES.get(base_key)
+    if base is None:
+        from .inputs import EMPTY
+        base = _INPUT_PATCHES[base_key] = _input_full(EMPTY, layout, w, h, acc, backdrop)
+    out = base.copy()
+    for (name, box, _part, state), (_n, value) in zip(controls, parts):
+        if not value:
+            continue
+        pkey = (base_key, name, value)
+        patch = _INPUT_PATCHES.get(pkey)
+        if patch is None:
+            px = _input_box(box, w, h)
+            pic = _input_full(state(value), layout, w, h, acc, backdrop).crop(px)
+            # only the pixels this control changes: neighbouring boxes may overlap by their edge, and a patch must
+            # never put an idle edge over a held neighbour
+            changed = np.any(np.asarray(pic) != np.asarray(base.crop(px)), axis=2)
+            patch = _INPUT_PATCHES[pkey] = (px, pic, Image.fromarray((changed * 255).astype(np.uint8), "L"))
+        out.paste(patch[1], patch[0][:2], patch[2])
+    _INPUT_MEMO[key] = out
+    while len(_INPUT_MEMO) > INPUT_KEPT:
+        _INPUT_MEMO.pop(next(iter(_INPUT_MEMO)))
+    while len(_INPUT_PATCHES) > INPUT_PATCHES_KEPT:
+        _INPUT_PATCHES.pop(next(iter(_INPUT_PATCHES)))
+    return out.copy()

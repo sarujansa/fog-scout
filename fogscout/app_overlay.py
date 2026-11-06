@@ -7,7 +7,7 @@ from . import layout
 from . import uimodel as ui
 from .i18n import N_, _
 from .skin import STYLE_LABELS
-from .appconst import MEDIA_NEXT_N, MEDIA_NEXT_SPOTS
+from .appconst import INPUT_LAYOUTS, INPUT_SPOTS, MEDIA_NEXT_N, MEDIA_NEXT_SPOTS
 from .appconst import (BAR_ALIGNS, HUD_ROW_LABELS, HUD_SIDES, MAP_SCALE, MEDIA_SPOTS, MEDIA_STYLES,
                           OPACITY_KEYS, PRESET_LABELS, SELECTABLE, TODAY_SPOTS)
 from .appconst import INFO_SPOTS   # noqa: F401 – 1.38.36: shared choices live in appconst
@@ -362,7 +362,46 @@ class OverlayTab:
         self._reg("ov.media_next_hint", ui.Label(mf, text=_("Die Liste kommt aus Spotify – einrichten unter "
                                                              "Einstellungen → Verbindungen → Spotify."),
                                                  style="Dim.TLabel", wraplength=420)).pack(anchor="w")
+        self._inputs_box_ui(f, o)
         return outer
+
+    def _inputs_box_ui(self, f, o):
+        """1.39: the tab "Eingaben" – the input card (keys / mouse / gamepad held right now)."""
+        inf = self._reg("ov.inputs_f", ui.LabelFrame(f, text=_("Eingaben"), padding=8))
+        inf.pack(fill="x", pady=(8, 0))
+        self.inputs_on_var = ui.BooleanVar(value=bool(o.get("show_inputs", False)))
+        self._reg("ov.inputs", ui.Checkbutton(inf, text=_("Eingaben im Spiel zeigen (Tasten, Maus, Gamepad)"),
+                                              variable=self.inputs_on_var, command=self._inputs_on_changed)
+                  ).pack(anchor="w", pady=(2, 0))
+        lr = ui.Frame(inf)
+        lr.pack(fill="x", pady=(4, 0))
+        self._reg("ov.inputs_layout.label", ui.Label(lr, text=_("Gerät"), width=12)).pack(side="left")
+        lays = dict(INPUT_LAYOUTS)
+        self.inputs_layout_var = ui.StringVar(value=_(lays.get(o.get("inputs_layout", "auto"), lays["auto"])))
+        lcb = self._reg("ov.inputs_layout", ui.Combobox(lr, textvariable=self.inputs_layout_var, state="readonly",
+                                                         width=38, values=[_(t) for _k, t in INPUT_LAYOUTS]))
+        lcb.pack(side="left", padx=6)
+        lcb.bind("<<ComboboxSelected>>", lambda e: self._inputs_layout_changed())
+        pr = ui.Frame(inf)
+        pr.pack(fill="x", pady=(4, 0))
+        self._reg("ov.inputs_pos.label", ui.Label(pr, text=_("Position"), width=12)).pack(side="left")
+        spots = dict(INPUT_SPOTS)
+        self.inputs_pos_var = ui.StringVar(value=_(spots.get(o.get("inputs_pos", "bottom_right"),
+                                                             spots["bottom_right"])))
+        pcb = self._reg("ov.inputs_pos", ui.Combobox(pr, textvariable=self.inputs_pos_var, state="readonly", width=38,
+                                                      values=[_(t) for _k, t in INPUT_SPOTS]))
+        pcb.pack(side="left", padx=6)
+        pcb.bind("<<ComboboxSelected>>", lambda e: self._inputs_spot_changed())
+        self.inputs_backdrop_var = ui.BooleanVar(value=bool(o.get("inputs_backdrop", True)))
+        self._reg("ov.inputs_backdrop", ui.Checkbutton(inf, text=_("Dunkle Fläche hinter den Eingaben"),
+                                                       variable=self.inputs_backdrop_var,
+                                                       command=self._inputs_backdrop_changed)).pack(anchor="w",
+                                                                                                    pady=(2, 0))
+        self._reg("ov.inputs_hint", ui.Label(inf, text=_("Gelesen werden nur W, A, S, D, Q, E, R, Leertaste, Shift, "
+                                                         "Strg, die Maustasten und ein Gamepad – nur während einer "
+                                                         "Runde und nur, solange DBD vorne ist. Nichts wird "
+                                                         "gespeichert oder gesendet."),
+                                             style="Dim.TLabel", wraplength=420)).pack(anchor="w")
 
     def _small_off_changed(self):
         self.settings.set("overlay_small_off", bool(self.small_off_var.get()))

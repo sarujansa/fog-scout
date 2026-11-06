@@ -839,6 +839,9 @@ class SettingsTab:
         elif key == "media":
             self.media_var.set(on)
             self._look_flags_changed()
+        elif key == "inputs":                                  # 1.39
+            self.inputs_on_var.set(on)
+            self._inputs_on_changed()
         elif key == "discord":
             self.dc_on_var.set(on)
             self._discord_setting()
@@ -851,7 +854,7 @@ class SettingsTab:
         else:
             return
         self._log(_("{name} eingeschaltet.", name=sw.label) if on else _("{name} ausgeschaltet.", name=sw.label),
-                  "Overlay" if key in ("sysinfo", "today", "media") else "System")
+                  "Overlay" if key in ("sysinfo", "today", "media", "inputs") else "System")
 
     def _overview_switches(self):
         from .overview import switches

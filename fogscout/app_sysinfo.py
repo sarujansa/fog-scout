@@ -68,9 +68,11 @@ MEDIA_SCALE = (60, 200)                     # slider of the music card, percent
 HUD_SCALE = (60, 200)                       # size of the system values / "today", percent (1.64.9)
 TODAY_SCALE = (60, 200)                     # size of "today", percent (1.2.6)
 TEXT_SCALE = (50, 200)                      # size of the map's name/timer/info lines, percent (1.65)
+INPUT_SCALE = layout.INPUT_SCALE            # size of the input card, percent (1.39)
 TEXT_BASE = 0.36                            # … of the text at the standard map size (share of the game height)
 # 1.2.12: the tab of the overlay page (qt_window.SPECS frame keys) that holds each element's settings
-ELEMENT_TABS = {"map": "ov.look", "text": "ov.look", "hud": "ov.sys", "today": "ov.today_f", "music": "ov.music_f"}
+ELEMENT_TABS = {"map": "ov.look", "text": "ov.look", "hud": "ov.sys", "today": "ov.today_f", "music": "ov.music_f",
+                "inputs": "ov.inputs_f"}
 
 
 def text_scale(o: dict) -> float:
@@ -648,7 +650,8 @@ class SysInfo:
 
     # ---- fading (1.2.4 the music card, 1.2.9 map, system values and "today" too): media.Fader per window
     def _fade_win(self, name):
-        attr = {"map": "overlay", "hud": "hud", "today": "today_win", "music": "media_win", "info": "info_win"}[name]
+        attr = {"map": "overlay", "hud": "hud", "today": "today_win", "music": "media_win", "info": "info_win",
+                "inputs": "inputs_win"}[name]
         return getattr(self, attr, None)
 
     def _fade_state(self, name):
@@ -722,7 +725,8 @@ class SysInfo:
     # ---- 1.8.25 (user: "alle UI-Elemente beachten, damit es immer sauber aussieht" + Discord's overlay): no element
     # lies on another, on the map or on a keep-out area – placed as usual, then moved up/down where they collide
     ELEMENT_WINDOWS = (("hud", "hud", "hud_rect"), ("text", "info_win", "info_rect"),
-                       ("today", "today_win", "today_rect"), ("music", "media_win", "media_rect"))
+                       ("today", "today_win", "today_rect"), ("music", "media_win", "media_rect"),
+                       ("inputs", "inputs_win", "inputs_rect"))                                  # 1.39
 
     def _el_show(self, name, win, x, y, size):
         """Show an element where its placement put it, moved by what the last check gave it (no back and forth
@@ -862,6 +866,8 @@ class SysInfo:
             return MEDIA_SCALE + (min(MEDIA_SCALE[1], max(MEDIA_SCALE[0], o.get("media_scale", 1.0) * 100)),)
         if name == "today":
             return TODAY_SCALE + (today_scale(o) * 100,)
+        if name == "inputs":                                       # 1.39
+            return INPUT_SCALE + (min(INPUT_SCALE[1], max(INPUT_SCALE[0], o.get("inputs_scale", 1.0) * 100)),)
         return MAP_SCALE + (self._map_height() * 100,)
 
     def _select(self, name):
@@ -934,6 +940,8 @@ class SysInfo:
             self.media_size_var.set(round(percent))
         elif name == "today":
             o["today_scale"] = round(percent / 100, 2)
+        elif name == "inputs":                                     # 1.39
+            o["inputs_scale"] = round(percent / 100, 2)
         else:
             value = round(percent / 100, 3)
             mid = self._own_size_map()

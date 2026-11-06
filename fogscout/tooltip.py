@@ -88,6 +88,12 @@ TIPS = {
         "Grössenregler („Heute“ wählen).",
     "Dunkle Fläche hinter „Heute“":
         "Eine halb durchsichtige dunkle Fläche mit runden Ecken hinter „Heute“.",
+    "Eingaben im Spiel zeigen (Tasten, Maus, Gamepad)":
+        "Eine Karte im Spiel zeigt, welche Tasten, Maustasten oder Gamepad-Knöpfe du gerade drückst – wie bei "
+        "Streamern. Gelesen wird nur eine feste Liste von Tasten, nur während einer Runde und nur, solange DBD vorne "
+        "ist; nichts wird gespeichert oder gesendet.",
+    "Dunkle Fläche hinter den Eingaben":
+        "Eine halb durchsichtige dunkle Fläche mit runden Ecken hinter den Tasten.",
     "„Läuft gerade“: Titel, Interpret und Cover":
         "Liest Titel und Interpret aus der Windows-Mediensteuerung (dieselbe Liste wie beim Lautstärkeregler von "
         "Windows) – nur Anzeige, das Programm steuert nichts und speichert nichts.",
