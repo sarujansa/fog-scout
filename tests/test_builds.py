@@ -241,3 +241,22 @@ def test_the_prestige_overview_and_the_mains():
     assert tiles[3].value == "35"
     assert builds.prestige_tiles([Match(t=1, map="C", role="killer", character="X")], now) == []
     assert builds.mains(ms) == {"killer": "The Nurse", "survivor": "Meg Thomas"}
+
+
+def test_several_p100_characters_are_counted_and_the_highest_says_how_many():
+    """1.38.51 (user: "Höchster P100 Dwight, obwohl ich mehrere habe"): a tile "P100" with how many characters reached
+    it (names, bar = share of all known characters); "Höchster" names one character only when it is alone on the top
+    grade – the level does not split a tie. Without any P100 there is no such tile."""
+    t0 = 1_790_000_000.0       # a real time: "seit Montag" of a time in 1970 lies before the epoch – Windows refuses it
+    ms = [_graded(t0 + 1, "Dwight Fairfield", "survivor", 100, 1), _graded(t0 + 2, "Meg Thomas", "survivor", 100, 7),
+          _graded(t0 + 3, "The Nurse", "killer", 100, 50), _graded(t0 + 4, "The Trapper", "killer", 12, 30)]
+    tiles = {t.title: t for t in builds.prestige_tiles(ms, t0 + 10)}
+    assert list(tiles) == ["Charaktere", "P100", "Prestige gesamt", "Höchster", "Level diese Woche"]
+    p100 = tiles["P100"]
+    assert p100.value == "3" and p100.sub == "Dwight Fairfield, Meg Thomas, The Nurse" and p100.frac == 0.75
+    assert tiles["Höchster"].value == "P100" and tiles["Höchster"].sub == "3 Charaktere"
+    assert builds.top_characters({}) == (0, [])
+    more = ms + [_graded(t0 + 5, "Ace Visconti", "survivor", 100, 2)]
+    assert builds.prestige_tiles(more, t0 + 10)[1].sub == "Ace Visconti, Dwight Fairfield, Meg Thomas +1 weitere"
+    alone = {t.title: t for t in builds.prestige_tiles(ms[3:] + [_graded(t0 + 6, "The Hag", "killer", 9, 50)], t0 + 10)}
+    assert "P100" not in alone and alone["Höchster"].sub == "The Trapper · Level 30"
