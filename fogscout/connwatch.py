@@ -226,6 +226,7 @@ class ConnectionWatch:
         self._result_t = 0.0
         self.peaks = {}                # ip -> busiest moment {"pps", "port", "sent", "recv", "t"} (diagnostics)
         self.ports = None              # 1.11.6: DBD's local UDP ports (None = unknown → busiest partner)
+        self.poll_ms = {}              # 1.38.40: milliseconds of the parts of the last poll (the app's lag list)
         self.ports_why = "noch nicht gefragt"   # diagnostics: where the ports came from or why there are none
         self._ports_at = 0.0
         self._pid_of = (None, None)    # (hwnd, pid) – one lookup per DBD window
@@ -289,10 +290,15 @@ class ConnectionWatch:
     # --------------------------------------------------------------- polling
     def poll(self, now: float | None = None, game_hwnd=None) -> None:
         """Call about once a second from the UI thread. ``game_hwnd`` (1.11.6): the DBD window, for its ports."""
+        self.poll_ms = {}
         if not self.running:
             return
         now = now or time.time()
+        # 1.38.40 (user diagnosis: "Takt: verbindung" 1719 ms in the window thread right after the start): which
+        # part holds it – the ports from Windows' table, the files of the capture or the evaluation
+        t0 = time.perf_counter()
         self._update_ports(now, game_hwnd)
+        t1 = time.perf_counter()
         if now - self._touched >= TOUCH_EVERY:
             try:
                 os.utime(self.control)
@@ -300,6 +306,14 @@ class ConnectionWatch:
                 pass
             self._touched = now
         data = self._read()
+        t2 = time.perf_counter()
+        self.poll_ms = {"Ports": (t1 - t0) * 1000, "Dateien": (t2 - t1) * 1000}
+        try:
+            self._evaluate(now, data)
+        finally:
+            self.poll_ms["Auswertung"] = (time.perf_counter() - t2) * 1000
+
+    def _evaluate(self, now: float, data) -> None:
         if isinstance(self.proc, threading.Thread):
             code = None if self.proc.is_alive() else 0
         else:

@@ -125,6 +125,7 @@ class ServerTab:
         if not force and now < self._conn_next:
             return
         self._conn_next = now + 1.0
+        t0 = time.perf_counter()
         if self.conn_show_var.get() and not self._conn_busy:
             act = self._conn_idle.update(now, self.game is not None, self.conn.running, self.conn.in_process)
             if act == "pause":
@@ -132,8 +133,11 @@ class ServerTab:
                 self._log(_("Spielserver-Anzeige pausiert – DBD läuft nicht (startet automatisch mit DBD)."), "System")
             elif act == "resume" and not self.conn.running:
                 self._conn_start()
+        self.root.note("Verbindung: Pause/Start", (time.perf_counter() - t0) * 1000)   # 1.38.40: the parts
         was_running = self.conn.running
         self.conn.poll(now, self.game.hwnd if self.game is not None else None)   # 1.11.6: DBD's own ports
+        for part, ms in (getattr(self.conn, "poll_ms", None) or {}).items():
+            self.root.note("Verbindung: " + part, ms)
         if was_running and not self.conn.running and self.conn.error:
             self._log(_("Spielserver-Anzeige beendet: {error}", error=self.conn.error), "Fehler")
         srv = self.conn.server
