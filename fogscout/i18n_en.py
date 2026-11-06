@@ -3777,4 +3777,13 @@ EN = {
     "Zu dieser Runde gibt es keine Aufnahme.": "There is no recording of this round.",
     "Die Aufnahme dieser Runde ist durch die Filter der Seite Aufnahmen ausgeblendet.":
         "The recording of this round is hidden by the filters of the Recordings page.",
+    "Sitzungen": "Sessions",
+    "Killer/Survivor": "Killer/Survivor",
+    "{n} K": "{n} K",
+    "{n} S": "{n} S",
+    "Ø Dauer einer Sitzung": "Ø length of a session",
+    "Ø Runden je Sitzung": "Ø rounds per session",
+    "Ø Warten": "Ø wait",
+    "Eine Sitzung endet nach {n} Minuten ohne Runde. Es gelten die Filter oben – mit einem Rollenfilter zählt eine Sitzung nur die Runden dieser Rolle. Ø Kills, Entkommen und BP laut Stats-Seite. Doppelklick zeigt die Runden der Sitzung unter „Letzte Runden“.":
+        "A session ends after {n} minutes without a round. The filters above apply – with a role filter a session counts only the rounds of that role. Ø kills, escaped and BP from the stats page. A double-click shows the session's rounds under \"Last rounds\".",
 }
