@@ -165,9 +165,13 @@ def _members(z) -> dict:
     return out
 
 
-def _read(u: _Unpacked, info) -> bytes:
+def _read(u, info) -> bytes:
+    """One member, at most MAX_ENTRY_BYTES; ``u`` is an _Unpacked (counts the whole archive) or a plain ZipFile
+    (one member on its own, e.g. the settings file the settings page offers)."""
     import zipfile
     import zlib
+    if not isinstance(u, _Unpacked):
+        u = _Unpacked(u)
     try:
         with u.z.open(info) as fh:                # the size in the header is not trusted: never read past the limit
             data = fh.read(MAX_ENTRY_BYTES + 1)
