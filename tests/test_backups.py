@@ -93,6 +93,15 @@ def test_everything_goes_into_one_zip_without_secrets_logs_or_links(tmp_path):
 
 
 # ---------------------------------------------------------------- 1.38.42: back from the ZIP, merged
+def _webp(colour=(10, 20, 30)) -> bytes:
+    """A real little picture (1.38.57: map pictures from a ZIP are written only when PIL reads them)."""
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), colour).save(buf, "WEBP")
+    return buf.getvalue()
+
+
 def _data(folder, rounds=(), lost=(), matches=(), files=None):
     from fogscout import history, official
     os.makedirs(folder, exist_ok=True)
@@ -121,9 +130,9 @@ def test_a_backup_is_merged_and_nothing_that_is_there_changes(tmp_path):
     old, now = str(tmp_path / "old"), str(tmp_path / "now")
     _data(old, rounds=[R(1000.0, 600, "coal", "Coal Tower", role="survivor"), R(2000.0, 600, "coal", "Coal Tower")],
           lost=[(3000.0, "Badham")], matches=[official.Match(t=962.0, map="Coal Tower"), official.Match(t=1962.0, map="X")],
-          files={"user_maps/a.webp": b"OLD", "user_maps/b.webp": b"B", "corpus/c.json": b"{}"})
+          files={"user_maps/a.webp": _webp((1, 1, 1)), "user_maps/b.webp": _webp((2, 2, 2)), "corpus/c.json": b"{}"})
     _data(now, rounds=[R(2000.0, 600, "coal", "Coal Tower", role="killer"), R(5000.0, 300, "coal", "Coal Tower")],
-          matches=[official.Match(t=1962.0, map="X")], files={"user_maps/a.webp": b"NEW"})
+          matches=[official.Match(t=1962.0, map="X")], files={"user_maps/a.webp": _webp((3, 3, 3))})
     zpath = str(tmp_path / "s.zip")
     backups.archive(old, zpath, {"overlay": {}, "hotkeys": {}})
     with zipfile.ZipFile(zpath, "a") as z:                       # what a crafted file could hold – never taken
@@ -141,8 +150,8 @@ def test_a_backup_is_merged_and_nothing_that_is_there_changes(tmp_path):
     assert [(r.t, r.role) for r in rounds] == [(1000.0, "survivor"), (2000.0, "killer"), (5000.0, "")]
     assert [t for t, _m, _r in history.load_lost(os.path.join(now, history.FILE))] == [3000.0]
     assert [m.t for m in official.load(os.path.join(now, official.FILE))] == [962.0, 1962.0]
-    assert open(os.path.join(now, "user_maps", "a.webp"), "rb").read() == b"NEW"         # never written over
-    assert open(os.path.join(now, "user_maps", "b.webp"), "rb").read() == b"B"
+    assert open(os.path.join(now, "user_maps", "a.webp"), "rb").read() == _webp((3, 3, 3))  # never written over
+    assert open(os.path.join(now, "user_maps", "b.webp"), "rb").read() == _webp((2, 2, 2))
     assert os.path.isfile(os.path.join(now, "corpus", "c.json"))
     assert not (tmp_path / "evil.txt").exists() and not os.path.exists(os.path.join(now, "corpus", "sub"))
     assert backups.copies(os.path.join(now, backups.DIR), "rounds") == ["rounds-2026-11-06-restore.jsonl"]
@@ -164,3 +173,52 @@ def test_a_zip_that_is_no_backup_of_ours_is_refused(tmp_path):
     (tmp_path / "broken.zip").write_bytes(b"no zip")
     with pytest.raises(backups.NotOurs):
         backups.restore(str(tmp_path), str(tmp_path / "broken.zip"))
+
+
+def test_device_names_odd_endings_and_foreign_kinds_are_never_taken():
+    """1.38.57 (security review): Windows device names (any extension), names Windows cuts at the end, and kinds
+    the program never stores there."""
+    for name in ("user_maps/CON.webp", "user_maps/nul", "user_maps/Com1.png", "user_maps/LPT9 .jpg",
+                 "corpus/aux.json", "user_maps/a.webp.", "user_maps/a.webp ", "user_maps/a.exe",
+                 "user_maps/a.json", "corpus/a.png", "corpus/a.bat"):
+        assert not backups._allowed(name), name
+    for name in ("user_maps/coal-tower.webp", "user_maps/x.GIF", "corpus/20250101-000000-001.jpg",
+                 "corpus/20250101-000000-001.json", "user_maps/console.png", "rounds.jsonl"):
+        assert backups._allowed(name), name
+
+
+def _zip(path, content, **kw):
+    import zipfile
+    with zipfile.ZipFile(path, "w", **kw) as z:
+        for name, data in content.items():
+            z.writestr(name, data)
+
+
+def test_the_real_unpacked_bytes_count_and_unreadable_members_are_not_ours(tmp_path, monkeypatch):
+    import zipfile
+    import pytest
+    p = str(tmp_path / "big.zip")
+    _zip(p, {"rounds.jsonl": b"\n" * 1000, "official.jsonl": b"\n" * 1000, backups.SETTINGS_NAME: b"{}"},
+         compression=zipfile.ZIP_DEFLATED)
+    monkeypatch.setattr(backups, "MAX_TOTAL_BYTES", 1500)        # each member below the limit, together over it
+    with pytest.raises(backups.NotOurs):
+        backups.inspect(str(tmp_path / "data"), p)
+    monkeypatch.undo()
+    for err in (RuntimeError("encrypted"), NotImplementedError("compression"), zipfile.LargeZipFile("zip64")):
+        def broken(self, *a, _e=err, **k):
+            raise _e
+        monkeypatch.setattr(zipfile.ZipFile, "open", broken)
+        with pytest.raises(backups.NotOurs):
+            backups.inspect(str(tmp_path / "data"), p)
+        with pytest.raises(backups.NotOurs):
+            backups.restore(str(tmp_path / "data"), p)
+        monkeypatch.undo()
+
+
+def test_a_map_picture_that_is_none_is_left_out(tmp_path):
+    p = str(tmp_path / "s.zip")
+    _zip(p, {backups.SETTINGS_NAME: b"{}", "user_maps/fake.webp": b"no picture", "user_maps/ok.webp": _webp()})
+    data = str(tmp_path / "data")
+    os.makedirs(data)
+    got = backups.restore(data, p)
+    assert got["files"] == 1 and os.listdir(os.path.join(data, "user_maps")) == ["ok.webp"]

@@ -40,10 +40,10 @@ from .i18n import _
 from .recindex import (  # 1.38.35: index, clips and pruning live there; every name stays importable from here
     CLIPS_DIR, CLIPS_INDEX, CLIP_EXTS, CLIP_KINDS, Clip, DEFAULT_FARMING_DAYS, FARMING_CHECK_S, FARMING_DAYS, INDEX,
     NAME_CHARS, OLD_CLIPS_INDEX, OLD_INDEX, PARTS_CHECK_S, PARTS_WRITING, PART_EXT, PART_STALE_S, RESERVE, Recording,
-    SHORT_ROUND_S, STILL_EXTS, Space, VIDEO_EXTS, _COPY_RE, _SPACE, _STAMP_RE, _index_stamp, _who, adopt_clip,
-    adopt_old_file, clips_dir, expired_farming, file_name, list_clips, load_clips, load_index, part_key, prune,
+    SHORT_ROUND_S, STILL_EXTS, Space, VIDEO_EXTS, _COPY_RE, _SPACE, _STAMP_RE, _entry, _index_stamp, _kind_value, _who,
+    adopt_clip, adopt_old_file, clips_dir, deletable, expired_farming, file_name, list_clips, load_clips, load_index, part_key, prune,
     prune_farming, prune_rank, save_clips, save_index, select_clips, select_recordings, settle_parts, space, whole)
-_INDEX_NAMES = (CLIPS_DIR, CLIPS_INDEX, CLIP_EXTS, CLIP_KINDS, Clip, DEFAULT_FARMING_DAYS, FARMING_CHECK_S, FARMING_DAYS, INDEX, NAME_CHARS, OLD_CLIPS_INDEX, OLD_INDEX, PARTS_CHECK_S, PARTS_WRITING, PART_EXT, PART_STALE_S, RESERVE, Recording, SHORT_ROUND_S, STILL_EXTS, Space, VIDEO_EXTS, _COPY_RE, _SPACE, _STAMP_RE, _index_stamp, _who, adopt_clip, adopt_old_file, clips_dir, expired_farming, file_name, list_clips, load_clips, load_index, part_key, prune, prune_farming, prune_rank, save_clips, save_index, select_clips, select_recordings, settle_parts, space, whole)   # re-exported
+_INDEX_NAMES = (CLIPS_DIR, CLIPS_INDEX, CLIP_EXTS, CLIP_KINDS, Clip, DEFAULT_FARMING_DAYS, FARMING_CHECK_S, FARMING_DAYS, INDEX, NAME_CHARS, OLD_CLIPS_INDEX, OLD_INDEX, PARTS_CHECK_S, PARTS_WRITING, PART_EXT, PART_STALE_S, RESERVE, Recording, SHORT_ROUND_S, STILL_EXTS, Space, VIDEO_EXTS, _COPY_RE, _SPACE, _STAMP_RE, _entry, _index_stamp, _kind_value, _who, adopt_clip, adopt_old_file, clips_dir, deletable, expired_farming, file_name, list_clips, load_clips, load_index, part_key, prune, prune_farming, prune_rank, save_clips, save_index, select_clips, select_recordings, settle_parts, space, whole)   # re-exported
 
 log = logging.getLogger("fogscout")
 

@@ -174,6 +174,32 @@ def test_the_takeover_copies_and_never_changes_the_original(tmp_path):
     assert {p: p.read_bytes() for p in old.rglob("*") if p.is_file()} == before
 
 
+def test_the_takeover_follows_no_link_and_stops_at_its_bounds(tmp_path, monkeypatch):
+    """1.38.57 (security review): links (junctions on Windows) are never followed – the copy runs with the installer's
+    rights – and the folders are copied only up to MAX_FILES / MAX_BYTES."""
+    old = _checkout(tmp_path / "old")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("s", encoding="utf-8")
+    (old / "user_maps").mkdir()
+    for i in range(4):
+        (old / "user_maps" / f"m{i}.webp").write_bytes(b"RIFF")
+    try:
+        os.symlink(outside, old / "user_maps" / "linked", target_is_directory=True)
+        os.symlink(outside, old / "backup", target_is_directory=True)
+        os.symlink(outside / "secret.txt", old / "user_maps" / "file.webp")
+    except (OSError, NotImplementedError):
+        pytest.skip("no symlinks")
+    monkeypatch.setattr(takeover, "MAX_FILES", 2)
+    data = tmp_path / "data"
+    done = takeover.copy(str(old), str(data))
+    assert done == ["user_maps/", "settings.json"]
+    copied = sorted(p.name for p in (data / "user_maps").iterdir())
+    assert len(copied) == 2 and all(n.startswith("m") for n in copied)
+    assert not (data / "backup").exists() and not list(data.rglob("secret.txt"))
+    assert takeover._linked(str(old / "backup")) and not takeover._linked(str(old / "user_maps"))
+
+
 def test_the_first_start_asks_once_and_takes_over_on_yes(tmp_path):
     old = _checkout(tmp_path / "old")
     data = tmp_path / "data"

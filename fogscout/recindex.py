@@ -13,7 +13,7 @@ import re
 import shutil
 import struct
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import MISSING, asdict, dataclass, field
 
 from . import fsops
 from .fsops import rel_path
@@ -67,6 +67,60 @@ def adopt_old_file(folder: str, old: str, new: str) -> bool:
     return False
 
 
+def _kind_value(kind, v):
+    """1.38.57 (security review): one field of an index line as the kind its default has – None when it cannot be."""
+    if isinstance(kind, bool):
+        return v if isinstance(v, bool) else None
+    if isinstance(kind, (int, float)):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v in (float("inf"), float("-inf")):
+            return None
+        return type(kind)(v)
+    if isinstance(kind, str):
+        return v if isinstance(v, str) else None
+    if isinstance(kind, dict):
+        return v if isinstance(v, dict) else None
+    if isinstance(kind, list):
+        if not isinstance(v, list):
+            return None
+        return [float(x) for x in v if isinstance(x, (int, float)) and not isinstance(x, bool)
+                and x == x and abs(x) != float("inf")]
+    return v
+
+
+def _entry(cls, d):
+    """1.38.57 (security review): one line of an index → ``cls`` (Recording / Clip) with every field of its kind
+    (a field of another kind falls back to its default); None when ``file`` is not a non-empty text – the index is
+    user-writable, and one malformed line broke filing, pruning and space() for every entry."""
+    if not isinstance(d, dict) or not isinstance(d.get("file"), str) or not d["file"].strip():
+        return None
+    kw = {}
+    for k, f in cls.__dataclass_fields__.items():
+        if k not in d:
+            continue
+        if f.default_factory is not MISSING:
+            kind = f.default_factory()
+        else:
+            kind = {"t": 0.0, "file": ""}.get(k) if f.default is MISSING else f.default   # Recording.t/file
+        v = _kind_value(kind, d[k])
+        if v is not None:
+            kw[k] = v
+        elif f.default is MISSING and f.default_factory is MISSING:
+            kw[k] = kind                     # a required field of another kind: its zero (t = 0.0)
+    return cls(**kw)
+
+
+def deletable(name: str) -> bool:
+    """1.38.57 (security review): may pruning delete the index's ``name``? Only a recording file (VIDEO_EXTS), never
+    one of the index files – the index is user-writable, an entry {"file": "fogscout-recordings.jsonl"} would
+    otherwise delete the index itself."""
+    if not isinstance(name, str) or not name:
+        return False
+    base = re.split(r"[\\/]", name)[-1]
+    if base.lower() in {n.lower() for n in (INDEX, OLD_INDEX, CLIPS_INDEX, OLD_CLIPS_INDEX)}:
+        return False
+    return base.lower().endswith(VIDEO_EXTS)
+
+
 def load_index(folder: str) -> list[Recording]:
     out = []
     adopt_old_file(folder, OLD_INDEX, INDEX)
@@ -76,9 +130,9 @@ def load_index(folder: str) -> list[Recording]:
         with open(os.path.join(folder, INDEX), encoding="utf-8", errors="replace") as f:
             for line in f:
                 try:
-                    d = json.loads(line)
-                    if isinstance(d, dict):
-                        out.append(Recording(**{k: v for k, v in d.items() if k in Recording.__dataclass_fields__}))
+                    r = _entry(Recording, json.loads(line))
+                    if r is not None:
+                        out.append(r)
                 except (ValueError, TypeError):
                     continue
     except OSError:
@@ -111,7 +165,7 @@ def prune_farming(folder: str, recs: list[Recording], days: int, now: float | No
     deleted = []
     for r in gone:
         for n in (r.file, r.pre):
-            p = rel_path(folder, n) if n else None
+            p = rel_path(folder, n) if n and deletable(n) else None     # 1.38.57: only recording files
             if p and os.path.exists(p):
                 try:
                     fsops.delete_inside(folder, p)      # 1.33.5 (S2): never through a link out of the folder
@@ -157,7 +211,7 @@ def prune(folder: str, recs: list[Recording], limit: int, reserve: int = RESERVE
         if (limit <= 0 or total <= limit) and free >= reserve:
             break
         for n in (r.file, r.pre):
-            p = rel_path(folder, n) if n else None                        # only inside the folder
+            p = rel_path(folder, n) if n and deletable(n) else None       # only inside the folder, only videos
             if p:
                 try:
                     fsops.delete_inside(folder, p)                        # 1.33.5 (S2): and no link out of it
@@ -245,9 +299,9 @@ def load_clips(cdir: str) -> list[Clip]:
         with open(os.path.join(cdir, CLIPS_INDEX), encoding="utf-8", errors="replace") as f:   # 1.12.3: as load_index
             for line in f:
                 try:
-                    d = json.loads(line)
-                    if isinstance(d, dict):
-                        out.append(Clip(**{k: v for k, v in d.items() if k in Clip.__dataclass_fields__}))
+                    c = _entry(Clip, json.loads(line))
+                    if c is not None:
+                        out.append(c)
                 except (ValueError, TypeError):
                     continue
     except OSError:
