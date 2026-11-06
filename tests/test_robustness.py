@@ -611,3 +611,46 @@ def test_reading_a_higher_prestige_grade_announces_it(tmp_path):
         assert len(shown) == 2 and "ist jetzt Prestige" not in shown[-1]
     finally:
         a.quit()
+
+
+def test_the_overview_tiles_open_their_rounds(tmp_path):
+    """1.38.53 (user: "auf Rounds 8 heute klicken soll es mir diese zeigen – genau gleich bei den anderen Kacheln"):
+    the tile "Runden" of "Heute" opens Statistik › Letzte Runden with the period "Heute", every other filter reset
+    and farming shown (the count holds the farming rounds) – exactly its rounds; Farming, Bloodpoints of the week,
+    a role and the recordings page open their part; "Farming ausblenden" is never switched on."""
+    from fogscout import overview
+    now = time.time()
+    day = __import__("fogscout.history", fromlist=["x"]).period_start("day", now)
+    rows = [("killer", False)] * 3 + [("survivor", False)] * 2 + [("killer", True)] * 2
+    rounds = b"".join(json.dumps({"t": day + 60 + i * 700, "seconds": 600, "map_id": "coal-tower", "map": "Coal Tower",
+                                  "role": role, "farming": farm, "source": "auto"}).encode() + b"\n"
+                      for i, (role, farm) in enumerate(rows) if day + 60 + i * 700 < now)
+    a = _start(tmp_path, {"welcome_seen": True, "hide_farming": True}, rounds=rounds)
+    try:
+        _pump_app(a, 0.3)
+        n = len([1 for i in range(len(rows)) if day + 60 + i * 700 < now])
+        facts, _note = overview.today(a, now)
+        tile = next(f for f in facts if f.title == "Runden")
+        assert tile.open == "day:last:all" and tile.value == str(n)
+        a.stats_map_var.set("Coal Tower")                                          # a filter of the user: reset
+        a._qt_event("tile_open", tile.open)
+        assert a.qt.current_key() == "stats" and a._stats_current_title() == "Letzte Runden"
+        assert a.stats_period_var.get() == "Heute" and a.stats_map_var.get() == "Alle Maps"
+        assert not a._farming_hidden() and len(a.stats_last.get_children()) == n
+        a._qt_event("tile_open", "day:last:survivor")
+        assert a.stats_role_var.get() == "Survivor"
+        assert all("Survivor" in a.stats_last.item(i, "values")[4] for i in a.stats_last.get_children())
+        farm = next((f for f in facts if f.title == "Farming"), None)
+        if farm is not None:
+            a._qt_event("tile_open", farm.open)
+            assert a._stats_current_title() == "Farming"
+        a._farming_set(True)
+        a._qt_event("tile_open", "week:bp:all")
+        assert a._stats_current_title() == "Bloodpoints" and a.stats_period_var.get() == "Diese Woche"
+        assert a._farming_hidden()                                                 # never switched on or off here
+        a._qt_event("tile_open", "page:recordings")
+        assert a.qt.current_key() == "recordings"
+        a._qt_event("tile_open", "nonsense:x:y")                                   # unknown: nothing happens
+        assert a.qt.current_key() == "recordings"
+    finally:
+        a.quit()
