@@ -544,7 +544,7 @@ def _tab_title(a, title):
 
 def test_the_prestige_tab_lists_own_characters_and_draws_the_marked_one(tmp_path):
     """1.38.49 (user's pick "Prestige- und Level-Verlauf", table + line of the clicked character): Statistik ›
-    Gegner & Builds › Prestige – one row per own character from the linked matches, the newest first and marked,
+    Bloodpoints & Farming › Prestige (1.38.51; Gegner & Builds before) – one row per own character from the linked matches, the newest first and marked,
     its line drawn; marking the other row draws that one; without any grade a hint and an empty line."""
     from dataclasses import asdict
     from fogscout.official import Match

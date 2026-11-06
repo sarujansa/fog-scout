@@ -410,14 +410,29 @@ def mains(matches) -> dict:
     return out
 
 
+def top_characters(newest: dict) -> tuple:
+    """1.38.51: (highest prestige grade, [the characters on it, by name]) of {character: newest match} – a tie is the
+    same grade, the level does not split it ("Höchster" said one name although several were P100)."""
+    if not newest:
+        return 0, []
+    top = max(m.prestige for m in newest.values())
+    return top, sorted(c for c, m in newest.items() if m.prestige == top)
+
+
+def _names(names, limit: int = 3) -> str:
+    return ", ".join(names[:limit]) + (" " + _("+{n} weitere", n=len(names) - limit) if len(names) > limit else "")
+
+
 def prestige_tiles(matches, now: float, groups: dict | None = None) -> list:
     """1.38.50 (user's pick "Fortschritts-Übersicht"): the tiles above the prestige table – characters with a grade,
-    the sum of their grades, the highest one (bar = grade / 100) and the levels gained since Monday."""
+    the sum of their grades, the highest one (bar = grade / 100) and the levels gained since Monday; 1.38.51 the
+    characters on P100 (count, names, bar = share of all) and "Höchster" names how many share the top grade."""
     newest = _newest_by_character(matches)
     if not newest:
         return []
     killers = sum(1 for m in newest.values() if m.role == "killer")
-    top = max(newest.values(), key=lambda m: (progress(m), m.t))
+    top_p, tops = top_characters(newest)
+    maxed = sorted(c for c, m in newest.items() if m.prestige >= PRESTIGE_MAX)
     start = history.period_start("week", now)
     week = 0
     for name, all_ms in (groups if groups is not None else by_character(matches)).items():
@@ -427,9 +442,13 @@ def prestige_tiles(matches, now: float, groups: dict | None = None) -> list:
         if inside:
             base = before[-1] if before else inside[0]
             week += max(0, progress(inside[-1]) - progress(base))
-    return [Tile(_("Charaktere"), str(len(newest)),
-                 _("{k} Killer · {s} Survivor", k=killers, s=len(newest) - killers)),
-            Tile(_("Prestige gesamt"), str(sum(m.prestige for m in newest.values())), _("alle Charaktere")),
-            Tile(_("Höchster"), f"P{top.prestige}", _("{name} · Level {level}", name=top.character, level=top.level),
-                 frac=min(1.0, top.prestige / PRESTIGE_MAX)),
+    out = [Tile(_("Charaktere"), str(len(newest)), _("{k} Killer · {s} Survivor", k=killers, s=len(newest) - killers))]
+    if maxed:              # 1.38.51 (user: "aktuelle P100-Anzahl sehen") – only characters seen in the match data
+        out.append(Tile(_("P100"), str(len(maxed)), _names(maxed), frac=len(maxed) / len(newest)))
+    one = newest[tops[0]]
+    out += [Tile(_("Prestige gesamt"), str(sum(m.prestige for m in newest.values())), _("alle Charaktere")),
+            Tile(_("Höchster"), f"P{top_p}",
+                 _("{name} · Level {level}", name=one.character, level=one.level) if len(tops) == 1
+                 else _("{n} Charaktere", n=len(tops)), frac=min(1.0, top_p / PRESTIGE_MAX)),
             Tile(_("Level diese Woche"), str(week), _("seit Montag"))]
+    return out
