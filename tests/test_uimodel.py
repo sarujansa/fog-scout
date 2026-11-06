@@ -3273,3 +3273,50 @@ def test_farming_is_answered_per_round_in_the_list(app_root):
         assert not history.load(str(app_root / history.FILE))[1].farming
     finally:
         app.quit()
+
+
+def test_a_backup_zip_is_merged_back_after_one_question(app_root, tmp_path):
+    """1.38.42 (user: "zusammenführen"): "Aus Sicherung wiederherstellen (ZIP) …" looks at the ZIP in a thread,
+    asks once with what would come, merges in a thread (rounds there stay), says what was added and offers the
+    backup's settings through "Einstellungen importieren" – a question of its own; never during a round."""
+    import json
+    from fogscout import backups, history
+    from fogscout.app import App
+    other = tmp_path / "other"
+    other.mkdir()
+    history.append(str(other / history.FILE), history.Round(1000.0, 600, "coal", "Coal Tower", role="survivor"))
+    zpath = str(tmp_path / "s.zip")
+    backups.archive(str(other), zpath, {"overlay": {}, "hotkeys": {}})
+    (app_root / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    offered = []
+    app._import_settings = lambda path=None: offered.append(path)
+
+    def settle():
+        for _ in range(200):
+            app._poll()
+            if not [t for t in __import__("threading").enumerate() if t.name.startswith("restore")]:
+                app._poll()
+                return
+            time.sleep(0.01)
+    try:
+        app._hist = {"t": 1.0}                                         # a round runs: refused, nothing read
+        app._restore_archive(zpath)
+        assert "Während einer Runde" in app._qt_question[1] and not history.load(str(app_root / history.FILE))
+        app._hist = None
+        app._restore_archive(zpath)
+        settle()
+        title, text, retry = app._qt_question[:3]
+        assert title == "Aus Sicherung wiederherstellen" and "1 Runden" in text and retry is not None
+        assert not history.load(str(app_root / history.FILE))           # nothing before the answer
+        app._qt_answer(True)
+        settle()
+        assert [r.t for r in history.load(str(app_root / history.FILE))] == [1000.0]
+        assert offered and offered[0].endswith(os.path.join("cache", "restore-settings.json"))
+        assert json.loads(open(offered[0], encoding="utf-8").read()) == {"overlay": {}, "hotkeys": {}}
+        (tmp_path / "no.zip").write_bytes(b"x")
+        app._restore_archive(str(tmp_path / "no.zip"))
+        settle()
+        assert "keine Sicherung von Fog Scout" in app._qt_question[1]
+    finally:
+        app.quit()

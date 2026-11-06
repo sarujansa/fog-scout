@@ -254,6 +254,22 @@ EN = {
     "BP-Stand": "BP balance",
     "Aussetzer": "Stalls",
     "Alles sichern (ZIP) …": "Back up everything (ZIP) …",
+    "Aus Sicherung wiederherstellen (ZIP) …": "Restore from backup (ZIP) …",
+    "Aus Sicherung wiederherstellen": "Restore from backup",
+    "Führt eine Sicherung von „Alles sichern“ mit den jetzigen Daten zusammen: Runden, Match-Daten, Kartenbilder und Banner, die fehlen, kommen dazu – Vorhandenes bleibt, wie es ist. Zeigt vorher, was dazukommt. Die Einstellungen der Sicherung nur auf eigene Rückfrage.":
+        "Merges a backup of “Back up everything” with the data you have now: rounds, match data, map pictures and banners that are missing are added – what is there stays as it is. Shows first what would come. The backup's settings only on a question of their own.",
+    "Während einer Runde nicht möglich – nach dem Rundenende noch einmal.": "Not possible during a round – try again after it ends.",
+    "Das ist keine Sicherung von Fog Scout ({error}).": "This is no Fog Scout backup ({error}).",
+    "{rounds} Runden, {lost} nicht gezählte Runden, {matches} Matches, {files} Bilder/Banner":
+        "{rounds} rounds, {lost} rounds not counted, {matches} matches, {files} pictures/banners",
+    "Alles aus der Sicherung ist schon da – nichts hinzuzufügen.": "Everything in the backup is here already – nothing to add.",
+    "Aus der Sicherung hinzufügen: {what}. Schon vorhanden (bleibt, wie es ist): {known}. Vorher kommt eine Kopie der Runden und Match-Daten nach backup/.":
+        "Add from the backup: {what}. Already here (stays as it is): {known}. A copy of the rounds and match data goes to backup/ first.",
+    "Zusammenführen": "Merge",
+    "Wiederherstellen fehlgeschlagen: {error}": "Restoring failed: {error}",
+    "Aus der Sicherung hinzugefügt: {what}.": "Added from the backup: {what}.",
+    "Einstellungen der Sicherung nicht lesbar: {error}": "The backup's settings cannot be read: {error}",
+    "Die Sicherung enthält auch Einstellungen – übernehmen ersetzt die aktuellen.": "The backup holds settings too – taking them replaces the current ones.",
     "Installation prüfen": "Check installation",
     "Installation wird geprüft …": "Checking the installation …",
     "Installation prüfen – Fehler: {line}": "Check installation – failure: {line}",

@@ -8,7 +8,7 @@ import os
 import sys
 import threading
 import time
-from . import __version__, backups, i18n, obsoverlay, obsrec, qt_theme, regions, spotify, status, whatsnew
+from . import __version__, backups, fsops, i18n, obsoverlay, obsrec, qt_theme, regions, spotify, status, whatsnew
 from . import uimodel as ui
 from .capture import IS_WIN, foreground_root, is_game_window
 from . import autostart
@@ -487,6 +487,8 @@ class SettingsTab:
                                                command=self._import_settings)).pack(side="left", padx=6)
         self._reg("st.more.archive", ui.Button(bk, text=_("Alles sichern (ZIP) …"),       # 1.38.32 (F8)
                                                 command=self._archive_all)).pack(side="left")
+        self._reg("st.more.restore", ui.Button(bk, text=_("Aus Sicherung wiederherstellen (ZIP) …"),   # 1.38.42
+                                                command=self._restore_archive)).pack(side="left", padx=6)
         self.install_check_btn = self._reg("st.more.selftest", ui.Button(bk, text=_("Installation prüfen"),   # 1.38.33
                                                                        command=self._install_check))
         self.install_check_btn.pack(side="left", padx=6)
@@ -585,6 +587,92 @@ class SettingsTab:
             except OSError as e:
                 self.events.put(("call", self._log, (_("Sichern fehlgeschlagen: {error}", error=e), "Fehler")))
         threading.Thread(target=run, daemon=True, name="archive").start()
+
+    def _restore_archive(self, path=None):
+        """1.38.42 (user: "zusammenführen"): a ZIP of "Alles sichern" merged back – rounds, lost rounds, matches,
+        own map pictures and banners the data folder does not have yet are added, nothing that is there changes
+        (backups.restore). Looked at in a thread first, then one question with what would come; the settings of
+        the backup only on a second, separate question ("Einstellungen importieren"). Never while a round runs."""
+        if path is None:
+            self._qt_file("open", _("Aus Sicherung wiederherstellen"), "", self._restore_archive, pattern="ZIP (*.zip)")
+            return
+        if self._hist is not None:
+            self._inform(_("Aus Sicherung wiederherstellen"),
+                         _("Während einer Runde nicht möglich – nach dem Rundenende noch einmal."))
+            return
+
+        def run():
+            try:
+                plan = backups.inspect(self.data_dir, path)
+            except (backups.NotOurs, OSError) as e:
+                self.events.put(("call", self._inform, (_("Aus Sicherung wiederherstellen"),
+                                                       _("Das ist keine Sicherung von Fog Scout ({error}).",
+                                                         error=e))))
+                return
+            self.events.put(("call", self._restore_ask, (path, plan)))
+        threading.Thread(target=run, daemon=True, name="restore-look").start()
+
+    @staticmethod
+    def _restore_counts(c) -> str:
+        return _("{rounds} Runden, {lost} nicht gezählte Runden, {matches} Matches, {files} Bilder/Banner",
+                 rounds=c["rounds"], lost=c["lost"], matches=c["matches"], files=c["files"])
+
+    def _restore_ask(self, path, plan):
+        title = _("Aus Sicherung wiederherstellen")
+        if not (plan["rounds"] or plan["lost"] or plan["matches"] or plan["files"]):
+            if plan["settings"]:
+                self._restore_settings_offer(path)
+            else:
+                self._inform(title, _("Alles aus der Sicherung ist schon da – nichts hinzuzufügen."))
+            return
+        if not self._ask(
+                title, _("Aus der Sicherung hinzufügen: {what}. Schon vorhanden (bleibt, wie es ist): {known}. Vorher "
+                         "kommt eine Kopie der Runden und Match-Daten nach backup/.",
+                         what=self._restore_counts(plan), known=plan["known"]),
+                lambda: self._restore_ask(path, plan), ok_text=_("Zusammenführen")):
+            return
+        if self._hist is not None:
+            self._inform(title, _("Während einer Runde nicht möglich – nach dem Rundenende noch einmal."))
+            return
+
+        def run():
+            try:
+                got = backups.restore(self.data_dir, path)
+            except (backups.NotOurs, OSError) as e:
+                self.events.put(("call", self._log, (_("Wiederherstellen fehlgeschlagen: {error}", error=e), "Fehler")))
+                return
+            self.events.put(("call", self._restore_done, (path, got)))
+        threading.Thread(target=run, daemon=True, name="restore").start()
+
+    def _restore_done(self, path, got):
+        text = _("Aus der Sicherung hinzugefügt: {what}.", what=self._restore_counts(got))
+        self._log(text, "System")
+        try:
+            self._stats_render()
+        except Exception:
+            log.exception("Statistik nach dem Wiederherstellen")
+        if got.get("settings"):
+            self._restore_settings_offer(path, text)
+        else:
+            self._inform(_("Aus Sicherung wiederherstellen"), text)
+
+    def _restore_settings_offer(self, path, text=""):
+        """The backup's settings are a file of their own in cache/ – "Einstellungen importieren" asks for them as
+        for any settings file (replaces all, restarts)."""
+        import zipfile
+        try:
+            with zipfile.ZipFile(path) as z:
+                data = backups._read(z, z.getinfo(backups.SETTINGS_NAME))
+            folder = os.path.join(self.data_dir, "cache")
+            os.makedirs(folder, exist_ok=True)
+            target = os.path.join(folder, "restore-settings.json")
+            fsops.write_atomic(target, data)
+        except (OSError, KeyError, zipfile.BadZipFile, backups.NotOurs) as e:
+            self._log(_("Einstellungen der Sicherung nicht lesbar: {error}", error=e), "Fehler")
+            return
+        if text:
+            self._log(_("Die Sicherung enthält auch Einstellungen – übernehmen ersetzt die aktuellen."), "System")
+        self._import_settings(target)
 
     def _reset_all_settings(self):
         """1.2.19: back to the defaults (PC-specific values stay), then a restart like after an import."""
