@@ -3834,4 +3834,5 @@ EN = {
     "{n}× Custom Game": "{n}× custom game",
     "{n}× ohne Rolle": "{n}× without a role",
     "Zeigt, was diese Kachel zählt": "Shows what this tile counts",
+    "Diese Runden sind durch die Filter der Statistik ausgeblendet.": "These rounds are hidden by the filters of the statistics.",
 }

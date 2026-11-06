@@ -3148,3 +3148,19 @@ def test_a_tile_with_a_target_is_clickable_and_lights_its_card(qapp, keep):
     box.show_fact(overview.Fact("Runden", "8"))
     QTest.mouseClick(box, Qt.LeftButton)
     assert len(got) == 2 and card.property("link") == "false" and box.focusPolicy() == Qt.NoFocus
+
+
+def test_statistics_tiles_with_a_target_post_their_click(qapp, keep):
+    """1.38.54: the statistics' key figure tiles (TilesView) pass the window's post to their FactBox – a tile with
+    ``open`` posts ("tile_open", key), one without stays a plain display."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from fogscout import dashboard, qt_views
+    got = []
+    view = keep(qt_views.TilesView(post=lambda a, arg=None: got.append((a, arg))))
+    view.show()
+    view.show_state({"data": [dashboard.Tile("Längste Runde", "25:00", open="rounds:1.0"), dashboard.Tile("BP-Stand", "1 Mio.")]})
+    (_c1, first), (_c2, second) = view._tiles
+    QTest.mouseClick(first, Qt.LeftButton)
+    QTest.mouseClick(second, Qt.LeftButton)
+    assert got == [("tile_open", "rounds:1.0")]
