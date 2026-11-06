@@ -3052,8 +3052,8 @@ EN = {
     "Diese Übersicht ein / aus": "This overview on / off",
     "In der Statistik zeigen": "Show in the statistics",
     "Aufnahme dieser Runde öffnen": "Open the recording of this round",
-    "Runde markieren: Rolle, Farming, Killer oder Map korrigieren, löschen – oder Rechtsklick.":
-        "Mark a round: correct role, farming, killer or map, delete – or right-click.",
+    "Runde markieren: Rolle, Farming, Killer oder Map korrigieren, löschen – oder Rechtsklick. Doppelklick zeigt die Aufnahme.":
+        "Mark a round: correct role, farming, killer or map, delete – or right-click. Double-click shows the recording.",
     "OBS-Passwort ist auf diesem PC/Benutzerkonto nicht lesbar – bitte neu eingeben.":
         "The OBS password cannot be read on this PC/user account – please enter it again.",
     # 1.18.1: project saving in the big editor
@@ -3772,4 +3772,9 @@ EN = {
         'Puts boxes on the names as DBD shows them while spectating: the list on the left, higher up, and the name at the top centre – move them if needed.',
     'Setzt einen Kasten dorthin, wo DBD im Match die Namen der Survivor zeigt (links unten im Spielbild) – bei Bedarf verschieben.':
         "Puts a box where DBD shows the survivors' names in a match (bottom left of the game picture) – move it if needed.",
+    "Aufnahme zeigen": "Show recording",
+    "Aufnahme abspielen": "Play recording",
+    "Zu dieser Runde gibt es keine Aufnahme.": "There is no recording of this round.",
+    "Die Aufnahme dieser Runde ist durch die Filter der Seite Aufnahmen ausgeblendet.":
+        "The recording of this round is hidden by the filters of the Recordings page.",
 }

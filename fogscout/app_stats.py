@@ -12,7 +12,7 @@ import time
 import traceback
 from types import SimpleNamespace
 
-from . import builds, dashboard, history, launch, mapnotes, official, overview, records, regions, sysinfo
+from . import builds, dashboard, history, launch, mapnotes, official, overview, recindex, records, regions, sysinfo
 from . import uimodel as ui
 from .capture import foreground_root, is_game_window
 from .i18n import N_, _
@@ -217,6 +217,7 @@ class StatsTab:
                                            select=True, multi=True)      # 1.5.4: several rows (Ctrl/Shift)
         self._table_menu(self.stats_last, self._stats_last_menu_items, self._stats_last_menu_act)   # 1.8.10
         self.stats_last.bind("<<TreeviewSelect>>", lambda e: self._stats_role_buttons())
+        self.stats_last._dbdms_open = self._stats_open_recording     # 1.38.46: double-click / Enter = its recording
         self.stats_more_btn = ui.Button(box2, text=_("Weitere 100 Runden anzeigen"), command=self._stats_more_rounds)
         rr = ui.Frame(box2)
         rr.pack(fill="x", pady=(6, 0))
@@ -225,7 +226,8 @@ class StatsTab:
         # 1.17.1: the buttons for marked rounds only once one is marked (as on the page Aufnahmen since 1.11.14) –
         # seven greyed-out controls were noise; until then a line says what marking offers; right click unchanged
         self.stats_sel_hint = ui.Label(rr, text=_("Runde markieren: Rolle, Farming, Killer oder Map korrigieren, "
-                                                  "löschen – oder Rechtsklick."), style="Dim.TLabel")
+                                                  "löschen – oder Rechtsklick. Doppelklick zeigt die Aufnahme."),
+                                       style="Dim.TLabel")
         self.stats_sel_hint.pack(side="left")
         self.stats_sel = sel = ui.Frame(rr)
         r1 = ui.Frame(sel)
@@ -1314,14 +1316,25 @@ class StatsTab:
             return []
         ok = self.stats_delete_btn.instate(["!disabled"])         # not for rounds rescued from the stats page
         n = len(sel)
-        return [("killer", _("Als Killer-Runde"), ok), ("survivor", _("Als Survivor-Runde"), ok),
+        rec = []
+        if n == 1:                         # 1.38.46: the round's recording right here (greyed out without one)
+            ts = self._stats_selected_ts()
+            has = bool(ts) and self._stats_recording(ts[0]) is not None
+            rec = [("rec_show", _("Aufnahme zeigen"), has), ("rec_play", _("Aufnahme abspielen"), has),
+                   ("rec_clip", _("Clip bearbeiten …"), has), None]
+        return rec + [("killer", _("Als Killer-Runde"), ok), ("survivor", _("Als Survivor-Runde"), ok),
                 ("custom", _("Als Custom Game"), ok), None,
                 ("farming", _("Farming an/aus"), ok), None,
                 ("site", _("Stats-Seite öffnen"), True), None,
                 ("delete", _("Runde löschen") if n == 1 else _("{n} Runden löschen", n=n), ok)]
 
     def _stats_last_menu_act(self, ident):
-        if ident in ("killer", "survivor", "custom"):
+        if ident in ("rec_show", "rec_play", "rec_clip"):
+            ts = self._stats_selected_ts()
+            if len(ts) == 1:
+                {"rec_show": self._stats_open_recording, "rec_play": self._stats_play_recording,
+                 "rec_clip": self._stats_clip_recording}[ident](ts[0])
+        elif ident in ("killer", "survivor", "custom"):
             self._stats_set_role(ident)
         elif ident == "farming":
             self._stats_toggle_farming()
@@ -1329,6 +1342,48 @@ class StatsTab:
             self._official_open(False)
         elif ident == "delete":
             self._stats_delete_round()
+
+    def _stats_recording(self, t):
+        """1.38.46: the path of the recording of the round at ``t`` (the page Aufnahmen pairs them by start time);
+        None without one or without the recordings part."""
+        find = getattr(self, "_recording_for", None)
+        try:
+            return find(float(t)) if find is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _stats_open_recording(self, t):
+        """1.38.46: Statistik › Letzte Runden → the page Aufnahmen with the round's recording marked (double-click,
+        Enter, right click „Aufnahme zeigen“). Without one: a line in the log, nothing else changes."""
+        try:
+            t = float(t)
+        except (TypeError, ValueError):
+            return False
+        if self._stats_recording(t) is None:
+            self._log(_("Zu dieser Runde gibt es keine Aufnahme."), "System")
+            return False
+        if not self._show_round_recording(t):
+            self._log(_("Die Aufnahme dieser Runde ist durch die Filter der Seite Aufnahmen ausgeblendet."), "System")
+            return False
+        return True
+
+    def _stats_play_recording(self, t):
+        """1.38.46: the round's recording in the default player – the page stays (like „Abspielen“ on Aufnahmen,
+        only video files: the index is user-writable, audit SEC-5)."""
+        path = self._stats_recording(t)
+        if path is None:
+            self._log(_("Zu dieser Runde gibt es keine Aufnahme."), "System")
+            return
+        if not path.lower().endswith(recindex.VIDEO_EXTS):
+            self._log(_("Keine Videodatei: {file}", file=os.path.basename(path)), "Fehler")
+            return
+        self._open(path)
+
+    def _stats_clip_recording(self, t):
+        """1.38.46: the clip editor on the round's recording – through the page Aufnahmen, where the editor takes
+        the marked recording from."""
+        if self._stats_open_recording(t):
+            self._rec_clip()
 
     def _stats_selected_ts(self) -> list:
         """Banner times of the rows marked in "Letzte Runden" (1.5.4: several at once)."""
