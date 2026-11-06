@@ -626,3 +626,70 @@ def test_a_new_login_without_the_windows_encryption_is_kept_in_memory_only(monke
     up._keep_refresh("ref-new")
     (_k, stored), = [e for e in events if e[0] == "token"]
     assert spotify.is_encrypted(stored) and spotify.unprotect(stored) == "ref-new"
+
+
+def test_a_stored_session_is_used_only_on_googles_upload_host(fake, tmp_path):
+    """1.38.57 (security review): the session URI from settings.json gets the Bearer token – only one on the host of
+    ENDPOINTS["upload"] (in the program: https://www.googleapis.com) is kept; any other is dropped, never called."""
+    good = fake.base + "/upload/session/s9"
+    assert yt.valid_session(good)
+    for bad in ("", None, 5, "https://evil.example/upload", fake.base.replace("127.0.0.1", "localhost") + "/x",
+                fake.base.replace("http://", "http://user@") + "/x", fake.base.replace("http:", "ftp:") + "/x"):
+        assert not yt.valid_session(bad), bad
+        j = yt.Job.from_dict({"rel": "Clips/a.mp4", "session": bad, "size": 10})
+        assert j is not None and j.session == ""
+    assert yt.Job.from_dict({"rel": "Clips/a.mp4", "session": good}).session == good
+    monkey = yt.ENDPOINTS.copy()
+    try:                                               # the real endpoint: https://www.googleapis.com only
+        yt.ENDPOINTS["upload"] = "https://www.googleapis.com/upload/youtube/v3/videos"
+        assert yt.valid_session("https://www.googleapis.com/upload/youtube/v3/videos?upload_id=x")
+        assert not yt.valid_session("http://www.googleapis.com/upload/youtube/v3/videos?upload_id=x")
+        assert not yt.valid_session("https://www.googleapis.com.evil.example/upload")
+        assert not yt.valid_session("https://www.googleapis.com:8443/upload")
+    finally:
+        yt.ENDPOINTS.update(monkey)
+    # a job that reached the thread with a foreign session opens a new one on Google instead
+    folder = str(tmp_path)
+    path, data = _video(folder, "Clips/a.mp4", 100 * 1024)
+    up = yt.Uploader(lambda *a: None)
+    fake.tokens.append("access-ok")
+    up._token = spotify.Token("access-ok", "", time.time() + 3600)
+    up._work(yt.Job(rel="Clips/a.mp4", session="https://evil.example/s", size=len(data)), path, time.time())
+    assert fake.inserts == 1
+
+
+class _Body:
+    def __init__(self, data, status=200):
+        self.data, self.status, self.headers = data, status, {}
+
+    def read(self, n=-1):
+        return self.data if n < 0 else self.data[:n]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_answers_are_read_only_up_to_a_limit_and_error_texts_are_clipped(monkeypatch):
+    """1.38.57 (security review): an answer larger than MAX_BODY is a network error (never read whole into memory);
+    a server's error text reaches log and status clipped and on one line."""
+    class Opener:
+        def __init__(self, body):
+            self.body = body
+
+        def open(self, req, timeout=None):
+            return self.body
+    monkeypatch.setattr(yt, "OPENER", Opener(_Body(b"x" * (yt.MAX_BODY + 1))))
+    with pytest.raises(yt.YouTubeError) as e:
+        yt._call("https://www.googleapis.com/x")
+    assert e.value.kind == "net"
+    monkeypatch.setattr(yt, "OPENER", Opener(_Body(b"{}")))
+    assert yt._call("https://www.googleapis.com/x")[2] == b"{}"
+    body = json.dumps({"error": {"message": "bad\n2026-01-01 ERROR forged line " + "y" * 500,
+                                 "errors": [{"reason": "x\r\ny"}]}}).encode()
+    err = yt._error(400, body)
+    assert "\n" not in str(err) and len(str(err)) <= spotify.MAX_TEXT and err.reason == "x  y"
+    err = yt._error(400, json.dumps({"error": "invalid_grant", "error_description": "a‮b\nc"}).encode())
+    assert str(err) == "a b c" and err.kind == "auth"

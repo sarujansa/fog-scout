@@ -46,6 +46,26 @@ def _enable_dpi_awareness():
         pass
 
 
+class HomeFilter(logging.Filter):
+    """1.38.57 (security review): the log is often pasted into issues – the home folder (it holds the account name)
+    as "~" in the message and in the exception/stack text. Formats the record once here and keeps the result."""
+
+    def filter(self, record):
+        from .diagnose import home_masked
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True                              # a broken format: let logging report it as usual
+        record.msg, record.args = home_masked(msg), None
+        if record.exc_info and not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text:
+            record.exc_text = home_masked(record.exc_text)
+        if record.stack_info:
+            record.stack_info = home_masked(record.stack_info)
+        return True
+
+
 def _setup_logging(data=None):
     data = data or _data()
     moved = []
@@ -55,6 +75,8 @@ def _setup_logging(data=None):
     logging.basicConfig(
         filename=os.path.join(data, "fogscout.log"), filemode="w", level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s", encoding="utf-8")
+    for h in logging.getLogger().handlers:
+        h.addFilter(HomeFilter())
     if moved:
         logging.getLogger("fogscout").info("Alte Dateien von DbD Map Scout übernommen: %s", ", ".join(moved))
     _enable_crash_log(data)

@@ -84,6 +84,19 @@ def home_short(path) -> str:
     return path
 
 
+def home_masked(text) -> str:
+    """1.38.57 (security review): the home folder as "~" anywhere in a text (log lines, crash stacks) – not only
+    at the start like home_short. Case-insensitive on Windows; only whole folder names (the next character is a
+    separator, a quote or the end), so "C:\\Users\\Saru" never eats the start of "C:\\Users\\Saruman"."""
+    text = str(text or "")
+    home = os.path.expanduser("~").rstrip("\\/")
+    if not home or home in ("~",) or len(home) < 3 or home.lower() not in text.lower():
+        return text
+    import re
+    pattern = re.compile(re.escape(home) + r"(?=$|[\\/\s\"':;,)\]])", re.IGNORECASE if IS_WIN else 0)
+    return pattern.sub("~", text)
+
+
 def _qt_version() -> str:
     try:
         import PySide6
@@ -302,7 +315,8 @@ def crash_lines(root: str) -> list:
     if not text:
         return ["Letzter harter Absturz: keiner aufgezeichnet"]
     more = [f"  … {len(text) - CRASH_LINES} Zeilen mehr in {CRASH_LAST}"] if len(text) > CRASH_LINES else []
-    return [f"Letzter harter Absturz ({when}, {CRASH_LAST}):"] + ["  " + t for t in text[:CRASH_LINES]] + more
+    return ([f"Letzter harter Absturz ({when}, {CRASH_LAST}):"]
+            + ["  " + home_masked(t) for t in text[:CRASH_LINES]] + more)   # 1.38.57: the stack's paths hold the account name
 
 
 def _lag_line(t, what, took, late) -> str:

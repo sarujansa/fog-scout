@@ -35,6 +35,7 @@ RETRY_S = 20.0             # try to reach Discord again this often
 MIN_GAP_S = 2.0            # never two updates closer than this (Discord allows ~5 in 20 s)
 MAX_CHARS = 128            # Discord's limit for details/state
 OP_HANDSHAKE, OP_FRAME, OP_CLOSE, OP_PING, OP_PONG = 0, 1, 2, 3, 4
+PEER_TEXT = 200            # 1.38.57 (security review): a text from the pipe, clipped for the status/log
 _NOTHING = object()        # "no activity sent yet" (None = cleared)
 
 
@@ -174,8 +175,8 @@ def connect(client_id: str) -> Ipc:
             return ipc
         ipc.close()
         msg = d.get("message") or d.get("data", {}).get("message") if isinstance(d, dict) else ""
-        raise IpcError(str(msg or f"op {op}"), "client_id" if op == OP_CLOSE else "")
-    raise IpcError(_("Discord nicht gefunden – läuft es?") if seen is None else str(seen), "absent")
+        raise IpcError(_peer_text(msg or f"op {op}"), "client_id" if op == OP_CLOSE else "")
+    raise IpcError(_("Discord nicht gefunden – läuft es?") if seen is None else _peer_text(seen), "absent")
 
 
 def set_activity(ipc: Ipc, activity):
@@ -189,9 +190,19 @@ def set_activity(ipc: Ipc, activity):
         ipc.send(OP_PONG, d)
         op, d = ipc.recv()
     if op == OP_CLOSE:
-        raise IpcError(str(d.get("message", "closed")))
+        raise IpcError(_peer_text(d.get("message", "closed") if isinstance(d, dict) else "closed"))
     if isinstance(d, dict) and d.get("evt") == "ERROR":
-        raise IpcError(str((d.get("data") or {}).get("message", "error")))
+        data = d.get("data")
+        raise IpcError(_peer_text(data.get("message", "error") if isinstance(data, dict) else "error"))
+
+
+def _peer_text(text) -> str:
+    """1.38.57 (security review): a message from the pipe (anything local can serve discord-ipc-N) before it
+    reaches the status line or the log – control characters as spaces, at most PEER_TEXT characters."""
+    text = "".join(" " if (ord(c) < 32 or 127 <= ord(c) < 160 or c in "\u2028\u2029"
+                           or "\u202a" <= c <= "\u202e" or "\u2066" <= c <= "\u2069") else c
+                   for c in str(text if text is not None else ""))
+    return text if len(text) <= PEER_TEXT else text[:PEER_TEXT - 1] + "…"
 
 
 # ------------------------------------------------------------------ what to show (pure)
@@ -306,7 +317,7 @@ class Presence(threading.Thread):
                 self._tick()
             except Exception as e:                      # never die; the next tick tries again
                 self._disconnect()
-                self._say(_("Discord: Fehler – {error}", error=str(e)), False)
+                self._say(_("Discord: Fehler – {error}", error=_peer_text(e)), False)
                 self._retry_at = time.time() + RETRY_S
 
     def _say(self, text: str, ok: bool):

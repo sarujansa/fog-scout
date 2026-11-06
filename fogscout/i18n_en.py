@@ -1946,6 +1946,7 @@ EN = {
     'Aufnahme gespeichert: {file}': 'Recording saved: {file}',
     'Aufnahmen gelöscht (Platz): {n}': 'Recordings deleted (room): {n}',
     'OBS hat die Verbindung geschlossen': 'OBS closed the connection',
+    'OBS antwortet nicht auf die Anfrage {kind}': 'OBS does not answer the request {kind}',
     'OBS nicht erreichbar – läuft OBS, ist der WebSocket-Server an? ({error})': 'OBS not reachable – is OBS running with its WebSocket server on? ({error})',
     'Keine Antwort von obs-websocket': 'No answer from obs-websocket',
     'Kein obs-websocket auf diesem Port': 'No obs-websocket on this port',
@@ -2342,7 +2343,6 @@ EN = {
     'YouTube: Client-ID (…apps.googleusercontent.com) und Client-Secret eintragen.':
         'YouTube: enter the client ID (…apps.googleusercontent.com) and the client secret.',
     'YouTube: öffne die Anmeldung im Browser …': 'YouTube: opening the login in the browser …',
-    'YouTube: hochgeladen – {file} → {url}': 'YouTube: uploaded – {file} → {url}',
     'Hochgeladen: {file}': 'Uploaded: {file}',
     'YouTube: nicht hochgeladen – {file}: {why}': 'YouTube: not uploaded – {file}: {why}',
     'YouTube: in die Warteschlange – {file}': 'YouTube: queued – {file}',

@@ -258,6 +258,21 @@ def _frame(payload: bytes, opcode: int = 1) -> bytes:
 class ObsClient:
     """One connection to obs-websocket on this PC."""
 
+    # 1.38.57 (security review): whatever listens on the port is a local peer – an answer is waited for through at
+    # most MAX_SKIPPED other messages and DEADLINE × timeout, the events kept meanwhile are capped, its texts are
+    # clipped and on one line before they reach the status/log
+    MAX_EVENTS = 100
+    MAX_SKIPPED = 200
+    DEADLINE = 3
+    MAX_TEXT = 200
+    _CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069]")
+
+    @classmethod
+    def clean(cls, text, limit: int = 0) -> str:
+        limit = limit or cls.MAX_TEXT
+        text = cls._CONTROL.sub(" ", str(text if text is not None else ""))
+        return text if len(text) <= limit else text[:limit - 1] + "…"
+
     def __init__(self, port: int = DEFAULT_PORT, password: str = "", timeout: float = TIMEOUT):
         self.port, self.password, self.timeout = int(port), password or "", timeout
         self._sock = None
@@ -366,17 +381,23 @@ class ObsClient:
     def request(self, kind: str, data: dict | None = None) -> dict:
         rid = uuid.uuid4().hex
         self._send({"op": 6, "d": {"requestType": kind, "requestId": rid, "requestData": data or {}}})
-        while True:
+        deadline = time.monotonic() + self.DEADLINE * self.timeout
+        for _n in range(self.MAX_SKIPPED):
             msg = self._read()
             if msg.get("op") == 5:
                 self.events.append(msg.get("d", {}))
-                continue
-            d = msg.get("d", {})
-            if msg.get("op") == 7 and d.get("requestId") == rid:
-                st = d.get("requestStatus", {})
-                if not st.get("result"):
-                    raise ObsError(f"{kind}: {st.get('comment') or st.get('code')}", st.get("code"))
-                return d.get("responseData") or {}
+                del self.events[:-self.MAX_EVENTS]
+            else:
+                d = msg.get("d", {})
+                if msg.get("op") == 7 and isinstance(d, dict) and d.get("requestId") == rid:
+                    st = d.get("requestStatus", {})
+                    st = st if isinstance(st, dict) else {}
+                    if not st.get("result"):
+                        raise ObsError(self.clean(f"{kind}: {st.get('comment') or st.get('code')}"), st.get("code"))
+                    return d.get("responseData") or {}
+            if time.monotonic() > deadline:
+                break
+        raise ObsError(_("OBS antwortet nicht auf die Anfrage {kind}", kind=kind))
 
     def close(self):
         sock, self._sock = self._sock, None
@@ -436,10 +457,26 @@ def find_folder(volume: str, rel: str, last: str) -> str | None:
 
 
 
-def obs_file(path) -> str:
+OBS_FRESH_S = 120.0          # 1.38.57: a file OBS names outside our folder must have been written this recently
+
+
+def _inside(path: str, folder: str | None) -> bool:
+    if not folder:
+        return False
+    try:
+        base = os.path.normcase(os.path.realpath(folder))
+        return os.path.commonpath([base, os.path.normcase(os.path.realpath(path))]) == base
+    except (OSError, ValueError):
+        return False
+
+
+def obs_file(path, inside: str | None = None, since: float | None = None) -> str:
     """1.8.38 (QA audit): a path OBS named (StopRecord, the replay buffer) before it is moved or deleted – the
     program runs as admin, and anything listening on the port could answer in OBS's place. Only a regular video
-    file, no link and no junction/reparse point; else "" (logged)."""
+    file, no link and no junction/reparse point; else "" (logged). 1.38.57 (security review): with ``inside``
+    and/or ``since`` also only a file in our recordings folder (``inside``, where SetRecordDirectory points OBS) or
+    one written since ``since`` (minus OBS_FRESH_S) – what OBS just recorded. An old video elsewhere on the drive
+    (another user's, a protected folder) is never moved or deleted on the word of whatever answers on the port."""
     p = str(path or "")
     if not p:
         return ""
@@ -449,6 +486,8 @@ def obs_file(path) -> str:
               and not getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
     except OSError:
         return p if p.lower().endswith(VIDEO_EXTS) else ""     # not written yet: looked at again before the move
+    if ok and (inside is not None or since is not None):
+        ok = _inside(p, inside) or (since is not None and st.st_mtime >= float(since) - OBS_FRESH_S)
     if not ok:
         log.warning("OBS nannte eine Datei, die keine Aufnahme ist – nicht angefasst: %s", os.path.basename(p))
     return p if ok else ""
@@ -980,6 +1019,9 @@ class Recorder(threading.Thread):
     def _say(self, text, ok, err=False):
         """``err`` (1.24.5): a failure (OBS away, password, protocol) – red in the settings, not a hint in amber;
         the event carries it only when set (the hints' events stay as they were)."""
+        # 1.38.57 (security review): an error may carry a local peer's text – one line; the peer's part is clipped
+        # in ObsClient.request already, the limit here only stops a runaway (our own hints are a few hundred chars)
+        text = ObsClient.clean(text, 1000) if err else text
         self.status = text
         self._post("status", text=text, ok=ok, **({"err": True} if err else {}))
 
@@ -1501,6 +1543,7 @@ class Recorder(threading.Thread):
             before = c.request("GetLastReplayBufferReplay").get("savedReplayPath", "") or ""
         except ObsError:
             before = ""
+        asked = time.time()
         c.request("SaveReplayBuffer")
         deadline = time.time() + REPLAY_WAIT
         path = ""
@@ -1513,8 +1556,8 @@ class Recorder(threading.Thread):
             if cur and cur != before:
                 path = cur
             if path and os.path.exists(path):
-                return obs_file(path)
-        path = obs_file(path)
+                return obs_file(path, since=asked)
+        path = obs_file(path, since=asked)
         if path:
             log.info("OBS: Vorlauf %s noch nicht geschrieben – wird am Rundenende gesucht", path)
         else:
@@ -1532,7 +1575,7 @@ class Recorder(threading.Thread):
             path = c.request("StopRecord").get("outputPath", "")
         finally:
             c.close()
-        if not obs_file(path):
+        if not obs_file(path, inside=self.folder(), since=rec.get("since")):
             self._say(_("OBS hat keinen Dateinamen genannt – Aufnahme nicht zugeordnet"), False)
             return
         self._file_away(rec, path)
@@ -1550,7 +1593,7 @@ class Recorder(threading.Thread):
         name = self._unique(dest, file_name(rec.get("t") or time.time(), rec.get("label", ""), who, ext))
         target = os.path.join(dest, name)
         final = self._move(path, target)
-        pre = obs_file(rec.get("pre"))
+        pre = obs_file(rec.get("pre"), inside=self.folder(), since=rec.get("since"))
         pre_name = ""
         if pre and os.path.exists(pre):
             pname = self._unique(dest, file_name(rec.get("t") or time.time(), rec.get("label", ""), who,
@@ -2294,13 +2337,14 @@ class Recorder(threading.Thread):
             if not state:
                 self._post("clip", ok=False, why=_("Wiederholungspuffer in OBS läuft nicht"))
                 return
+            asked = time.time()
             src = self._save_replay(c)
         except ObsError as e:
             self._post("clip", ok=False, why=str(e))
             raise
         finally:
             c.close()
-        if not src or not os.path.exists(src) or not obs_file(src):
+        if not src or not os.path.exists(src) or not obs_file(src, inside=folder, since=asked):
             self._post("clip", ok=False, why=_("OBS hat den Puffer nicht gespeichert"))
             return
         clips = os.path.join(folder, CLIPS_DIR)
