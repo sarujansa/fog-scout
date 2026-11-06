@@ -521,6 +521,10 @@ TIPS = {
     'Spiel': 'Nur der Ton von DBD im Sofort-Clip.',
     'Als Farming markieren': 'Markiert alle genannten Runden als Farming-Runden (und nicht mehr als Custom Game); ihre Aufnahmen wandern in den Ordner „Farming“. Einzeln zurück: „Farming an/aus“ unter „Letzte Runden“.',
     'Ignorieren': 'Diese Runden nicht mehr vorschlagen – sie bleiben, wie sie sind.',
+    'Alle als Farming': 'Markiert alle Runden der Liste als Farming-Runden (mit Rückfrage) – wie „Ist Farming“ für jede.',
+    'Alle ignorieren': 'Keine der Runden der Liste mehr vorschlagen – sie bleiben, wie sie sind.',
+    'Ist Farming': 'Die markierten Runden der Liste sind Farming-Runden (und kein Custom Game mehr); ihre Aufnahmen wandern in den Ordner „Farming“. Zurück: „Farming an/aus“ unter „Letzte Runden“.',
+    'Kein Farming': 'Die markierten Runden der Liste sind normale Runden – sie bleiben, wie sie sind, und werden nie wieder vorgeschlagen.',
     # 1.14: the overview's card "Schnell ein/aus" (overview.switches)
     "Automatische Erkennung":
         "Erkennt die Map beim Match-Start am Banner und blendet die Karte ein. Aus: nur noch von Hand (Scannen, "
