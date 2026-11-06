@@ -222,3 +222,13 @@ def test_a_map_picture_that_is_none_is_left_out(tmp_path):
     os.makedirs(data)
     got = backups.restore(data, p)
     assert got["files"] == 1 and os.listdir(os.path.join(data, "user_maps")) == ["ok.webp"]
+
+
+def test_one_member_can_be_read_from_a_plain_zip(tmp_path):
+    """1.38.57: the settings page reads the settings file from the archive on its own (a ZipFile, no counter)."""
+    import zipfile
+    path = tmp_path / "b.zip"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(backups.SETTINGS_NAME, "{}")
+    with zipfile.ZipFile(path) as z:
+        assert backups._read(z, z.getinfo(backups.SETTINGS_NAME)) == b"{}"
