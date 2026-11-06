@@ -432,7 +432,7 @@ def test_start_bat_restarts_itself_in_a_folder_with_and_and_percent(tmp_path):
     import subprocess
     with open(os.path.join(ROOT, "start.bat"), encoding="ascii") as fh:
         line = next(t for t in fh if "DBDMS_UPDATED=1" in t)
-    again = re.search(r'cmd /c "[^&]*" %\*"', line).group(0)
+    again = re.search(r'cmd /d /c "[^&]*" %\*"', line).group(0)
     folder = tmp_path / ODD_FOLDER
     folder.mkdir()
     (folder / "t.bat").write_text(

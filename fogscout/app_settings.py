@@ -1404,7 +1404,17 @@ class SettingsTab:
                 self._log(msg, "Fehler")
                 return
         if not dest:
-            started = self._release_start(path, os.path.join(folder, relupdate.LOG_FILE))
+            # 1.38.57 (security review): held against changes until Windows has it (UAC asks in between); no setup
+            # log here – the elevated setup would write it into the user's folder
+            try:
+                with restart.held_setup(path, sha256):
+                    started = self._release_start(path, None)
+            except (OSError, ValueError) as e:
+                msg = _("Das Update wurde nicht gestartet: Die Setup-Datei liess sich nicht sicher bereitstellen "
+                        "({error}). Bitte das Update noch einmal laden.", error=e.__class__.__name__)
+                self.upd_status.set(msg)
+                self._log(msg, "Fehler")
+                return
         if not started:
             msg = _("Das Setup konnte nicht gestartet werden (Abfrage nach Administratorrechten abgebrochen?). "
                     "Erneut versuchen oder das Setup selbst starten:\n{path}", path=path)
