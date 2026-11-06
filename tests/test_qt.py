@@ -3124,3 +3124,27 @@ def test_long_explanations_wait_behind_a_fold_that_the_search_opens(qapp, keep):
     assert body.isVisibleTo(body.parentWidget()) and btn.property("glyph") == "chevron_down"
     btn.click()
     assert not body.isVisibleTo(body.parentWidget())
+
+
+def test_a_tile_with_a_target_is_clickable_and_lights_its_card(qapp, keep):
+    """1.38.53 (user: "auf Rounds 8 heute klicken soll es mir diese zeigen"): a FactBox whose fact has ``open`` posts
+    ("tile_open", key) on a click or Enter, takes the Tab focus and marks its card (QSS [link="true"]: border on
+    hover); without ``open`` a click posts nothing and the card is no link."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QVBoxLayout
+    from fogscout import qt_views
+    from fogscout.qt_common import _card
+    got = []
+    card = keep(_card())
+    box = qt_views.FactBox(post=lambda a, arg=None: got.append((a, arg)))
+    QVBoxLayout(card).addWidget(box)
+    card.show()
+    box.show_fact(overview.Fact("Runden", "8", "8× Killer", open="day:last:all"))
+    assert card.property("link") == "true" and box.focusPolicy() == Qt.TabFocus and box.toolTip()
+    QTest.mouseClick(box, Qt.LeftButton)
+    QTest.keyClick(box, Qt.Key_Return)
+    assert got == [("tile_open", "day:last:all")] * 2
+    box.show_fact(overview.Fact("Runden", "8"))
+    QTest.mouseClick(box, Qt.LeftButton)
+    assert len(got) == 2 and card.property("link") == "false" and box.focusPolicy() == Qt.NoFocus

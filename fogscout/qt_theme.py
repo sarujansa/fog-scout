@@ -307,6 +307,7 @@ QListWidget#nav::item:hover:!selected {{ background: {c['hover']}; color: {c['fg
 QFrame[class="card"] {{ background: {c['card']}; border: 1px solid {c['border']}; border-radius: {RADIUS['xl']}px; }}
 QFrame[class="card"] QLabel {{ background: transparent; }}
 QFrame[class="card"][dragging="true"], QFrame[class="card"][found="true"] {{ border: 1px solid {c['accent']}; }}
+QFrame[class="card"][link="true"]:hover {{ border: 1px solid {c['accent']}; }}
 QWidget#navside {{ background: {c['nav']}; }}
 QLineEdit#navsearch {{ margin: 12px 10px 2px 10px; background: {c['field']}; }}
 QPushButton#navsearchbtn {{ background: transparent; border: none; margin-top: 10px; padding: 8px; }}
