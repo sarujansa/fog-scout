@@ -507,3 +507,36 @@ def test_last_rounds_open_the_recording_of_a_round(tmp_path):
         assert a.qt.current_key() == "recordings" and a.rec_table.selection() == (repr(t_rec),)
     finally:
         a.quit()
+
+
+def test_a_session_opens_its_rounds_in_last_rounds(tmp_path):
+    """1.38.47 (user's pick "Sitzungen als eigener Reiter", double-click marks): Statistik › Runden › Sitzungen
+    lists the sessions newest first; a double-click opens Letzte Runden with exactly the session's rounds marked –
+    also for an old session beyond the first 100 rows (more are loaded)."""
+    now = time.time()
+    old = [now - 400 * 3600, now - 400 * 3600 + 900]                    # one session, two rounds, long ago
+    singles = [now - (i + 2) * 3600 for i in range(120)]                # 120 sessions of one round each, newer
+    rounds = b"".join(json.dumps({"t": t, "seconds": 600, "map_id": "coal-tower", "map": "Coal Tower",
+                                  "role": "killer", "source": "auto"}).encode() + b"\n" for t in old + singles)
+    a = _start(tmp_path, {"welcome_seen": True}, rounds=rounds)
+    try:
+        _pump_app(a, 0.3)
+        a.qt.show_page("stats")
+        a._stats_select(_tab_title(a, "Sitzungen"))
+        a._stats_render()
+        a._stats_render_tab()
+        rows = a.stats_sess.get_children()
+        assert len(rows) == 121 and rows[-1] == repr(old[0])            # newest first, the old session last
+        assert a.stats_sess_tiles.data and a.stats_sess_tiles.data[0].value == "121"
+        assert a._stats_last_limit < 122
+        a.stats_sess._dbdms_open(repr(old[0]))
+        assert a._stats_current_title() == "Letzte Runden"
+        assert sorted(a.stats_last.selection()) == sorted(repr(t) for t in old)
+        a.stats_sess._dbdms_open("nonsense")                              # an unknown row does nothing
+    finally:
+        a.quit()
+
+
+def _tab_title(a, title):
+    assert title in [t for t, _p in a._stats_parts.values()]
+    return title

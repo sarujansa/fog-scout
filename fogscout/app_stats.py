@@ -324,6 +324,24 @@ class StatsTab:
         ui.Label(box_v, text=_("Nur Runden, die einem Match auf der Stats-Seite zugeordnet sind. Die Maus über einer "
                                 "Säule zeigt Wert und Anzahl der Runden."),
                   style="Dim.TLabel", wraplength=520).pack(anchor="w", pady=(4, 0))
+        # 1.38.47 (user's pick: "Sitzungen als eigener Reiter"): last tab of the group – tab_order counts by position
+        box_se = self._stats_page(_("Sitzungen"), "rounds", "_stats_part_sessions")
+        self.stats_sess_tiles = ui.Tiles(box_se)
+        self.stats_sess_tiles.pack(fill="x", pady=(0, 6))
+        self.stats_sess = self._stats_tree(box_se, (("when", _("Wann"), 135, "w"), ("dur", _("Dauer"), 55, "e"),
+                                                    ("n", _("Runden"), 50, "e"), ("play", _("Spielzeit"), 65, "e"),
+                                                    ("roles", _("Killer/Survivor"), 85, "w"),
+                                                    ("kills", _("Ø Kills"), 50, "e"), ("esc", _("Entkommen"), 70, "e"),
+                                                    ("bp", _("BP"), 70, "e"), ("wait", _("Ø Warten"), 60, "e"),
+                                                    ("farm", _("Farming"), 55, "e")), 10, select=True)
+        self.stats_sess._dbdms_hide = ("wait", "farm")             # ten columns do not fit 1100 px: header menu
+        self.stats_sess._dbdms_open = self._stats_session_open      # double-click / Enter: its rounds, marked
+        self._stats_sess_ts = {}                                     # row -> banner times of the session's rounds
+        ui.folded(ui.Label(box_se, text=_("Eine Sitzung endet nach {n} Minuten ohne Runde. Es gelten die Filter oben – mit "
+                                           "einem Rollenfilter zählt eine Sitzung nur die Runden dieser Rolle. Ø Kills, "
+                                           "Entkommen und BP laut Stats-Seite. Doppelklick zeigt die Runden der Sitzung "
+                                           "unter „Letzte Runden“.", n=records.SESSION_GAP // 60),
+                           style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(6, 0))
         box_r = self._stats_page(_("Regionen"), "maps", "_stats_part_regions")           # 1.8.2: short names – all ten tabs fit
         self.stats_regs = self._stats_tree(box_r, (("reg", _("Region"), 190, "w"), ("n", _("Runden"), 65, "e"),
                                                    ("avg", _("Ø Dauer"), 75, "e"), ("share", _("Anteil"), 65, "e"),
@@ -993,6 +1011,34 @@ class StatsTab:
         self.settings.save()
         self._stats_render()
 
+    def _stats_part_sessions(self, c):
+        """1.38.47: the sessions of the selection, newest first (records.session_rows)."""
+        rows = records.session_rows(c.rounds, c.off)
+        self.stats_sess_tiles.data = records.session_tiles(rows)
+        t = self.stats_sess
+        t.delete(*t.get_children())
+        self._stats_sess_ts = {}
+        for s in rows:
+            a, b = time.localtime(s.start), time.localtime(s.end)
+            when = time.strftime("%d.%m.%y %H:%M", a) + "–" + time.strftime(
+                "%H:%M" if a[:3] == b[:3] else "%d.%m. %H:%M", b)
+            roles = " · ".join(x for x in ((_("{n} K", n=s.killer) if s.killer else ""),
+                                           (_("{n} S", n=s.survivor) if s.survivor else "")) if x) or "–"
+            iid = repr(s.start)
+            self._stats_sess_ts[iid] = [r.t for r in s.rounds]
+            t.insert("", "end", iid=iid, values=(
+                when, dashboard.play_time(s.end - s.start), len(s.rounds), dashboard.play_time(s.play_s), roles,
+                f"{s.kills:.1f}" if s.kills is not None else "–",
+                f"{s.escaped:.0%}" if s.escaped is not None else "–",
+                _bp(s.bp) if s.bp_matches else "–", fmt_duration(s.wait) if s.wait is not None else "–",
+                str(s.farming) if s.farming else "–"))
+
+    def _stats_session_open(self, iid):
+        """1.38.47: double-click on a session – Statistik › Letzte Runden with all its rounds marked."""
+        ts = self._stats_sess_ts.get(str(iid))
+        if ts:
+            self._show_rounds(ts)
+
     def _stats_part_trend(self, c):
         self._trend_render(c.pairs, TREND_UNIT.get(c.period, "week"))
 
@@ -1180,15 +1226,30 @@ class StatsTab:
     def _show_round(self, t: float) -> bool:
         """1.17.1: Statistik → Letzte Runden with the round that started at ``t`` marked and in view. False when the
         filters of the page hide it (the page opens all the same – the user's filters are not changed)."""
+        return self._show_rounds([t])
+
+    def _show_rounds(self, ts) -> bool:
+        """1.38.47: Statistik → Letzte Runden with every round of ``ts`` (banner times) marked, the newest in view –
+        more rows are loaded when one lies beyond the rows shown (a session from long ago). False when the filters
+        hide all of them."""
         self.qt.show_page("stats")
         self._stats_select(_("Letzte Runden"))
         self._stats_render()
+        c = self._stats_ctx
+        if c is not None and ts:
+            newest = sorted((r.t for r in c.rounds), reverse=True)
+            oldest = min(ts)
+            need = next((i + 1 for i, t in enumerate(newest) if t <= oldest), 0)
+            if need > self._stats_last_limit:
+                while self._stats_last_limit < need:
+                    self._stats_last_limit += LAST_ROUNDS_STEP
+                self._stats_render()
         self._stats_render_tab()
-        iid = repr(t)
-        if not self.stats_last.exists(iid):
+        iids = [repr(t) for t in ts if self.stats_last.exists(repr(t))]
+        if not iids:
             return False
-        self.stats_last.selection_set(iid)
-        self.stats_last.see(iid)
+        self.stats_last.selection_set(*iids)
+        self.stats_last.see(max(iids, key=float))
         self._stats_role_buttons()
         return True
 
