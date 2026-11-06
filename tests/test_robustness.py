@@ -458,3 +458,52 @@ def test_a_round_of_the_overview_opens_in_the_statistics_and_its_recording(tmp_p
         assert history.load(a._hist_path())                                              # nothing written
     finally:
         a.quit()
+
+
+def test_last_rounds_open_the_recording_of_a_round(tmp_path):
+    """1.38.46 (user: "Aufnahme direkt aus „Letzte Runden“ öffnen"): Statistik › Letzte Runden – right click on one
+    round offers „Aufnahme zeigen“ / „abspielen“ / „Clip bearbeiten …“, active only with a recording of it; several
+    rounds marked: not offered. Double-click / Enter shows the recording on Aufnahmen; without one a log line and the
+    page stays. „Abspielen“ opens only video files (the index is user-writable)."""
+    from fogscout import obsrec
+    now = time.time()
+    t_rec, t_none, t_txt = now - 7200, now - 3600, now - 1800
+    rounds = b"".join(json.dumps({"t": t, "seconds": 600, "map_id": "coal-tower", "map": "Coal Tower", "role": "killer",
+                                  "source": "auto"}).encode() + b"\n" for t in (t_rec, t_none, t_txt))
+    folder = tmp_path / "rec"
+    folder.mkdir()
+    (folder / "a.mkv").write_bytes(b"\0" * 100)
+    (folder / "notes.txt").write_text("x")
+    a = _start(tmp_path, {"welcome_seen": True, "rec_folder": str(folder)}, rounds=rounds)
+    try:
+        a.recorder.folder = lambda: str(folder)
+        obsrec.save_index(str(folder), [obsrec.Recording(t=t_rec, file="a.mkv", label="Coal Tower", end=t_rec + 600),
+                                        obsrec.Recording(t=t_txt, file="notes.txt", label="Coal Tower",
+                                                         end=t_txt + 600)])
+        _pump_app(a, 0.3)
+        assert a._show_round(t_rec)
+
+        def items():
+            return {i[0]: i[2] for i in a._stats_last_menu_items() if i}
+        got = items()
+        assert got["rec_show"] and got["rec_play"] and got["rec_clip"]
+        assert a._show_round(t_none)
+        got = items()
+        assert not got["rec_show"] and not got["rec_play"] and not got["rec_clip"]       # no recording: greyed out
+        a.stats_last.selection_set(repr(t_rec), repr(t_none))
+        assert "rec_show" not in items()                                                 # several rounds: none
+        a.stats_last._dbdms_open(repr(t_none))                                           # double-click, none
+        assert a.qt.current_key() == "stats"
+        assert [t for _c, _cat, t in a._log_entries if "keine Aufnahme" in t]
+        opened = []
+        a._open = opened.append
+        a._show_round(t_txt)
+        a._stats_last_menu_act("rec_play")                                               # not a video: refused
+        assert opened == [] and [t for _c, _cat, t in a._log_entries if "Keine Videodatei" in t]
+        a._show_round(t_rec)
+        a._stats_last_menu_act("rec_play")                                               # plays, page stays
+        assert opened == [str(folder / "a.mkv")] and a.qt.current_key() == "stats"
+        a.stats_last._dbdms_open(repr(t_rec))                                            # double-click: shown
+        assert a.qt.current_key() == "recordings" and a.rec_table.selection() == (repr(t_rec),)
+    finally:
+        a.quit()
