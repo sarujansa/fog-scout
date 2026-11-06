@@ -64,6 +64,9 @@ jobs:
           cache: pip
       - name: Pakete (wie start.bat, windows-capture ohne Abhängigkeiten)
         run: |
+          # 1.38.57: a failing pip must stop here – pwsh otherwise goes on and only the tests fail, without pip's reason
+          $PSNativeCommandUseErrorActionPreference = $true
+          $ErrorActionPreference = "Stop"
           python -m pip install pip==26.2.1
           python -m pip install --require-hashes --only-binary=:all: -r requirements.txt
           python -m pip install -r requirements-dev.txt

@@ -32,13 +32,10 @@ def rewrite(text: str) -> str:
     while i < len(lines):
         line = lines[i]
         i += 1
-        while line.rstrip().endswith("\\") and i < len(lines):  # an already hashed entry: its first line only
-            nxt = lines[i]
+        while line.rstrip().endswith("\\") and i < len(lines):  # a continued (already hashed) entry: one line
+            line = line.rstrip()[:-1] + " " + lines[i].strip()
             i += 1
-            if not nxt.strip().startswith("--hash"):
-                line = line.rstrip()[:-1] + " " + nxt.strip()
-            else:
-                line = line.rstrip()[:-1]
+        line = re.sub(r"\s*--hash=\S+", "", line)
         m = LINE.match(line.strip())
         if not m:
             out.append(line)

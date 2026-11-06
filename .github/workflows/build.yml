@@ -40,6 +40,9 @@ jobs:
           cache: pip
       - name: Pakete (wie start.bat, nur Wheels) und PyInstaller
         run: |
+          # 1.38.57: a failing pip must stop here – pwsh otherwise goes on and only the tests fail, without pip's reason
+          $PSNativeCommandUseErrorActionPreference = $true
+          $ErrorActionPreference = "Stop"
           python -m pip install pip==26.2.1
           python -m pip install --require-hashes --only-binary=:all: -r requirements.txt -r requirements-build.txt
           python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-extra.txt
