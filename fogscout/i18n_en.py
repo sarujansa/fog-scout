@@ -1434,7 +1434,7 @@ EN = {
     'Öffnet noch einmal die Einrichtung vom ersten Start: Spielsprache, Overlay-Position und die wichtigsten Tasten.':
         'Opens the setup of the first start again: game language, overlay position and the most important keys.',
     'Suchen (Strg+F)': 'Search (Ctrl+F)',
-    'Suchen … (Strg+F)': 'Search … (Ctrl+F)',
+    'Strg+F': 'Ctrl+F',
     # 1.26: the command palette and the optional question to Claude
     'Suchen: Einstellung, Seite, Map, Aktion, Runde …': 'Search: setting, page, map, action, round …',
     'Pfeiltasten wählen · Enter öffnen · Strg+Enter im Spiel bzw. die Aufnahme · Esc schliesst':
