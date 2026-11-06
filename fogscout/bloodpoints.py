@@ -32,8 +32,9 @@ HISTORY_KEPT = 12           # confirmed changes kept for the diagnosis
 
 
 def parse(text: str) -> int | None:
-    """The bloodpoints in what ``_currency`` read ("1 499 484 | 4 628 | 823" – the counters left to right,
-    bloodpoints first, then shards and cells): the first group's digits, or None."""
+    """The bloodpoints in what ``currency_text`` read ("662 887" – the counter with the bloodpoint icon; 1.38.39:
+    the bar shows cells | shards | bloodpoints, it was read as bloodpoints first before): the first group's
+    digits, or None."""
     first = str(text or "").split("|", 1)[0]
     digits = "".join(ch for ch in first if ch.isdigit())
     if not MIN_DIGITS <= len(digits) <= MAX_DIGITS:
