@@ -176,3 +176,68 @@ def test_the_prestige_line_takes_the_last_grade_of_each_bucket():
           Match(t=day(5, 21), map="C", role="survivor", character="Meg Thomas", prestige=9, level=9)]
     assert [g for _b, g in builds.prestige_series(ms, "The Nurse", "day")] == [(2, 30), None, (3, 1)]
     assert builds.prestige_series(ms, "Nobody", "day") == []
+
+
+def _graded(t, char, role, p, lvl):
+    return Match(t=t, map="Coal Tower", role=role, character=char, prestige=p, level=lvl)
+
+
+def test_new_prestige_grades_are_announced_but_not_on_the_first_import():
+    """1.38.50 (user's pick "Meilenstein-Meldung"): builds.prestige_ups compares the newly read matches with every
+    match stored before – a higher grade is news, the first grade of a character is not (else the first import
+    announces them all); milestone_lines marks 10/25/50/100 and cuts after three."""
+    known = [_graded(1, "The Nurse", "killer", 9, 40), _graded(2, "Meg Thomas", "survivor", 3, 10),
+             _graded(3, "The Nurse", "killer", 8, 50)]
+    fresh = [_graded(10, "The Nurse", "killer", 10, 2), _graded(11, "Meg Thomas", "survivor", 3, 30),
+             _graded(12, "The Trapper", "killer", 5, 1), Match(t=13, map="C", role="killer", character="The Nurse")]
+    ups = builds.prestige_ups(fresh, known)
+    assert ups == [("The Nurse", 9, 10)]                        # Meg: same grade; Trapper: first grade; no grade: left out
+    assert builds.milestone_lines(ups) == ["Meilenstein: The Nurse ist jetzt Prestige 10"]
+    assert builds.milestone_lines([("A", 3, 4)]) == ["A ist jetzt Prestige 4"]
+    many = [(c, 1, 2) for c in "ABCDE"]
+    assert builds.milestone_lines(many)[-1] == "+2 weitere" and len(builds.milestone_lines(many)) == 4
+    assert builds.prestige_ups([], known) == [] and builds.prestige_ups(fresh, []) == []
+
+
+def test_the_pace_and_the_forecast_of_the_next_prestige():
+    """1.38.50 (user's pick "Prognose nächstes Prestige"): levels per week over the last 28 days, across a grade;
+    None with one match, a span under three days or no gain; days to the next grade, none at P100."""
+    day = 86400.0
+    now = 100 * day
+    ms = [_graded(now - 40 * day, "The Nurse", "killer", 1, 1),                  # outside the window
+          _graded(now - 14 * day, "The Nurse", "killer", 3, 40),
+          _graded(now - 7 * day, "The Nurse", "killer", 3, 50),
+          _graded(now, "The Nurse", "killer", 4, 10)]                            # +20 levels in 14 days
+    assert abs(builds.pace(ms, "The Nurse", now) - 10.0) < 1e-9
+    assert builds.pace(ms[:1], "The Nurse", now) is None
+    assert builds.pace([_graded(now - day, "X", "killer", 1, 1), _graded(now, "X", "killer", 1, 9)], "X", now) is None
+    assert builds.pace([_graded(now - 7 * day, "X", "killer", 1, 9), _graded(now, "X", "killer", 1, 9)], "X", now) is None
+    assert builds.next_prestige_eta(4, 10, 10.0) == 41 / 10 * 7                  # P4 L10 → P5 L1: 41 levels
+    assert builds.next_prestige_eta(100, 1, 10.0) is None and builds.next_prestige_eta(4, 10, None) is None
+    assert builds.pace_text(10.0) == "10 Level/Woche" and builds.pace_text(2.5) == "2.5 Level/Woche"
+    assert builds.pace_text(None) == "–"
+    assert builds.eta_text(None) == "–" and builds.eta_text(0.4) == "≈ 1 Tag" and builds.eta_text(4.2) == "≈ 4 Tage"
+    assert builds.eta_text(8) == "≈ 1 Woche" and builds.eta_text(21) == "≈ 3 Wochen"
+    assert builds.eta_text(None, 100) == "P100 erreicht"
+
+
+def test_the_prestige_overview_and_the_mains():
+    """1.38.50 (user's pick "Fortschritts-Übersicht"): the tiles – characters, sum of grades, the highest, levels
+    gained since Monday (from the last match before Monday) – and the main per role (most matches)."""
+    import datetime
+    monday = datetime.datetime(2026, 11, 2, 12).timestamp()                    # a Monday
+    now = monday + 3 * 86400
+    ms = [_graded(monday - 86400, "The Nurse", "killer", 4, 10),                # before the week: the base
+          _graded(monday + 3600, "The Nurse", "killer", 4, 30),
+          _graded(monday + 7200, "The Nurse", "killer", 4, 40),                 # +30 this week
+          _graded(monday + 7300, "Meg Thomas", "survivor", 12, 1),              # only this week: +5
+          _graded(monday + 7400, "Meg Thomas", "survivor", 12, 6),
+          _graded(monday + 7500, "The Trapper", "killer", 1, 1)]
+    tiles = builds.prestige_tiles(ms, now)
+    assert [t.title for t in tiles] == ["Charaktere", "Prestige gesamt", "Höchster", "Level diese Woche"]
+    assert tiles[0].value == "3" and "2 Killer · 1 Survivor" in tiles[0].sub
+    assert tiles[1].value == str(4 + 12 + 1)
+    assert tiles[2].value == "P12" and "Meg Thomas" in tiles[2].sub and abs(tiles[2].frac - 0.12) < 1e-9
+    assert tiles[3].value == "35"
+    assert builds.prestige_tiles([Match(t=1, map="C", role="killer", character="X")], now) == []
+    assert builds.mains(ms) == {"killer": "The Nurse", "survivor": "Meg Thomas"}
