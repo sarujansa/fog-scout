@@ -78,3 +78,50 @@ def test_the_loader_makes_thumbnails_in_a_thread_and_the_newest_request_wins(tmp
     assert not loader.busy
     assert all(os.path.isfile(os.path.join(str(tmp_path / "cache"), thumbs.cache_name(p, (126, 116))))
                for p in pics[3:])
+
+
+def test_the_maps_page_keys_thumbnails_by_content(tmp_path):
+    """1.38.45: every update installs the maps with a new mtime – by content the thumbnail stays (one cache file, not
+    made again); other bytes give another one. Without by_content (screenshots) a new mtime still means a new name."""
+    pic = _picture(tmp_path / "a.png")
+    cache = str(tmp_path / "cache")
+    by_content = thumbs.cache_name(pic, (126, 116), by_content=True)
+    by_date = thumbs.cache_name(pic, (126, 116))
+    thumbs.thumbnail(pic, (126, 116), cache, by_content=True)
+    os.utime(pic, (2_000_000_000, 2_000_000_000))
+    assert thumbs.cache_name(pic, (126, 116), by_content=True) == by_content
+    assert thumbs.cache_name(pic, (126, 116)) != by_date
+    thumbs.thumbnail(pic, (126, 116), cache, by_content=True)
+    assert os.listdir(cache) == [by_content]
+    copy = _picture(tmp_path / "b.png")                                # same bytes elsewhere: the same thumbnail
+    assert thumbs.cache_name(copy, (126, 116), by_content=True) == by_content
+    _picture(pic, colour="blue")
+    assert thumbs.cache_name(pic, (126, 116), by_content=True) != by_content
+    assert thumbs.content_key(str(tmp_path / "missing.png")) is None
+    assert thumbs.cache_name(str(tmp_path / "missing.png"), (126, 116), by_content=True).endswith(".png")
+
+
+def test_a_loader_with_several_workers_makes_every_picture(tmp_path):
+    """1.38.45: the maps page decodes in up to thumbs.WORKERS threads – one at first, more only when pictures have to
+    be made (a cold cache); with every thumbnail cached it stays at one. Every picture comes exactly once."""
+    pics = [_picture(tmp_path / f"{i}.png", colour=(i * 20, 0, 0, 255)) for i in range(9)]
+
+    def run(loader):
+        loader.request(pics)
+        assert 1 <= len(loader._threads) <= 3
+        got, most = [], 0
+        end = time.time() + 20
+        while len(got) < len(pics) and time.time() < end:
+            most = max(most, len([t for t in loader._threads if t.is_alive()]))
+            got += [path for path, w, h, _d in loader.take() if (w, h) == (126, 89)]
+            time.sleep(0.002)
+        assert sorted(got) == sorted(pics)
+        assert not loader.busy
+        return most
+
+    cache = str(tmp_path / "cache")
+    run(thumbs.Loader((126, 116), cache, workers=3, by_content=True))          # cold: may grow up to three
+    assert len(os.listdir(cache)) == len({thumbs.content_key(p) for p in pics})
+    warm = thumbs.Loader((126, 116), cache, workers=3, by_content=True)
+    assert run(warm) == 1                                                       # all cached: one thread only
+    assert not warm._cold(pics[0]) and warm._cold(str(tmp_path / "missing.png"))
