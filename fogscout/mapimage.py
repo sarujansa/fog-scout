@@ -67,7 +67,7 @@ def is_animated(path: str) -> bool:
     try:
         with Image.open(path) as im:
             return bool(getattr(im, "is_animated", False))
-    except OSError:
+    except (OSError, Image.DecompressionBombError):     # 1.38.57 (security review): a huge picture is none either
         return False
 
 
@@ -92,7 +92,11 @@ def save(src: str, dest: str, remove_bg: bool = True, title: str = "") -> str:
     if dest.lower().endswith(".gif"):
         shutil.copyfile(src, dest)
     else:
-        with Image.open(src) as im:
+        try:
+            im = Image.open(src)
+        except Image.DecompressionBombError as e:       # 1.38.57 (security review): the callers' normal error
+            raise ValueError(str(e)) from e
+        with im:
             convert(im, remove_bg, title=title).save(dest, "WEBP", quality=90, method=4)
     return dest
 

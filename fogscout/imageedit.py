@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageEnhance, ImageFilter
 
-from . import annotate
+from . import annotate, fsops
 
 CENSOR_STYLES = ("pixel", "blur", "black")
 ASPECTS = (("free", None), ("16:9", 16 / 9), ("9:16", 9 / 16), ("1:1", 1.0), ("4:3", 4 / 3), ("4:5", 4 / 5))
@@ -245,8 +245,8 @@ def _drop_stale_tmp(folder: str, now: float | None = None):
         if TMP_NAME.match(name):
             full = os.path.join(folder, name)
             try:
-                if now - os.stat(full).st_mtime > STALE_TMP_S:
-                    os.remove(full)
+                if now - os.lstat(full).st_mtime > STALE_TMP_S:
+                    fsops.delete_inside(folder, full)    # 1.38.57 (security review): never through a link/junction
             except OSError:
                 pass
 

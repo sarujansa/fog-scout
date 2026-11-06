@@ -252,8 +252,9 @@ class YouTubeUpload:
             self._save_soon()
         elif kind == "done":
             self.recorder.set_link(data.get("kind", "clip"), data.get("rel", ""), data.get("id", ""))
-            self._log(_("YouTube: hochgeladen – {file} → {url}", file=os.path.basename(data.get("rel", "")),
-                        url=data.get("url", "")), "System")
+            # 1.38.57 (security review): no video link in the log (it is pasted into issues; an unlisted/private
+            # video stays findable) – the link is in the index, reachable per right-click
+            self._log(_("YouTube: hochgeladen – {file}", file=os.path.basename(data.get("rel", ""))), "System")
             if not (self.game is not None and not self.simulate and is_game_window(foreground_root())):
                 self.toast.show(_("YouTube"), _("Hochgeladen: {file}", file=os.path.basename(data.get("rel", ""))))
         elif kind == "failed":

@@ -97,10 +97,12 @@ def test_the_app_queues_rounds_on_request_and_clips_by_themselves(app_root, tmp_
         app._yt_auto_clip("still.png", "Coal Tower", "killer", "The Nurse", t)
         app._yt_auto_clip("clip2.mp4", "Coal Tower", "killer", "The Nurse", t)        # already queued
         assert len(added) == 3
-        # the thread says a video is done: the index gets the id, the log a line with the link
+        # the thread says a video is done: the index gets the id, the log a line with the file – 1.38.57 (security
+        # review): never the link (the log is pasted into issues; the link stays in the right-click menu)
         app._youtube_event("done", {"rel": "Clips/clip1.mp4", "kind": "clip", "id": "vid1", "url": "https://youtu.be/vid1"})
         assert links == [("clip", "Clips/clip1.mp4", "vid1")]
-        assert any("youtu.be/vid1" in str(e) for e in app._log_entries)
+        assert any("clip1.mp4" in str(e) for e in app._log_entries)
+        assert not any("vid1" in str(e) for e in app._log_entries)
         # the queue the thread reports is kept in the settings and mirrored for the tables
         app._youtube_event("queue", [{"rel": "Clips/clip2.mp4", "kind": "clip"}])
         assert app.settings.get("youtube_queue") == [{"rel": "Clips/clip2.mp4", "kind": "clip"}]

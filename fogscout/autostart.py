@@ -10,7 +10,7 @@ runs elevated when started through the task.
 Tasks:
   "Fog Scout"               on demand; the shortcuts run it (schtasks /run)
   "Fog Scout (Autostart)"   at logon (20 s delay), starts in the notification area ("tray")
-Both run: cmd /c start "" /min cmd /c .\\start.bat [tray]  in the program folder (working directory) – so
+Both run: cmd /d /c start "" /min "<System32>\\cmd.exe" /d /c .\\start.bat [tray]  in the program folder (working directory) – so
 updates and packages keep working, and the minimised console closes again (start alone would use cmd /K and
 leave it open). 1.8.45: the folder is never part of the command line – cmd would read "&" in it as a second
 command and expand "%…%" (the working directory is not parsed).
@@ -34,7 +34,7 @@ from . import icon as icon_mod
 from .appid import set_link_app_id
 from .i18n import _
 
-SETUP_VERSION = 8           # raise when task, shortcut or icon change: the program then renews them itself
+SETUP_VERSION = 9           # raise when task, shortcut or icon change: the program then renews them itself
 TASK = "Fog Scout"
 TASK_AUTO = "Fog Scout (Autostart)"
 LINK_NAME = "Fog Scout.lnk"
@@ -74,7 +74,11 @@ def task_script(root: str, name: str, at_logon: bool, exe: str | None = None) ->
         # "start" alone would run the .bat with cmd /K – its (minimised) console would stay open afterwards.
         # Explicit cmd /c closes it. 1.8.45: start.bat by its name in the working directory (-WorkingDirectory,
         # which start passes on) – a folder with "&" or "%" on the command line broke the task.
-        arg = '/c start "" /min cmd /c .\\start.bat' + (" tray" if at_logon else "")
+        # 1.38.57 (security review): /d on both cmd – without it cmd runs HKCU\\…\\Command Processor\\AutoRun first,
+        # which any program of the user may set, with the task's administrator rights; the inner cmd by its full path
+        # too ("start" would look in the working directory first)
+        cmd = _system_exe('cmd.exe')
+        arg = f'/d /c start "" /min "{cmd}" /d /c .\\start.bat' + (" tray" if at_logon else "")
         # 1.33.5 (review S5): cmd.exe by the path Windows gives, not the SystemRoot variable – the elevated task would run
         # whatever a normal program set that variable to
         action = (f"$a = New-ScheduledTaskAction -Execute {_q(_system_exe('cmd.exe'))} -Argument {_q(arg)} "
@@ -147,13 +151,33 @@ def _system_exe(*parts: str) -> str:
     return system_exe(*parts)
 
 
+def system_modules() -> str:
+    """Windows PowerShell's own module folder (System32, only administrators write it)."""
+    return _system_exe("WindowsPowerShell", "v1.0", "Modules")
+
+
+def powershell_env(environ=None) -> dict:
+    """1.38.57 (security review): the environment of the (often elevated) PowerShell – its module search path only
+    Windows' own folder. The user's PSModulePath (Documents\\WindowsPowerShell\\Modules first, or anything set in
+    HKCU\\Environment) would let a program of the user put its own "ScheduledTasks" module in front."""
+    env = dict(os.environ if environ is None else environ)
+    for k in [k for k in env if k.upper() == "PSMODULEPATH"]:
+        del env[k]
+    env["PSModulePath"] = system_modules()
+    return env
+
+
 def powershell(script: str, timeout: float = 60.0):
-    """Run a PowerShell script (encoded: no quoting trouble). Returns (ok, output)."""
+    """Run a PowerShell script (encoded: no quoting trouble). Returns (ok, output). 1.38.57: the scheduled-task
+    cmdlets come from Windows' own module by its full path (imported first), never from a module search."""
+    tasks = _system_exe("WindowsPowerShell", "v1.0", "Modules", "ScheduledTasks", "ScheduledTasks.psd1")
+    if "ScheduledTask" in script:
+        script = f"Import-Module -Name {_q(tasks)} -ErrorAction Stop\n" + script
     enc = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     try:
         r = subprocess.run([_system_exe("WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                             "-EncodedCommand", enc], capture_output=True, text=True, timeout=timeout,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           env=powershell_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, str(e)
     out = (r.stdout or "").strip() or (r.stderr or "").strip()

@@ -22,6 +22,23 @@ LAST = "settings.json"
 DIRS = ("backup", "user_maps")
 SOURCE_FILE = "takeover-source.txt"         # written by --install-tasks: the start.bat folder
 MARKER = "takeover-asked"                   # the question came once
+# 1.38.57 (security review): bounds of the folder copy – far above a real installation (user_maps < 200 pictures,
+# backup/ 28 copies); what lies beyond is not copied
+MAX_FILES = 5000
+MAX_BYTES = 2 * 1024 ** 3
+FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+def _linked(path: str) -> bool:
+    """1.38.57 (security review): a symlink, a directory junction or any other reparse point (Windows) – never
+    followed by the copy, which reads with the installer's rights."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return True
+    if os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path)):
+        return True
+    return bool(getattr(st, "st_file_attributes", 0) & FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def is_checkout(path) -> bool:
@@ -104,25 +121,33 @@ def copy(src: str, dst: str) -> list[str]:
     done = []
     for name in FILES:
         s = os.path.join(src, name)
-        if os.path.isfile(s) and _copy_file(s, os.path.join(dst, name)):
+        if os.path.isfile(s) and not _linked(s) and _copy_file(s, os.path.join(dst, name)):
             done.append(name)
+    seen, size = 0, 0
     for name in DIRS:
         top = os.path.join(src, name)
-        if not os.path.isdir(top):
+        if not os.path.isdir(top) or _linked(top):
             continue
         copied = False
         for base, dirs, files in os.walk(top):
-            dirs[:] = [x for x in dirs if not os.path.islink(os.path.join(base, x))]
+            dirs[:] = [x for x in dirs if not _linked(os.path.join(base, x))]
             rel = os.path.relpath(base, src)
             os.makedirs(os.path.join(dst, rel), exist_ok=True)
             for f in files:
                 s = os.path.join(base, f)
-                if os.path.isfile(s) and not os.path.islink(s) and _copy_file(s, os.path.join(dst, rel, f)):
+                if not os.path.isfile(s) or _linked(s):
+                    continue
+                seen += 1
+                size += os.path.getsize(s)
+                if seen > MAX_FILES or size > MAX_BYTES:
+                    dirs[:] = []
+                    break                                # 1.38.57: bounded – the rest stays behind
+                if _copy_file(s, os.path.join(dst, rel, f)):
                     copied = True
         if copied:
             done.append(name + "/")
     s = os.path.join(src, LAST)
-    if os.path.isfile(s) and _copy_file(s, os.path.join(dst, LAST)):
+    if os.path.isfile(s) and not _linked(s) and _copy_file(s, os.path.join(dst, LAST)):
         done.append(LAST)
     return done
 

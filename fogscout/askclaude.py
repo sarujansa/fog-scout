@@ -37,6 +37,8 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"   # a declined request is retr
 MAX_TOKENS = 1024
 HTTP_TIMEOUT = 20.0
 IMAGE_TIMEOUT = 60.0                 # 1.35: a request with a picture uploads more and takes longer
+MAX_BODY = 1024 * 1024        # 1.38.57 (security review): a larger answer is a network error (a reply is a few KB)
+MAX_ERROR_BODY = 64 * 1024    # … an error answer is read only this far
 MAX_IDS = 5
 MAX_QUESTION = 300                   # characters of the question sent at most
 MAX_CATALOGUE = 600                  # entries sent at most
@@ -249,15 +251,20 @@ def send(key: str, payload: dict, timeout: float = HTTP_TIMEOUT) -> dict:
                                  headers=headers(key, "fallbacks" in payload), method="POST")
     try:
         with _opener().open(req, timeout=timeout) as r:
-            reply = json.loads(r.read().decode("utf-8"))
+            data = r.read(MAX_BODY + 1)
+            if len(data) > MAX_BODY:
+                raise AskError("net", "too large")
+            reply = json.loads(data.decode("utf-8"))
         if isinstance(reply, dict):                      # 1.36: what it cost (estimate), also for a refusal
             METER.add(str(payload.get("model") or MODEL), reply.get("usage"))
         return reply
     except urllib.error.HTTPError as e:
         code = e.code
         try:
-            err = json.loads(e.read().decode("utf-8")).get("error") or {}
+            err = json.loads(e.read(MAX_ERROR_BODY + 1)[:MAX_ERROR_BODY].decode("utf-8")).get("error") or {}
         except (ValueError, OSError, AttributeError):
+            err = {}
+        if not isinstance(err, dict):
             err = {}
         if code in (401, 403):
             raise AskError("auth") from None

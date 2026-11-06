@@ -29,6 +29,7 @@ DIR = "corpus"
 KEEP = 300                      # newest decisions kept (≈ 300 × 150 KB)
 FORMAT = "fogscout-corpus"
 JPEG_QUALITY = 90
+MAX_ROI = 8192                  # 1.38.57 (security review): largest strip side check() puts a crop back onto
 # margin around the separator as fractions of its length – a little more than locate_text reads
 # (0.60 L to the left of a short line, 0.30 L above, 0.03 L to the right, 0.11 L below)
 MARGIN = (0.65, 0.34, 0.08, 0.20)
@@ -151,6 +152,9 @@ def check(data_dir: str, reader, stop=None) -> Report:
             crop = cv2.imdecode(np.fromfile(e.picture, dtype=np.uint8), cv2.IMREAD_COLOR)
             W, H = int(m["roi"][0]), int(m["roi"][1])
             x0, y0 = int(m["offset"][0]), int(m["offset"][1])
+            # 1.38.57 (security review): the side file is user-writable – a huge "roi" allocated gigabytes
+            if not (0 < W <= MAX_ROI and 0 < H <= MAX_ROI and 0 <= x0 < W and 0 <= y0 < H):
+                raise ValueError("roi out of range")
             canvas = np.zeros((H, W, 3), np.uint8)
             h, w = crop.shape[:2]
             canvas[y0:y0 + h, x0:x0 + w] = crop[:H - y0, :W - x0]

@@ -359,7 +359,8 @@ def test_userscript_saves_a_file_the_program_reads(tmp_path):
         "opponentStat": [{"playerRole": "VE_Camper", "characterName": {"name": "Meg Thomas"},
                           "playerName": "SomeoneElse", "platformId": "765611",
                           "playerStatus": {"name": "Sacrificed", "image": {"path": "display/status/sacrificed.png"},
-                                           "details": {"nested": "dropped"}}}] * 4}]
+                                           "details": {"nested": "dropped"}, "playerId": "status-secret",
+                                           "isBot": True}}] * 4}]
     script_path = tmp_path / "harness.js"
     answer_path = tmp_path / "answer.json"
     script_path.write_text(HARNESS, encoding="utf-8")
@@ -370,7 +371,7 @@ def test_userscript_saves_a_file_the_program_reads(tmp_path):
     saved = json.loads(out.stdout)
     assert len(saved["xhr"]) == 1                            # once; not again for the same matches
     assert len(saved["fetch"]) == 1 and len(saved["cache"]) == 1   # fetch() and the page's cached copy work too
-    for secret in ("MyOwnName", "SomeoneElse", "765611", "secret-match-id", "dropped"):
+    for secret in ("MyOwnName", "SomeoneElse", "765611", "secret-match-id", "dropped", "status-secret", "isBot"):
         assert secret not in saved["xhr"][0]                 # only the whitelisted fields leave the page
     ms, script = o.parse(json.loads(saved["xhr"][0]), now=T0)
     assert script == o.script_version(SCRIPT)
@@ -498,9 +499,10 @@ def test_userscript_4_saves_all_matches_again_on_request_and_says_what_it_does(t
     assert names == {"first": ["fogscout-matches.json"], "again": [], "resave": ["fogscout-matches.json"],
                      "after": []}
     assert o.parse(json.loads(res["resave"][0][1]), now=T0)[0][0].map == "Coal Tower"
-    assert sum("userscript 5 active" in m for m in res["logs"]) == 4                 # once per page load
+    active = f"userscript {o.script_version(SCRIPT)} active"
+    assert sum(active in m for m in res["logs"]) == 4                                # once per page load
     assert sum("no new match" in m for m in res["logs"]) == 2                       # "again" and "after"
-    assert o.RESAVE_HASH == "#fogscout-resave" and o.RESAVE_SCRIPT == o.script_version(SCRIPT)
+    assert o.RESAVE_HASH == "#fogscout-resave" and o.RESAVE_SCRIPT <= o.script_version(SCRIPT)   # 6: status only
 
 
 # ------------------------------------------------------------------ map correction, trend
@@ -745,7 +747,7 @@ def test_files_of_the_old_program_name_are_still_taken(tmp_path):
     with pytest.raises(ValueError):
         o.parse({"format": "someone-elses", "matches": []})
     assert o.PREFIX == o.FORMAT == "fogscout-matches" and o.STRUCTURE_HASH == "#fogscout-structure"
-    assert o.STRUCTURE_SCRIPT == o.RESAVE_SCRIPT == o.script_version(SCRIPT) == 5      # the hashes carry the new name
+    assert o.STRUCTURE_SCRIPT == o.RESAVE_SCRIPT == 5 <= o.script_version(SCRIPT)      # the hashes carry the new name
 
 
 def test_the_download_folder_is_listed_only_when_it_changed(tmp_path):
