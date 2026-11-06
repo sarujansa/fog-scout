@@ -3802,8 +3802,8 @@ EN = {
     "Noch kein Prestige in dieser Auswahl – es kommt aus den Match-Daten (Userscript ab Version 3).":
         "No prestige in this selection yet – it comes from the match data (userscript version 3 or newer).",
     "Prestige": "Prestige",
-    "Prestige und Level deiner Charaktere laut Stats-Seite (ab Userscript Version 3). „Prestige“ und „Level“ = der neueste Stand; „Zuwachs“ und „Matches“ gelten für die Filter oben. Eine Zeile anklicken zeigt darunter den Verlauf dieses Charakters. „Tempo“ = gewonnene Level pro Woche aus den Matches der letzten {days} Tage, „Nächstes P“ = wie lange es bei diesem Tempo bis zur nächsten Stufe dauert. Level steigen nur, wenn du Blutpunkte im Blutnetz ausgibst – die Prognose sagt, was bisher geschah, keine Zusage. „Main“ = dein Charakter mit den meisten Matches je Rolle.":
-        "Prestige and level of your characters from the stats page (userscript version 3 or newer). \"Prestige\" and \"Level\" = the newest state; \"Gain\" and \"Matches\" follow the filters above. Click a row to see that character's trend below. \"Tempo\" = levels gained per week from the matches of the last {days} days, \"Next P\" = how long the next grade takes at that pace. Levels rise only when you spend bloodpoints in the bloodweb – the forecast says what happened so far, no promise. \"Main\" = your character with the most matches per role.",
+    "Prestige und Level deiner Charaktere laut Stats-Seite (ab Userscript Version 3). „Prestige“ und „Level“ = der neueste Stand; „Zuwachs“ und „Matches“ gelten für die Filter oben. Eine Zeile anklicken zeigt darunter den Verlauf dieses Charakters. „Tempo“ = gewonnene Level pro Woche aus den Matches der letzten {days} Tage, „Nächstes P“ = wie lange es bei diesem Tempo bis zur nächsten Stufe dauert. Level steigen nur, wenn du Blutpunkte im Blutnetz ausgibst – die Prognose sagt, was bisher geschah, keine Zusage. „Main“ = dein Charakter mit den meisten Matches je Rolle. „P100“ und „Höchster“ zählen nur Charaktere, die in deinen Match-Daten vorkommen.":
+        "Prestige and level of your characters from the stats page (userscript version 3 or newer). \"Prestige\" and \"Level\" = the newest state; \"Gain\" and \"Matches\" follow the filters above. Click a row to see that character's trend below. \"Tempo\" = levels gained per week from the matches of the last {days} days, \"Next P\" = how long the next grade takes at that pace. Levels rise only when you spend bloodpoints in the bloodweb – the forecast says what happened so far, no promise. \"Main\" = your character with the most matches per role. \"P100\" and \"Highest\" count only characters that appear in your match data.",
     "Prestige von {name} {per}": "Prestige of {name} {per}",
     "Zuletzt": "Last played",
     "Zuwachs": "Gain",
@@ -3827,4 +3827,6 @@ EN = {
     "≈ 1 Woche": "≈ 1 week",
     "≈ {n} Tage": "≈ {n} days",
     "≈ {n} Wochen": "≈ {n} weeks",
+    "{n} Charaktere": "{n} characters",
+    "P100": "P100",
 }
