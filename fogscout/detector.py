@@ -606,7 +606,27 @@ def _right_region(frame, x0, y0, y1, full_width=False):
     return frame[int(y0 * H):int(y1 * H), x_start:x_end]
 
 
-CURRENCY_X0, CURRENCY_Y1 = 0.62, 0.12      # the strip of the currency counters top right (bloodpoints, shards, cells)
+CURRENCY_X0, CURRENCY_Y1 = 0.62, 0.12      # the strip of the currency counters top right (cells, shards, bloodpoints)
+BP_RED_MIN = 0.06       # 1.38.39: share of red pixels left of a counter for the bloodpoint drop (measured 0.15–0.16)
+BP_PURPLE_MAX = 0.03    # … the shard icon is purple with a red core (purple 0.06–0.07, the drop 0.00)
+BP_GOLD_MAX = 0.08      # … the auric cell is gold (0.25–0.27; behind it a red sky can add red, measured 0.35)
+
+
+def bp_icon(img, word) -> bool:
+    """1.38.39 (user screenshots 06.11.2026, both lobbies): does the icon left of this word of the currency bar look
+    like the bloodpoint drop – red, neither the purple shard nor the gold auric cell? ``word`` = (x0, y0, x1, y1)
+    in ``img``. A counter that fails is never read as the bloodpoints (no reading beats a wrong one)."""
+    x0, y0, x1, y1 = word
+    h = y1 - y0
+    reg = img[max(0, y0 - int(0.3 * h)):min(img.shape[0], y1 + int(0.3 * h)),
+              max(0, x0 - int(1.7 * h)):max(0, x0 - int(0.1 * h))]
+    if reg.size == 0:
+        return False
+    b, g, r = (reg[..., i].astype(np.int32) for i in range(3))
+    red = float(((r >= 120) & (r >= 2 * g) & (10 * r >= 16 * b)).mean())
+    purple = float(((b >= 100) & (10 * b >= 11 * g) & (10 * b >= 6 * r) & (10 * r < 16 * b)).mean())
+    gold = float(((r >= 150) & (g >= 110) & (10 * b < 6 * g)).mean())
+    return red >= BP_RED_MIN and purple < BP_PURPLE_MAX and gold < BP_GOLD_MAX
 
 
 def currency_box(frame_w: int, frame_h: int):
@@ -826,19 +846,21 @@ class OutOfMatchWatcher:
         return best, text
 
     def currency_text(self, img, frame_h) -> str:
-        """1.13: the leftmost counter of the currency bar as text ("1 499 484" – the bloodpoints; shards and cells
-        follow to the right and are not read), "" without any; ``img`` = the strip of ``currency_box``."""
-        return self._currency(img, frame_h, first_only=True)[2]
+        """The bloodpoints of the currency bar as text ("662 887"), "" without them; ``img`` = the strip of
+        ``currency_box``. 1.38.39 (user screenshots 06.11.2026): the bar reads auric cells | shards | bloodpoints
+        from left to right – the counter is found by its icon (``bp_icon``), not by its place."""
+        words = [w for w in self._currency_words(img, frame_h) if bp_icon(img, w)]
+        for w in sorted(words, key=lambda w: -w[0]):        # the rightmost counter with the icon
+            t = self._currency_read(img, w)
+            if t:
+                return t
+        return ""
 
-    def _currency(self, img, frame_h, first_only=False):
-        """Number groups in the currency bar top right, e.g. „1 499 484“ „4 628“ „823“.
-
-        The counters sit on one row, separated by coloured icons, so every
-        digit group is read on its own. Returns (groups with ≥ 3 digits, digits, text).
-        ``first_only`` (1.13): stop after the first digit group – the bloodpoints, a third of the OCR.
-        """
+    @staticmethod
+    def _currency_words(img, frame_h) -> list:
+        """(x0, y0, x1, y1) of every group of glyphs on a text row of the currency bar (≥ 2 glyphs, rows of ≥ 3)."""
         if img.size == 0:
-            return 0, 0, ""
+            return []
         L = 0.3338 * frame_h * 16 / 9
         lo, hi = 0.007 * frame_h, 0.04 * frame_h
         comps = [c for c in _components(_text_mask(img, L))
@@ -852,7 +874,7 @@ class OutOfMatchWatcher:
                     break
             else:
                 rows.append({"cy": cy, "h": c[3], "c": [c]})
-        groups, digits, texts = 0, 0, []
+        out = []
         for r in rows:
             if len(r["c"]) < 3:
                 continue
@@ -868,19 +890,33 @@ class OutOfMatchWatcher:
             for w in words:
                 if len(w) < 2:
                     continue
-                x0, x1 = min(c[0] for c in w), max(c[0] + c[2] for c in w)
-                y0, y1 = min(c[1] for c in w), max(c[1] + c[3] for c in w)
-                h = y1 - y0
-                crop = img[max(0, y0 - int(0.3 * h)):min(img.shape[0], y1 + int(0.3 * h)),
-                           max(0, x0 - int(0.4 * h)):min(img.shape[1], x1 + int(0.4 * h))]
-                if crop.size == 0:
-                    continue
-                t = self.rec.text(self.rec.probs(crop)).strip()
-                n = sum(ch.isdigit() for ch in t)
-                if n >= 3 and all(ch.isdigit() or ch in " .,'’" for ch in t):
-                    groups += 1
-                    digits += n
-                    texts.append(t)
-                    if first_only:
-                        return groups, digits, t
+                out.append((min(c[0] for c in w), min(c[1] for c in w),
+                            max(c[0] + c[2] for c in w), max(c[1] + c[3] for c in w)))
+        return out
+
+    def _currency_read(self, img, word) -> str:
+        """The digits of one word of the bar ("" unless it is a number of ≥ 3 digits)."""
+        x0, y0, x1, y1 = word
+        h = y1 - y0
+        crop = img[max(0, y0 - int(0.3 * h)):min(img.shape[0], y1 + int(0.3 * h)),
+                   max(0, x0 - int(0.4 * h)):min(img.shape[1], x1 + int(0.4 * h))]
+        if crop.size == 0:
+            return ""
+        t = self.rec.text(self.rec.probs(crop)).strip()
+        n = sum(ch.isdigit() for ch in t)
+        return t if n >= 3 and all(ch.isdigit() or ch in " .,'’" for ch in t) else ""
+
+    def _currency(self, img, frame_h):
+        """Number groups in the currency bar top right, e.g. „1 381“ „11 340“ „662 887“.
+
+        The counters sit on one row, separated by coloured icons, so every
+        digit group is read on its own. Returns (groups with ≥ 3 digits, digits, text).
+        """
+        groups, digits, texts = 0, 0, []
+        for w in self._currency_words(img, frame_h):
+            t = self._currency_read(img, w)
+            if t:
+                groups += 1
+                digits += sum(ch.isdigit() for ch in t)
+                texts.append(t)
         return groups, digits, " | ".join(texts[:4])

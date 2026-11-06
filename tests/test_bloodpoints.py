@@ -162,7 +162,7 @@ def _bar(texts, size=30):
     f = ImageFont.truetype(os.path.join(ROOT, "fogscout", "fonts", "Inter-Medium.otf"), size)
     x = 2800
     for i, t in enumerate(texts):
-        d.ellipse((x, 28, x + 26, 54), fill=[(170, 30, 30), (30, 150, 160), (200, 160, 40)][i % 3])
+        d.ellipse((x, 28, x + 26, 54), fill=[(200, 160, 40), (120, 60, 210), (170, 30, 30)][i % 3])
         x += 36
         d.text((x, 24), t, font=f, fill=(235, 235, 235))
         x += int(d.textlength(t, font=f)) + 40
@@ -176,15 +176,30 @@ def watcher():
     return OutOfMatchWatcher(Recognizer(os.path.join(ROOT, "models", "ch_PP-OCRv4_rec_infer.onnx")))
 
 
-@pytest.mark.parametrize("texts, value", [(["1 499 484", "4 628", "823"], 1499484),
-                                          (["5 000 000", "61 250", "1 150"], 5000000),
-                                          (["5,000,000", "61,250", "1,150"], 5000000)])
-def test_the_leftmost_counter_is_read_as_the_bloodpoints(watcher, texts, value):
+@pytest.mark.parametrize("texts, value", [(["823", "4 628", "1 499 484"], 1499484),
+                                          (["1 150", "61 250", "5 000 000"], 5000000),
+                                          (["1,150", "61,250", "5,000,000"], 5000000)])
+def test_the_counter_with_the_bloodpoint_icon_is_read(watcher, texts, value):
+    """1.38.39: cells (gold) | shards (purple) | bloodpoints (red), as the game shows them – the drawn bar."""
     x, y, w, h = currency_box(W, H)
     strip = _bar(texts)[y:y + h, x:x + w]
     text = watcher.currency_text(strip, H)
-    assert bp.parse(text) == value and "|" not in text              # only the first group is read
+    assert bp.parse(text) == value and "|" not in text              # only that counter is read
     assert watcher.currency_text(np.full((h, w, 3), 20, np.uint8), H) == ""
+
+
+@pytest.mark.parametrize("name", ["killer", "survivor"])
+def test_the_real_lobby_bar_gives_the_bloodpoints_not_the_auric_cells(watcher, name):
+    """1.38.39 (user diagnosis 05.11.: balance 1 381 – the auric cells; user screenshots 06.11. of both lobbies,
+    2000×837, the strip of currency_box): "1 381 | 11 340 | 662 887" – the bloodpoints are the counter on the
+    right with the red drop; the shard icon (purple, red core) and the gold cell over a red sky are no drop."""
+    from fogscout.detector import bp_icon
+    strip = cv2.imread(os.path.join(ROOT, "tests", "data", "lobby", f"currency_{name}.png"))
+    assert strip.shape[:2] == currency_box(2000, 837)[:1:-1]
+    assert bp.parse(watcher.currency_text(strip, 837)) == 662887
+    words = sorted(watcher._currency_words(strip, 837))
+    assert [bp_icon(strip, w) for w in words] == [False, False, True]
+    assert watcher._currency(strip, 837)[:2] == (3, 15)              # the round end still sees all three groups
 
 
 # ------------------------------------------------------------------ the worker's look
