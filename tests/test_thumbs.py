@@ -145,6 +145,7 @@ def test_pruning_never_follows_a_link_out_of_the_cache(tmp_path):
         os.symlink(target, cache / "link.png")
     except OSError:
         pytest.skip("no symlinks")
-    os.utime(cache / "link.png", (1, 1), follow_symlinks=False)
+    if os.utime in os.supports_follow_symlinks:                     # not on Windows: the link stays new there
+        os.utime(cache / "link.png", (1, 1), follow_symlinks=False)
     assert thumbs.prune(str(cache), now=10 ** 9) == 1
     assert not old.exists() and target.exists() and os.path.lexists(cache / "link.png")

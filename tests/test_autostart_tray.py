@@ -283,7 +283,7 @@ def test_powershell_finds_its_modules_only_in_windows_own_folder(monkeypatch):
     env = au.powershell_env({"PSModulePath": "C:\\Users\\x\\Documents\\WindowsPowerShell\\Modules",
                              "psmodulepath": "C:\\evil", "PATH": "x"})
     assert [k for k in env if k.upper() == "PSMODULEPATH"] == ["PSModulePath"]
-    assert env["PSModulePath"] == au.system_modules() and "System32" in env["PSModulePath"]
+    assert env["PSModulePath"] == au.system_modules() and "system32" in env["PSModulePath"].lower()
     assert env["PATH"] == "x"
     seen = {}
 

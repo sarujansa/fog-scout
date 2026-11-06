@@ -584,6 +584,7 @@ def test_stale_temporary_files_go_but_never_through_a_link(tmp_path):
         os.symlink(outside / "keep.png.1-1.tmp", folder / "b.png.1-3.tmp")
     except (OSError, NotImplementedError):
         pytest.skip("no symlinks")
-    os.utime(folder / "b.png.1-3.tmp", (1, 1), follow_symlinks=False)
+    if os.utime in os.supports_follow_symlinks:                     # not on Windows: the link stays new there
+        os.utime(folder / "b.png.1-3.tmp", (1, 1), follow_symlinks=False)
     imageedit._drop_stale_tmp(str(folder), now=10 ** 9)
     assert not stale.exists() and os.path.lexists(folder / "b.png.1-3.tmp") and (outside / "keep.png.1-1.tmp").exists()
