@@ -1,0 +1,4 @@
+# Die pip-Version, die start.bat bei der Ersteinrichtung in .venv holt (1.38.57: mit Prüfsumme wie die Pakete;
+# dieselbe Version wie in den Workflows, Wächter test_ci_and_start_bat_install_only_pinned_tools).
+pip==26.2.1 \
+    --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e

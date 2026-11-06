@@ -99,16 +99,73 @@ def _clean_environment(environ) -> dict:
             if not (k.upper().startswith(UNSAFE_PREFIXES) or k.upper() in UNSAFE_NAMES)}
 
 
+def _git_exe() -> str | None:
+    """1.38.57 (security review): git as administrator – on Windows Git for Windows from its machine-wide entry
+    (HKLM, only administrators write it), so a git.exe somewhere earlier on the user's PATH is not taken. Else
+    the PATH (Linux, or git installed some other way)."""
+    if sys.platform == "win32":
+        try:
+            import winreg
+        except ImportError:
+            winreg = None
+        for view in ((winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY) if winreg else ()):
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\GitForWindows", 0,
+                                    winreg.KEY_READ | view) as key:
+                    base = winreg.QueryValueEx(key, "InstallPath")[0]
+            except OSError:
+                continue
+            exe = os.path.join(str(base), "cmd", "git.exe")
+            if os.path.isfile(exe):
+                return exe
+    return shutil.which("git")
+
+
+# 1.38.57: the only values taken over from the user's global git config (read, never run) – the line endings Git
+# for Windows sets and the folders the user marked safe. Everything else in it is ignored.
+GLOBAL_KEEP = {"core.autocrlf": ("true", "false", "input"), "core.eol": ("lf", "crlf", "native"),
+               "safe.directory": None}
+_kept: dict = {}
+
+
+def _global_settings(exe, env) -> list:
+    """``-c key=value`` for GLOBAL_KEEP from the user's global config (``git config --global --get-all``)."""
+    if exe in _kept:
+        return _kept[exe]
+    out = []
+    for key, allowed in GLOBAL_KEEP.items():
+        try:
+            r = subprocess.run([exe, "config", "--global", "--get-all", key], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=10, env=env,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if r.returncode != 0:
+            continue
+        for value in (r.stdout or "").splitlines()[:20]:
+            value = value.strip()
+            if value and "\0" not in value and (allowed is None or value.lower() in allowed):
+                out += ["-c", f"{key}={value}"]
+    _kept[exe] = out
+    return out
+
+
 def _git(root, *args, timeout=15):
     # 1.38.21: git runs as administrator in a folder the user writes to – the settings that make git run a program
     # (hooks, the fsmonitor command, a credential helper) are overridden on the command line, which beats every
-    # config file. The system and global config stay in: without them Git for Windows' core.autocrlf is gone and
-    # every file counts as changed ("eigene Änderungen" – the Windows CI showed it).
+    # config file. 1.38.57 (security review): the user's global config (%USERPROFILE%\.gitconfig – any program of
+    # the user writes it) is switched off entirely (GIT_CONFIG_GLOBAL): there url.…insteadOf, a smudge filter, an
+    # askpass program or http.sslVerify=false would steer the administrator's git. The system config stays (Git for
+    # Windows keeps core.autocrlf there; switching it off made every file count as changed – the Windows CI showed
+    # it), and of the global one only GLOBAL_KEEP is passed on.
+    exe = _git_exe() or "git"
     env = dict(_clean_environment(os.environ), GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")   # never wait for a password
+    kept = _global_settings(exe, env)
+    env["GIT_CONFIG_GLOBAL"] = "/dev/null"         # Git for Windows maps it to nul
     hard = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.path.join(root, ".venv", "no-hooks"),
-            "-c", "credential.helper="]
+            "-c", "credential.helper=", "-c", "http.sslVerify=true", *kept]
     try:
-        r = subprocess.run(["git", *hard, *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
+        r = subprocess.run([exe, *hard, *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=timeout, env=env,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -137,7 +194,7 @@ def _version(root, rev) -> str:
 
 def _repo_problem(root, branch):
     """Why this folder cannot be updated (message), or None."""
-    if shutil.which("git") is None:
+    if _git_exe() is None:
         return _t(root, "Update übersprungen: git ist nicht installiert.")
     if not os.path.isdir(os.path.join(root, ".git")):
         return _t(root, "Update übersprungen: kein Git-Ordner (entpackte Kopie).")
@@ -246,8 +303,10 @@ def sync_packages(root: str, venv: str, run=None) -> list:
         print(_t(root, "Installiere Pakete aus {name} ...", name=name))
         # 1.12.3: wheels only – pip never builds a source package here (its setup.py would run as administrator);
         # every pinned package has wheels for Windows and Python 3.12–3.14
-        args = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--only-binary=:all:", "-r",
-                os.path.join(root, name)]
+        # 1.38.57 (security review): isolated (no pip.ini, no PIP_* of the user – they could name another index),
+        # only PyPI, and only files whose SHA-256 is in the requirements file (tools/hash_requirements.py)
+        args = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--isolated", "--index-url",
+                "https://pypi.org/simple", "--only-binary=:all:", "--require-hashes", "-r", os.path.join(root, name)]
         if no_deps:
             args.insert(-2, "--no-deps")
         if run(args) == 0:

@@ -198,7 +198,7 @@ def test_the_program_starts_the_checked_setup_itself_and_only_then_quits(update_
     app.run(str(setup), SUM)
     (path, args), = started
     assert path == str(setup) and args[:4] == ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/update=1"]
-    assert args[4] == f'/LOG="{os.path.join(str(folder), relupdate.LOG_FILE)}"'
+    assert len(args) == 4               # 1.38.57: no log of the elevated setup in the user's folder
     assert app.quits == [True]
     assert not hasattr(restart, "wait_and_install") and not hasattr(restart, "spawn_installer")
 
@@ -489,3 +489,15 @@ def test_only_a_push_to_main_publishes_and_only_that_job_may_write():
     with open(os.path.join(ROOT, "installer", "fogscout.spec"), encoding="utf-8") as fh:
         assert '"build-info.json"' in fh.read()
     assert re.search(r"/build-info\.json", open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read())
+
+
+def test_the_download_is_held_and_checked_again_while_windows_asks(update_folder):
+    """1.38.57 (security review): not elevated, the download itself is started – hashed again right before, under
+    a hold that keeps others from changing it (Windows) until the start; a changed file never gets through."""
+    folder, setup = update_folder
+    with restart.held_setup(str(setup), SUM) as path:
+        assert path == str(setup)
+    setup.write_bytes(SETUP + b"!")
+    with pytest.raises(ValueError):
+        with restart.held_setup(str(setup), SUM):
+            pytest.fail("a changed setup was handed out")

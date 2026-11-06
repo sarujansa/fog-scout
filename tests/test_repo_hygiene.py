@@ -57,18 +57,55 @@ def test_an_anthropic_key_is_recognised_but_not_the_prefix_in_texts():
         assert not SECRET.search(harmless), harmless
 
 
+def _requirements(name):
+    """(line number, spec, hashes) of every package in a requirements file – a line ending in "\\" goes on."""
+    out, buf, start = [], "", 0
+    with open(os.path.join(ROOT, name), encoding="utf-8") as fh:
+        for n, line in enumerate(fh, 1):
+            text = line.split("#", 1)[0].rstrip()
+            if not buf:
+                start = n
+            if text.endswith("\\"):
+                buf += text[:-1] + " "
+                continue
+            buf += text
+            if buf.strip():
+                hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", buf)
+                spec = re.sub(r"--hash=\S+", "", buf).split(";", 1)[0].strip()
+                out.append((start, spec, hashes))
+            buf = ""
+    return out
+
+
+HASHED = ("requirements.txt", "requirements-extra.txt", "requirements-build.txt", "requirements-pip.txt")
+
+
 def test_every_package_is_pinned_to_a_tested_version():
     """1.8.53 (user: pin the packages): start.bat installs with administrator rights – a new release of a package
-    must never come in by itself, only after it was tested and written here."""
+    must never come in by itself, only after it was tested and written here. 1.38.57 (security review before the
+    release): the files pip installs for the program and the .exe also carry the SHA-256 of every wheel
+    (tools/hash_requirements.py) – a wheel added to PyPI later under the same version is refused."""
     loose = []
-    for name in ("requirements.txt", "requirements-extra.txt", "requirements-build.txt",     # build: 1.31 (.exe)
-                 "requirements-dev.txt"):                                                  # 1.34.2: the checks' tools
-        with open(os.path.join(ROOT, name), encoding="utf-8") as fh:
-            for n, line in enumerate(fh, 1):
-                spec = line.split("#", 1)[0].split(";", 1)[0].strip()
-                if spec and not re.fullmatch(r"[A-Za-z0-9_.\-]+==[0-9][0-9A-Za-z.\-]*", spec):
-                    loose.append(f"{name}:{n}: {spec}")
+    for name in HASHED + ("requirements-dev.txt",):                     # dev: 1.34.2, the checks' tools (CI only)
+        for n, spec, hashes in _requirements(name):
+            if not re.fullmatch(r"[A-Za-z0-9_.\-]+==[0-9][0-9A-Za-z.\-]*", spec):
+                loose.append(f"{name}:{n}: {spec}")
+            if name in HASHED and not hashes:
+                loose.append(f"{name}:{n}: {spec} without --hash")
     assert loose == []
+
+
+def test_the_installs_use_the_hashes_and_only_pypi():
+    """1.38.57: every pip install of a hashed file runs isolated (no pip.ini, no PIP_* of the user) against PyPI
+    only – start.bat and update.py run it as administrator."""
+    with open(os.path.join(ROOT, "start.bat"), encoding="utf-8") as fh:
+        bat = fh.read()
+    with open(os.path.join(ROOT, "fogscout", "update.py"), encoding="utf-8") as fh:
+        upd = fh.read()
+    for line in bat.splitlines():
+        if " -m pip install" in line:
+            assert "--isolated" in line and "--index-url https://pypi.org/simple" in line, line
+    assert '"--isolated"' in upd and '"--require-hashes"' in upd and '"https://pypi.org/simple"' in upd
 
 
 PIP_VERSION = "26.2.1"
@@ -90,6 +127,7 @@ def test_ci_and_start_bat_install_only_pinned_tools():
                 if " pip==" in line and f"pip=={PIP_VERSION}" not in line:
                     loose.append(f"{name}:{n}: another pip than {PIP_VERSION}")
     assert loose == []
+    assert [spec for _, spec, _ in _requirements("requirements-pip.txt")] == [f"pip=={PIP_VERSION}"]   # start.bat
 
 
 def test_claude_md_stays_a_short_map_of_every_module():

@@ -12,7 +12,7 @@ ROOT = r"C:\Users\Player\Desktop\fog-scout"
 def test_start_command_runs_start_bat_minimised():
     cmd = restart.start_command()
     # 1.8.45: start.bat from the working directory – the folder ("&", "%") never on cmd's command line
-    assert cmd.endswith(' /c start "" /min cmd /c .\\start.bat')
+    assert cmd.endswith(' /d /c start "" /min ' + cmd.split(' /d ', 1)[0] + ' /d /c .\\start.bat')   # 1.38.57: /d
 
 
 def test_the_helper_starts_in_the_program_folder(monkeypatch):

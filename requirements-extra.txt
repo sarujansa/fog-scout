@@ -2,4 +2,5 @@
 # windows-capture verlangt opencv-python, das Projekt nutzt opencv-python-headless (beide liefern cv2,
 # zusammen installiert gehen sie kaputt). numpy und cv2 sind über requirements.txt schon da.
 # Version bewusst fest: 2.0.1 wurde geprüft (importiert kein OpenProcess, keine Hooks/Eingaben).
-windows-capture==2.0.1; sys_platform == "win32"
+windows-capture==2.0.1 ; sys_platform == "win32" \
+    --hash=sha256:209c2318e2168802b9afd1005e99499639e8835e71a1e188a3ddc77c7ccc3f04

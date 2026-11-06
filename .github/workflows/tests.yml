@@ -40,7 +40,8 @@ jobs:
       - name: Pakete
         run: |
           python -m pip install pip==26.2.1
-          python -m pip install -r requirements.txt -r requirements-dev.txt
+          python -m pip install --require-hashes --only-binary=:all: -r requirements.txt
+          python -m pip install -r requirements-dev.txt
       - name: pyflakes
         if: matrix.python == '3.12'
         run: python -m pyflakes fogscout tests tools
@@ -64,8 +65,9 @@ jobs:
       - name: Pakete (wie start.bat, windows-capture ohne Abhängigkeiten)
         run: |
           python -m pip install pip==26.2.1
-          python -m pip install -r requirements.txt -r requirements-dev.txt
-          python -m pip install --no-deps -r requirements-extra.txt
+          python -m pip install --require-hashes --only-binary=:all: -r requirements.txt
+          python -m pip install -r requirements-dev.txt
+          python -m pip install --require-hashes --no-deps -r requirements-extra.txt
       - name: pytest
         env:
           PYTHONUNBUFFERED: "1"            # a crash at the very end must not swallow the summary
