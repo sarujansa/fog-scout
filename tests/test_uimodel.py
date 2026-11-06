@@ -1330,7 +1330,7 @@ def test_the_statistics_tabs_keep_their_meaning_when_moved(app_root):
         tabs_id, tw, ids = next(s for s in page._tabsets                 # 1.8.76: the group "Runden" holds "Rekorde"
                                 if "Rekorde" in [s[1].tabText(i) for i in range(s[1].count())])
         names = [tw.tabText(i) for i in range(tw.count())]
-        assert tw.tabBar().isMovable() and names == ["Übersicht", "Letzte Runden", "Rekorde", "Verlauf"]
+        assert tw.tabBar().isMovable() and names == ["Übersicht", "Letzte Runden", "Rekorde", "Verlauf", "Sitzungen"]
         assert page._tab_ids(tw, ids) == [str(i) for i in range(tw.count())]
         tw.tabBar().moveTab(0, 2)                                   # "Übersicht" behind "Rekorde"
         ev = []
@@ -1380,11 +1380,11 @@ def test_the_statistics_tabs_are_short_and_the_last_rounds_come_second(app_root)
         # 1.12.7 (user: "Bloodpoints und Farming bei Sonstiges macht keinen Sinn"): no "Sonstiges" any more
         assert groups == ["Runden", "Bloodpoints & Farming", "Gegner & Builds", "Maps, Server & PC"]
         parts = {g: [nb.tab(t, "text") for t in nb.tabs()] for g, nb in zip(groups, app._stats_groups.values())}
-        assert parts["Runden"] == ["Übersicht", "Letzte Runden", "Rekorde", "Verlauf"]
+        assert parts["Runden"] == ["Übersicht", "Letzte Runden", "Rekorde", "Verlauf", "Sitzungen"]   # 1.38.47: last
         assert parts["Bloodpoints & Farming"] == ["Bloodpoints", "Farming"]
         assert parts["Gegner & Builds"] == ["Killer", "Gegner", "Builds"]
         assert parts["Maps, Server & PC"] == ["Maps", "Regionen", "Wartezeit", "System"]
-        assert sum(len(v) for v in parts.values()) == 13 and app._stats_current_title() == "Übersicht"
+        assert sum(len(v) for v in parts.values()) == 14 and app._stats_current_title() == "Übersicht"   # 1.38.47
         app._stats_render()
         app._stats_select("Letzte Runden")
         app._stats_render_tab()
@@ -1545,7 +1545,7 @@ def test_a_saved_tab_order_survives_a_new_tab(app_root):
                                 if "Rekorde" in [s[1].tabText(i) for i in range(s[1].count())])
         old = ["1", "0", "2", "99"]                                          # three known ids and a vanished one
         page.apply_tab_order({tabs_id: old})
-        assert page._tab_ids(tw, ids) == ["1", "0", "2", "3"]                # the new tab at the end
+        assert page._tab_ids(tw, ids) == ["1", "0", "2", "3", "4"]           # the new tabs at the end (4: 1.38.47)
         assert tw.tabBar().property("dense") is not True                     # 1.8.76: no row has eleven tabs now
     finally:
         app.quit()
