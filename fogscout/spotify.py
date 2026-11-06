@@ -25,6 +25,7 @@ import logging
 import queue
 import re
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -56,6 +57,10 @@ REREAD_S = 5.0                        # 1.8.37: after a song change the queue is
                                       # after this long – right after a skip Spotify still answers the old queue
 RATE_WAIT_S = (5.0, 300.0)            # 429 without Retry-After: wait from … doubling up to …
 QUOTA_WAIT_S = 900.0                  # 429 "QUOTA_EXCEEDED": at least this long before asking again
+MAX_BODY = 1024 * 1024                # 1.38.57 (security review): an answer larger than this is a network error
+MAX_ERROR_BODY = 64 * 1024            # … and an error answer is read only this far
+MAX_TEXT = 200                        # 1.38.57: a text from a server or a local peer, clipped for log/status
+_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069]")
 RETRY_S = 30.0                        # after a network error
 HTTP_TIMEOUT = 8.0
 MAX_ITEMS = 10                        # coming tracks kept (the card shows 1–5)
@@ -88,19 +93,19 @@ def _request(url: str, data: bytes | None = None, headers: dict | None = None) -
     req = urllib.request.Request(url, data=data, headers=headers or {}, method="POST" if data is not None else "GET")
     try:
         with _opener().open(req, timeout=HTTP_TIMEOUT) as r:
-            body = r.read()
+            body = read_capped(r, MAX_BODY)
             return r.status, (json.loads(body) if body.strip() else {})
     except urllib.error.HTTPError as e:
         try:
-            body = e.read()
+            body = read_capped(e, MAX_ERROR_BODY)
             d = json.loads(body) if body.strip() else {}
-        except ValueError:
+        except (ValueError, OSError):
             d = {}
         err = d.get("error") if isinstance(d, dict) else None
         msg = d.get("error_description") if isinstance(d, dict) else None
-        msg = msg or (err.get("message") if isinstance(err, dict) else err) or f"HTTP {e.code}"
-        reason = str((err.get("reason") if isinstance(err, dict) else None) or
-                     (d.get("reason") if isinstance(d, dict) else None) or "")
+        msg = safe_text(msg or (err.get("message") if isinstance(err, dict) else err) or f"HTTP {e.code}")
+        reason = safe_text((err.get("reason") if isinstance(err, dict) else None) or
+                           (d.get("reason") if isinstance(d, dict) else None) or "", 60)
         if e.code == 429:
             try:
                 wait = max(1.0, float(e.headers.get("Retry-After") or 0))
@@ -116,7 +121,7 @@ def _request(url: str, data: bytes | None = None, headers: dict | None = None) -
         raise SpotifyError(str(msg), "net") from None
     except (urllib.error.URLError, OSError, ValueError) as e:
         reason = getattr(e, "reason", None)
-        raise SpotifyError(str(reason or e), "net") from None
+        raise SpotifyError(safe_text(reason or e), "net") from None
 
 
 # ------------------------------------------------------------------ OAuth 2 with PKCE (pure)
@@ -349,6 +354,23 @@ def is_encrypted(stored) -> bool:
     return isinstance(stored, str) and stored.startswith("dpapi:")
 
 
+def safe_text(text, limit: int = MAX_TEXT) -> str:
+    """1.38.57 (security review): a text the program did not write (a server's error description, a message from a
+    local peer) before it reaches the log or a status label – control characters (new lines, bidi overrides) as
+    spaces, at most ``limit`` characters, so it can never fake a log line or flood one."""
+    text = _CONTROL.sub(" ", str(text if text is not None else ""))
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def read_capped(r, limit: int) -> bytes:
+    """1.38.57 (security review): at most ``limit`` bytes of an HTTP answer (relupdate's pattern); more raises
+    ValueError – the callers turn it into their network error."""
+    data = r.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("Antwort zu gross")
+    return data
+
+
 def is_legacy(stored) -> bool:
     """A secret stored before 1.28 only Base64-encoded ("plain:") – not protected."""
     return isinstance(stored, str) and stored.startswith("plain:")
@@ -357,6 +379,14 @@ def is_legacy(stored) -> bool:
 # ------------------------------------------------------------------ the browser's redirect during the login
 class _NoReuse(HTTPServer):
     allow_reuse_address = not IS_WIN      # Windows: SO_REUSEADDR would let another socket take the port
+
+    def server_bind(self):
+        # 1.38.57 (security review): Windows lets another program bind the same port with SO_REUSEADDR and take
+        # the redirect (the login code) – SO_EXCLUSIVEADDRUSE forbids that while the login waits
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if IS_WIN and exclusive is not None:
+            self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+        super().server_bind()
 
 
 class LoginServer:
@@ -377,6 +407,8 @@ class LoginServer:
 
         class Handler(BaseHTTPRequestHandler):
             timeout = 5                           # 1.8.38: a client that connects and sends nothing blocks no login
+            server_version = "FogScout"           # 1.38.57: no Python/http.server version in the Server header
+            sys_version = ""
             def log_message(self, *_a):           # nothing on stderr
                 pass
 
@@ -388,7 +420,7 @@ class LoginServer:
                 if q.get("state", [""])[0] != outer.state:
                     return self._reply(400, "Bad state")
                 if q.get("error", [""])[0]:
-                    outer.error = q["error"][0]
+                    outer.error = safe_text(q["error"][0], 80)   # 1.38.57: from the browser, shown as status
                     return self._reply(200, outer.page(False))
                 code = q.get("code", [""])[0]
                 if not code:

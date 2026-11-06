@@ -71,6 +71,8 @@ CATEGORY_GAMING = "20"
 VIDEO_URL = "https://youtu.be/{id}"
 VIDEO_EXTS = (".mkv", ".mp4", ".mov", ".webm", ".avi", ".ts", ".m4v")
 OPENER = None                     # urllib opener; the tests set one without a proxy
+MAX_BODY = 1024 * 1024            # 1.38.57 (security review): Google's answers are small – larger is a network error
+MAX_ERROR_BODY = 64 * 1024        # … an error answer is read only this far
 
 
 class YouTubeError(Exception):
@@ -106,13 +108,13 @@ def _error(code: int, body: bytes) -> YouTubeError:
     err = d.get("error")
     reason, msg = "", ""
     if isinstance(err, dict):                           # the API: {"error": {"code", "message", "errors": [...]}}
-        msg = str(err.get("message") or "")
+        msg = spotify.safe_text(err.get("message") or "")    # 1.38.57: clipped, no control characters
         errors = err.get("errors")
         if isinstance(errors, list) and errors and isinstance(errors[0], dict):
-            reason = str(errors[0].get("reason") or "")
+            reason = spotify.safe_text(errors[0].get("reason") or "", 60)
     elif isinstance(err, str):                          # OAuth: {"error": "invalid_grant", "error_description": …}
-        reason = err
-        msg = str(d.get("error_description") or err)
+        reason = spotify.safe_text(err, 60)
+        msg = spotify.safe_text(d.get("error_description") or err)
     msg = msg or f"HTTP {code}"
     if reason in ("invalid_grant", "invalid_client", "unauthorized_client", "invalid_request"):
         kind = "auth"                                   # the token endpoint: 400 or 401 – the login is no good
@@ -140,14 +142,17 @@ def _call(url: str, data: bytes | None = None, headers: dict | None = None, meth
     req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
     try:
         with _opener().open(req, timeout=HTTP_TIMEOUT) as r:
-            return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read()
+            return r.status, {k.lower(): v for k, v in r.headers.items()}, spotify.read_capped(r, MAX_BODY)
     except urllib.error.HTTPError as e:
-        body = e.read()
+        try:
+            body = spotify.read_capped(e, MAX_ERROR_BODY)
+        except (ValueError, OSError):
+            body = b""
         if e.code == 308:
             return 308, {k.lower(): v for k, v in e.headers.items()}, body
         raise _error(e.code, body) from None
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise YouTubeError(str(getattr(e, "reason", None) or e), "net") from None
+        raise YouTubeError(spotify.safe_text(getattr(e, "reason", None) or e), "net") from None
 
 
 # ------------------------------------------------------------------ OAuth 2 (pure apart from the requests)
@@ -318,10 +323,28 @@ class Job:
         if fsops.rel_path(".", str(d["rel"])) is None:     # 1.38.20 (audit): settings.json is user-writable – a
             return None                                     # "../x" or "C:/x" never reaches os.path.join below
         fields = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
+        if not valid_session(fields.get("session")):          # 1.38.57: the Bearer token goes only to Google
+            fields["session"] = ""
         try:
             return cls(**fields)
         except TypeError:
             return None
+
+
+def valid_session(uri) -> bool:
+    """1.38.57 (security review): a resumable session URI gets the Bearer token – and it comes back from
+    settings.json (youtube_queue), which anything running as the user can write. Only one on Google's upload
+    host (scheme, host and port of ``ENDPOINTS["upload"]``: https://www.googleapis.com) is used;
+    any other is dropped and a new session opened."""
+    if not isinstance(uri, str) or not uri:
+        return False
+    try:
+        u, want = urllib.parse.urlsplit(uri), urllib.parse.urlsplit(ENDPOINTS["upload"])
+        port, want_port = u.port, want.port
+    except ValueError:
+        return False
+    return (u.scheme == want.scheme and u.hostname == want.hostname and port == want_port
+            and "@" not in u.netloc)
 
 
 def describe(kind: str, label: str, who: str, t: float, seconds: float = 0.0) -> tuple:
@@ -357,7 +380,7 @@ def start_upload(access: str, size: int, meta: dict) -> str:
                "X-Upload-Content-Type": "video/*", "X-Upload-Content-Length": str(int(size))}
     _status, h, _body = _call(ENDPOINTS["upload"] + "?uploadType=resumable&part=snippet,status", body, headers)
     uri = h.get("location", "")
-    if not uri:
+    if not valid_session(uri):                          # 1.38.57: none, or not on Google's upload host
         raise YouTubeError(_("keine Upload-Sitzung erhalten"), "net")
     return uri
 
@@ -816,6 +839,8 @@ class Uploader(threading.Thread):
             self._playlist_step(job, access, now)
             return
         size = os.path.getsize(path)
+        if job.session and not valid_session(job.session):   # 1.38.57: never the token to another host
+            job.session = ""
         if not job.session or job.size != size:
             job.size = size
             job.session = start_upload(access, size, metadata(job, self.privacy))

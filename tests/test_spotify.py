@@ -1,11 +1,13 @@
 """Spotify "Als nächstes" (fogscout/spotify.py, 1.8): PKCE and the queue (pure), the token store, the login
 listener, the thread against a fake Spotify on 127.0.0.1 (token endpoint + queue), the list on the music card."""
+import io
 import json
 import os
 import socket
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -728,3 +730,80 @@ def test_a_new_login_without_the_windows_encryption_is_kept_in_memory_only(monke
     assert link._refresh == "ref-new" and not [e for e in events if e[0] == "token"]
     said = " ".join(str(d) for k, d in events if k == "status")
     assert "nur bis zum Beenden" in said and "ref-new" not in said
+
+
+def test_the_login_listener_binds_exclusively_and_names_no_python_version(monkeypatch):
+    """1.38.57 (security review): on Windows the listening socket gets SO_EXCLUSIVEADDRUSE before bind (no other
+    program can take the redirect with SO_REUSEADDR); the Server header names no Python/http.server version."""
+    calls = []
+    real = socket.socket.setsockopt
+
+    class Probe(spotify._NoReuse):
+        def server_bind(self):
+            sock = self.socket
+
+            class Spy:
+                def __getattr__(self, name):
+                    return getattr(sock, name)
+
+                def setsockopt(self, *a):
+                    calls.append(a)
+                    return real(sock, *a)
+            self.socket = Spy()
+            try:
+                super().server_bind()
+            finally:
+                self.socket = sock
+    monkeypatch.setattr(spotify, "IS_WIN", True)
+    monkeypatch.setattr(spotify.socket, "SO_EXCLUSIVEADDRUSE", socket.SO_REUSEADDR, raising=False)
+    srv = Probe(("127.0.0.1", 0), spotify.BaseHTTPRequestHandler)
+    srv.server_close()
+    assert (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) in calls
+    monkeypatch.setattr(spotify, "IS_WIN", False)
+    port = _free_port()
+    login = spotify.LoginServer("st", port)
+    login.start()
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            opener.open(f"http://127.0.0.1:{port}/other", timeout=3)
+        except urllib.error.HTTPError as e:
+            server = e.headers.get("Server", "")
+        assert server.startswith("FogScout") and "Python" not in server
+        assert login._srv.server_address[0] == "127.0.0.1"
+    finally:
+        login.stop()
+
+
+def test_server_texts_are_clipped_and_on_one_line_and_answers_are_capped(monkeypatch):
+    """1.38.57 (security review): an error text from the server reaches log/status without control characters and
+    at most MAX_TEXT long; an answer larger than MAX_BODY is a network error."""
+    assert spotify.safe_text("a\r\n2026 ERROR fake‮\x00") == "a  2026 ERROR fake  "
+    assert len(spotify.safe_text("x" * 1000)) == spotify.MAX_TEXT and spotify.safe_text(None) == ""
+
+    class Body(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class Opener:
+        def __init__(self, data=None, error=None):
+            self.data, self.error = data, error
+
+        def open(self, req, timeout=None):
+            if self.error:
+                raise self.error
+            return Body(self.data)
+    monkeypatch.setattr(spotify, "OPENER", Opener(b"{}" + b" " * spotify.MAX_BODY))
+    with pytest.raises(spotify.SpotifyError) as e:
+        spotify._request("https://api.spotify.com/x")
+    assert e.value.kind == "net"
+    body = json.dumps({"error": "invalid_grant", "error_description": "bad\nline " + "y" * 400}).encode()
+    monkeypatch.setattr(spotify, "OPENER", Opener(error=urllib.error.HTTPError("u", 400, "x", {}, io.BytesIO(body))))
+    with pytest.raises(spotify.SpotifyError) as e:
+        spotify._request("https://accounts.spotify.com/api/token", b"")
+    assert e.value.kind == "auth" and "\n" not in str(e.value) and len(str(e.value)) == spotify.MAX_TEXT

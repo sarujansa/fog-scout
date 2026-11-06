@@ -535,6 +535,28 @@ def test_only_a_video_file_named_by_obs_is_moved_or_deleted(tmp_path):
         assert obsrec.obs_file(str(link)) == ""                                  # a link is never followed
 
 
+def test_an_old_video_elsewhere_is_never_taken_on_the_word_of_the_port(tmp_path):
+    """1.38.57 (security review): whatever answers on OBS's port could name another user's old video (same drive)
+    – it would be moved into our folder or deleted with administrator rights. Taken is only a file in our folder
+    or one written since the request."""
+    folder = tmp_path / "Aufnahmen"
+    folder.mkdir()
+    ours = folder / "Replay 1.mkv"
+    ours.write_bytes(b"x")
+    elsewhere = tmp_path / "Videos" / "private.mkv"
+    elsewhere.parent.mkdir()
+    elsewhere.write_bytes(b"x")
+    long_ago = time.time() - 30 * 86400
+    os.utime(elsewhere, (long_ago, long_ago))
+    os.utime(ours, (long_ago, long_ago))
+    now = time.time()
+    assert obsrec.obs_file(str(elsewhere), inside=str(folder), since=now) == ""
+    assert obsrec.obs_file(str(elsewhere), since=now) == ""
+    assert obsrec.obs_file(str(ours), inside=str(folder), since=now) == str(ours)        # in our folder: fine
+    os.utime(elsewhere, (now, now))
+    assert obsrec.obs_file(str(elsewhere), inside=str(folder), since=now) == str(elsewhere)   # just recorded
+
+
 def test_ffmpeg_is_only_the_bundled_one(monkeypatch):
     """1.8.38: imageio-ffmpeg's get_ffmpeg_exe() takes IMAGEIO_FFMPEG_EXE unchecked and falls back to PATH."""
     monkeypatch.setenv("IMAGEIO_FFMPEG_EXE", "/somewhere/evil-ffmpeg")
@@ -2333,3 +2355,61 @@ def test_every_index_name_is_still_importable_from_obsrec():
             names.add(node.target.id)
     assert [n for n in sorted(names) if getattr(obsrec, n, None) is not getattr(recindex, n)] == []
     assert obsrec.rel_path is recindex.rel_path
+
+
+def test_a_request_waits_through_a_bounded_number_of_events_and_keeps_only_the_newest():
+    """1.38.57 (security review): whatever listens on the port is a local peer – an endless stream of events (op 5)
+    never keeps a request waiting forever or fills memory; the request fails after MAX_SKIPPED messages."""
+    c = obsrec.ObsClient(1, "")
+    sent, reads = [], []
+    c._send = sent.append
+
+    def flood():
+        reads.append(1)
+        if len(reads) > obsrec.ObsClient.MAX_SKIPPED + 5:
+            raise AssertionError("kept waiting")
+        return {"op": 5, "d": {"eventType": "X", "n": len(reads)}}
+    c._read = flood
+    with pytest.raises(obsrec.ObsError) as e:
+        c.request("GetVersion")
+    assert "GetVersion" in str(e.value) and len(reads) == obsrec.ObsClient.MAX_SKIPPED
+    assert len(c.events) == obsrec.ObsClient.MAX_EVENTS and c.events[-1]["n"] == len(reads)
+    # a few events before the answer are fine; the peer's error text arrives clipped and on one line
+    rid = []
+    c._send = lambda m: rid.append(m["d"]["requestId"])
+    answers = iter([{"op": 5, "d": {}}, {"op": 7, "d": "junk"}])
+
+    def answer():
+        try:
+            return next(answers)
+        except StopIteration:
+            return {"op": 7, "d": {"requestId": rid[-1], "requestStatus": {
+                "result": False, "code": 600, "comment": "bad\n12:00 INFO forged‮" + "x" * 500}}}
+    c._read = answer
+    with pytest.raises(obsrec.ObsError) as e:
+        c.request("StartRecord")
+    text = str(e.value)
+    assert text.startswith("StartRecord: bad 12:00") and "\n" not in text and "‮" not in text
+    assert len(text) == obsrec.ObsClient.MAX_TEXT and e.value.code == 600
+
+
+def test_a_request_gives_up_after_its_overall_deadline(monkeypatch):
+    c = obsrec.ObsClient(1, "", timeout=1.0)
+    c._send = lambda m: None
+    clock = [0.0]
+    monkeypatch.setattr(obsrec.time, "monotonic", lambda: clock[0])
+
+    def slow():
+        clock[0] += 1.0                                       # each event arrives just inside the socket timeout
+        return {"op": 5, "d": {}}
+    c._read = slow
+    with pytest.raises(obsrec.ObsError):
+        c.request("GetStats")
+    assert clock[0] <= obsrec.ObsClient.DEADLINE * 1.0 + 1
+
+
+def test_the_recorder_says_an_error_on_one_line():
+    said = []
+    rec = obsrec.Recorder(lambda kind, **d: said.append((kind, d)))
+    rec._say("OBS: x\r\nINFO forged", False, err=True)
+    assert said[-1][1]["text"] == "OBS: x  INFO forged" and rec.status == "OBS: x  INFO forged"
