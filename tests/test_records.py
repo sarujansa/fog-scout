@@ -116,3 +116,32 @@ def test_the_overlay_record_line_prefers_this_map_with_this_killer_and_names_a_s
     by_pair = records.record_groups(list(zip(sv, sm)), lambda r: (r.map_id, r.killer))
     assert records.record_line(by_map, by_pair, "a", "survivor", "nurse", name) == "67% entkommen · 3 Runden gegen Nurse · Entkommen-Serie 2"
     assert records.record_line(by_map, by_pair, "a", "survivor", "nurse", name, min_rounds=4) == ""
+
+
+
+def test_sessions_split_after_the_gap_and_sum_their_rounds():
+    """1.38.47 (user's pick "Sitzungen als eigener Reiter"): records.session_rows – the same split as sessions()
+    (more than SESSION_GAP from one round's end to the next start), newest first, with play time, roles, farming,
+    Ø wait and – only from rounds tied to an official match – Ø kills, share escaped and bloodpoints."""
+    h = 3600
+    r1 = Round(_t(3), 600, "coal", "Coal Tower", role="killer", wait=60)
+    r2 = Round(r1.t + 600 + records.SESSION_GAP, 600, "coal", "Coal Tower", role="survivor", wait=120)
+    r3 = Round(r2.t + 3 * h, 900, "game", "The Game", role="killer", farming=True)
+    r4 = Round(r3.t + 1200, 300, "game", "The Game", custom=True)
+    m1, m2 = _killer_match(r1.t, 3), _survivor_match(r2.t, True)
+    m1.bp, m2.bp = 20000, 15000
+    rows = records.session_rows([r3, r1, r4, r2], {id(r1): m1, id(r2): m2})
+    assert [len(s.rounds) for s in rows] == [2, 2]                        # newest first; the gap itself still joins
+    new, old = rows
+    assert new.start == r3.t and new.end == r4.t + 300 and new.play_s == 1200
+    assert (new.killer, new.survivor, new.farming) == (1, 0, 1)           # the custom game counts no role
+    assert new.kills is None and new.escaped is None and new.wait is None and new.bp_matches == 0
+    assert old.start == r1.t and (old.killer, old.survivor) == (1, 1) and old.wait == 90
+    assert old.kills == 3 and old.killer_matches == 1 and old.escaped == 1.0 and old.survivor_matches == 1
+    assert old.bp == 35000 and old.bp_matches == 2
+    split = records.session_rows([r1, Round(r1.t + 600 + records.SESSION_GAP + 1, 60, "coal", "Coal Tower")], {})
+    assert len(split) == 2                                                # one second more: two sessions
+    assert records.session_rows([], {}) == [] and records.session_tiles([]) == []
+    tiles = records.session_tiles(rows)
+    assert [t.title for t in tiles][:3] == ["Sitzungen", "Ø Runden je Sitzung", "Ø Dauer einer Sitzung"]
+    assert tiles[0].value == "2" and tiles[1].value == "2.0"
