@@ -471,17 +471,28 @@ class StatsTab:
         box_pr = self._stats_page(_("Prestige"), "foes", "_stats_part_prestige")
         self.stats_prestige_var = ui.StringVar(value="")
         ui.Label(box_pr, textvariable=self.stats_prestige_var, wraplength=520).pack(anchor="w")
+        self.stats_prestige_tiles = ui.Tiles(box_pr)      # 1.38.50 (user's pick "Fortschritts-Übersicht")
+        self.stats_prestige_tiles.pack(fill="x", pady=(0, 6))
+        # 1.38.50 (user's pick "Prognose nächstes Prestige"): pace and forecast; "Zuletzt" hidden – nine columns
         self.stats_prestige = self._stats_tree(box_pr, (("char", _("Charakter"), 170, "w"), ("role", _("Rolle"), 70, "w"),
                                                         ("p", _("Prestige"), 65, "e"), ("lvl", _("Level"), 55, "e"),
                                                         ("gain", _("Zuwachs"), 80, "e"), ("n", _("Matches"), 65, "e"),
-                                                        ("last", _("Zuletzt"), 95, "w")), 7, select=True)
+                                                        ("last", _("Zuletzt"), 95, "w"),
+                                                        ("pace", _("Tempo"), 105, "e"),
+                                                        ("eta", _("Nächstes P"), 90, "e")), 7, select=True)
+        self.stats_prestige._dbdms_hide = ("last",)
         self.stats_prestige.bind("<<TreeviewSelect>>", lambda e: self._stats_prestige_chart())
         self._stats_prestige_names = {}                  # row -> character
         self.prestige_trend = TrendChart(box_pr, bool(self.settings.get("dark_mode", True)), panels=("prestige",))
         ui.folded(ui.Label(box_pr, text=_("Prestige und Level deiner Charaktere laut Stats-Seite (ab Userscript Version 3). "
                                            "„Prestige“ und „Level“ = der neueste Stand; „Zuwachs“ und „Matches“ gelten für "
                                            "die Filter oben. Eine Zeile anklicken zeigt darunter den Verlauf dieses "
-                                           "Charakters."), style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
+                                           "Charakters. „Tempo“ = gewonnene Level pro Woche aus den Matches der letzten "
+                                           "{days} Tage, „Nächstes P“ = wie lange es bei diesem Tempo bis zur nächsten "
+                                           "Stufe dauert. Level steigen nur, wenn du Blutpunkte im Blutnetz ausgibst – die "
+                                           "Prognose sagt, was bisher geschah, keine Zusage. „Main“ = dein Charakter mit den "
+                                           "meisten Matches je Rolle.", days=builds.PACE_DAYS),
+                           style="Dim.TLabel", wraplength=520)).pack(anchor="w", pady=(4, 0))
         # 1.8.64 (user: "wir haben so viele Kategorien, warum keine für Farming"): the farming rounds on a tab of
         # their own – whatever the role filter says (it keeps them out of every other evaluation). Last tab: the
         # saved tab order (tab_order) counts the tabs by position
@@ -1085,7 +1096,11 @@ class StatsTab:
     def _stats_part_prestige(self, c):
         """1.38.49: the own characters of the selection with their prestige and level (builds.prestige_rows)."""
         j = self._joined()
+        now = time.time()
         rows = builds.prestige_rows(j.matches, [m for _r, m in c.pairs])
+        graded = builds.by_character(j.matches)                       # once – pace() per row on its own list
+        self.stats_prestige_tiles.data = builds.prestige_tiles(j.matches, now, graded)   # 1.38.50: all, not filtered
+        mains = set(builds.mains(j.matches).values())
         t = self.stats_prestige
         keep = [self._stats_prestige_names.get(i) for i in t.selection()]
         t.delete(*t.get_children())
@@ -1093,9 +1108,12 @@ class StatsTab:
         for i, p in enumerate(rows):
             iid = str(i)
             self._stats_prestige_names[iid] = p.character
-            t.insert("", "end", iid=iid, values=(p.character, self._role_name(p.role) or "–", p.prestige, p.level,
-                                                 builds.gain_text(p), p.matches,
-                                                 time.strftime("%d.%m.%y", time.localtime(p.last))))
+            per_week = builds.pace(graded.get(p.character, []), p.character, now)
+            t.insert("", "end", iid=iid, values=(
+                p.character + (" · " + _("Main") if p.character in mains else ""), self._role_name(p.role) or "–",
+                p.prestige, p.level, builds.gain_text(p), p.matches,
+                time.strftime("%d.%m.%y", time.localtime(p.last)), builds.pace_text(per_week),
+                builds.eta_text(builds.next_prestige_eta(p.prestige, p.level, per_week), p.prestige)))
         self.stats_prestige_var.set("" if rows else _("Noch kein Prestige in dieser Auswahl – es kommt aus den "
                                                       "Match-Daten (Userscript ab Version 3)."))
         pick = next((i for i, n in self._stats_prestige_names.items() if n in keep), None)
@@ -2272,8 +2290,11 @@ class StatsTab:
                                        name=os.path.basename(path)))
         if done:
             fresh = self._fresh_text(res.fresh)
-            self._official_toast(_("{n} Matches gelesen, davon {new} neu. Die Datei wurde gelöscht.", n=res.matches,
-                                   new=res.new) + ("\n" + fresh if fresh else ""))
+            ups = self._prestige_ups(res.fresh)                  # 1.38.50 (user's pick "Meilenstein-Meldung")
+            for line in ups:
+                self._log(line, "System")
+            self._official_toast("\n".join([_("{n} Matches gelesen, davon {new} neu. Die Datei wurde gelöscht.",
+                                              n=res.matches, new=res.new)] + ([fresh] if fresh else []) + ups))
         for path in res.foreign:
             if path not in told:
                 told.add(path)
@@ -2289,6 +2310,15 @@ class StatsTab:
                 self._stats_render()
             if self.nb.select() == str(self.tab_settings):
                 self._official_check_render()
+
+    def _prestige_ups(self, fresh) -> list:
+        """1.38.50: the lines "The Nurse ist jetzt Prestige 10" for the newly read matches – compared with every match
+        stored before them (the store already holds the new ones: told apart by start time)."""
+        if not fresh:
+            return []
+        new_ts = {m.t for m in fresh}
+        known = [m for m in official.load(self._official_path()) if m.t not in new_ts]
+        return builds.milestone_lines(builds.prestige_ups(fresh, known))
 
     def _fresh_text(self, matches):
         """Results of the newly read matches for the notification (custom games left out)."""
