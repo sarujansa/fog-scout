@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
+from . import thumbs
 from .mapimage import FONT, title_split
 
 STYLE_VERSION = 9                     # raise when the conversion changes: the cache is made anew
@@ -383,7 +384,11 @@ def styled_path(path: str, cache_dir: str, make: bool = True, style: str = "dark
     if style not in STYLES:
         return path
     tag = "" if style == "dark" else f"-{style}"            # "dark" keeps its old names (cache made before 1.8.16)
-    name = f"{os.path.splitext(os.path.basename(path))[0]}-{int(st.st_mtime)}-{st.st_size}{tag}-v{STYLE_VERSION}.webp"
+    # 1.38.45: the source by its bytes, not its mtime – every update installs the maps anew (new mtime) and all
+    # style pictures were made again (~30–60 s in the background, the tiles changing one by one); mtime only as the
+    # fallback for a file that cannot be read
+    source = thumbs.content_key(path) or str(int(st.st_mtime))
+    name = f"{os.path.splitext(os.path.basename(path))[0]}-{source}-{st.st_size}{tag}-v{STYLE_VERSION}.webp"
     sub = os.path.basename(os.path.dirname(path))
     if os.path.basename(os.path.dirname(os.path.dirname(path))) == "user_maps":
         sub = "own-" + sub                      # 1.22.1: own pictures never share a name with a supplied one
@@ -421,14 +426,15 @@ def styled_path(path: str, cache_dir: str, make: bool = True, style: str = "dark
         return path
 
 
-_CACHE_NAME = re.compile(r"^(?P<stem>.+)-(?P<mtime>\d+)-(?P<size>\d+)(?P<tag>-[a-z_]+)?-v(?P<ver>\d+)\.webp$")
+# 1.38.45: the source part is a content key (hex) – or, in names made before, the source's mtime (digits)
+_CACHE_NAME = re.compile(r"^(?P<stem>.+)-(?P<source>[0-9a-f]+)-(?P<size>\d+)(?P<tag>-[a-z_]+)?-v(?P<ver>\d+)\.webp$")
 
 
 def prune(cache_dir: str) -> int:
     """1.25 (audit: the cache only ever grew – every STYLE_VERSION and every changed picture left its files, ~0.1 MB
     each × maps × styles): remove our own cached pictures of another STYLE_VERSION and, per picture and style, every
     file but the newest source state. Only files in ``cache_dir`` whose name is ours (styled_path); returns how many
-    went."""
+    went. 1.38.45: "newest" = the cache file made last (the name holds a content key now, no time)."""
     gone = 0
     try:
         subs = [d for d in os.listdir(cache_dir) if os.path.isdir(os.path.join(cache_dir, d))]
@@ -448,7 +454,11 @@ def prune(cache_dir: str) -> int:
             if int(m["ver"]) != STYLE_VERSION:
                 drop.append(name)
                 continue
-            key, when = (m["stem"], m["tag"] or ""), int(m["mtime"])
+            try:
+                when = os.stat(os.path.join(folder, name)).st_mtime_ns
+            except OSError:
+                continue
+            key = (m["stem"], m["tag"] or "")
             old = newest.get(key)
             if old is None or when > old[0]:
                 if old is not None:
