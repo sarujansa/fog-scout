@@ -1182,7 +1182,6 @@ EN = {
         "game with the hotkey (default Ctrl+Alt+X).",
     "Die Map stimmt – Hinweis „unsicher“ ausblenden.": "The map is right – hide the “unsure” note.",
     "als falsch verworfen": "thrown away as wrong",
-    "{k} Killer / {s} Survivor": "{k} killer / {s} survivor",
     "Ping {ms} ms": "ping {ms} ms",
     # official match data (stats.deadbydaylight.com)
     "Ø Kills": "Avg. kills",
@@ -3829,4 +3828,9 @@ EN = {
     "≈ {n} Wochen": "≈ {n} weeks",
     "{n} Charaktere": "{n} characters",
     "P100": "P100",
+    "{n}× Killer": "{n}× killer",
+    "{n}× Survivor": "{n}× survivor",
+    "{n}× Farming": "{n}× farming",
+    "{n}× Custom Game": "{n}× custom game",
+    "{n}× ohne Rolle": "{n}× without a role",
 }
