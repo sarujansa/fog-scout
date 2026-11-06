@@ -21,6 +21,7 @@ MAX_PARTS = 500
 MAX_SHAPES = 500
 MAX_BOXES = 50
 MAX_SOURCES = 50                  # 1.22: recordings of one montage
+MEDIA_EXTS = (".mp4", ".mkv", ".mov", ".webm", ".flv", ".ts", ".m4v", ".avi")   # 1.38.57: what a montage source may be
 MONTAGE_DIR = "Montagen"          # 1.22: montage projects – Clips/Montagen, bound to no single recording
 
 
@@ -205,7 +206,9 @@ def montage_sources(d) -> list:
     raw = d.get("sources") if isinstance(d, dict) else None
     if not isinstance(raw, list):
         return []
-    out = [s for s in raw[:MAX_SOURCES] if isinstance(s, str) and s]
+    # 1.38.57 (security review): a project file can come from a shared or synced recordings folder – only local
+    # video files (fsops.local_media_path: no network share, no URL, no ffmpeg protocol), else no montage at all
+    out = [s for s in raw[:MAX_SOURCES] if fsops.local_media_path(s, MEDIA_EXTS)]
     return out if len(out) == len(raw[:MAX_SOURCES]) else []
 
 

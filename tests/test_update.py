@@ -235,12 +235,55 @@ def test_git_runs_without_hooks_fsmonitor_or_user_config(tmp_path, monkeypatch):
     monkeypatch.setenv("SSL_CERT_FILE", "C:/evil/ca.pem")
     monkeypatch.setenv("PYTHONPATH", "C:/evil")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy:3128")
+    up._kept.clear()
     assert up._git(str(tmp_path), "fetch", "origin") == (0, "ok")
     args, env = seen["args"], seen["env"]
-    assert args[0] == "git" and args[-2:] == ["fetch", "origin"]
+    assert os.path.basename(args[0]).lower().startswith("git") and args[-2:] == ["fetch", "origin"]
     assert "core.fsmonitor=false" in args and any(a.startswith("core.hooksPath=") for a in args)
     hooks = next(a for a in args if a.startswith("core.hooksPath=")).split("=", 1)[1]
     assert hooks.startswith(str(tmp_path)) and not os.path.exists(hooks)          # nothing there to run
-    assert "credential.helper=" in args and "GIT_CONFIG_NOSYSTEM" not in env and "GIT_CONFIG_GLOBAL" not in env
+    assert "credential.helper=" in args and "http.sslVerify=true" in args
+    # 1.38.57: the user's global config is off (any program of the user writes it), the system config stays
+    assert "GIT_CONFIG_NOSYSTEM" not in env and env["GIT_CONFIG_GLOBAL"] == "/dev/null"
+    assert "core.autocrlf=ok" not in args                          # only true/false/input pass
     assert env["GIT_TERMINAL_PROMPT"] == "0" and env["HTTPS_PROXY"] == "http://proxy:3128"
     assert not any(k in env for k in ("GIT_SSL_CAINFO", "GIT_CONFIG_PARAMETERS", "SSL_CERT_FILE", "PYTHONPATH"))
+
+
+def test_only_line_endings_and_safe_folders_come_from_the_global_git_config(tmp_path, monkeypatch):
+    """1.38.57 (security review): of the user's global git config only core.autocrlf/core.eol (fixed values) and
+    safe.directory are passed on – read with ``git config --get-all``, never an url.insteadOf, filter or askpass."""
+    answers = {"core.autocrlf": "true\n", "core.eol": "evil\n", "safe.directory": "C:/Spiele/fog-scout\n*\n"}
+    seen = []
+
+    class R:
+        def __init__(self, out):
+            self.returncode, self.stdout, self.stderr = (0 if out else 1), out, ""
+
+    def fake_run(args, **kw):
+        seen.append(args)
+        if args[1:3] == ["config", "--global"]:
+            assert "GIT_CONFIG_GLOBAL" not in kw["env"]           # the read itself sees the user's file
+            return R(answers.get(args[-1], ""))
+        return R("ok")
+    monkeypatch.setattr(up.subprocess, "run", fake_run)
+    up._kept.clear()
+    up._git(str(tmp_path), "status")
+    args = seen[-1]
+    pairs = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-c"]
+    assert "core.autocrlf=true" in pairs and not any(p.startswith("core.eol=") for p in pairs)
+    assert "safe.directory=C:/Spiele/fog-scout" in pairs and "safe.directory=*" in pairs
+    up._git(str(tmp_path), "status")                                 # read once per run
+    assert sum(1 for a in seen if a[1:3] == ["config", "--global"]) == len(up.GLOBAL_KEEP)
+    up._kept.clear()
+
+
+def test_packages_come_only_from_pypi_with_their_hashes(tmp_path):
+    """1.38.57: pip as administrator – isolated from pip.ini/PIP_*, PyPI only, every file checked by its hash."""
+    calls = []
+    root, venv = tmp_path, tmp_path / ".venv"
+    venv.mkdir()
+    (root / "requirements.txt").write_text("numpy==1\n", encoding="utf-8")
+    up.sync_packages(str(root), str(venv), run=lambda a: calls.append(a) or 0)
+    assert calls and all("--isolated" in c and "--require-hashes" in c for c in calls)
+    assert all(c[c.index("--index-url") + 1] == "https://pypi.org/simple" for c in calls)

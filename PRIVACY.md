@@ -2,7 +2,7 @@
 
 *English version below.*
 
-Fog Scout ist ein Open-Source-Programm für Windows, das lokal auf deinem PC läuft. Es gibt keinen Server, kein Konto, keine Telemetrie und keine Werbung. Alles, was das Programm speichert (Einstellungen, Rundenverlauf, Statistik), liegt auf deinem PC – beim Start über `start.bat` im Programmordner, als installiertes Programm in `%LOCALAPPDATA%\FogScout`. Dieses Dokument nennt alles, was das Programm nach aussen sendet – jeder Punkt ist einzeln abschaltbar oder nur auf deinen Klick aktiv.
+Fog Scout ist ein Programm für Windows mit öffentlich einsehbarem Quelltext (Nutzungsbedingungen: `LICENSE`), das lokal auf deinem PC läuft. Es gibt keinen Server, kein Konto, keine Telemetrie und keine Werbung. Alles, was das Programm speichert (Einstellungen, Rundenverlauf, Statistik), liegt auf deinem PC – beim Start über `start.bat` im Programmordner, als installiertes Programm in `%LOCALAPPDATA%\FogScout`. Dieses Dokument nennt alles, was das Programm nach aussen sendet – jeder Punkt ist einzeln abschaltbar oder nur auf deinen Klick aktiv.
 
 | Funktion | Wohin | Was | Wann |
 |---|---|---|---|
@@ -48,7 +48,7 @@ Fragen und Hinweise: über die Issues dieses Repositorys (<https://github.com/sa
 
 # Privacy Policy – Fog Scout
 
-Fog Scout is an open-source program for Windows that runs locally on your PC. There is no server, no account, no telemetry and no advertising. Everything the program stores (settings, round history, statistics) stays on your PC – in the program folder when started through `start.bat`, in `%LOCALAPPDATA%\FogScout` for the installed program. This document lists everything the program sends anywhere – each item can be switched off on its own or is active only when you click.
+Fog Scout is a Windows program with publicly visible source code (terms of use: `LICENSE`) that runs locally on your PC. There is no server, no account, no telemetry and no advertising. Everything the program stores (settings, round history, statistics) stays on your PC – in the program folder when started through `start.bat`, in `%LOCALAPPDATA%\FogScout` for the installed program. This document lists everything the program sends anywhere – each item can be switched off on its own or is active only when you click.
 
 | Feature | Where to | What | When |
 |---|---|---|---|

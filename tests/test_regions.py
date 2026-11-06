@@ -1,6 +1,7 @@
 """Server-region selection via the hosts file (pure text handling + helper job)."""
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -147,3 +148,20 @@ def test_a_backup_made_under_the_old_name_is_kept_as_the_original(tmp_path, monk
     assert res["ok"] and res["changed"] and res["backup"] == str(old_backup)
     assert not (tmp_path / ("hosts" + hostsedit.BACKUP_SUFFIX)).exists()
     assert old_backup.read_bytes() == b"# the original\r\n"
+
+
+def test_an_elevated_program_writes_the_hosts_file_itself_without_runas(monkeypatch):
+    """1.38.57 (security review): with administrator rights already (the scheduled task) the job runs in the program
+    – "runas" through the shell would read how to start the helper from HKCU\\Software\\Classes first."""
+    monkeypatch.setattr(regions, "IS_WIN", True)
+    monkeypatch.setattr(regions, "_already_elevated", lambda: True)
+    monkeypatch.setattr(regions, "start_elevated", lambda *a, **k: pytest.fail("runas while elevated"))
+    jobs = []
+    monkeypatch.setattr(regions.hostsedit, "apply_job", lambda job: jobs.append(job) or {"ok": True, "changed": True})
+    assert regions.run_job({"block": [], "remove_foreign": True}) == {"ok": True, "changed": True}
+    assert jobs == [{"block": [], "remove_foreign": True}]
+
+    def denied(job):
+        raise PermissionError(13, "denied")
+    monkeypatch.setattr(regions.hostsedit, "apply_job", denied)
+    assert regions.run_job({"block": []})["ok"] is False

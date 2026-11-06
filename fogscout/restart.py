@@ -27,7 +27,7 @@ def start_command() -> str:
     the command line: cmd reads "&" in it as a second command and expands "%…%"."""
     from .paths import system_exe
     comspec = system_exe("cmd.exe")                # 1.33.5 (review S5): never %COMSPEC% – the user's environment
-    return f'"{comspec}" /c start "" /min cmd /c .\\start.bat'
+    return f'"{comspec}" /d /c start "" /min "{comspec}" /d /c .\\start.bat'     # 1.38.57: /d = no AutoRun
 
 
 def process_name() -> str:
@@ -234,6 +234,21 @@ def staged_setup(path: str, sha256: str, dest: str):
             lock()
 
 
+@contextlib.contextmanager
+def held_setup(path: str, sha256: str):
+    """1.38.57 (security review): the way without the admin folder (not elevated) starts the download itself, which
+    lies in the user's folder – held with share mode "read" like ``staged_setup`` and hashed again under that hold,
+    so nothing can swap it while Windows asks for administrator rights. ValueError when it changed."""
+    lock = _hold_for_start(path)
+    try:
+        if len(sha256) != 64 or _file_sha256(path) != sha256.lower():
+            raise ValueError("setup changed since the download")
+        yield path
+    finally:
+        if lock is not None:
+            lock()
+
+
 def _hold_for_start(path: str):
     """Windows: a handle with share mode READ – others may read and run the file, never write, rename or delete it.
     Returns the function that lets go; None elsewhere."""
@@ -254,9 +269,21 @@ def _hold_for_start(path: str):
 
 def _shell_open(path: str, args: list) -> bool:
     """ShellExecute "open": the setup asks for administrator rights itself when this process has none. True when
-    Windows started it (ShellExecuteW returns a value above 32; below = error, e.g. the prompt was declined)."""
+    Windows started it (ShellExecuteW returns a value above 32; below = error, e.g. the prompt was declined).
+    1.38.57 (security review): already elevated, the setup is started directly (CreateProcess with its full path)
+    – the shell would look up how to open an .exe in HKCU\\Software\\Classes first, which any program of the user
+    may change, and run that with our rights."""
     import ctypes
-    from .launch import clean_process
+    from .launch import clean_process, elevated
+    if elevated():
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        try:
+            with clean_process():
+                subprocess.Popen(f'"{path}" ' + " ".join(args), executable=path, cwd=os.path.dirname(path),
+                                 creationflags=flags, close_fds=True)
+        except OSError:
+            return False
+        return True
     shell = ctypes.windll.shell32
     shell.ShellExecuteW.restype = ctypes.c_void_p
     with clean_process():                    # 1.33.3: the setup gets Windows' DLL search, not the bundle's
