@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import official
+from . import history, official
+from .dashboard import Tile
 from .i18n import _
 
 KINDS = ("perk", "addon", "offering", "power")
@@ -294,3 +295,141 @@ def prestige_series(matches, character: str, unit: str) -> list:
         out.append((b, (last[b].prestige, last[b].level) if b in last else None))
         b = official._next_bucket(b, unit)
     return out[-official.MAX_BUCKETS:]
+
+
+# ------------------------------------------------------------------ 1.38.50: milestones, pace, overview
+PRESTIGE_MAX = 100           # the highest grade DBD has
+MILESTONES = (10, 25, 50, 100)
+PACE_DAYS = 28               # the pace is measured over the matches of the last four weeks …
+PACE_MIN_DAYS = 3            # … spread over at least this many days (two matches an hour apart say nothing)
+DAY = 86400.0
+
+
+def _newest_by_character(matches) -> dict:
+    out = {}
+    for m in matches:
+        if _graded(m) and (m.character not in out or m.t > out[m.character].t):
+            out[m.character] = m
+    return out
+
+
+def by_character(matches) -> dict:
+    """{character: [graded matches, oldest first]} – one pass, so that pace() per row does not scan every match
+    again (measured with 5 000 matches: the tab took 26–35 ms with a scan per row, see HISTORY 1.38.50)."""
+    out = {}
+    for m in matches:
+        if _graded(m):
+            out.setdefault(m.character, []).append(m)
+    for ms in out.values():
+        ms.sort(key=lambda m: m.t)
+    return out
+
+
+def prestige_ups(fresh, known) -> list:
+    """1.38.50 (user's pick "Meilenstein-Meldung"): [(character, old grade, new grade)] of the characters whose
+    newly read matches (``fresh``) show a higher prestige grade than every match stored before (``known``), by
+    name. A character without a stored grade counts as nothing new – the first import would announce them all."""
+    before, after = {}, {}
+    for ms, into in ((known, before), (fresh, after)):
+        for m in ms:
+            if _graded(m):
+                into[m.character] = max(into.get(m.character, -1), m.prestige)
+    return sorted((c, before[c], p) for c, p in after.items() if c in before and p > before[c])
+
+
+def milestone_lines(ups, limit: int = 3) -> list:
+    """The lines for the notification: "The Nurse ist jetzt Prestige 10" – "Meilenstein: …" when a grade of
+    MILESTONES was crossed; at most ``limit`` lines, then "+N weitere"."""
+    out = []
+    for c, old, new in ups[:limit]:
+        if any(old < g <= new for g in MILESTONES):
+            out.append(_("Meilenstein: {name} ist jetzt Prestige {p}", name=c, p=new))
+        else:
+            out.append(_("{name} ist jetzt Prestige {p}", name=c, p=new))
+    if len(ups) > limit:
+        out.append(_("+{n} weitere", n=len(ups) - limit))
+    return out
+
+
+def pace(matches, character: str, now: float, days: int = PACE_DAYS):
+    """1.38.50 (user's pick "Prognose nächstes Prestige"): levels per week of ``character`` over the matches of the
+    last ``days`` days (all matches – a pace is no value of the selection); None with fewer than two matches, a
+    span under PACE_MIN_DAYS or no gain. Levels rise only by spending bloodpoints in the bloodweb: the pace is
+    what happened, not a promise."""
+    ms = sorted((m for m in matches if _graded(m) and m.character == character and now - days * DAY <= m.t <= now),
+                key=lambda m: m.t)
+    if len(ms) < 2:
+        return None
+    span = ms[-1].t - ms[0].t
+    gain = progress(ms[-1]) - progress(ms[0])
+    if span < PACE_MIN_DAYS * DAY or gain <= 0:
+        return None
+    return gain / span * 7 * DAY
+
+
+def next_prestige_eta(prestige: int, level: int, per_week):
+    """Days until the next prestige grade at ``per_week`` levels a week; None at PRESTIGE_MAX or without a pace."""
+    if prestige >= PRESTIGE_MAX or not per_week:
+        return None
+    left = (prestige + 1) * LEVELS + 1 - (prestige * LEVELS + level)
+    return left / per_week * 7
+
+
+def pace_text(per_week) -> str:
+    if not per_week:
+        return "–"
+    return _("{n} Level/Woche", n=f"{per_week:.0f}" if per_week >= 10 else f"{per_week:.1f}")
+
+
+def eta_text(days, prestige: int = 0) -> str:
+    """"≈ 4 Tage" / "≈ 3 Wochen"; "P100 erreicht" at the top; "–" without a forecast."""
+    if prestige >= PRESTIGE_MAX:
+        return _("P100 erreicht")
+    if days is None:
+        return "–"
+    if days < 7:
+        n = max(1, round(days))
+        return _("≈ 1 Tag") if n == 1 else _("≈ {n} Tage", n=n)
+    n = round(days / 7)
+    return _("≈ 1 Woche") if n == 1 else _("≈ {n} Wochen", n=n)
+
+
+def mains(matches) -> dict:
+    """{role: character} – per role the own character with the most matches (the newer one on a tie)."""
+    count, last = {}, {}
+    for m in matches:
+        if m.character and m.role in ("killer", "survivor"):
+            k = (m.role, m.character)
+            count[k] = count.get(k, 0) + 1
+            last[k] = max(last.get(k, 0.0), m.t)
+    out = {}
+    for (role, c), n in count.items():
+        best = out.get(role)
+        if best is None or (n, last[(role, c)]) > (count[(role, best)], last[(role, best)]):
+            out[role] = c
+    return out
+
+
+def prestige_tiles(matches, now: float, groups: dict | None = None) -> list:
+    """1.38.50 (user's pick "Fortschritts-Übersicht"): the tiles above the prestige table – characters with a grade,
+    the sum of their grades, the highest one (bar = grade / 100) and the levels gained since Monday."""
+    newest = _newest_by_character(matches)
+    if not newest:
+        return []
+    killers = sum(1 for m in newest.values() if m.role == "killer")
+    top = max(newest.values(), key=lambda m: (progress(m), m.t))
+    start = history.period_start("week", now)
+    week = 0
+    for name, all_ms in (groups if groups is not None else by_character(matches)).items():
+        ms = [m for m in all_ms if m.t <= now]
+        before = [m for m in ms if m.t < start]
+        inside = [m for m in ms if m.t >= start]
+        if inside:
+            base = before[-1] if before else inside[0]
+            week += max(0, progress(inside[-1]) - progress(base))
+    return [Tile(_("Charaktere"), str(len(newest)),
+                 _("{k} Killer · {s} Survivor", k=killers, s=len(newest) - killers)),
+            Tile(_("Prestige gesamt"), str(sum(m.prestige for m in newest.values())), _("alle Charaktere")),
+            Tile(_("Höchster"), f"P{top.prestige}", _("{name} · Level {level}", name=top.character, level=top.level),
+                 frac=min(1.0, top.prestige / PRESTIGE_MAX)),
+            Tile(_("Level diese Woche"), str(week), _("seit Montag"))]
