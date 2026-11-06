@@ -144,3 +144,35 @@ def test_the_one_pass_items_give_what_the_old_loop_gave():
         assert new[k][:2] == old[k][:2], k
         for a, c in zip(new[k][2:], old[k][2:]):
             assert (a is None and c is None) or abs(a - c) < 1e-9, k
+
+
+def test_prestige_per_character_now_and_gained_in_the_selection():
+    """1.38.49 (user's pick "Prestige- und Level-Verlauf"): builds.prestige_rows – per own character the newest grade
+    of all matches, the gain from the oldest to the newest match of the selection (also across a prestige grade),
+    newest played first; matches without a grade (userscript < 3) left out."""
+    def m(t, char, role, p, lvl):
+        return Match(t=t, map="Coal Tower", role=role, character=char, prestige=p, level=lvl)
+    nurse = [m(100, "The Nurse", "killer", 3, 48), m(200, "The Nurse", "killer", 4, 2), m(300, "The Nurse", "killer", 4, 10)]
+    meg = [m(150, "Meg Thomas", "survivor", 10, 20), m(160, "Meg Thomas", "survivor", 10, 25)]
+    old = Match(t=50, map="Coal Tower", role="killer", character="The Nurse")      # no grade: left out
+    rows = builds.prestige_rows(nurse + meg + [old], nurse[:2] + meg + [old])
+    assert [r.character for r in rows] == ["The Nurse", "Meg Thomas"]           # newest played first
+    n, g = rows
+    assert (n.prestige, n.level, n.last) == (4, 10, 300)                       # now: the newest match of all
+    assert (n.gained, n.gained_prestige, n.matches) == (4, 1, 2)                # P3 L48 → P4 L2 in the selection
+    assert builds.gain_text(n) == "+1 P"
+    assert (g.gained, g.gained_prestige) == (5, 0) and builds.gain_text(g) == "+5 Level"
+    assert builds.gain_text(builds.Prestige("x", "killer", 1, 1)) == "–"
+    assert builds.prestige_rows(nurse, []) == [] and builds.prestige_rows([], [old]) == []
+
+
+def test_the_prestige_line_takes_the_last_grade_of_each_bucket():
+    """1.38.49: builds.prestige_series – one character, the last (prestige, level) per day, empty days None."""
+    import datetime
+    day = lambda d, h: datetime.datetime(2026, 11, d, h).timestamp()      # noqa: E731
+    ms = [Match(t=day(3, 20), map="C", role="killer", character="The Nurse", prestige=2, level=10),
+          Match(t=day(3, 22), map="C", role="killer", character="The Nurse", prestige=2, level=30),
+          Match(t=day(5, 20), map="C", role="killer", character="The Nurse", prestige=3, level=1),
+          Match(t=day(5, 21), map="C", role="survivor", character="Meg Thomas", prestige=9, level=9)]
+    assert [g for _b, g in builds.prestige_series(ms, "The Nurse", "day")] == [(2, 30), None, (3, 1)]
+    assert builds.prestige_series(ms, "Nobody", "day") == []
