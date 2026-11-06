@@ -35,6 +35,7 @@ class Fact:
     colour: object = None
     action: str = ""          # 1.2.15: a small button on the fact (posted to the App), "" = none
     action_label: str = ""
+    open: str = ""            # 1.38.53: a click on the tile shows what it counts (App._open_tile), "" = none
 
 
 @dataclass
@@ -288,19 +289,19 @@ def today(app, now: float) -> tuple[list, str]:
         if not getattr(j, "matches", None):    # never set up – say where (it hides under "Mehr")
             tiles.append(_setup_fact())
         return tiles + ([rec] if rec else []) + ([ask] if ask else []), ""
-    rounds = Fact(_("Runden"), str(d["count"]), rounds_parts(d))
+    rounds = Fact(_("Runden"), str(d["count"]), rounds_parts(d), open="day:last:all")
     farm = None
     if d["farming"]:                           # 1.8.56: farming rounds apart; 1.8.87: bloodpoints per hour
         b = dashboard.bp_rate([(r, j.off[id(r)]) for r in mine if r.farming and not r.custom])
         if b.per_hour:
             farm = Fact(_("Farming"), dashboard._bp(b.per_hour) + "/h",
                         _("{n} Farming-Runden · Ø {bp} BP", n=d["farming"],
-                          bp=dashboard._bp(b.per_round) if b.rounds else "–"))
+                          bp=dashboard._bp(b.per_round) if b.rounds else "–"), open="day:farming:all")
         else:                                  # 1.24.1: no "–" as the big value – the count, and why no BP/h
-            farm = Fact(_("Farming"), str(d["farming"]), _("Runden · BP/h erst mit Match-Daten"))
+            farm = Fact(_("Farming"), str(d["farming"]), _("Runden · BP/h erst mit Match-Daten"), open="day:farming:all")
     if s["killer"]:
         kills = Fact(_("Ø Kills"), _num(s["kills"]), _("4K: {n} von {total}", n=s["four"], total=s["killer"]),
-                     frac=s["kills"] / 4)
+                     frac=s["kills"] / 4, open="day:last:killer")
     elif getattr(j, "matches", None):
         kills = None                           # 1.24 (phase 2): set up, nothing for today yet – no tile of "–"
     else:                                      # 1.2.15: never set up – say where; 1.24.1: the same tile as
@@ -308,11 +309,11 @@ def today(app, now: float) -> tuple[list, str]:
     if s["survivor"]:
         esc = Fact(_("Entkommen"), f"{s['escaped']:.0%}",
                    _("{n} Survivor-Runden", n=s["survivor"]) + " · " + _("{n} normal", n=d["normal"]),
-                   frac=s["escaped"])
+                   frac=s["escaped"], open="day:last:survivor")
     else:
         esc = None                             # 1.24: no tile that only says "–"
     wait = Fact(_("Ø Wartezeit"), fmt_duration(d["wait"]) if d["wait"] is not None else "–",
-                _("Ping {ms} ms", ms=f"{d['ping']:.0f}") if d["ping"] is not None else "")
+                _("Ping {ms} ms", ms=f"{d['ping']:.0f}") if d["ping"] is not None else "", open="day:wait:all")
     if d["wait"] is None and d["ping"] is None:
         wait = None
     note = _("Spielzeit heute: {time}", time=fmt_duration(d["total"]))
@@ -352,10 +353,10 @@ def _delta(now, last, fmt, scale: float = 1.0) -> str:
     return ("▲ " if d > 0 else "▼ ") + fmt(abs(d))
 
 
-def _week_fact(title: str, now, last, fmt, delta_fmt=None, scale: float = 1.0) -> Fact:
+def _week_fact(title: str, now, last, fmt, delta_fmt=None, scale: float = 1.0, open: str = "") -> Fact:
     sub = _("Vorwoche {value}", value=fmt(last) if last is not None else "–")
     d = _delta(now, last, delta_fmt or fmt, scale)
-    return Fact(title, fmt(now) if now is not None else "–", sub + (" · " + d if d else ""))
+    return Fact(title, fmt(now) if now is not None else "–", sub + (" · " + d if d else ""), open=open)
 
 
 def week(app, now: float) -> tuple[list, str]:
@@ -367,13 +368,16 @@ def week(app, now: float) -> tuple[list, str]:
     if not this["count"] and not last["count"]:
         return [], ""
     pct = lambda v: f"{v:.0%}"
-    tiles = [_week_fact(_("Runden"), this["count"], last["count"], str, delta_fmt=lambda d: f"{d:.0f}")]
+    tiles = [_week_fact(_("Runden"), this["count"], last["count"], str, delta_fmt=lambda d: f"{d:.0f}",
+                        open="week:last:all")]
     # 1.24 (phase 2): a value neither week has (no match data, no waiting time) gets no tile of "– / Vorwoche –"
-    for title, key, fmt, kw in ((_("Ø Kills"), "kills", _num, {}),
+    # 1.38.53: a click on a tile shows its rounds (App._open_tile)
+    for title, key, fmt, kw in ((_("Ø Kills"), "kills", _num, {"open": "week:last:killer"}),
                                 (_("Entkommen"), "escaped", pct,
-                                 {"delta_fmt": lambda d: _("{n} Pkt.", n=f"{d:.0f}"), "scale": 100.0}),
-                                (_("Ø Wartezeit"), "wait", fmt_duration, {}),
-                                (_("Bloodpoints"), "bp", dashboard._bp, {})):
+                                 {"delta_fmt": lambda d: _("{n} Pkt.", n=f"{d:.0f}"), "scale": 100.0,
+                                  "open": "week:last:survivor"}),
+                                (_("Ø Wartezeit"), "wait", fmt_duration, {"open": "week:wait:all"}),
+                                (_("Bloodpoints"), "bp", dashboard._bp, {"open": "week:bp:all"})):
         if this[key] is not None or last[key] is not None:
             tiles.append(_week_fact(title, this[key], last[key], fmt, **kw))
     return tiles, _("Montag bis jetzt gegenüber der Vorwoche (Mo–So); Custom und Farming zählen nicht.")
@@ -425,7 +429,7 @@ def recordings(app) -> Fact | None:
         bits.append(_("älteste {date}", date=time.strftime("%d.%m.", time.localtime(sp.oldest))))
     colour = theme.DOT["err"] if sp.free < obsrec.MIN_FREE else theme.DOT["warn"] if sp.free < obsrec.RESERVE else None
     return Fact(_("Aufnahmen"), _("{size} frei", size=_gb(sp.free)), " · ".join(bits),
-                frac=1 - sp.free / sp.total, colour=colour)
+                frac=1 - sp.free / sp.total, colour=colour, open="page:recordings")
 
 
 def self_row(app):
