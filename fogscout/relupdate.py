@@ -29,6 +29,7 @@ REPO = "sarujansa/fog-scout"
 API = f"https://api.github.com/repos/{REPO}/releases/latest"
 DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 TAG = re.compile(r"^build-(\d{1,9})$")
+SHOWN = re.compile(r"\(Build (\d{1,9})\)$")   # 1.38.56: the release title "Fog Scout <version> (Build <shown>)"
 SETUP = re.compile(r"^FogScout-Setup-[0-9][0-9A-Za-z.]*\.exe$")
 INFO_FILE = "build-info.json"
 UPDATE_DIR = os.path.join("cache", "update")
@@ -50,15 +51,24 @@ class Release:
     sha_url: str
     digest: str = ""                 # GitHub's own "sha256:…" of the asset, when listed
     sha256: str = ""                 # 1.33.1: the checked SHA-256 after download() – the install helper checks it again
+    shown: int = 0                   # 1.38.56: the number the user sees (merges since 1.38.55); ``build`` is compared
+
+
+def shown_build(info) -> int:
+    """1.38.56: the build number to show – ``shown`` (counted from 1 again) or, for older builds, ``build``."""
+    return info.get("shown", info.get("build", 0)) if isinstance(info, dict) else (info.shown or info.build)
 
 
 def own_build(root: str) -> dict:
-    """{"build": int, "version": str, "commit": str} of this packaged program – {} from a source checkout."""
+    """{"build": int, "version": str, "commit": str[, "shown": int]} of this packaged program – {} from source."""
     try:
         with open(os.path.join(root, INFO_FILE), encoding="utf-8") as fh:
             info = json.load(fh)
-        return {"build": int(info.get("build", 0)), "version": str(info.get("version", "")),
+        mine = {"build": int(info.get("build", 0)), "version": str(info.get("version", "")),
                 "commit": str(info.get("commit", ""))}
+        if "shown" in info:
+            mine["shown"] = int(info["shown"])
+        return mine
     except (OSError, ValueError, TypeError, AttributeError):
         return {}
 
@@ -90,8 +100,9 @@ def parse_release(data: dict) -> Release:
     if digest and not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
         digest = ""
     version = name[len("FogScout-Setup-"):-len(".exe")]
+    shown = SHOWN.search(str(data.get("name") or ""))
     return Release(int(m.group(1)), version, tag, name, setup["browser_download_url"], size,
-                   sha["browser_download_url"], digest[len("sha256:"):])
+                   sha["browser_download_url"], digest[len("sha256:"):], shown=int(shown.group(1)) if shown else 0)
 
 
 def _opener():
@@ -124,9 +135,9 @@ def check(root: str, opener=None):
         return "error", _("Update-Prüfung fehlgeschlagen: {error}", error=e), False, None
     if rel.build <= mine.get("build", 0):
         return "current", _("Kein Update – Version {version} (Build {build}) ist aktuell.",
-                            version=mine.get("version") or "?", build=mine.get("build", 0)), False, None
+                            version=mine.get("version") or "?", build=shown_build(mine)), False, None
     return ("available", _("Update verfügbar: {old} → {new} (Build {build}).", old=mine.get("version") or "?",
-                           new=rel.version, build=rel.build), True, rel)
+                           new=rel.version, build=shown_build(rel)), True, rel)
 
 
 def expected_sha(rel: Release, opener=None) -> str:
