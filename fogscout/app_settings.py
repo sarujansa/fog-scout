@@ -1343,7 +1343,7 @@ class SettingsTab:
             except Exception as e:
                 self.events.put(("upd_failed", _("Update nicht geladen: {error}", error=e)))
                 return
-            self.events.put(("upd_ready", path, rel.version, rel.build, rel.sha256))
+            self.events.put(("upd_ready", path, rel.version, relupdate.shown_build(rel), rel.sha256))
         threading.Thread(target=work, daemon=True, name="update-download").start()
 
     def _release_failed(self, msg):
