@@ -3786,4 +3786,11 @@ EN = {
     "Ø Warten": "Ø wait",
     "Eine Sitzung endet nach {n} Minuten ohne Runde. Es gelten die Filter oben – mit einem Rollenfilter zählt eine Sitzung nur die Runden dieser Rolle. Ø Kills, Entkommen und BP laut Stats-Seite. Doppelklick zeigt die Runden der Sitzung unter „Letzte Runden“.":
         "A session ends after {n} minutes without a round. The filters above apply – with a role filter a session counts only the rounds of that role. Ø kills, escaped and BP from the stats page. A double-click shows the session's rounds under \"Last rounds\".",
+    "Blutpunkte-Stand – letzter Wert {per}": "Bloodpoint balance – last value {per}",
+    "Cap erreicht": "Cap reached",
+    "Cap in ≈ {n} Runden": "Cap in ≈ {n} rounds",
+    "Cap: {cap}": "Cap: {cap}",
+    "Noch kein Blutpunkte-Stand gelesen – er kommt aus der Lobby nach der Runde.":
+        "No bloodpoint balance read yet – it comes from the lobby after the round.",
+    "{when}: Stand {bp} BP": "{when}: balance {bp} BP",
 }
