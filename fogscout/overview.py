@@ -263,6 +263,18 @@ def _setup_fact() -> Fact:
     return Fact(_("Stats-Seite"), "", _("nicht eingerichtet"), action="official_setup", action_label=_("Einrichten …"))
 
 
+def rounds_parts(d: dict) -> str:
+    """1.38.52 (user's screenshot: "Rounds 20 · 0 killer / 0 survivor" beside 20 farming rounds): what today's round
+    count is made of – only the parts that are there, adding up to the count: killer and survivor (normal rounds),
+    farming, custom games and normal rounds whose role was not read. ``d`` = history.today()."""
+    custom = d.get("custom", 0)
+    unknown = d["count"] - d["killer"] - d["survivor"] - d["farming"] - custom
+    parts = [(d["killer"], _("{n}× Killer", n=d["killer"])), (d["survivor"], _("{n}× Survivor", n=d["survivor"])),
+             (d["farming"], _("{n}× Farming", n=d["farming"])), (custom, _("{n}× Custom Game", n=custom)),
+             (unknown, _("{n}× ohne Rolle", n=unknown))]
+    return " · ".join(text for n, text in parts if n > 0)
+
+
 def today(app, now: float) -> tuple[list, str]:
     j = app._joined()
     d = history.today(j.rounds, now)
@@ -276,7 +288,7 @@ def today(app, now: float) -> tuple[list, str]:
         if not getattr(j, "matches", None):    # never set up – say where (it hides under "Mehr")
             tiles.append(_setup_fact())
         return tiles + ([rec] if rec else []) + ([ask] if ask else []), ""
-    rounds = Fact(_("Runden"), str(d["count"]), _("{k} Killer / {s} Survivor", k=d["killer"], s=d["survivor"]))
+    rounds = Fact(_("Runden"), str(d["count"]), rounds_parts(d))
     farm = None
     if d["farming"]:                           # 1.8.56: farming rounds apart; 1.8.87: bloodpoints per hour
         b = dashboard.bp_rate([(r, j.off[id(r)]) for r in mine if r.farming and not r.custom])

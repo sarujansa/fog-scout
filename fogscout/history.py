@@ -216,6 +216,7 @@ def today(rounds, now: float) -> dict:
             "killer": sum(1 for r in rs if r.role == "killer" and normal(r)),
             "survivor": sum(1 for r in rs if r.role == "survivor" and normal(r)),
             "normal": sum(1 for r in rs if normal(r)),
+            "custom": sum(1 for r in rs if r.custom),          # 1.38.52: for the parts under "Runden"
             "farming": len(farming),
             "wait": sum(waits) / len(waits) if waits else None,
             "top_killer": killers[0] if killers else "",
