@@ -565,13 +565,49 @@ def test_the_prestige_tab_lists_own_characters_and_draws_the_marked_one(tmp_path
         a._stats_render_tab()
         t = a.stats_prestige
         names = [t.item(i, "values")[0] for i in t.get_children()]
-        assert names == ["The Nurse", "Meg Thomas"] and t.selection() == ("0",)
+        # 1.38.50: the main per role is marked; two matches an hour apart give no pace (span under three days)
+        assert names == ["The Nurse · Main", "Meg Thomas · Main"] and t.selection() == ("0",)
         assert list(t.item("0", "values"))[2:5] == [4, 30, "+20 Level"]
+        assert list(t.item("0", "values"))[7:9] == ["–", "–"]
+        assert [x.title for x in a.stats_prestige_tiles.data][:2] == ["Charaktere", "Prestige gesamt"]
+        assert a.stats_prestige._dbdms_hide == ("last",)
         panel = a.prestige_trend.data["prestige"]
         assert "The Nurse" in panel["title"] and panel["last"] == "P4 · 30"
         t.selection_set("1")
         t.event_generate("<<TreeviewSelect>>")
         assert "Meg Thomas" in a.prestige_trend.data["prestige"]["title"]
         assert not a.stats_prestige_var.get()
+    finally:
+        a.quit()
+
+
+def test_reading_a_higher_prestige_grade_announces_it(tmp_path):
+    """1.38.50 (user's pick "Meilenstein-Meldung"): the userscript's file brings a match with The Nurse at P10 while
+    the stored matches knew P9 – the import's notification and the log say "Meilenstein: The Nurse ist jetzt
+    Prestige 10"; a second file with the same grade says nothing more."""
+    from dataclasses import asdict
+    from fogscout.official import FORMAT, Match
+    now = time.time()
+    known = json.dumps(asdict(Match(t=now - 86400, map="Coal Tower", role="killer", character="The Nurse",
+                                    seconds=600, prestige=9, level=50))).encode() + b"\n"
+    dl = tmp_path / "downloads"
+    dl.mkdir()
+    a = _start(tmp_path, {"welcome_seen": True, "official_dir": str(dl)}, matches=known)
+    try:
+        shown = []
+        a.toast.show = lambda title, text: shown.append(text)
+
+        def drop(t, level):
+            (dl / "fogscout-matches.json").write_text(json.dumps({
+                "format": FORMAT, "version": 1, "script": 5, "exported": now, "matches": [
+                    {"start": t, "map": "Coal Tower", "custom": False, "opponents": [],
+                     "player": {"role": "VE_Slasher", "character": "The Nurse", "status": None, "seconds": 600,
+                                "bp": 20000, "prestige": 10, "level": level}}]}), encoding="utf-8")
+            a._official_take()
+        drop(now - 3600, 2)
+        assert shown and "Meilenstein: The Nurse ist jetzt Prestige 10" in shown[-1]
+        assert [x for _c, _cat, x in a._log_entries if "ist jetzt Prestige 10" in x]
+        drop(now - 1800, 5)                                                   # same grade: nothing new
+        assert len(shown) == 2 and "ist jetzt Prestige" not in shown[-1]
     finally:
         a.quit()
