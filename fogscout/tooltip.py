@@ -389,6 +389,10 @@ TIPS = {
     "Alles sichern (ZIP) …": "Packt Runden, Match-Daten, die Einstellungen (ohne Passwörter und PC-eigene Werte), "
                              "eigene Kartenbilder und den Banner-Korpus in eine ZIP-Datei – zum Aufbewahren oder für "
                              "einen anderen PC. Aufnahmen und Logs bleiben draussen.",
+    "Aus Sicherung wiederherstellen (ZIP) …": "Führt eine Sicherung von „Alles sichern“ mit den jetzigen Daten "
+                                              "zusammen: Runden, Match-Daten, Kartenbilder und Banner, die fehlen, "
+                                              "kommen dazu – Vorhandenes bleibt, wie es ist. Zeigt vorher, was dazukommt. "
+                                              "Die Einstellungen der Sicherung nur auf eigene Rückfrage.",
     "JSON (für eigene Auswertungen)": "Eine Liste mit einem Objekt je Runde, die Spaltentitel als Schlüssel – für "
                                       "eigene Auswertungen (Python, Tabellen, jq).",
     "Textliste (eine Zeile je Runde)": "Eine Zeile je Runde, die gewählten Spalten mit „ · “ getrennt, ohne Kopfzeile – "
