@@ -302,7 +302,8 @@ class StatsTab:
         box_b = self._stats_page(_("Bloodpoints"), "bp", "_stats_part_bp")   # 1.6.3: with the role filter "Farming" = the farming evaluation
         self.stats_bp_tiles = ui.Tiles(box_b)          # 1.7.1: a small dashboard above the table
         self.stats_bp_tiles.pack(fill="x", pady=(0, 6))
-        self.bp_trend = TrendChart(box_b, bool(self.settings.get("dark_mode", True)), panels=("bp",))
+        # 1.38.48 (user's pick "Blutpunkte-Stand als Verlauf"): the balance read in the lobby as a second panel
+        self.bp_trend = TrendChart(box_b, bool(self.settings.get("dark_mode", True)), panels=("bp", "balance"))
         self.stats_bp = self._stats_tree(box_b, (("group", _("Rolle/Killer"), 140, "w"), ("n", _("Runden"), 60, "e"),
                                                  ("round", _("Ø BP"), 70, "e"), ("hour", _("BP/h"), 70, "e"),
                                                  ("hourw", _("BP/h mit Wartezeit"), 120, "e"),
@@ -823,8 +824,10 @@ class StatsTab:
 
     def _stats_part_bp(self, c):
         """1.6.3: bloodpoints per round and per hour – all, by role, by killer (filters apply)."""
-        self.stats_bp_tiles.data = dashboard.bp_tiles(c.pairs, self._role_name)
-        self._bp_trend_render(c.pairs, TREND_UNIT.get(c.period, "week"))
+        tiles = dashboard.bp_tiles(c.pairs, self._role_name)
+        bal = dashboard.balance_tile(c.all_rounds, dashboard.bp_rate(c.pairs).per_round)     # 1.38.48
+        self.stats_bp_tiles.data = tiles + ([bal] if bal is not None else [])
+        self._bp_trend_render(c.pairs, TREND_UNIT.get(c.period, "week"), c.rounds)
         t = self.stats_bp
         t.delete(*t.get_children())
         for i, (group, b) in enumerate(dashboard.bp_rows(c.pairs, killer_label)):
@@ -832,8 +835,9 @@ class StatsTab:
                 group, b.rounds, dashboard._bp(b.per_round), dashboard._bp(b.per_hour) if b.per_hour else "–",
                 dashboard._bp(b.per_hour_waiting) if b.per_hour_waiting else "–", dashboard._bp(b.bp)))
 
-    def _bp_trend_render(self, pairs, unit):
-        """1.7.1: Ø bloodpoints per round per hour / day / week above the bloodpoints table."""
+    def _bp_trend_render(self, pairs, unit, rounds=()):
+        """1.7.1: Ø bloodpoints per round per hour / day / week above the bloodpoints table; 1.38.48 below it the
+        balance read in the lobby after the rounds of the selection (a line: the last reading of each bucket)."""
         def label(b):
             if unit == "week":
                 return _("KW {n}", n=datetime.date.fromtimestamp(b).isocalendar()[1])
@@ -854,7 +858,23 @@ class StatsTab:
             "title": _("Ø Bloodpoints pro Runde {per}", per=per), "bars": bars, "max": hi,
             "ticks": [(v, dashboard._bp(v)) for v in range(0, hi + 1, step)],
             "last": dashboard._bp(values[-1]) if values else "",
-            "empty": _("Keine Runden mit Bloodpoints in dieser Auswahl.")}})
+            "empty": _("Keine Runden mit Bloodpoints in dieser Auswahl.")},
+            "balance": self._balance_panel(rounds, unit, label, per)})
+
+    @staticmethod
+    def _balance_panel(rounds, unit, label, per) -> dict:
+        """1.38.48: the panel "Blutpunkte-Stand" – a line from 0 to the next million above the highest reading (the
+        cap of 5 million as a tick when it is in view)."""
+        bars = [(v, label(b), _("{when}: Stand {bp} BP", when=label(b), bp=dashboard._bp(v)) if v is not None else "")
+                for b, v in dashboard.balance_trend(rounds, unit)]
+        values = [v for v, _l, _t in bars if v is not None]
+        hi = max(1_000_000, (int(max(values)) // 1_000_000 + 1) * 1_000_000) if values else 1_000_000
+        step = 1_000_000 if hi <= 6_000_000 else 2_000_000
+        return {"title": _("Blutpunkte-Stand – letzter Wert {per}", per=per), "bars": bars, "kind": "line", "min": 0,
+                "max": hi, "ticks": [(v, _("{n} Mio.", n=v // 1_000_000) if v else "0")   # short: the axis is 54 px
+                                     for v in range(0, hi + 1, step)],
+                "last": dashboard._bp(values[-1]) if values else "",
+                "empty": _("Noch kein Blutpunkte-Stand gelesen – er kommt aus der Lobby nach der Runde.")}
 
     @staticmethod
     def _wait_text(r) -> str:
