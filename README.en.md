@@ -2,6 +2,8 @@
 
 *[Deutsche Fassung: README.md](README.md)*
 
+> **Note:** Fog Scout is an **unofficial fan tool** – not affiliated with Behaviour Interactive or Epic Games (Easy Anti-Cheat) and **not approved** by them. It only reads screen pixels and window information, does not modify game files, does not access the game and sends no input. There is still no guarantee against warnings or bans: **use at your own risk, without warranty and without liability** – details and terms of use in [`LICENSE`](LICENSE) (all rights reserved).
+
 Map overlay for Dead by Daylight. When a match starts, the map name is detected automatically and the matching callout map from the `maps/` folder is shown. The map is a separate click-through window on top of the game.
 
 **Language:** the program shows German or English. By default it follows the Windows language (English unless Windows runs in German). Change it under **Settings → Language and appearance → Sprache / Language**; it takes effect the next time the program starts.
