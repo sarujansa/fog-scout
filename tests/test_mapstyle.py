@@ -501,3 +501,20 @@ def test_a_reinstalled_map_keeps_its_style_picture(tmp_path):
     assert mapstyle.styled_path(str(src), cache, make=False, style="grey") == first
     Image.new("RGBA", (64, 48), (90, 60, 120, 255)).save(src, "WEBP")  # another picture: never the old one
     assert mapstyle.styled_path(str(src), cache, make=False, style="grey") == str(src)
+
+
+def test_pruning_never_deletes_through_a_linked_style_folder(tmp_path):
+    """1.38.57 (security review): a sub folder of the user-writable cache that is a link (junction on Windows) is
+    never followed – before, old-version names in the folder it pointed to were deleted."""
+    outside, cache = tmp_path / "outside", tmp_path / "cache"
+    outside.mkdir()
+    (cache / "dark").mkdir(parents=True)
+    name = "Coal Tower-abc-1280-v1.webp"                   # a name of ours, another STYLE_VERSION
+    (outside / name).write_bytes(b"x")
+    (cache / "dark" / name).write_bytes(b"x")
+    try:
+        os.symlink(outside, cache / "lilac", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("no symlinks")
+    assert mapstyle.prune(str(cache)) == 1
+    assert (outside / name).exists() and not (cache / "dark" / name).exists()

@@ -63,7 +63,7 @@ def snapshot(root: str, now: float | None = None, tag: str = "") -> dict:
         out["copied"].append(target)
         for old in copies(folder, stem)[:-KEEP]:
             try:
-                os.remove(os.path.join(folder, old))
+                fsops.delete_inside(folder, os.path.join(folder, old))     # 1.38.57: never through a junction
                 out["pruned"].append(old)
             except OSError:
                 pass
@@ -119,10 +119,22 @@ MAX_ENTRIES = 5000                              # more than a backup of ours eve
 MAX_ENTRY_BYTES = 64 * 1024 * 1024              # one file (rounds.jsonl with 5000 rounds ≈ 3 MB, a map picture ≈ 1 MB)
 MAX_TOTAL_BYTES = 1024 * 1024 * 1024            # all of it unpacked
 _PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,120}$")   # one path part as our own files name them
+# 1.38.57 (security review): names Windows gives to devices (with any extension) – "CON.webp" is no file there
+_DEVICES = {"CON", "PRN", "AUX", "NUL"} | {f"{p}{i}" for p in ("COM", "LPT") for i in range(1, 10)}
+CORPUS_EXTS = (".jpg", ".json")                 # what corpus.save writes
+MAX_PICTURE_PIXELS = 64 * 1024 * 1024           # a map picture of ours is 1280 px wide; far below this
 
 
 class NotOurs(ValueError):
     """The ZIP is no backup of this program (or not readable, or bigger than one of ours can be)."""
+
+
+class _Unpacked:
+    """1.38.57 (security review): the bytes really unpacked from one ZIP, across all members – the sizes in the
+    headers are the archive's own word and are not trusted."""
+
+    def __init__(self, z):
+        self.z, self.total = z, 0
 
 
 def _allowed(name: str) -> bool:
@@ -131,7 +143,13 @@ def _allowed(name: str) -> bool:
     if name == SETTINGS_NAME or name in FILES:
         return True
     parts = name.split("/")
-    return len(parts) == 2 and parts[0] in ARCHIVE_DIRS and bool(_PART.match(parts[1])) and parts[1] not in (".", "..")
+    if len(parts) != 2 or parts[0] not in ARCHIVE_DIRS or not _PART.match(parts[1]) or parts[1] in (".", ".."):
+        return False
+    base = parts[1]
+    if base.endswith((".", " ")) or base.split(".")[0].rstrip(" ").upper() in _DEVICES:
+        return False                             # 1.38.57: Windows drops the end / opens a device
+    from .catalog import IMAGE_EXT
+    return base.lower().endswith(IMAGE_EXT if parts[0] == "user_maps" else CORPUS_EXTS)
 
 
 def _members(z) -> dict:
@@ -147,12 +165,36 @@ def _members(z) -> dict:
     return out
 
 
-def _read(z, info) -> bytes:
-    with z.open(info) as fh:                      # the size in the header is not trusted: never read past the limit
-        data = fh.read(MAX_ENTRY_BYTES + 1)
-    if len(data) > MAX_ENTRY_BYTES:
+def _read(u: _Unpacked, info) -> bytes:
+    import zipfile
+    import zlib
+    try:
+        with u.z.open(info) as fh:                # the size in the header is not trusted: never read past the limit
+            data = fh.read(MAX_ENTRY_BYTES + 1)
+    except (RuntimeError, NotImplementedError, zipfile.LargeZipFile, zipfile.BadZipFile, zlib.error, EOFError) as e:
+        raise NotOurs(str(e) or type(e).__name__) from e     # 1.38.57: encrypted, unknown compression, broken
+    u.total += len(data)
+    if len(data) > MAX_ENTRY_BYTES or u.total > MAX_TOTAL_BYTES:
         raise NotOurs("too big")
     return data
+
+
+def _picture_ok(data: bytes) -> bool:
+    """1.38.57 (security review): a map picture from the ZIP is written only when PIL can read it at a sane size."""
+    import io
+    import warnings
+    from PIL import Image
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as im:
+                w, h = im.size
+                if w <= 0 or h <= 0 or w * h > MAX_PICTURE_PIXELS:
+                    return False
+                im.verify()
+    except Exception:                           # OSError, SyntaxError, DecompressionBomb*, … – PIL raises many kinds
+        return False
+    return True
 
 
 def _lines(data: bytes):
@@ -165,7 +207,7 @@ def _key(t) -> float:
     return round(float(t), 3)
 
 
-def _plan(data_dir: str, z, members: dict) -> dict:
+def _plan(data_dir: str, u: _Unpacked, members: dict) -> dict:
     """What a merge would add – nothing is written. Rounds and lost rounds by their start (a round that is in
     both stays as it is now: later corrections win), matches by their start, files of user_maps/corpus by name."""
     import json
@@ -175,7 +217,7 @@ def _plan(data_dir: str, z, members: dict) -> dict:
     hist_path = os.path.join(data_dir, history.FILE)
     have = {_key(r.t) for r in history.load(hist_path)} | {_key(d["t"]) for d in history._lost_lines(hist_path)}
     if "rounds.jsonl" in members:
-        for line in _lines(_read(z, members["rounds.jsonl"])):
+        for line in _lines(_read(u, members["rounds.jsonl"])):
             try:
                 d = json.loads(line)
                 if isinstance(d, dict) and d.get("lost"):
@@ -196,7 +238,7 @@ def _plan(data_dir: str, z, members: dict) -> dict:
     off_path = os.path.join(data_dir, official.FILE)
     stored = {round(m.t) for m in official.load(off_path)}
     if "official.jsonl" in members:
-        for line in _lines(_read(z, members["official.jsonl"])):
+        for line in _lines(_read(u, members["official.jsonl"])):
             try:
                 d = json.loads(line)
                 if isinstance(d, dict) and d.get("gap"):
@@ -220,7 +262,7 @@ def _plan(data_dir: str, z, members: dict) -> dict:
         else:
             plan["files"].append(name)
     if SETTINGS_NAME in members:
-        plan["settings"] = _read(z, members[SETTINGS_NAME])
+        plan["settings"] = _read(u, members[SETTINGS_NAME])
     return plan
 
 
@@ -230,8 +272,8 @@ def inspect(data_dir: str, path: str) -> dict:
     import zipfile
     try:
         with zipfile.ZipFile(path) as z:
-            p = _plan(data_dir, z, _members(z))
-    except (OSError, zipfile.BadZipFile) as e:
+            p = _plan(data_dir, _Unpacked(z), _members(z))
+    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile, RuntimeError, NotImplementedError) as e:
         raise NotOurs(str(e)) from e
     return {"rounds": len(p["rounds"]), "lost": len(p["lost"]), "matches": len(p["matches"]),
             "files": len(p["files"]), "known": p["known"], "settings": p["settings"] is not None}
@@ -246,11 +288,12 @@ def restore(data_dir: str, path: str, now: float | None = None) -> dict:
     from . import history, official
     try:
         z = zipfile.ZipFile(path)
-    except (OSError, zipfile.BadZipFile) as e:
+    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile, RuntimeError, NotImplementedError) as e:
         raise NotOurs(str(e)) from e
     with z:
         members = _members(z)
-        plan = _plan(data_dir, z, members)
+        u = _Unpacked(z)
+        plan = _plan(data_dir, u, members)
         if plan["rounds"] or plan["lost"] or plan["matches"]:
             snapshot(data_dir, now=now, tag="restore")
         if plan["rounds"] or plan["lost"]:
@@ -270,8 +313,11 @@ def restore(data_dir: str, path: str, now: float | None = None) -> dict:
             os.makedirs(folder, exist_ok=True)
             if os.path.realpath(folder) != os.path.join(root, name.split("/")[0]):
                 continue                          # user_maps/ or corpus/ is a link somewhere else: not followed
+            data = _read(u, members[name])
+            if name.startswith("user_maps/") and not _picture_ok(data):
+                continue                          # 1.38.57: not a picture PIL reads at a sane size: left out
             try:
-                fsops.write_new(target, _read(z, members[name]))
+                fsops.write_new(target, data)
                 written += 1
             except FileExistsError:
                 plan["known"] += 1

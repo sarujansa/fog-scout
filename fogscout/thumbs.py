@@ -22,6 +22,7 @@ import time
 
 from PIL import Image
 
+from . import fsops
 from .imageedit import converted
 
 VERSION = 2                       # raise when the thumbnails change: the cache is made anew (2: 16-bit grey)
@@ -120,8 +121,8 @@ def prune(cache_dir: str, now: float | None = None, max_age_s: float = PRUNE_AFT
             continue
         full = os.path.join(cache_dir, name)
         try:
-            if now - os.stat(full).st_mtime > max_age_s:
-                os.remove(full)
+            if now - os.lstat(full).st_mtime > max_age_s:
+                fsops.delete_inside(cache_dir, full)     # 1.38.57 (security review): never through a link/junction
                 gone += 1
         except OSError:
             pass
