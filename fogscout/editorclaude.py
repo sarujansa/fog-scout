@@ -14,7 +14,7 @@ import threading
 
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
 
-from . import askclaude, clipedit, editcommands, highlights, i18n, imageedit, sequence
+from . import askclaude, clipedit, editcommands, highlights, i18n, imageedit, moments, sequence
 from .i18n import N_, _
 from .qt_common import PlainLabel
 from .qt_views import ElideButton
@@ -65,7 +65,18 @@ class ClaudeMixin:
                                     "F8-Marken, bereits zensierte Bereiche zensiert) an Claude; Claude nennt bis zu "
                                     "drei Stellen für einen Short. Die Bilder können Spielernamen zeigen."))
         self.cl_hl_btn.clicked.connect(self.claude_highlights)
-        sec.body.addWidget(self.cl_hl_btn)
+        self.cl_short_btn = QPushButton(_("Short vorschlagen"))  # 1.39.2: the whole short at once
+        self.cl_short_btn.setToolTip(_("Schickt Standbilder an den gefundenen Momenten (aus Tasten, Spielton und "
+                                       "F8-Marken, nur als Zahlen) und den Schnitt an Claude; Claude schlägt einen "
+                                       "ganzen Short vor – Ausschnitt, Zeitlupe, Titel, Untertitel. Erst "
+                                       "„Übernehmen“ ändert den Schnitt. Die Bilder können Spielernamen zeigen."))
+        self.cl_short_btn.clicked.connect(self.claude_short)
+        hl_row = QHBoxLayout()
+        hl_row.setSpacing(6)
+        hl_row.addWidget(self.cl_hl_btn)
+        hl_row.addWidget(self.cl_short_btn)
+        hl_row.addStretch()
+        sec.body.addLayout(hl_row)
         self.cl_hl_rows = QVBoxLayout()                           # one button per highlight Claude named
         self.cl_hl_rows.setSpacing(4)
         sec.body.addLayout(self.cl_hl_rows)
@@ -106,6 +117,8 @@ class ClaudeMixin:
             self.cl_frame_box.setChecked(False)
         self.cl_hl_btn.setVisible(frame_ok)
         self.cl_hl_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
+        self.cl_short_btn.setVisible(frame_ok)                                   # 1.39.2
+        self.cl_short_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
         self.cl_field.setEnabled(on)
         self.cl_ask_btn.setEnabled(on and self.history is not None and not self._claude_busy)
         if not on and self._claude_result is None:
@@ -279,6 +292,72 @@ class ClaudeMixin:
                 log.warning("Claude-Highlights: unerwarteter Fehler %s", e.__class__.__name__)
                 emit(("hl", seq, base, mode, None, "bad"))
         threading.Thread(target=work, name="claude-highlights", daemon=True).start()
+
+    # ---- 1.39.2: „Short vorschlagen“
+    def claude_short(self):
+        """Stills at the local moments (and marks, and spread over the cut) + the cut and the moments as numbers →
+        Claude proposes a whole short as editcommands operations; shown like a wish, taken on „Übernehmen“."""
+        if self._claude_busy or self.history is None:
+            return
+        key = self.claude_key()
+        if not key or not self.claude_frame():
+            self._claude_refresh()
+            return
+        base = self._state()
+        mode = str(self.mode_box.currentData() or "copy")
+        length = sequence.duration(base.parts)
+        marks = self._claude_marks()
+        found = self._moments_now()
+        peaks = [(x + y) / 2 for x, y, *_r in sorted(found, key=lambda m: -m[2])]
+        jobs = []
+        for t in highlights.still_times(length, marks, peaks):
+            i, src_t = sequence.source_at(base.parts, t)
+            part = base.parts[i] if i is not None else None
+            jobs.append((t, self._src_path(part), self._src_info(part), src_t))
+        if not jobs:
+            return
+        boxes = [list(b) for b in base.boxes]
+        style = base.censor_style if base.censor_style in imageedit.CENSOR_STYLES else "pixel"
+        language = "German" if i18n.current() == "de" else "English"
+        from . import shorts
+        wish = highlights.SHORT_WISH.format(limit=int(min(60, shorts.MAX_S)), language=language)
+        text = (editcommands.content(wish, base, mode, marks, picture=False) + "\n\n"
+                + moments.facts([(x, y, s, k) for x, y, s, k, *_r in found], length, marks))
+        ffmpeg = self.ffmpeg
+        self._claude_seq += 1
+        seq = self._claude_seq
+        self._claude_base, self._claude_result = base, None
+        self._claude_busy = True
+        self._claude_buttons(False)
+        self._highlights_clear()
+        self.cl_list.hide()
+        self.cl_status.setText(_("Claude baut einen Short aus {n} Standbildern …", n=len(jobs)))
+        self._claude_refresh()
+        emit = self.bridge.claude.emit
+
+        def work():
+            try:
+                content = [{"type": "text", "text": text}]
+                for t, path, info, src_t in jobs:
+                    img = clipedit.frame_at(path, src_t, highlights.STILL_H, info, ffmpeg)
+                    if img is None:
+                        continue
+                    for b in boxes:              # always hidden in what is sent
+                        img = imageedit.censor_area(img, b, style)
+                    content += [{"type": "text", "text": f"Still at {round(t, 1):g} s:"},
+                                askclaude.image_block(img, highlights.STILL_SIDE)]
+                if len(content) == 1:
+                    raise _NoStill()
+                emit((seq, base, mode, askclaude.request(key, editcommands.SYSTEM, content, editcommands.SCHEMA),
+                      False))
+            except askclaude.AskError as e:
+                emit((seq, base, mode, None, e.kind))
+            except _NoStill:
+                emit((seq, base, mode, None, "still"))
+            except Exception as e:               # only the kind – never a picture or the key
+                log.warning("Claude-Short: unerwarteter Fehler %s", e.__class__.__name__)
+                emit((seq, base, mode, None, "bad"))
+        threading.Thread(target=work, name="claude-short", daemon=True).start()
 
     def _highlights_clear(self):
         self._hl_found = []

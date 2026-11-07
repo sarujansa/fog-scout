@@ -23,6 +23,7 @@ from . import annotate, clipedit, hudnames, imageedit, launch, medialib, obsrec,
 from .i18n import N_, _
 from .editorclaude import ClaudeMixin
 from .editorinputs import InputMixin
+from .editormoments import MomentsMixin
 from .editormontage import MontageMixin
 from .editormusic import MusicMixin
 from .editorproject import ProjectMixin
@@ -253,7 +254,7 @@ class Section(QFrame):
         return r
 
 
-class EditorWindow(ClaudeMixin, InputMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase):
+class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase):
     """The full editor – see the module's docstring. ``media`` = the App's list of MediaItems for the library
     (callable), ``on_open(item, window)`` = the App opens another recording (a new window; ``window`` = this one, to
     be replaced when nothing was edited here), ``cache_dir`` = where the library's pictures are kept,
@@ -282,6 +283,7 @@ class EditorWindow(ClaudeMixin, InputMixin, MontageMixin, MusicMixin, ProjectMix
         self._music_init()                  # 1.21: the own audio track A2 (editormusic)
         self._claude_init()                 # 1.27: „Mit Claude bearbeiten“ (editorclaude)
         self._inputs_init(path)             # 1.39.1: the input card (editorinputs)
+        self._moments_init()                # 1.39.2: moments, idle, loading screen (editormoments)
         self._short_view = False            # 1.20: the preview shows the composed short
         self._crop_saved = (None, None, False)
         super().__init__(path, marks, clips_dir, mode, sound, flags=Qt.Window, **kw)
@@ -583,6 +585,7 @@ class EditorWindow(ClaudeMixin, InputMixin, MontageMixin, MusicMixin, ProjectMix
         for key, title, build in (("claude", _("Mit Claude bearbeiten"), self._section_claude),   # 1.27
                                   ("clip", _("Clip"), self._section_clip), ("fx", _("Effekte"), self._section_fx),
                                   ("marks", _("Marken (F8)"), self._section_marks),
+                                  ("moments", _("Momente"), self._section_moments),          # 1.39.2
                                   ("draw", _("Zeichnen"), self._section_draw), ("censor", _("Zensieren"), self._section_censor),
                                   ("picture", _("Bild"), self._section_picture),
                                   ("inputs", _("Eingaben"), self._section_inputs),           # 1.39.1
@@ -1468,7 +1471,7 @@ class EditorWindow(ClaudeMixin, InputMixin, MontageMixin, MusicMixin, ProjectMix
         return True
 
     def _extra_threads(self):
-        self.bridge.wave.connect(lambda bins: self.timeline.set_wave(bins, clipedit.WAVE_PER_S))
+        self.bridge.wave.connect(self._wave_arrived)
         if self.info.audio_tracks > 0:
             path, duration, ffmpeg, b, cancel = self.path, self.info.duration, self.ffmpeg, self.bridge, self._cancel
 
@@ -1593,6 +1596,7 @@ class EditorWindow(ClaudeMixin, InputMixin, MontageMixin, MusicMixin, ProjectMix
             self._short_show()
         secs["marks"].setVisible(bool(self._mark_rows()))
         secs["inputs"].setVisible(self._input_has())                            # 1.39.1
+        self._moments_refresh()                                                  # 1.39.2
         secs["draw"].setVisible(self.mode == "draw")
         secs["censor"].setVisible(self.mode == "censor")
         if sel is not None and sel < len(self.parts):
@@ -1923,6 +1927,10 @@ class EditorWindow(ClaudeMixin, InputMixin, MontageMixin, MusicMixin, ProjectMix
         later = [m for m in self.marks if m > src + 0.05]
         if later or self.marks:
             self.goto_src(later[0] if later else self.marks[0])
+
+    def _wave_arrived(self, bins):
+        self.timeline.set_wave(bins, clipedit.WAVE_PER_S)
+        self._moments_refresh()                          # 1.39.2: the game sound counts for the moments
 
     def clip_around_mark(self):
         row = self._picked_mark()
