@@ -14,6 +14,7 @@ import math
 import os
 import subprocess
 import threading
+from collections import OrderedDict
 import time
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
@@ -1151,6 +1152,8 @@ class ClipBase(QWidget):
         self._want = None                   # latest scrub moment asked for: (t, quick first look?)
         self._first_look = True             # 1.8.3: the first picture comes as a key frame at once, exact after
         self._scrub_lock = threading.Condition()
+        self._frames = OrderedDict()        # 1.40: exact pictures decoded lately {(path, vf, size, frame key): image}
+        self._last_key = None               # … and the frame shown last (stepping back reads the pictures before it)
         self._closed = False
         self._cancel = threading.Event()    # 1.16.2: set on close – long ffmpeg analyses (levels, waveform) stop
         self._target_mb = int(target_mb) if target_mb in clipedit.TARGETS_MB else clipedit.DEFAULT_TARGET_MB
@@ -1598,6 +1601,14 @@ class ClipBase(QWidget):
             if want is None:
                 continue
             t, quick, vf, size, path, info = want
+            key = clipedit.frame_key(t, info.fps)
+            cached = self._frames.get((path, vf, size, key))
+            if cached is not None:                      # 1.40: seen a moment ago (stepping, back and forth)
+                self._frames.move_to_end((path, vf, size, key))
+                self._last_key = key
+                if not self._closed:
+                    self.bridge.frame.emit(t, cached)
+                continue
             if quick:                                   # 1.8.3: the key frame at once (~40 ms), the exact frame after
                 img = clipedit.frame_at(path, t, clipedit.PREVIEW_H, info, self.ffmpeg, keyframe=True, vf=vf,
                                         size=size)
@@ -1606,8 +1617,36 @@ class ClipBase(QWidget):
                 with self._scrub_lock:
                     if self._want is not None:          # a newer wish meanwhile: that one, not this exact frame
                         continue
+            self._scrub_burst(t, key, vf, size, path, info)
+
+    FRAMES_KEPT = 40                                   # 1.40: ~60 MB of 540p pictures
+
+    def _scrub_burst(self, t, key, vf, size, path, info):
+        """1.40: the exact picture at ``t`` and the pictures next to it in one ffmpeg run (clipedit.frames_from) –
+        stepping on is instant then; stepping back (the last picture shown was later) reads the ones before ``t``.
+        The wanted picture is shown as soon as it is decoded; a wish far away ends the run."""
+        fps = info.fps or 30.0
+        back = self._last_key is not None and key < self._last_key
+        first = max(0, key - (clipedit.BURST - 1)) if back else key
+        span = range(first, first + clipedit.BURST)
+
+        def moved_away():
+            w = self._want
+            return self._closed or (w is not None and clipedit.frame_key(w[0], w[5].fps) not in span)
+        shown = False
+        for k, img in clipedit.frames_from(path, first / fps if back else t, clipedit.BURST, clipedit.PREVIEW_H, info,
+                                           self.ffmpeg, vf=vf, size=size, stop=moved_away):
+            self._frames[(path, vf, size, k)] = img
+            while len(self._frames) > self.FRAMES_KEPT:
+                self._frames.popitem(last=False)
+            if k == key and not self._closed:
+                shown = True
+                self._last_key = key
+                self.bridge.frame.emit(t, img)
+        if not shown and not moved_away():              # the run ended early: the single picture as before
             img = clipedit.frame_at(path, t, clipedit.PREVIEW_H, info, self.ffmpeg, vf=vf, size=size)
-            if img is not None and not self._closed:
+            if img is not None:
+                self._last_key = key
                 self.bridge.frame.emit(t, img)
 
     def _level_loop(self):
@@ -2105,6 +2144,9 @@ class ClipBase(QWidget):
         pv = getattr(self, "preview", None)
         if pv is not None:
             pv._img = pv._scaled = pv._layer = None
+        frames = getattr(self, "_frames", None)
+        if frames is not None:
+            frames.clear()                              # 1.40: the cached scrub pictures go with the window
         tl = getattr(self, "timeline", None)
         if tl is not None:
             tl.thumbs.clear()

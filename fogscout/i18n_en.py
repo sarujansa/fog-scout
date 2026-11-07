@@ -3027,6 +3027,7 @@ EN = {
     "Pos1 / Ende": "Home / End",
     "Zum Anfang / zum Schluss": "To the start / to the end",
     "Zur nächsten Marke": "To the next mark",
+    "Zurückspringen / Anhalten / Abspielen – L mehrmals: ×2, ×4": "Jump back / stop / play – press L again: ×2, ×4",
     "Vollbild an / aus": "Full screen on / off",
     "Clip beginnt / endet am Abspielkopf": "Clip starts / ends at the playhead",
     "S oder Strg+B": "S or Ctrl+B",

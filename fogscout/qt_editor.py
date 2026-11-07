@@ -28,7 +28,7 @@ from .editormontage import MontageMixin
 from .editormusic import MusicMixin
 from .editorproject import ProjectMixin
 from .qt_clip import (CENSOR_LABELS, CONTENT_LABEL, CROP_LABELS, DRAW_TOOLS, MARK_AFTER_S, MARK_BEFORE_S, SHOW_FOR,
-                      SIZE_LABELS, SPEED_LABELS, STEP_BIG, STEP_SMALL, ClipBase, PreviewView)
+                      SIZE_LABELS, SPEED_LABELS, STEP_BIG, STEP_SMALL, ClipBase, PreviewView, seg_part)
 from .qt_common import guard_wheel
 from .qt_layouts import FlowRow
 from .qt_library import MediaLibrary
@@ -37,6 +37,7 @@ from .qt_timeline import SequenceTimeline
 LIB_W, INSP_W = 270, 330            # px: the side panels at first
 TL_H = 215                          # px: the timeline panel at first
 MIN_W, MIN_H = 1024, 640
+SHUTTLE_MAX = 4.0                   # 1.40: L pressed again doubles the preview's tempo up to this
 TOOL_ICONS = {"arrow": "arrow", "line": "line", "rect": "rect", "ellipse": "ellipse", "free": "free", "text": "text"}
 MODES = ("select", "crop", "draw", "censor")
 MODE_LABELS = {"select": N_("Auswahl"), "crop": N_("Ausschnitt"), "draw": N_("Zeichnen"), "censor": N_("Zensieren")}
@@ -61,6 +62,8 @@ SHORTCUTS = (
          ((Qt.Key_Left, _CT, "step_frame"), (Qt.Key_Right, _CT, "step_frame"), (Qt.Key_Comma, 0, "step_frame"),
           (Qt.Key_Period, 0, "step_frame"))),
         (N_("Pos1 / Ende"), N_("Zum Anfang / zum Schluss"), ((Qt.Key_Home, 0, "goto"), (Qt.Key_End, 0, "goto"))),
+        ("J / K / L", N_("Zurückspringen / Anhalten / Abspielen – L mehrmals: ×2, ×4"),
+         ((Qt.Key_J, 0, "shuttle_back"), (Qt.Key_K, 0, "shuttle_stop"), (Qt.Key_L, 0, "shuttle_forward"))),
         ("M", N_("Zur nächsten Marke"), ((Qt.Key_M, 0, "next_mark"),)),
         ("F", N_("Vollbild an / aus"), ((Qt.Key_F, 0, "toggle_fullscreen"),)))),
     (N_("Zeitleiste"), (
@@ -1730,7 +1733,9 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
         self.goto(self.pos + n / max(1.0, self.info.fps))
 
     def _show_pos(self):
-        self.pos_label.setText(f"{clipedit.fmt_pos(self.pos)} / {clipedit.fmt_pos(self.timeline.total())}")
+        fast = getattr(self, "_shuttle", 1.0)
+        tag = f"  ×{fast:g}" if self.playing and fast > 1 else ""
+        self.pos_label.setText(f"{clipedit.fmt_pos(self.pos)} / {clipedit.fmt_pos(self.timeline.total())}{tag}")
 
     def _segments(self) -> list:
         i, src = sequence.source_at(self.parts, self.pos)
@@ -1750,15 +1755,19 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
         p = self.parts[i]
         if p.hold > 0:
             return (p.start, p.start, 1.0, at, p, max(0.0, p.hold - (at - start_out)))
+        fast = getattr(self, "_shuttle", 1.0)              # 1.40: L pressed again plays ×2 / ×4
         _k, src = sequence.source_at(self.parts, at) if at > start_out else (i, p.end if p.reverse else p.start)
         if p.reverse:                                   # backwards: the source up to here, played from its end
-            return (p.start, src, p.speed, at, p)
-        return (src, p.end, p.speed, at, p)
+            return (p.start, src, p.speed * fast, at, p)
+        return (src, p.end, p.speed * fast, at, p)
 
     def _played_at(self, t):
         if self._seg is None:
             return
         start, _end, speed, out0 = self._seg[:4]
+        part = seg_part(self._seg)
+        if part is not None and part.hold <= 0:         # 1.40: output time runs at the part's tempo, not the shuttle's
+            speed = part.speed
         self.pos = out0 + max(0.0, t - start) / max(0.01, speed)
         self.timeline.set_playhead(self.pos)
         self.timeline.ensure_visible(self.pos)
@@ -1766,7 +1775,37 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
     def _after_playing(self, back):
         self.goto(back if back is not None else self.pos)
 
+    def _sound_wanted(self) -> bool:
+        return super()._sound_wanted() and getattr(self, "_shuttle", 1.0) == 1.0    # 1.40: spooling plays no sound
+
+    # ---- 1.40: J / K / L
+    def shuttle_forward(self):
+        """L: play; pressed again while playing ×2, then ×4 (the picture only, the cut's tempo times the factor)."""
+        if not self.playing:
+            self._shuttle = 1.0
+            self.toggle_play()
+            return
+        fast = min(SHUTTLE_MAX, getattr(self, "_shuttle", 1.0) * 2)
+        back = self._play_to
+        self._stop_player()
+        self._shuttle, self._play_to = fast, back
+        self.toggle_play()
+        self._show_pos()
+
+    def shuttle_stop(self):
+        """K: stop where the playhead is."""
+        if self.playing:
+            self._play_to = None
+            self._stop_player()
+
+    def shuttle_back(self):
+        """J: stop and jump back (no backwards playback – ffmpeg's reverse would hold every frame in memory)."""
+        self.shuttle_stop()
+        self.step(-STEP_BIG)
+
     def _show_playing(self, on: bool):
+        if not on:
+            self._shuttle = 1.0
         self.play_btn.setIcon(self._play_icons[1 if on else 0])
         self.play_btn.setToolTip(_("Pause (Leertaste)") if on else _("Abspielen / Pause (Leertaste)"))
 
@@ -2217,6 +2256,12 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
             self.set_end()
         elif k == Qt.Key_M:
             self.next_mark()
+        elif k == Qt.Key_J:                                       # 1.40: shuttle as in most editors
+            self.shuttle_back()
+        elif k == Qt.Key_K:
+            self.shuttle_stop()
+        elif k == Qt.Key_L:
+            self.shuttle_forward()
         elif k == Qt.Key_S and not frame:
             self.split_at_playhead()
         elif k == Qt.Key_P and not frame:                         # 1.19: a still at the playhead
