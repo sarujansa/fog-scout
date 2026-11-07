@@ -187,18 +187,20 @@ def image_block(img, side: int = IMAGE_SIDE) -> dict:
                                         "data": base64.standard_b64encode(data).decode("ascii")}}
 
 
-def request_body(system: str, content, schema: dict, max_tokens: int = MAX_TOKENS, images=(), model=None) -> dict:
+def request_body(system: str, content, schema: dict, max_tokens: int = MAX_TOKENS, images=(), model=None,
+                 history=()) -> dict:
     """1.27: one Messages request with a structured answer (``schema``) – shared by the search and the editor.
     1.35: ``images`` (image blocks from ``image_block``) go before the text, as the API recommends. 1.36: ``content``
     may be a list of text blocks (``cached`` for the fixed part); ``model`` default = the picked one; the
-    server-side fallback only where the model has it."""
+    server-side fallback only where the model has it. 1.43.1: ``history`` = the earlier turns of one talk
+    (user/assistant messages, only in memory) before the new user turn."""
     model = model or current_model()
     blocks = list(images)
     text = list(content) if isinstance(content, (list, tuple)) else [{"type": "text", "text": content}]
     user = blocks + text if blocks or isinstance(content, (list, tuple)) else content
     body = {"model": model, "max_tokens": max_tokens, "system": system,
             "output_config": {"effort": EFFORT, "format": {"type": "json_schema", "schema": schema}},
-            "messages": [{"role": "user", "content": user}]}
+            "messages": [dict(m) for m in history] + [{"role": "user", "content": user}]}
     if model in FALLBACK_MODELS:
         body["fallbacks"] = "default"
     return body
@@ -279,12 +281,17 @@ def send(key: str, payload: dict, timeout: float = HTTP_TIMEOUT) -> dict:
         raise AskError("bad") from None
 
 
-def request(key: str, system: str, content, schema: dict, max_tokens: int = MAX_TOKENS, images=()) -> dict:
+def _has_picture(content) -> bool:
+    return isinstance(content, (list, tuple)) and any(isinstance(b, dict) and b.get("type") == "image"
+                                                      for b in content)
+
+
+def request(key: str, system: str, content, schema: dict, max_tokens: int = MAX_TOKENS, images=(),
+            history=()) -> dict:
     """1.27: one structured request – the answer's JSON object, or AskError. 1.35: with ``images``. 1.37: pictures
-    inside ``content`` (labelled stills) get the longer timeout as well."""
-    pictures = bool(images) or (isinstance(content, (list, tuple))
-                                and any(isinstance(b, dict) and b.get("type") == "image" for b in content))
-    return reply_json(send(key, request_body(system, content, schema, max_tokens, images),
+    inside ``content`` (labelled stills) get the longer timeout as well. 1.43.1: ``history`` (request_body)."""
+    pictures = bool(images) or _has_picture(content) or any(_has_picture(m.get("content")) for m in history)
+    return reply_json(send(key, request_body(system, content, schema, max_tokens, images, history=history),
                            IMAGE_TIMEOUT if pictures else HTTP_TIMEOUT))
 
 
