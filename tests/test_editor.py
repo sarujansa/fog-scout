@@ -894,3 +894,52 @@ def test_dragging_the_playhead_shows_key_frames_at_once_and_the_exact_picture_at
         assert True not in looks                                         # no drag: no key-frame look
     finally:
         win.close()
+
+
+def test_subtitles_are_moved_and_trimmed_in_the_ruler_with_one_undo_step_each(qapp, clip, tmp_path):
+    """1.42.1: a short's subtitle bar at the foot of the ruler – dragged it moves (inside the cut), its edges trim it
+    (never shorter than MIN_SUB_S); each release is one undo step, Esc during a drag leaves it as it was, a press on
+    the ruler beside the bars still seeks."""
+    from fogscout import qt_timeline, shorts
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.resize(1400, 860)
+        _pump(qapp, lambda: False, 0.2)
+        spec = win._short_spec()
+        spec.subs = [shorts.Sub(2.0, 4.0, "eins"), shorts.Sub(6.0, 7.0, "zwei")]
+        win._short_set(spec)
+        tl = win.timeline
+        assert tl.subs == [(2.0, 4.0), (6.0, 7.0)]
+        y = qt_timeline.RULER_H - 3
+        r = tl.sub_rect(0)
+        dx = 1.0 * tl.scale                                                    # one second in px
+        _mouse(tl, "press", r.center().x(), y)
+        _mouse(tl, "move", r.center().x() + dx / 2, y)
+        _mouse(tl, "move", r.center().x() + dx, y)
+        assert tl.subs == [(2.0, 4.0), (6.0, 7.0)]                              # nothing changes before the release
+        _mouse(tl, "release", r.center().x() + dx, y)
+        assert [(s.t0, s.t1) for s in win._short.subs] == [(pytest.approx(3.0, abs=0.05), pytest.approx(5.0, abs=0.05)),
+                                                          (6.0, 7.0)]
+        assert win.sub_list.currentRow() == 0
+        r = tl.sub_rect(1)
+        _mouse(tl, "press", r.right(), y)                                     # the end of "zwei" past the start
+        _mouse(tl, "move", r.left() - 3 * dx, y)
+        _mouse(tl, "release", r.left() - 3 * dx, y)
+        assert win._short.subs[1].t1 == pytest.approx(6.0 + qt_timeline.MIN_SUB_S)
+        win.undo()
+        assert (win._short.subs[1].t0, win._short.subs[1].t1) == (6.0, 7.0)
+        win.undo()
+        assert [(s.t0, s.t1) for s in win._short.subs] == [(2.0, 4.0), (6.0, 7.0)]
+        assert tl.subs == [(2.0, 4.0), (6.0, 7.0)]                              # the bars follow an undo in any mode
+        r = tl.sub_rect(0)
+        _mouse(tl, "press", r.center().x(), y)
+        _mouse(tl, "move", r.center().x() + 2 * dx, y)
+        assert tl.cancel_gesture()                                             # Esc
+        _mouse(tl, "release", r.center().x() + 2 * dx, y)
+        assert [(s.t0, s.t1) for s in win._short.subs] == [(2.0, 4.0), (6.0, 7.0)]
+        x = tl._x(5.0)                                                         # between the bars: the ruler seeks
+        _mouse(tl, "press", x, y)
+        _mouse(tl, "release", x, y)
+        assert win.pos == pytest.approx(5.0, abs=0.1)
+    finally:
+        win.close()
