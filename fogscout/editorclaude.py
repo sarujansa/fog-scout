@@ -6,9 +6,13 @@ wish and the edit as numbers (editcommands.content – no picture, no path, no m
 (askclaude.request); the answer comes back over the bridge, ``editcommands.apply`` turns it into a checked copy of
 the state, the section lists what would happen and what was skipped. „Übernehmen“ shows it as one undo step,
 „Verwerfen“ forgets it. A proposal made for an older state of the cut is not applied (the user changed the cut
-meanwhile). The key and the user's permission come from the App (``claude_key``: a callable, "" = off)."""
+meanwhile). The key and the user's permission come from the App (``claude_key``: a callable, "" = off).
+1.43.1: Claude may ask back (``editcommands.question``); the next text in the field is the answer, sent with the
+talk so far (only in memory, at most ``editcommands.MAX_ROUNDS`` requests, dropped with „Verwerfen“ or a changed
+cut)."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -26,6 +30,7 @@ ERROR_WORDS = {**askclaude.ERRORS,                                           # 1
                "still": N_("Das Standbild liess sich nicht lesen – nichts gesendet.")}
 
 
+WISH_HINT = N_("z. B. erste 10 s weg, ab 0:40 doppelt so schnell, als Short")
 CHECK_WORDS = {"name": N_("Name lesbar"), "chat": N_("Chat lesbar"), "other": N_("Auffällig")}   # 1.42
 
 
@@ -45,6 +50,12 @@ def highlights_thumbnail(img, title: str):
     return out
 
 
+def _why(op) -> str:
+    """1.43.1: Claude's short reason of one step, as plain text behind it ("" without one)."""
+    why = editcommands.plain(op.get("why"), editcommands.MAX_WHY) if isinstance(op, dict) else ""
+    return f" – {why}" if why else ""
+
+
 class _NoStill(Exception):
     """1.35: ffmpeg gave no picture at the play head – then nothing is sent."""
 
@@ -57,12 +68,13 @@ class ClaudeMixin:
         self._claude_result = None           # (new state, new mode or None)
         self._claude_busy = False            # 1.28 (audit F3): a wish is on its way – no second (paid) request
         self.claude_frame = lambda: False    # 1.35: set by the App – a still may go along („Standbilder an Claude“)
+        self._claude_talk = None             # 1.43.1: (base, mode, picture, messages, rounds) while Claude asks back
 
     # ---- the inspector section
     def _section_claude(self, sec, mode):
         self.bridge.claude.connect(self._claude_answer)
         self.cl_field = QLineEdit()
-        self.cl_field.setPlaceholderText(_("z. B. erste 10 s weg, ab 0:40 doppelt so schnell, als Short"))
+        self.cl_field.setPlaceholderText(_(WISH_HINT))
         self.cl_field.setMaxLength(editcommands.MAX_REQUEST)
         self.cl_field.returnPressed.connect(self.claude_ask)
         sec.body.addWidget(self.cl_field)
@@ -186,10 +198,18 @@ class ClaudeMixin:
             return
         self._claude_seq += 1
         seq = self._claude_seq
-        base = self._state()
-        mode = str(self.mode_box.currentData() or "copy")
-        still = self._claude_still_job(base) if self.cl_frame_box.isChecked() and self.claude_frame() else None
-        text = editcommands.content(wish, base, mode, self._claude_marks(), picture=still is not None)
+        talk, self._claude_talk = self._claude_talk, None
+        if talk is not None and talk[0] == self._state():          # 1.43.1: the answer to Claude's question
+            base, mode, picture, history, rounds = talk
+            still = None
+            text = editcommands.follow_up(wish, rounds)
+        else:
+            base = self._state()
+            mode = str(self.mode_box.currentData() or "copy")
+            still = self._claude_still_job(base) if self.cl_frame_box.isChecked() and self.claude_frame() else None
+            text = editcommands.content(wish, base, mode, self._claude_marks(), picture=still is not None)
+            picture, history = None, []
+        self.cl_field.setPlaceholderText(_(WISH_HINT))
         self._claude_base, self._claude_result = base, None
         self._claude_busy = True
         self.cl_ask_btn.setEnabled(False)
@@ -201,8 +221,11 @@ class ClaudeMixin:
         def work():
             try:
                 images = [] if still is None else [still()]
+                seen = (images != []) if picture is None else picture
+                sent = history + [{"role": "user", "content": images + [{"type": "text", "text": text}]
+                                   if images else text}]
                 emit((seq, base, mode, askclaude.request(key, editcommands.SYSTEM, text, editcommands.SCHEMA,
-                                                         images=images), images != []))
+                                                         images=images, history=history), seen, sent))
             except askclaude.AskError as e:
                 emit((seq, base, mode, None, e.kind))
             except _NoStill:
@@ -242,14 +265,14 @@ class ClaudeMixin:
         if item and item[0] == "tx":                     # 1.41.1: which text boxes show names
             self._text_names_answer(*item[1:])
             return
-        seq, base, mode, data, error = item
+        seq, base, mode, data, error, *sent = item       # 1.43.1: a wish also carries the messages it sent
         picture = error is True                          # 1.35: the slot carries "a still went along" on success
         error = None if isinstance(error, bool) else error
         if self._closed or seq != self._claude_seq:
             return                                       # an older wish (the window was busy with a newer one)
         self._claude_busy = False                        # 1.28: whatever comes next, asking works again
         try:
-            self._claude_show(base, mode, data, error, picture)
+            self._claude_show(base, mode, data, error, picture, sent[0] if sent else None)
         except Exception:                                # never left on „Claude denkt nach …“
             self._claude_result = None
             self._claude_buttons(False)
@@ -257,7 +280,8 @@ class ClaudeMixin:
         finally:
             self._claude_refresh()
 
-    def _claude_show(self, base, mode, data, error, picture=False):
+    def _claude_show(self, base, mode, data, error, picture=False, sent=None):
+        self._claude_talk = None
         if error is not None:
             self.cl_status.setText(_(ERROR_WORDS.get(error, ERROR_WORDS["net"])))
             return
@@ -271,12 +295,24 @@ class ClaudeMixin:
             self.cl_status.setText(_(ERROR_WORDS["bad"]))
             return
         summary = " ".join(str(data.get("summary") or "").split())[:300]
-        lines = ["• " + _(w, **kw) for _op, (w, kw) in done]
+        asked = editcommands.question(data)
+        rounds = sum(1 for m in sent or () if m.get("role") == "user")
+        if asked and sent is not None and rounds < editcommands.MAX_ROUNDS:    # 1.43.1: Claude asks back
+            reply = {"role": "assistant", "content": json.dumps(data, ensure_ascii=False)}
+            self._claude_talk = (base, mode, picture, list(sent) + [reply], rounds)
+            self.cl_list.hide()
+            self.cl_status.setText(_("Claude fragt: {question}", question=asked))
+            self.cl_field.clear()
+            self.cl_field.setPlaceholderText(_("Deine Antwort …"))
+            self.cl_field.setFocus()
+            self.cl_drop_btn.show()
+            return
+        lines = ["• " + _(w, **kw) + _why(op) for op, (w, kw) in done]
         lines += ["– " + _("übersprungen: {why}", why=_(w, **kw)) for _op, (w, kw) in skipped]
         self.cl_list.setText("\n".join(lines))
         self.cl_list.setVisible(bool(lines))
         if not done:
-            self.cl_status.setText(summary or _("Claude hat keinen passenden Schritt gefunden."))
+            self.cl_status.setText(summary or asked or _("Claude hat keinen passenden Schritt gefunden."))
             return
         self._claude_result = (new, new_mode)
         self.cl_status.setText(summary)
@@ -812,6 +848,8 @@ class ClaudeMixin:
         self.cl_status.setText(_("Übernommen – Strg+Z macht es rückgängig."))
 
     def claude_drop(self):
+        self._claude_talk = None                         # 1.43.1: a question back is forgotten as well
+        self.cl_field.setPlaceholderText(_(WISH_HINT))
         self._claude_result = None
         self._claude_buttons(False)
         self.cl_list.hide()

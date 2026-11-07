@@ -438,3 +438,22 @@ def test_the_editor_finds_highlights_from_stills_and_keeps_one_on_take(qapp, tmp
         assert [(p.start, p.end) for p in win.parts] == before
     finally:
         win.close()
+
+
+def test_a_talk_goes_as_earlier_turns_and_a_question_only_without_ops(monkeypatch):
+    from fogscout import editcommands
+    fake = FakeOpener({"summary": "ok", "ops": []})
+    monkeypatch.setattr(askclaude, "OPENER", fake)
+    block = askclaude.image_block(Image.new("RGB", (64, 36)))
+    history = [{"role": "user", "content": [block, {"type": "text", "text": "Wish: a"}]},
+               {"role": "assistant", "content": '{"question": "?"}'}]
+    askclaude.request(KEY, "sys", "Answer to your question: b", editcommands.SCHEMA, history=history)
+    msgs = fake.bodies[0]["messages"]
+    assert [m["role"] for m in msgs] == ["user", "assistant", "user"] and msgs[2]["content"].endswith(": b")
+    assert fake.timeouts == [askclaude.IMAGE_TIMEOUT]                          # a picture earlier in the talk
+    assert editcommands.question({"ops": [], "question": " Welche\x07 Marke? "}) == "Welche Marke?"
+    assert editcommands.question({"ops": [{"op": "cut"}], "question": "x"}) == ""
+    assert editcommands.question({"ops": [], "question": 5}) == "" and editcommands.question(None) == ""
+    assert len(editcommands.question({"ops": [], "question": "x" * 999})) == editcommands.MAX_QUESTION
+    assert "No more" not in editcommands.follow_up("a", 1) and "No more" in editcommands.follow_up("a", 2)
+    assert editcommands.follow_up("y" * 999, 0).endswith("y" * editcommands.MAX_REQUEST)
