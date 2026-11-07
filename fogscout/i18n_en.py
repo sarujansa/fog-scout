@@ -3028,6 +3028,8 @@ EN = {
     "Zum Anfang / zum Schluss": "To the start / to the end",
     "Zur nächsten Marke": "To the next mark",
     "Untertitel {a}–{b}.": "Subtitle {a}–{b}.",
+    "{file} wartet – {n} Export(e) davor.": "{file} is waiting – {n} export(s) before it.",
+    "Kodiere {file} …": "Encoding {file} …",
     "Export prüfen": "Check the export",
     "Schickt acht Standbilder des fertigen Schnitts (Bildausschnitt wie im Export, bereits zensierte Bereiche zensiert) an Claude; Claude meldet noch lesbare Namen oder Chat und anderes, das so nicht geteilt werden sollte. Ein Klick auf einen Fund springt hin und schlägt einen Zensurkasten vor.": "Sends eight stills of the finished cut (cropped as in the export, censored areas censored) to Claude; Claude reports names or chat still readable and anything else that should not be shared like this. A click on a finding jumps there and suggests a censor box.",
     "Claude prüft {n} Standbilder des fertigen Schnitts …": "Claude is checking {n} stills of the finished cut …",
