@@ -1042,6 +1042,21 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
             s.t1 = round(max(self.pos, s.t0 + 0.1), 2)
         self._short_set(spec)
 
+    def _subs_dragged(self, k, spans):
+        """1.42.1: subtitle ``k`` moved or trimmed in the ruler – the new times, one undo step; the list keeps it
+        marked (it may change its place in the time order)."""
+        spec = self._short_spec()
+        if len(spans) != len(spec.subs) or not 0 <= k < len(spec.subs):
+            return
+        for sub, (a, b) in zip(spec.subs, spans):
+            sub.t0, sub.t1 = round(float(a), 2), round(float(b), 2)
+        moved = spec.subs[k]
+        spec.subs.sort(key=lambda s: s.t0)
+        self._short_set(spec)
+        self.sub_list.setCurrentRow(next(i for i, s in enumerate(spec.subs) if s is moved))
+        self._short_show()
+        self.status.setText(_("Untertitel {a}–{b}.", a=clipedit.fmt_pos(moved.t0), b=clipedit.fmt_pos(moved.t1)))
+
     def _sub_remove(self):
         spec = self._short_spec()
         i = self.sub_list.currentRow()
@@ -1327,6 +1342,7 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
         lay.addWidget(bar)
         self.timeline = SequenceTimeline(self.dark)
         self.timeline.seek.connect(self.goto)
+        self.timeline.subs_edited.connect(self._subs_dragged)         # 1.42.1: subtitles moved in the ruler
         self.timeline.scrubbed.connect(self._scrub_edge)
         self.timeline.selected.connect(self._clip_selected)
         self.timeline.edited.connect(self._timeline_edited)
@@ -1540,7 +1556,8 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
             self._input_apply(getattr(state, "inputs", None))     # 1.39.1
             self.parts = [replace(p) for p in state.parts]
             self.timeline.set_parts(self.parts)
-            key = state.crop_key if state.crop else "none"
+            self.timeline.set_subs([(x.t0, x.t1) for x in (self._short.subs if self._short else [])])  # 1.42.1: the
+            key = state.crop_key if state.crop else "none"                    # bars show in every mode
             if key == "content" and self.crop_box.findData("content") < 0:
                 key = "free"
             self.crop_box.blockSignals(True)
