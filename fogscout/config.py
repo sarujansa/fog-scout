@@ -90,6 +90,13 @@ DEFAULTS = {
         "today_xy": [1.0, 0.0],         #   bottom_left / custom (centre of the card as a share of the window)
         "today_scale": 1.0,             # size of "today" (slider 60–200 %)
         "today_backdrop": False,        # dark area behind "today"
+        "show_inputs": False,           # 1.39: the input card "Eingaben" (keys / mouse / gamepad held right now)
+        "inputs_layout": "auto",        #   auto (device used last) / keyboard / gamepad
+        "inputs_pos": "bottom_right",   #   bottom_left / bottom_right (in the black bar) / custom
+        "inputs_xy": [0.9, 0.9],        #   custom: centre of the card as a share of the window
+        "inputs_scale": 1.0,            #   size (slider 60–200 %)
+        "inputs_opacity": 0.85,
+        "inputs_backdrop": True,        #   dark area behind the keys
     },
     "hotkeys": {
         "toggle_overlay": "ctrl+alt+m",
@@ -222,6 +229,7 @@ DEFAULTS = {
     "claude_frame": False,              # 1.35: the clip editor may send a still of the recording to Claude
     "claude_stats": False,              # 1.35: the search may ask Claude about summed-up round values
     "crash_seen": 0.0,                  # 1.36: time of the last crash the start already asked about (diagnose)
+    "inputs_told": False,               # 1.39: the note on what the input card reads was shown once
     "claude_model": "opus",             # 1.36: opus | sonnet | haiku for every Claude request (askclaude.MODELS)
     "claude_spent": {},                 # 1.36: {"YYYY-MM": estimated $} – what the requests cost per month, this PC
     "claude_key": "",                   # the user's own Anthropic API key, DPAPI-protected (spotify.protect), PC-specific
