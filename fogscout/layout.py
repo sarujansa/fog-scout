@@ -28,9 +28,10 @@ def bar_side(anchor: str, x: float, w: float, gx: float, gw: float, bar: float):
         return "left"
     if anchor in ("top-right", "bottom-right"):
         return "right"
-    if x < gx + bar:
-        return "left"
-    if x + w > gx + gw - bar:
+    centre = x + w / 2              # 1.44.1: an own place counts as "in the bar" only with its middle in it – any
+    if centre < gx + bar:           # overlap did before: a map dragged past the bar's edge stuck to it, then
+        return "left"               # jumped back into it smaller
+    if centre > gx + gw - bar:
         return "right"
     return None
 

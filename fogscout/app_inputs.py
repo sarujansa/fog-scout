@@ -36,6 +36,7 @@ class InputsCard:
                 log.warning("Eingaben-Fenster nicht verfügbar: %s", e)
         if self.inputs_win is not None:
             self.inputs_win.on_moved = lambda x, y: self.events.put(("call", self._inputs_dragged, (x, y)))
+            self.inputs_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("inputs",)))   # 1.44.1
             self.inputs_win.edit_label = _("EINGABEN")
 
     # ---- what may be read, what is shown
@@ -149,6 +150,7 @@ class InputsCard:
         o["inputs_xy"], o["inputs_pos"] = [fx, fy], "custom"
         if hasattr(self, "inputs_pos_var"):
             self.inputs_pos_var.set(_(dict(INPUT_SPOTS)["custom"]))
+        self._el_dropped("inputs")                   # 1.44.1: stays where it was put
         self._save_soon()
         self._tick_overlay(reschedule=False)
 

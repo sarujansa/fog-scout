@@ -118,18 +118,22 @@ class SysInfo:
         self.hud = make_hud()
         if self.hud is not None:
             self.hud.on_moved = lambda x, y: self.events.put(("call", self._hud_dragged, (x, y)))   # see app.py
-            self.hud.edit_label = _("SYSTEMWERTE · HEUTE")
+            self.hud.on_reset = lambda: self.events.put(("call", self._el_reset, ("hud",)))   # 1.44.1
+            self.hud.edit_label = _("SYSTEMWERTE")        # 1.44.1: "· HEUTE" – "today" has its own window
         self.media_win = make_hud("Fog Scout Musik")     # 1.64: the music card, a window of its own
         if self.media_win is not None:
             self.media_win.on_moved = lambda x, y: self.events.put(("call", self._media_dragged, (x, y)))
+            self.media_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("music",)))   # 1.44.1
             self.media_win.edit_label = _("MUSIK")
         self.today_win = make_hud("Fog Scout Heute")     # 1.2.6: "today", a card of its own
         if self.today_win is not None:
             self.today_win.on_moved = lambda x, y: self.events.put(("call", self._today_dragged, (x, y)))
+            self.today_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("today",)))   # 1.44.1
             self.today_win.edit_label = _("HEUTE")
         self.info_win = make_hud("Fog Scout Infos")      # 1.8.24: timer/record/server, an element of their own
         if self.info_win is not None:
             self.info_win.on_moved = lambda x, y: self.events.put(("call", self._info_dragged, (x, y)))
+            self.info_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("text",)))   # 1.44.1
             self.info_win.edit_label = _("INFOS")
         self._info_size = None             # (w, h) of the lines' card this tick, None = not shown
         self._map_block = None             # map + lines on screen: what hangs above/below the map goes around both
@@ -384,6 +388,7 @@ class SysInfo:
         o["today_xy"], o["today_pos"] = [fx, fy], "custom"
         if hasattr(self, "today_pos_var"):
             self.today_pos_var.set(_(dict(TODAY_SPOTS)["custom"]))
+        self._el_dropped("today")                    # 1.44.1: stays where it was put
         self._save_soon()
         self._tick_overlay(reschedule=False)
 
@@ -738,8 +743,22 @@ class SysInfo:
         box = (int(x), int(y), int(size[0]), int(size[1]))
         self._el_orig[name] = box
         dx, dy = self._el_shift.get(name, (0, 0))
-        win.show_at(box[0] + dx, box[1] + dy)
+        win.show_at(box[0] + dx, box[1] + dy)             # a dragged window keeps its place (HudWindow.dragging)
         return (box[0] + dx, box[1] + dy, box[2], box[3])
+
+    def _el_dropped(self, name):
+        """1.44.1: an element was put somewhere by hand (game or preview) – it keeps that place: the last check's
+        move is forgotten and it comes first when elements collide (the others move, the latest drop stays)."""
+        if hasattr(self, "_el_shift"):
+            self._el_shift.pop(name, None)
+        order = getattr(self, "_drop_order", [])
+        self._drop_order = [name] + [n for n in order if n != name]
+
+    def _el_priority(self, boxes):
+        """``boxes`` [(name, box)] in the order layout.resolve keeps them: dropped by hand first (latest first),
+        then the rest as before."""
+        order = [n for n in getattr(self, "_drop_order", []) if n in dict(boxes)]
+        return sorted(boxes, key=lambda nb: order.index(nb[0]) if nb[0] in order else len(order))
 
     def _el_resolve(self):
         """After every element was placed: who collides moves to the nearest free place (layout.resolve, the
@@ -754,6 +773,7 @@ class SysInfo:
             win = getattr(self, attr, None)
             if win is not None and win.shown and name in orig:
                 boxes.append((name, orig[name]))
+        boxes = self._el_priority(boxes)
         shift = layout.resolve(boxes, [self.worker.overlay_rect], game, self._bands(gx, gy, gw, gh),
                                layout.stack_gap(o, gh), soft=layout.keep_out_boxes(o, game)) if gh else {}
         # 1.8.29: which cards stand in the same bar – next tick they are drawn at the widest natural width
@@ -763,6 +783,8 @@ class SysInfo:
             self._el_shift = shift
             for name, attr, rect in self.ELEMENT_WINDOWS:
                 if name in orig and dict(boxes).get(name):
+                    if getattr(getattr(self, attr), "dragging", False):
+                        continue                          # 1.44.1: held by the mouse – not moved now
                     x, y, w, h = orig[name]
                     dx, dy = shift.get(name, (0, 0))
                     box = (x + dx, y + dy, w, h)
@@ -815,12 +837,7 @@ class SysInfo:
         """Music card dropped somewhere (edit mode): from now on its own place there."""
         self._layout_mark()
         gx, gy, gw, gh = self._game_rect()
-        o = self.settings["overlay"]
-        o["media_xy"] = list(layout.media_own(gw, gh, self.media_win.size, x - gx, y - gy))
-        o["media_pos"] = "custom"
-        if hasattr(self, "media_pos_var"):
-            self.media_pos_var.set(_(dict(MEDIA_SPOTS)["custom"]))
-        self._save_soon()
+        self._music_own_place(*layout.media_own(gw, gh, self.media_win.size, x - gx, y - gy))   # 1.44.1: at once
 
     def _hud_own_place(self, fx, fy):
         """System values dragged in the preview: their own place from now on (1.64.1)."""
@@ -829,6 +846,7 @@ class SysInfo:
             self.settings.set("sysinfo", "custom")
             if hasattr(self, "sysinfo_var"):
                 self.sysinfo_var.set(_(dict(HUD_SIDES)["custom"]))
+        self._el_dropped("hud")                      # 1.44.1: stays where it was put
         self._save_soon()
         self._tick_overlay(reschedule=False)
 
@@ -838,6 +856,7 @@ class SysInfo:
         o["media_xy"], o["media_pos"] = [fx, fy], "custom"
         if hasattr(self, "media_pos_var"):
             self.media_pos_var.set(_(dict(MEDIA_SPOTS)["custom"]))
+        self._el_dropped("music")                    # 1.44.1: stays where it was put
         self._save_soon()
         self._tick_overlay(reschedule=False)
 

@@ -235,9 +235,18 @@ def map_body(img: Image.Image, height: int, split: int | None) -> Image.Image:
     return body.resize((max(1, round(body.width * bh / body.height)), bh), Image.LANCZOS)
 
 
+GRAB_SURFACE = (12, 12, 16, 70)      # 1.44.1: under an element in edit mode – grabbable everywhere
+
+
 def add_border(pic: Image.Image, label: str = "") -> Image.Image:
     """The yellow frame of the edit mode; ``label`` (1.64.7, user: "keinen Plan, was ich verschiebe") names the
-    element on a tag inside the frame's top left – size and place stay exactly the same (no jump after "Fertig")."""
+    element on a tag inside the frame's top left – size and place stay exactly the same (no jump after "Fertig").
+    1.44.1: a faint dark surface under the whole element – a layered window takes the mouse only where a pixel is
+    not fully transparent, so before only the letters and the frame could be grabbed (not the gaps between)."""
+    if pic.mode == "RGBA":
+        under = Image.new("RGBA", pic.size, GRAB_SURFACE)
+        under.alpha_composite(pic)
+        pic.paste(under)
     d = ImageDraw.Draw(pic)
     d.rectangle([0, 0, pic.width - 1, pic.height - 1], outline=BORDER, width=3)
     if label:
