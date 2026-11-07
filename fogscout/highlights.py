@@ -102,3 +102,86 @@ def parse(data: dict, length: float) -> tuple[str, list]:
         if len(out) >= MAX_HIGHLIGHTS:
             break
     return " ".join(str(data.get("summary") or "").split())[:300], out
+
+
+# ---- 1.42: „Export prüfen“ – stills of the finished cut, Claude names what should not be shared like this
+CHECK_STILLS = 8            # stills spread over the cut
+CHECK_H = 540               # bigger than a highlight still: a name must stay readable …
+CHECK_SIDE = 960            # … long side as sent
+MAX_FINDINGS = 6
+CHECK_KINDS = ("name", "chat", "other")
+CHECK_WINDOW_S = 2.0        # a box set from a finding hides this long before and after its moment (recording time)
+
+CHECK_SYSTEM = ("You check a Dead by Daylight clip before its player shares it. You get stills of the finished cut, "
+                "each labelled with its time in seconds; areas already hidden are blurred or black. Report what "
+                "should not be shared like this: a readable player name (kind 'name') or chat text (kind 'chat') – "
+                "with 'box' = [x, y, w, h] around it as fractions (0–1) of that still – and anything else clearly "
+                "wrong, e.g. a loading screen or menu left in (kind 'other', 'box' empty). Game labels, perk or item "
+                "names and timers are fine. At most six findings, 'why' a few words and 'summary' one sentence in the "
+                "language given. Nothing to report: an empty list.")
+
+CHECK_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary", "findings"],
+                "properties": {"summary": {"type": "string"},
+                               "findings": {"type": "array", "items": {
+                                   "type": "object", "additionalProperties": False,
+                                   "required": ["at", "kind", "why", "box"],
+                                   "properties": {"at": {"type": "number"},
+                                                  "kind": {"type": "string", "enum": list(CHECK_KINDS)},
+                                                  "why": {"type": "string"},
+                                                  "box": {"type": "array", "items": {"type": "number"}}}}}}}
+
+
+def check_times(length: float) -> list:
+    """The output seconds of the stills: the middles of CHECK_STILLS equal stretches (none for an empty cut)."""
+    if length <= 0:
+        return []
+    step = float(length) / CHECK_STILLS
+    return [_r(step * (k + 0.5)) for k in range(CHECK_STILLS)]
+
+
+def check_blocks(length: float, stills, language: str) -> list:
+    """The user content: the length and the language, then each still as a label and its image block."""
+    out = [{"type": "text", "text": f"Clip length: {_r(length)} s. Answer 'why' and 'summary' in {language}."}]
+    for t, block in stills:
+        out += [{"type": "text", "text": f"Still at {_r(t)} s:"}, block]
+    return out
+
+
+def _box(v):
+    """[x, y, w, h] inside the still (fractions), None for anything else (an empty list = no box)."""
+    if not isinstance(v, list) or len(v) != 4 or any(_num(x) is None for x in v):
+        return None
+    x, y, w, h = (float(a) for a in v)
+    x0, y0 = max(0.0, x), max(0.0, y)
+    x1, y1 = min(1.0, x + w), min(1.0, y + h)
+    if x1 - x0 < 0.005 or y1 - y0 < 0.005:
+        return None
+    return [round(x0, 4), round(y0, 4), round(x1 - x0, 4), round(y1 - y0, 4)]
+
+
+def check_parse(data, length: float) -> tuple[str, list]:
+    """(summary, [(at, kind, why, box or None)]) sorted by time – only times inside the cut, known kinds, a box only
+    for names and chat; at most MAX_FINDINGS. ValueError when 'findings' is not a list."""
+    items = data.get("findings") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        raise ValueError("findings")
+    out = []
+    for f in items[:MAX_FINDINGS * 2]:
+        if not isinstance(f, dict) or f.get("kind") not in CHECK_KINDS:
+            continue
+        at = _num(f.get("at"))
+        if at is None or not 0 <= at <= float(length):
+            continue
+        box = _box(f.get("box")) if f["kind"] in ("name", "chat") else None
+        out.append((_r(at), f["kind"], " ".join(str(f.get("why") or "").split())[:MAX_WHY], box))
+        if len(out) >= MAX_FINDINGS:
+            break
+    return " ".join(str(data.get("summary") or "").split())[:300], sorted(out, key=lambda f: f[0])
+
+
+def uncrop(box, crop):
+    """A box on a still cut to ``crop`` (fractions of the recording) → fractions of the whole recording."""
+    if not crop:
+        return list(box)
+    cx, cy, cw, ch = crop[:4]
+    return [round(cx + box[0] * cw, 4), round(cy + box[1] * ch, 4), round(box[2] * cw, 4), round(box[3] * ch, 4)]

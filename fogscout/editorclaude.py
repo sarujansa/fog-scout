@@ -25,6 +25,9 @@ ERROR_WORDS = {**askclaude.ERRORS,                                           # 1
                "still": N_("Das Standbild liess sich nicht lesen – nichts gesendet.")}
 
 
+CHECK_WORDS = {"name": N_("Name lesbar"), "chat": N_("Chat lesbar"), "other": N_("Auffällig")}   # 1.42
+
+
 class _NoStill(Exception):
     """1.35: ffmpeg gave no picture at the play head – then nothing is sent."""
 
@@ -71,16 +74,24 @@ class ClaudeMixin:
                                        "ganzen Short vor – Ausschnitt, Zeitlupe, Titel, Untertitel. Erst "
                                        "„Übernehmen“ ändert den Schnitt. Die Bilder können Spielernamen zeigen."))
         self.cl_short_btn.clicked.connect(self.claude_short)
+        self.cl_check_btn = QPushButton(_("Export prüfen"))      # 1.42: the finished cut checked before sharing
+        self.cl_check_btn.setToolTip(_("Schickt acht Standbilder des fertigen Schnitts (Bildausschnitt wie im Export, "
+                                       "bereits zensierte Bereiche zensiert) an Claude; Claude meldet noch lesbare "
+                                       "Namen oder Chat und anderes, das so nicht geteilt werden sollte. Ein Klick auf "
+                                       "einen Fund springt hin und schlägt einen Zensurkasten vor."))
+        self.cl_check_btn.clicked.connect(self.claude_check)
         hl_row = QHBoxLayout()
         hl_row.setSpacing(6)
         hl_row.addWidget(self.cl_hl_btn)
         hl_row.addWidget(self.cl_short_btn)
+        hl_row.addWidget(self.cl_check_btn)
         hl_row.addStretch()
         sec.body.addLayout(hl_row)
         self.cl_hl_rows = QVBoxLayout()                           # one button per highlight Claude named
         self.cl_hl_rows.setSpacing(4)
         sec.body.addLayout(self.cl_hl_rows)
         self._hl_found = []
+        self._check_found = []                             # 1.42: the export check's findings
         self.cl_status = PlainLabel("", "dim")             # 1.28: Claude's summary – plain text, long runs broken
         sec.body.addWidget(self.cl_status)
         self.cl_list = PlainLabel("")                      # … and the steps (a short title comes from Claude)
@@ -119,6 +130,8 @@ class ClaudeMixin:
         self.cl_hl_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
         self.cl_short_btn.setVisible(frame_ok)                                   # 1.39.2
         self.cl_short_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
+        self.cl_check_btn.setVisible(frame_ok)                                   # 1.42
+        self.cl_check_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
         self.cl_field.setEnabled(on)
         self.cl_ask_btn.setEnabled(on and self.history is not None and not self._claude_busy)
         if not on and self._claude_result is None:
@@ -192,6 +205,9 @@ class ClaudeMixin:
     def _claude_answer(self, item):
         if item and item[0] == "hl":                     # 1.37: the highlight search's answer
             self._highlights_answer(*item[1:])
+            return
+        if item and item[0] == "ck":                     # 1.42: the export check's findings
+            self._check_answer(*item[1:])
             return
         if item and item[0] == "tx":                     # 1.41.1: which text boxes show names
             self._text_names_answer(*item[1:])
@@ -295,6 +311,122 @@ class ClaudeMixin:
                 log.warning("Claude-Highlights: unerwarteter Fehler %s", e.__class__.__name__)
                 emit(("hl", seq, base, mode, None, "bad"))
         threading.Thread(target=work, name="claude-highlights", daemon=True).start()
+
+    # ---- 1.42: „Export prüfen“ – stills of the finished cut (the export's crop), every censor box hidden
+    def claude_check(self):
+        if self._claude_busy or self.history is None:
+            return
+        key = self.claude_key()
+        if not key or not self.claude_frame():
+            self._claude_refresh()
+            return
+        base = self._state()
+        length = sequence.duration(base.parts)
+        jobs = []
+        for t in highlights.check_times(length):
+            i, src_t = sequence.source_at(base.parts, t)
+            part = base.parts[i] if i is not None else None
+            if part is not None:
+                jobs.append((t, self._src_path(part), self._src_info(part), src_t))
+        if not jobs:
+            return
+        boxes = [list(b) for b in base.boxes]
+        style = base.censor_style if base.censor_style in imageedit.CENSOR_STYLES else "pixel"
+        crop = tuple(base.crop) if base.crop else None
+        language = "German" if i18n.current() == "de" else "English"
+        ffmpeg = self.ffmpeg
+        self._claude_seq += 1
+        seq = self._claude_seq
+        self._claude_busy, self._claude_result = True, None
+        self._claude_buttons(False)
+        self._highlights_clear()
+        self.cl_list.hide()
+        self.cl_status.setText(_("Claude prüft {n} Standbilder des fertigen Schnitts …", n=len(jobs)))
+        self._claude_refresh()
+        emit = self.bridge.claude.emit
+
+        def work():
+            try:
+                stills = []
+                for t, path, info, src_t in jobs:
+                    img = clipedit.frame_at(path, src_t, highlights.CHECK_H, info, ffmpeg)
+                    if img is None:
+                        continue
+                    for b in boxes:              # always hidden in what is sent – also while „anwenden“ is off
+                        img = imageedit.censor_area(img, b, style)
+                    if crop:                     # the part the export shows
+                        img = img.crop(imageedit.box_px(crop, img.size))
+                    stills.append((t, askclaude.image_block(img, highlights.CHECK_SIDE)))
+                if not stills:
+                    raise _NoStill()
+                data = askclaude.request(key, highlights.CHECK_SYSTEM,
+                                         highlights.check_blocks(length, stills, language), highlights.CHECK_SCHEMA)
+                emit(("ck", seq, base, data, None))
+            except askclaude.AskError as e:
+                emit(("ck", seq, base, None, e.kind))
+            except _NoStill:
+                emit(("ck", seq, base, None, "still"))
+            except Exception as e:               # only the kind – never a picture or the key
+                log.warning("Claude-Prüfung: unerwarteter Fehler %s", e.__class__.__name__)
+                emit(("ck", seq, base, None, "bad"))
+        threading.Thread(target=work, name="claude-check", daemon=True).start()
+
+    def _check_answer(self, seq, base, data, error):
+        if self._closed or seq != self._claude_seq:
+            return
+        self._claude_busy = False
+        try:
+            if error is not None:
+                self.cl_status.setText(_(ERROR_WORDS.get(error, ERROR_WORDS["net"])))
+                return
+            try:
+                summary, found = highlights.check_parse(data, sequence.duration(base.parts))
+            except ValueError:
+                self.cl_status.setText(_(ERROR_WORDS["bad"]))
+                return
+            self.cl_status.setText(summary or (_("Claude hat nichts gefunden, das so nicht geteilt werden sollte.")
+                                               if not found else ""))
+            self._check_found = [(at, kind, why, box, base) for at, kind, why, box in found]
+            for i, (at, kind, why, box) in enumerate(found):
+                btn = ElideButton()
+                text = f"{clipedit.fmt_pos(at)} · {_(CHECK_WORDS[kind])}" + (f" – {why}" if why else "")
+                btn.set_full_text(text)
+                btn.setToolTip(text + "\n" + (_("Springt hin und schlägt einen Zensurkasten für diese Stelle vor.")
+                                               if box else _("Springt hin.")))
+                btn.setProperty("finding", i)        # a bound method, never a lambda holding the window
+                btn.clicked.connect(self._finding_clicked)
+                self.cl_hl_rows.addWidget(btn)
+        except Exception:                                # never left on „Claude prüft …“
+            self.cl_status.setText(_(ERROR_WORDS["bad"]))
+        finally:
+            self._claude_refresh()
+
+    def _finding_clicked(self):
+        n = self.sender().property("finding") if self.sender() is not None else None
+        if isinstance(n, int):
+            self.finding_pick(n)
+
+    def finding_pick(self, n: int):
+        """A finding → the playhead there; a name/chat box → a suggested censor box (whole recording picture, for
+        CHECK_WINDOW_S around the moment of the recording), taken with „Vorschläge übernehmen“ (one undo step)."""
+        found = getattr(self, "_check_found", [])
+        if not 0 <= n < len(found):
+            return
+        at, _kind, _why, box, base = found[n]
+        self.goto(at)
+        if box is None:
+            return
+        _i, src_t = sequence.source_at(base.parts, at)
+        if src_t is None:
+            return
+        full = highlights.uncrop(box, base.crop)
+        w = highlights.CHECK_WINDOW_S
+        self.preview.set_suggest([full + [round(max(0.0, src_t - w), 2), round(src_t + w, 2)]])
+        if self.mode != "censor":
+            self.mode_btns["censor"].setChecked(True)
+        self.status.setText(_("Vorschlag bei {at} – „Vorschläge übernehmen“ verdeckt die Stelle.",
+                              at=clipedit.fmt_pos(at)))
+        self._censor_hint()
 
     # ---- 1.41.1: „Claude: nur Namen“ – the still with the numbered text boxes, the answer only numbers
     def claude_text_names(self):
@@ -432,7 +564,7 @@ class ClaudeMixin:
         threading.Thread(target=work, name="claude-short", daemon=True).start()
 
     def _highlights_clear(self):
-        self._hl_found = []
+        self._hl_found, self._check_found = [], []
         while self.cl_hl_rows.count():
             w = self.cl_hl_rows.takeAt(0).widget()
             if w is not None:
