@@ -670,7 +670,8 @@ class OverlayTab:
             return None
         x, y = layout.info_xy(o.get("info_pos", "below"), rect, self._info_size, (gx, gy, gw, gh),
                               layout.stack_gap(o, gh), margin, o.get("info_xy"), o.get("bar_align", "centre"),
-                              self._bands(gx, gy, gw, gh))
+                              self._bands(gx, gy, gw, gh),
+                              own_lines=layout.own_bands(o, self._bands(gx, gy, gw, gh)))      # 1.45
         self._fade_show("info", fade)
         self.worker.info_rect = self._el_show("text", self.info_win, x, y, self._info_size)
         return self.worker.info_rect

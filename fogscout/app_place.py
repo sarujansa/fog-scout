@@ -240,16 +240,20 @@ class OverlayPlacement:
         else:
             self.overlay.text_height = text_h
         room = gh - drop - lift - 2 * margin
-        if a == "custom":                                # 1.45: an own place – the whole window (not its bar's lines)
-            room = gh - 2 * margin - extra               # the lines right below/above it
+        if a == "custom":                                # 1.8.22: an own place – between the lines of its bar (1.45:
+            w, h = self.overlay.render(height, push=False)   # only lines the user switched on)
+            room = layout.own_room((place(w, h)[0], 0, w, h), (gx, gy, gw, gh), layout.own_bands(o, bands))
+            room -= extra                                # the lines right below/above it
         if not self.overlay.dragging:                    # the lines below made it too tall: smaller (1.2.11) –
             height = self.overlay.fit_room(height, room)     # measured off screen (1.8.23), shown once
         w, h = self.overlay.render(height)
         x, y = place(w, h)
         if a != "custom":
             y = max(gy, min(y, gy + gh - h))             # never off the screen
-        elif not self.overlay.dragging:                  # 1.45: an own place is free – only inside the window
+        elif not self.overlay.dragging:                  # 1.45: inside the window, and between lines switched on
             y = max(gy + shift, min(y, gy + gh - h - extra + shift))
+            if layout.own_bands(o, bands):
+                y = layout.clamp_box((x, y - shift, w, h + extra), (gx, gy, gw, gh), bands)[1] + shift
         if side and side != "slot":
             x = layout.clamp_x(side, x, w, gx, gw, bar, margin - edge)
         self._fade_show("map", fade)

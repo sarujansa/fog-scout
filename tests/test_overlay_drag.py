@@ -192,6 +192,12 @@ def test_an_own_place_stays_beyond_the_limiter_lines_and_keep_out_areas():
     assert placed["today"][1] + placed["today"][3] <= 1100                     # an automatic place keeps to them
     x, y = layout.info_xy("custom", (0, 0, 400, 500), (200, 60), GAME, 8, 17, [0.06, 0.97], bands=bands)
     assert y + 60 > 1100 and y + 60 <= 1440                                    # free, but inside the window
+    # lines the user switched on still hold an own place (1.8.22: "Midwich ignoriert die Regel") …
+    assert layout.own_bands({"bar_limits_on": True}, bands) is bands
+    held = layout.place_cards(GAME, cards, None, 17, bands=bands, own_lines=bands)
+    assert held["music"][1] + held["music"][3] <= 1100
+    # … the bands Discord's areas narrow with the lines off do not
+    assert layout.own_bands({"bar_limits_on": False}, bands) is None
 
 
 def test_own_places_move_only_off_the_map_and_the_others_go_around_them():
