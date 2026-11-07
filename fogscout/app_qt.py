@@ -209,6 +209,20 @@ def ui_state(w) -> dict:
     return st
 
 
+COALESCED = {"place": 2, "resize": 2, "limit": 3}    # 1.44.2: drag kinds and how much of the value names the target
+
+
+def coalesce_slot(action, arg):
+    """(key, kind, target…) when ``arg`` is one step of a drag in the preview whose older steps may be dropped,
+    else None – clicks, menus and nudges always count each."""
+    if action != "act" or not isinstance(arg, tuple) or len(arg) != 2:
+        return None
+    key, value = arg
+    if not isinstance(value, tuple) or not value or value[0] not in COALESCED:
+        return None
+    return (key,) + tuple(value[:COALESCED[value[0]]])
+
+
 def ui_act(w, value=None):
     """A click/choice from the Qt window, done on the model widget – its own command runs as if clicked."""
     if isinstance(w, ui.Checkbutton):
@@ -418,13 +432,28 @@ class QtShell:
 
     def _qt_post(self, action, arg=None):
         """Called from Qt slots: the click is handled in _poll (one place, in order with the other events) – since
-        1.22.4 in the next pass of the event loop (_poll_soon)."""
+        1.22.4 in the next pass of the event loop (_poll_soon). 1.44.2 (user: dragging in the preview stuttered): a
+        stream of the same drag ("place"/"resize"/"limit" of one element) keeps only its newest value – before,
+        every mouse move was a full commit with an overlay tick, all of them one after the other."""
+        slot = coalesce_slot(action, arg)
+        if slot is not None:
+            latest = self.__dict__.setdefault("_act_latest", {})
+            waiting = slot in latest
+            latest[slot] = arg
+            if waiting:                                   # already queued: that event takes the newest value
+                return
+            action, arg = "act_latest", slot
         self.events.put(("ui", action, arg))
         soon = getattr(self, "_poll_soon", None)          # App's; a bare QtShell (tests) keeps the 50-ms beat
         if soon is not None:
             soon()
 
     def _qt_event(self, action, arg=None):
+        if action == "act_latest":                        # 1.44.2: the newest value of a drag (see _qt_post)
+            arg = self.__dict__.get("_act_latest", {}).pop(arg, None)
+            if arg is None:
+                return
+            action = "act"
         if action == "quit":
             self.quit()
             return

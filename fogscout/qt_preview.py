@@ -39,6 +39,9 @@ class PreviewView(QWidget):
         self._held = None                      # (name, x, y, since) drawn at once (1.65.2, user: it jumped)
         self._limit = None                     # (side, "top"/"bottom") while a limiter line is dragged (1.8.14)
         self._limit_y = None                   # … and where the mouse has it (screen px), drawn at once
+        self._snap_from = ()                   # 1.44.2: the other elements' places when the drag began (snapping)
+        self._answered = False                 # 1.44.2: the App sent places since the drag began (landing frame)
+        self._boxes = {}                       # 1.44.2: id(picture) -> visible part as shares (hit testing)
         self.setFocusPolicy(Qt.ClickFocus)     # arrow keys after a click (1.65)
         self.setMouseTracking(True)            # open hand over an element
         sp = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -46,9 +49,10 @@ class PreviewView(QWidget):
         self.setSizePolicy(sp)
         self.setMinimumHeight(120)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip(_("Klick auf Karte, Systemwerte oder Musik wählt das Element für den Regler „Grösse“. "
-                          "Mit „Mit der Maus verschieben“: Element ziehen = verschieben, an der Ecke ziehen oder "
-                          "Strg+Mausrad = Grösse, Klick auf eine freie Stelle setzt die Karte dorthin. Ende mit „Fertig“."))
+        self.setToolTip(_("Klick auf ein Element wählt es für den Regler „Grösse“. Mit „Mit der Maus verschieben“: "
+                          "Element ziehen = verschieben (der gestrichelte Rahmen zeigt, wo es landet), an der Ecke "
+                          "ziehen oder Strg+Mausrad = Grösse, Rechtsklick = Position oder Grösse zurücksetzen. Ende "
+                          "mit „Fertig“."))
 
     def hasHeightForWidth(self):
         return True
@@ -74,6 +78,8 @@ class PreviewView(QWidget):
         shape = data.get("screen") != self._data.get("screen") or \
             bool(data.get("editing")) != bool(self._data.get("editing"))
         self._data = data
+        if self._grab:                         # 1.44.2: these places already follow the drag
+            self._answered = True
         if self._held and not self._grab:      # dropped: the App's own place counts again
             self._held = None
         if shape:
@@ -148,7 +154,8 @@ class PreviewView(QWidget):
             p.setFont(nf)
             p.setPen(QColor(qt_theme.colours(qt_theme.current_dark())["accent"]))   # 1.22.3: on the page, not the screen
             # 1.8.8: in its own strip below the screen (1.8.2 put it on the picture, where it hid the music card)
-            note = _("Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = Grösse")
+            note = _("Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = "
+                     "Grösse, Rechtsklick = zurücksetzen")
             if d.get("limits") and not d.get("limits_on", True):       # 1.8.15: the faint limiter lines
                 note += "\n" + _("Graue Linien in den Balken = Grenzen (aus) – eine ziehen schaltet sie ein")
             strip = QRectF(screen.left(), screen.bottom() + 4, screen.width(), self.height() - screen.bottom() - 4)
@@ -182,6 +189,12 @@ class PreviewView(QWidget):
                 p.drawLine(QPointF(ox + lx * s, screen.top()), QPointF(ox + lx * s, screen.bottom()))
             if ly is not None:
                 p.drawLine(QPointF(screen.left(), oy + ly * s), QPointF(screen.right(), oy + ly * s))
+            land = self._landing()
+            if land is not None:                   # 1.44.2: where the App puts it (bar, lines, others) – no surprise
+                _n, ax, ay, aw, ah = land
+                p.setPen(QPen(accent, 1.5, Qt.DashLine))
+                p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 40))
+                p.drawRect(QRectF(ox + ax * s, oy + ay * s, aw * s, ah * s))
             sel = self._layer(d.get("selected"))
             if sel:                                # the picked element: its corner sizes it (1.64.9)
                 hr = self._handle_rect(sel, ox, oy, s)
@@ -305,7 +318,22 @@ class PreviewView(QWidget):
     def _layer(self, name):
         return next((lay for lay in self._layers() if lay[0] == name), None)
 
-    HANDLE = 12                                # px (widget): the corner that sizes the picked element
+    LANDING_PX = 3                             # screen px: closer than this, the held place is where it lands
+
+    def _landing(self):
+        """1.44.2: while dragging, where the App put the element last (its rules: inside the bar, between the
+        lines, off the others) when that differs from the mouse's place – drawn as a dashed frame; None else."""
+        if not self._grab or not self._answered:          # before the App's answer: still the old place
+            return None
+        held = self._layer(self._grab[0])
+        app = next((lay for lay in self._data.get("layers") or () if lay[0] == self._grab[0]), None)
+        if held is None or app is None:
+            return None
+        if abs(held[1] - app[1]) <= self.LANDING_PX and abs(held[2] - app[2]) <= self.LANDING_PX:
+            return None
+        return app
+
+    HANDLE = 16                                # px (widget): the corner that sizes the picked element (1.44.2: 12)
 
     def _handle_rect(self, layer, ox, oy, s):
         from PySide6.QtCore import QRectF
@@ -336,11 +364,47 @@ class PreviewView(QWidget):
         self._post("act", (self._key, ("resize", hit[0], lay[4] * 1.06 ** steps)))
         e.accept()
 
+    HIT_PAD = 6                                # px (widget) around an element's visible part that still hit it
+    HIT_MIN = 24                               # px (widget): a hit area is at least this big
+
+    def _visible(self, name):
+        """1.44.2: the visible part of an element's picture as shares (x0, y0, x1, y1) – its transparent edge
+        (shadow room, a card padded to the column's width) took clicks meant for the element below; cached."""
+        img = (self._data.get("pics") or {}).get(name)
+        if img is None or getattr(img, "mode", "") != "RGBA":
+            return 0.0, 0.0, 1.0, 1.0
+        hit = self._boxes.get(id(img))
+        if hit is None or hit[0] is not img:
+            box = img.getchannel("A").point(lambda a: 255 if a > 24 else 0).getbbox()
+            w, h = max(1, img.width), max(1, img.height)
+            share = (box[0] / w, box[1] / h, box[2] / w, box[3] / h) if box else (0.0, 0.0, 1.0, 1.0)
+            if len(self._boxes) > 32:
+                self._boxes.clear()
+            hit = self._boxes[id(img)] = (img, share)
+        return hit[1]
+
+    def _hit_rect(self, layer):
+        """Screen-px rectangle that takes the mouse for ``layer``: its visible part, a little wider, never tiny."""
+        name, lx, ly, lw, lh = layer
+        s = max(1e-6, self._frame()[2])
+        x0, y0, x1, y1 = self._visible(name)
+        pad, least = self.HIT_PAD / s, self.HIT_MIN / s
+        left, top, right, bottom = lx + x0 * lw - pad, ly + y0 * lh - pad, lx + x1 * lw + pad, ly + y1 * lh + pad
+        if right - left < least:
+            mid = (left + right) / 2
+            left, right = mid - least / 2, mid + least / 2
+        if bottom - top < least:
+            mid = (top + bottom) / 2
+            top, bottom = mid - least / 2, mid + least / 2
+        return left, top, right, bottom
+
     def layer_at(self, x, y):
-        """(name, dx, dy) of the topmost element under screen point (x, y), or None (1.64.1)."""
-        for name, lx, ly, lw, lh in reversed(self._layers()):
-            if lx <= x <= lx + lw and ly <= y <= ly + lh:
-                return name, x - lx, y - ly
+        """(name, dx, dy) of the topmost element under screen point (x, y), or None (1.64.1). 1.44.2: by its
+        visible part (``_hit_rect``), not its whole picture."""
+        for lay in reversed(self._layers()):
+            left, top, right, bottom = self._hit_rect(lay)
+            if left <= x <= right and top <= y <= bottom:
+                return lay[0], x - lay[1], y - lay[2]
         return None
 
     def _move(self, e):
@@ -354,15 +418,12 @@ class PreviewView(QWidget):
             self._snapped = (None, None)
             if lay and not e.modifiers() & Qt.AltModifier:        # 1.65: snaps to centre, bars, other elements
                 from .layoutmem import SNAP_PX, snap_lines, snap_rect
-                xs, ys = snap_lines(self._data["screen"], self._data.get("bar", 0), self._data.get("layers") or (),
-                                    name)
+                xs, ys = snap_lines(self._data["screen"], self._data.get("bar", 0), self._snap_from, name)
                 x, y, lx, ly = snap_rect(x, y, lay[3], lay[4], xs, ys, SNAP_PX / max(1e-6, self._frame()[2]))
                 self._snapped = (lx, ly)
             self._held = (name, x, y, time.monotonic())
             self.update()
             self._post("act", (self._key, ("place", name, x, y)))
-        else:                              # empty place: the map's centre goes there
-            self._post("act", (self._key, ("move", pt[0], pt[1])))
 
     def mousePressEvent(self, e):
         if e.button() != Qt.LeftButton:
@@ -377,14 +438,14 @@ class PreviewView(QWidget):
             return
         pt = self._screen_pos(e)
         hit = self.layer_at(*pt) if pt else None
-        if hit:                                # 1.64.9: a click picks the element for the size slider
-            self._post("act", (self._key, ("select", hit[0])))
-        if self._data.get("editing"):
+        if hit and hit[0] != self._data.get("selected"):   # 1.64.9: picks it for the size slider (1.44.2: only a
+            self._post("act", (self._key, ("select", hit[0])))   # new pick – each click switched the tab before)
+        if self._data.get("editing") and hit:  # 1.44.2: a click on an empty place no longer moves the map there
             self._grab = hit
+            self._snap_from = tuple(self._data.get("layers") or ())   # lines frozen for this drag (no flicker)
+            self._answered = False
             self._dragging = True
             self.setCursor(Qt.ClosedHandCursor)
-            if not self._grab:
-                self._move(e)
 
     def mouseMoveEvent(self, e):
         if self._limit:
