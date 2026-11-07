@@ -9,6 +9,7 @@ timeline are sequence.py (pure), the undo history sequence.History, projects pro
 game – only the recording files the user picked."""
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from dataclasses import replace
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCh
                                QToolButton, QVBoxLayout, QWidget)
 
 from . import annotate, clipedit, hudnames, imageedit, launch, medialib, obsrec, project, qt_icons, qt_theme, sequence
+from . import textfind
 from .i18n import N_, _
 from .editorclaude import ClaudeMixin
 from .editorinputs import InputMixin
@@ -34,6 +36,7 @@ from .qt_layouts import FlowRow
 from .qt_library import MediaLibrary
 from .qt_timeline import SequenceTimeline
 
+log = logging.getLogger(__name__)
 LIB_W, INSP_W = 270, 330            # px: the side panels at first
 TL_H = 215                          # px: the timeline panel at first
 MIN_W, MIN_H = 1024, 640
@@ -266,8 +269,11 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
 
     def __init__(self, path: str, marks: list, clips_dir: str, mode: str = "copy", sound: bool = True, media=None,
                  on_open=None, cache_dir: str | None = None, layout: dict | None = None, registry=None,
-                 autosave: bool = True, round_t=None, montage_file: str | None = None, montage_new=None, **kw):
+                 autosave: bool = True, round_t=None, montage_file: str | None = None, montage_new=None,
+                 models_dir: str | None = None, **kw):
         self._project_init(registry, autosave, round_t)
+        self._finder = textfind.Finder(models_dir) if models_dir else None   # 1.41.1: „Text finden“ (local OCR)
+        self._text_busy = False
         self._montage_init(path, montage_file, montage_new)  # 1.22: a montage of several recordings
         self.media, self.on_open, self.cache_dir = media, on_open, cache_dir
         self._layout = dict(layout or {})
@@ -1235,6 +1241,19 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
         self.box_always_btn = self._btn(wb, _("Kasten immer"), self.box_always,
                                         _("Der markierte Kasten gilt wieder für die ganze Aufnahme."))
         sec.body.addLayout(wb)
+        tb = FlowRow(spacing=6)                                 # 1.41.1: text on the still, found locally
+        self.text_find_btn = self._btn(tb, _("Text finden"), self.find_text,
+                                       _("Sucht auf dem Bild am Abspielkopf nach Text (Namen, Chat) – auf diesem "
+                                         "PC, nichts wird gesendet. Die Fundstellen erscheinen nummeriert."))
+        self.text_take_btn = self._btn(tb, _("Vorschläge übernehmen"), self.take_text,
+                                       _("Macht aus den nummerierten Fundstellen Zensurkästen (ein Schritt zum "
+                                         "Rückgängigmachen)."))
+        self.text_drop_btn = self._btn(tb, _("Vorschläge verwerfen"), self.drop_text, "")
+        self.cl_names_btn = self._btn(tb, _("Claude: nur Namen"), self.claude_text_names,
+                                      _("Schickt das Standbild (zensierte Bereiche bleiben zensiert) mit den "
+                                        "nummerierten Fundstellen an Claude; Claude nennt nur die Nummern, die "
+                                        "Namen oder Chat zeigen – die übrigen Vorschläge fallen weg."))
+        sec.body.addLayout(tb)
         self.censor_hint = QLabel("")
         self.censor_hint.setProperty("class", "dim")
         self.censor_hint.setWordWrap(True)
@@ -1484,6 +1503,7 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
 
     def _extra_threads(self):
         self.bridge.wave.connect(self._wave_arrived)
+        self.bridge.textfind.connect(self._text_arrived)
         if self.info.audio_tracks > 0:
             path, duration, ffmpeg, b, cancel = self.path, self.info.duration, self.ffmpeg, self.bridge, self._cancel
 
@@ -2228,6 +2248,73 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
         if i is not None:
             self._set_box_window(i, None)
 
+    # ---- 1.41.1: „Text finden“ – the local detector (textfind) on the picture at the playhead
+    def find_text(self):
+        if self._text_busy:
+            return
+        if self._finder is None or not self._finder.available():
+            self.status.setText(_("Die Texterkennung ist in dieser Installation nicht vorhanden."))
+            return
+        i, src_t = sequence.source_at(self.parts, self.pos)
+        part = self.parts[i] if i is not None else None
+        if part is None:
+            return
+        path, info, ffmpeg, finder = self._src_path(part), self._src_info(part), self.ffmpeg, self._finder
+        existing = [list(b) for b in self.preview.boxes]
+        emit, cancel = self.bridge.textfind.emit, self._cancel
+        self._text_busy = True
+        self.preview.set_suggest([])
+        self.status.setText(_("Suche Text im Bild …"))
+        self._censor_hint()
+
+        def work():
+            try:
+                img = clipedit.frame_at(path, src_t, min(int(getattr(info, "height", 0) or 1080), 1440), info, ffmpeg)
+                found = finder.find(img, existing) if img is not None else None
+            except Exception as e:                       # only the kind – nothing of the picture
+                log.warning("Text finden: unerwarteter Fehler %s", e.__class__.__name__)
+                found = None
+            if not cancel.is_set():
+                emit(found)
+        threading.Thread(target=work, name="clip-textfind", daemon=True).start()
+
+    def _text_arrived(self, found):
+        self._text_busy = False
+        if self._closed:
+            return
+        if found is None:
+            self.status.setText(_("Das Bild liess sich nicht nach Text durchsuchen."))
+        elif not found:
+            self.status.setText(_("Kein Text gefunden, der nicht schon verdeckt ist."))
+        else:
+            self.status.setText(_("{n} Textstellen gefunden – „Vorschläge übernehmen“ verdeckt sie.", n=len(found)))
+        self.preview.set_suggest(found or [])
+        if found and self.mode != "censor":
+            self.mode_btns["censor"].setChecked(True)
+        self._censor_hint()
+
+    def take_text(self):
+        """The suggestions become censor boxes – one change, one undo step."""
+        new = [list(b) for b in self.preview.suggest]
+        if not new:
+            return
+        if not self.censor_box.isChecked():              # „anwenden“ on in the same step as the boxes (one undo)
+            self.censor_box.blockSignals(True)
+            self.censor_box.setChecked(True)
+            self.censor_box.blockSignals(False)
+            self._censor_on = True
+            self.preview.set_look(True, self._censor_style)
+            self._setting("clip_censor_on", True)
+        self.preview.boxes.extend(new)
+        self.preview.set_suggest([])
+        self.preview.boxes_changed.emit()
+        self.status.setText(_("{n} Kästen gesetzt.", n=len(new)))
+        self._censor_hint()
+
+    def drop_text(self):
+        self.preview.set_suggest([])
+        self._censor_hint()
+
     def _censor_hint(self):
         n = len(self.preview.boxes)
         if not n:
@@ -2243,6 +2330,12 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
         self.censor_hint.setText(text)
         for b in (self.remove_btn, self.clear_btn, self.box_from_btn, self.box_until_btn, self.box_always_btn):
             b.setEnabled(n > 0)
+        hits = bool(self.preview.suggest)
+        self.text_find_btn.setEnabled(not self._text_busy and self._finder is not None)
+        self.text_take_btn.setVisible(hits)
+        self.text_drop_btn.setVisible(hits)
+        self.cl_names_btn.setVisible(hits and bool(self.claude_key()) and bool(self.claude_frame()))
+        self.cl_names_btn.setEnabled(not self._claude_busy)
 
     # ---- projects (1.16)
     def _project_extra(self) -> dict:
