@@ -239,3 +239,87 @@ def test_an_answer_whose_ops_are_not_a_list_ends_in_a_message_not_in_waiting(qap
         assert win.cl_ask_btn.isEnabled() and not win.cl_take_btn.isVisible()
     finally:
         win.close()
+
+
+# ---- 1.43.1: Claude asks back
+class ScriptOpener(FakeOpener):
+    """One answer per request, in order (the last one repeats)."""
+
+    def __init__(self, answers):
+        super().__init__(answers[0])
+        self.answers = list(answers)
+
+    def open(self, req, timeout=None):
+        self.answer = self.answers[min(len(self.bodies), len(self.answers) - 1)]
+        return super().open(req, timeout)
+
+
+def test_claude_asks_back_and_the_answer_goes_with_the_talk_then_one_undo_step(qapp, clip, tmp_path, monkeypatch):
+    fake = ScriptOpener([{"summary": "", "ops": [], "question": "Welche​ Marke meinst du?\n"},
+                         {"summary": "Um die Marke.", "ops": [{"op": "keep", "from": 4, "to": 8, "why": "Marke 6 s"}]}])
+    monkeypatch.setattr(askclaude, "OPENER", fake)
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.claude_key = lambda: KEY
+        win._claude_refresh()
+        before = _spans(win)
+        win.cl_field.setText("nur um die Marke")
+        win.claude_ask()
+        assert _pump(qapp, lambda: not win._claude_busy)
+        assert win.cl_status.text() == "Claude fragt: Welche Marke meinst du?"
+        assert win.cl_field.text() == "" and win.cl_drop_btn.isVisible() and not win.cl_take_btn.isVisible()
+        win.cl_field.setText("die bei 6 s")
+        win.claude_ask()
+        assert _pump(qapp, lambda: win.cl_take_btn.isVisible())
+        msgs = fake.bodies[1]["messages"]
+        assert [m["role"] for m in msgs] == ["user", "assistant", "user"]
+        assert msgs[0]["content"] == fake.bodies[0]["messages"][0]["content"]          # the first wish, unchanged
+        assert json.loads(msgs[1]["content"])["question"].startswith("Welche")
+        assert msgs[2]["content"] == "Answer to your question: die bei 6 s"
+        sent = json.dumps(msgs)
+        assert "Coal" not in sent and "Nurse" not in sent and "mkv" not in sent and str(tmp_path) not in sent
+        assert "Marke 6 s" in win.cl_list.text() and _spans(win) == before
+        win.claude_take()
+        assert _spans(win) == [(4.0, 8.0, 1.0)]
+        win.undo()
+        assert _spans(win) == before
+        win.cl_field.setText("noch etwas")                                   # the talk is over: a new wish
+        win.claude_ask()
+        assert _pump(qapp, lambda: not win._claude_busy)
+        assert len(fake.bodies[2]["messages"]) == 1
+    finally:
+        win.close()
+
+
+def test_at_most_three_rounds_and_discard_forgets_the_question(qapp, clip, tmp_path, monkeypatch):
+    fake = ScriptOpener([{"summary": "", "ops": [], "question": "Wo genau?"}])
+    monkeypatch.setattr(askclaude, "OPENER", fake)
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.claude_key = lambda: KEY
+        win._claude_refresh()
+        for n, answer in enumerate(["schneller", "vorne", "ganz vorne"]):
+            win.cl_field.setText(answer)
+            win.claude_ask()
+            assert _pump(qapp, lambda: not win._claude_busy)
+            assert len(fake.bodies[n]["messages"]) == 2 * n + 1
+        assert "No more questions" in fake.bodies[2]["messages"][-1]["content"]
+        assert win._claude_talk is None and win.cl_status.text() == "Wo genau?"       # a fourth is never asked
+        win.cl_field.setText("neu")
+        win.claude_ask()
+        assert _pump(qapp, lambda: not win._claude_busy)
+        assert win._claude_talk is not None
+        win.claude_drop()
+        assert win._claude_talk is None and not win.cl_drop_btn.isVisible()
+        win.cl_field.setText("anders")
+        win.claude_ask()
+        assert _pump(qapp, lambda: not win._claude_busy)
+        assert len(fake.bodies[4]["messages"]) == 1                                   # nothing of the old talk
+        win.goto(5.0)
+        win.split_at_playhead()                                                       # the cut changes meanwhile
+        win.cl_field.setText("antwort")
+        win.claude_ask()
+        assert _pump(qapp, lambda: not win._claude_busy)
+        assert len(fake.bodies[5]["messages"]) == 1 and "Wish: antwort" in fake.bodies[5]["messages"][0]["content"]
+    finally:
+        win.close()
