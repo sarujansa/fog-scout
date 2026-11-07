@@ -213,6 +213,59 @@ def frame_at(path: str, t: float, height: int = PREVIEW_H, info: Info | None = N
     return Image.frombytes("RGB", (ow, oh), p.stdout[:need])
 
 
+BURST = 13                       # 1.40: pictures one scrub read decodes (the wanted one and the next/previous 12)
+
+
+def frame_key(t: float, fps: float) -> int:
+    """1.40: the picture frame_at gives for second ``t`` – the first at or after it (frames counted from 0)."""
+    return max(0, math.ceil(round(float(t) * (fps or 30.0), 6)))
+
+
+def frames_from(path: str, t: float, n: int, height: int = PREVIEW_H, info: Info | None = None,
+                ffmpeg: str | None = None, vf=None, size=None, stop=lambda: False):
+    """1.40: up to ``n`` pictures in a row from second ``t`` on in one ffmpeg run, yielded as (frame key, image) as
+    they are decoded – the first is frame_at(t)'s picture, the others what frame_at would give for the next seconds
+    1/fps apart. The seek to the key frame is paid once: 13 pictures cost about 90 ms more than one (measured
+    1440p60, key frame every 2 s), and the first comes as fast as frame_at's. ``-fps_mode passthrough``: the decoded
+    pictures as they are – the constant-rate default repeats or drops one where the file's timestamps are rounded
+    (ms in .mkv). ``stop()`` True ends it early."""
+    from PIL import Image
+    ffmpeg = ffmpeg or ffmpeg_exe()
+    info = info or probe(path, ffmpeg)
+    if not ffmpeg or not info.ok or n <= 0:
+        return
+    w, h = scaled(info, height)
+    ow, oh = size or (w, h)
+    need = ow * oh * 3
+    first = frame_key(t, info.fps)
+    try:
+        proc = subprocess.Popen([ffmpeg, "-hide_banner", "-loglevel", "error", "-ss", f"{max(0.0, t):.3f}", "-i",
+                                 path, "-an", "-fps_mode", "passthrough", "-frames:v", str(int(n)),
+                                 "-vf", ",".join([f"scale={w}:{h}", *(vf or ())]), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                creationflags=_flags())
+    except OSError:
+        return
+    try:
+        for k in range(int(n)):
+            if stop():
+                return
+            data = proc.stdout.read(need)
+            if len(data) < need:
+                return
+            yield first + k, Image.frombytes("RGB", (ow, oh), data)
+    finally:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        try:
+            proc.stdout.close()
+            proc.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+
 def thumb_strip(path: str, times: list, height: int = THUMB_H, info: Info | None = None, ffmpeg: str | None = None,
                 stop=lambda: False, workers: int = THUMB_WORKERS):
     """The pictures of the strip for ``times``, yielded as (index, image) in the order they finish. 1.8.3 (user:
