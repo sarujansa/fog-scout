@@ -81,6 +81,8 @@ class SequenceTimeline(QWidget):
         self.view = None              # the game part of each thumbnail (x, y, w, h), None = all of it
         self.wave = []
         self.wave_per_s = clipedit.WAVE_PER_S
+        self.input_bins = {}          # 1.39.1: {source: input changes per bin, 0…1} – a strip at the foot of A1
+        self.input_per_s = 4
         # 1.22: a montage's other recordings (index ≥ 1; 0 is the fields above): length, strip pictures, loudness,
         # F8 marks, short names on the clips, and the ones whose file is missing
         self.src_duration, self.src_thumbs, self.src_wave, self.src_marks, self.src_names = {}, {}, {}, {}, {}
@@ -182,6 +184,12 @@ class SequenceTimeline(QWidget):
 
     def set_view(self, box):
         self.view = tuple(box) if box else None
+        self.update()
+
+    def set_inputs(self, src: int, bins, per_s: int):
+        """1.39.1: how busy the keys were in recording ``src`` (inputtrack.density) – drawn under the waveform."""
+        self.input_bins[src] = list(bins)
+        self.input_per_s = max(1, int(per_s))
         self.update()
 
     def set_wave(self, bins, per_s: int):
@@ -351,6 +359,7 @@ class SequenceTimeline(QWidget):
                 tuple(repr(p) for p in self.parts), tuple(self.subs), self.selection, self.hover, len(self.thumbs),
                 tuple(repr(m) for m in self.music), self.music_sel,
                 len(self.wave), self.view, tuple(self.marks), self.dark, self.devicePixelRatioF(),
+                tuple((s, len(b)) for s, b in sorted(self.input_bins.items())),
                 tuple((s, len(t)) for s, t in sorted(self.src_thumbs.items())), tuple(sorted(self.src_wave)),
                 repr(sorted(self.src_marks.items())), repr(sorted(self.src_names.items())), tuple(sorted(self.missing)),
                 tuple(sorted(qt_theme.colours(self.dark).items())))   # post-review: a theme change redraws
@@ -530,6 +539,7 @@ class SequenceTimeline(QWidget):
             self._paint_thumbs(p, vrect, part)
             if part.hold <= 0:                                        # 1.19: a still is silent
                 self._paint_wave(p, arect, part, audio)
+                self._paint_inputs(p, arect, part)                    # 1.39.1
         if part.hold > 0:                                             # 1.19: a still – stripes over its picture
             p.save()
             p.setClipRect(vrect.adjusted(0.5, 16, -0.5, -0.5), Qt.IntersectClip)
@@ -615,6 +625,35 @@ class SequenceTimeline(QWidget):
             v = max(wave[b0:min(n, b1)], default=0.0)
             h = max(1.0, v * half)
             p.drawLine(QPointF(x + 0.5, mid - h), QPointF(x + 0.5, mid + h))
+
+    INPUT_STRIP_H = 6
+
+    def _paint_inputs(self, p, r, part):
+        """1.39.1: the input changes of the clip's recording as a strip at the foot of A1 – brighter = busier keys
+        (the same source-to-pixel mapping as the waveform, backwards included)."""
+        bins = self.input_bins.get(part.src)
+        if not bins or r.width() < 2:
+            return
+        top = r.bottom() - self.INPUT_STRIP_H - 1
+        accent = QColor(qt_theme.colours(self.dark)["accent"])
+        left, right = max(int(r.left()) + 1, HEAD_W), min(int(r.right()), self.width())
+        per_px = part.speed / self.scale
+        n = len(bins)
+        p.setPen(Qt.NoPen)
+        for x in range(left, right):
+            off = (x - r.left()) * per_px
+            s0 = part.end - off - per_px if part.reverse else part.start + off
+            b0 = int(s0 * self.input_per_s)
+            b1 = max(b0 + 1, int((s0 + per_px) * self.input_per_s))
+            if b0 >= n:
+                break
+            v = max(bins[b0:min(n, b1)], default=0.0)
+            if v <= 0:
+                continue
+            c = QColor(accent)
+            c.setAlpha(int(70 + 185 * v))
+            p.setBrush(c)
+            p.drawRect(QRectF(x, top, 1, self.INPUT_STRIP_H))
 
     def _paint_move(self, p, c, cc, st):
         """The dragged clip as a ghost under the mouse and the insertion line where it will land."""

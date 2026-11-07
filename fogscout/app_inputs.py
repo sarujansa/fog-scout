@@ -180,6 +180,30 @@ class InputsCard:
         self._save_soon()
         self._tick_overlay(reschedule=False)
 
+    # ---- 1.39.1: the round's inputs next to its recording
+    def _inputs_record_on(self) -> bool:
+        return bool(self.settings["overlay"].get("show_inputs", False)) and bool(self.settings.get("inputs_record",
+                                                                                                   True))
+
+    def _inputs_round_start(self) -> None:
+        reader = getattr(self, "inputs", None)
+        if reader is not None:
+            reader.take_log()                         # what came before the banner is not this round's
+
+    def _inputs_round_end(self) -> None:
+        """The changes of the round to the recorder (it keeps them in seconds of the file) – only with the box
+        "Eingaben mit der Aufnahme speichern"; otherwise they are dropped. Never logged."""
+        reader = getattr(self, "inputs", None)
+        if reader is None:
+            return
+        events = reader.take_log()
+        if events and self._inputs_record_on():
+            self.recorder.inputs(events)
+
+    def _inputs_record_changed(self) -> None:
+        self.settings.set("inputs_record", bool(self.inputs_record_var.get()))
+        self._save_soon()
+
     def _inputs_quit(self) -> None:
         reader = getattr(self, "inputs", None)
         if reader is not None:
@@ -190,5 +214,7 @@ def INPUTS_NOTE() -> str:          # noqa: N802 – a text, translated when aske
     return _("Fog Scout zeigt nur, welche dieser Tasten gerade gedrückt sind: W, A, S, D, Q, E, R, Leertaste, "
              "Shift, Strg, die Maustasten und ein Gamepad (Knöpfe, Trigger, Sticks). Gelesen wird nur während einer "
              "Runde und nur, solange DBD das aktive Fenster ist – Tippen in anderen Programmen sieht Fog Scout nie. "
-             "Nichts davon wird gespeichert, geloggt oder gesendet, und nichts geht an das Spiel. Eine offizielle "
+             "Nichts davon wird geloggt oder gesendet, und nichts geht an das Spiel; mit „Eingaben mit der Aufnahme "
+             "speichern“ liegen die Tasten einer Runde als Datei neben ihrer OBS-Aufnahme (für den Clip-Editor). "
+             "Eine offizielle "
              "Freigabe von Behaviour gibt es für solche Anzeigen nicht; sie geben keinen Spielvorteil.")

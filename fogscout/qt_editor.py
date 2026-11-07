@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QButtonGroup, QCh
 from . import annotate, clipedit, hudnames, imageedit, launch, medialib, obsrec, project, qt_icons, qt_theme, sequence
 from .i18n import N_, _
 from .editorclaude import ClaudeMixin
+from .editorinputs import InputMixin
 from .editormontage import MontageMixin
 from .editormusic import MusicMixin
 from .editorproject import ProjectMixin
@@ -252,7 +253,7 @@ class Section(QFrame):
         return r
 
 
-class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase):
+class EditorWindow(ClaudeMixin, InputMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase):
     """The full editor – see the module's docstring. ``media`` = the App's list of MediaItems for the library
     (callable), ``on_open(item, window)`` = the App opens another recording (a new window; ``window`` = this one, to
     be replaced when nothing was edited here), ``cache_dir`` = where the library's pictures are kept,
@@ -280,6 +281,7 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
         self._short = None                  # 1.20: shorts.ShortSpec of this cut (layout, title, subtitles)
         self._music_init()                  # 1.21: the own audio track A2 (editormusic)
         self._claude_init()                 # 1.27: „Mit Claude bearbeiten“ (editorclaude)
+        self._inputs_init(path)             # 1.39.1: the input card (editorinputs)
         self._short_view = False            # 1.20: the preview shows the composed short
         self._crop_saved = (None, None, False)
         super().__init__(path, marks, clips_dir, mode, sound, flags=Qt.Window, **kw)
@@ -293,6 +295,7 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
     def _ready(self, ok: bool):
         self.timeline.set_duration(self.info.duration, self.info.fps)
         self.timeline.set_marks(self.marks)
+        self._input_timeline(0)                          # 1.39.1: how busy the keys were
         if not ok:
             for w in (self.play_btn, self.split_btn, self.delete_btn, self.project_btn):
                 w.setEnabled(False)
@@ -581,7 +584,9 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
                                   ("clip", _("Clip"), self._section_clip), ("fx", _("Effekte"), self._section_fx),
                                   ("marks", _("Marken (F8)"), self._section_marks),
                                   ("draw", _("Zeichnen"), self._section_draw), ("censor", _("Zensieren"), self._section_censor),
-                                  ("picture", _("Bild"), self._section_picture), ("sound", _("Ton"), self._section_sound),
+                                  ("picture", _("Bild"), self._section_picture),
+                                  ("inputs", _("Eingaben"), self._section_inputs),           # 1.39.1
+                                  ("sound", _("Ton"), self._section_sound),
                                   ("export", _("Export"), self._section_export),
                                   ("short", _("Short (9:16)"), self._section_short)):
             sec = Section(title)
@@ -1070,6 +1075,7 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
         if self._short_view and self._short is not None:          # the title and subtitles at the playhead
             from . import shorts
             img = shorts.paste_texts(img, self._short, self.pos)
+        img = self._input_paint(img)                              # 1.39.1: the input card at the playhead
         super()._paint(img)
 
     def _section_marks(self, sec, mode):
@@ -1487,7 +1493,7 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
                                   float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
                                   [list(b) for b in self.preview.boxes], self._censor_on, self._censor_style,
                                   self._short.copy() if self._short is not None else None, self._music_state(),
-                                  list(self.sources) if self._montage else [])
+                                  list(self.sources) if self._montage else [], self._input_state())
 
     def _apply(self, state: sequence.EditState):
         """Show ``state`` (undo/redo, a loaded project) without writing history."""
@@ -1496,6 +1502,7 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
         self._applying = True
         try:
             self._music_apply(getattr(state, "music", None))     # 1.21
+            self._input_apply(getattr(state, "inputs", None))     # 1.39.1
             self.parts = [replace(p) for p in state.parts]
             self.timeline.set_parts(self.parts)
             key = state.crop_key if state.crop else "none"
@@ -1585,6 +1592,7 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
         if secs["short"].isVisibleTo(self):
             self._short_show()
         secs["marks"].setVisible(bool(self._mark_rows()))
+        secs["inputs"].setVisible(self._input_has())                            # 1.39.1
         secs["draw"].setVisible(self.mode == "draw")
         secs["censor"].setVisible(self.mode == "censor")
         if sel is not None and sel < len(self.parts):
@@ -1935,7 +1943,8 @@ class EditorWindow(ClaudeMixin, MontageMixin, MusicMixin, ProjectMixin, ClipBase
         return clipedit.Edit([replace(p) for p in self.parts], crop, shapes,
                              float(self.fade_in_box.currentData() or 0), float(self.fade_out_box.currentData() or 0),
                              self._short.copy() if self._short is not None else None, self._music_state(),
-                             list(self.sources) if self._montage and len(self.sources) > 1 else [])
+                             list(self.sources) if self._montage and len(self.sources) > 1 else [],
+                             self._input_burn())
 
     def _saving(self, on: bool):
         self.busy.setVisible(on)

@@ -41,9 +41,9 @@ from .recindex import (  # 1.38.35: index, clips and pruning live there; every n
     CLIPS_DIR, CLIPS_INDEX, CLIP_EXTS, CLIP_KINDS, Clip, DEFAULT_FARMING_DAYS, FARMING_CHECK_S, FARMING_DAYS, INDEX,
     NAME_CHARS, OLD_CLIPS_INDEX, OLD_INDEX, PARTS_CHECK_S, PARTS_WRITING, PART_EXT, PART_STALE_S, RESERVE, Recording,
     SHORT_ROUND_S, STILL_EXTS, Space, VIDEO_EXTS, _COPY_RE, _SPACE, _STAMP_RE, _entry, _index_stamp, _kind_value, _who,
-    adopt_clip, adopt_old_file, clips_dir, deletable, expired_farming, file_name, list_clips, load_clips, load_index, part_key, prune,
+    adopt_clip, adopt_old_file, clips_dir, deletable, expired_farming, own_files, file_name, list_clips, load_clips, load_index, part_key, prune,
     prune_farming, prune_rank, save_clips, save_index, select_clips, select_recordings, settle_parts, space, whole)
-_INDEX_NAMES = (CLIPS_DIR, CLIPS_INDEX, CLIP_EXTS, CLIP_KINDS, Clip, DEFAULT_FARMING_DAYS, FARMING_CHECK_S, FARMING_DAYS, INDEX, NAME_CHARS, OLD_CLIPS_INDEX, OLD_INDEX, PARTS_CHECK_S, PARTS_WRITING, PART_EXT, PART_STALE_S, RESERVE, Recording, SHORT_ROUND_S, STILL_EXTS, Space, VIDEO_EXTS, _COPY_RE, _SPACE, _STAMP_RE, _entry, _index_stamp, _kind_value, _who, adopt_clip, adopt_old_file, clips_dir, deletable, expired_farming, file_name, list_clips, load_clips, load_index, part_key, prune, prune_farming, prune_rank, save_clips, save_index, select_clips, select_recordings, settle_parts, space, whole)   # re-exported
+_INDEX_NAMES = (CLIPS_DIR, CLIPS_INDEX, CLIP_EXTS, CLIP_KINDS, Clip, DEFAULT_FARMING_DAYS, FARMING_CHECK_S, FARMING_DAYS, INDEX, NAME_CHARS, OLD_CLIPS_INDEX, OLD_INDEX, PARTS_CHECK_S, PARTS_WRITING, PART_EXT, PART_STALE_S, RESERVE, Recording, SHORT_ROUND_S, STILL_EXTS, Space, VIDEO_EXTS, _COPY_RE, _SPACE, _STAMP_RE, _entry, _index_stamp, _kind_value, _who, adopt_clip, adopt_old_file, clips_dir, deletable, expired_farming, own_files, file_name, list_clips, load_clips, load_index, part_key, prune, prune_farming, prune_rank, save_clips, save_index, select_clips, select_recordings, settle_parts, space, whole)   # re-exported
 
 log = logging.getLogger("fogscout")
 
@@ -57,6 +57,7 @@ RENAME_TRIES = 40               # OBS may still hold the file a moment after Sto
 RENAME_WAIT = 0.5
 REPLAY_WAIT = 4.0               # 1.5.4: s to wait for OBS to finish writing the replay buffer (it saves asynchronously)
 REPLAY_POLL = 0.2
+MAX_INPUT_EVENTS = 100_000      # 1.39.1: input changes kept per recording (= inputs.MAX_EVENTS)
 MAX_MESSAGE = 16 * 1024 * 1024  # 1.8.38: a WebSocket message larger than this ends the connection (OBS sends KBs)
 MAX_HANDSHAKE = 64 * 1024       # 1.38.20: the HTTP upgrade answer – obs-websocket's is a few hundred bytes
 MAX_ROUND_S = 45 * 60           # a recording longer than this is stopped (an end that was never detected)
@@ -205,6 +206,26 @@ def rec_elapsed(a: dict | None, now: float | None = None) -> float:
     if a.get("paused_at") is not None:
         paused += max(0.0, now - float(a["paused_at"]))
     return max(0.0, now - float(a.get("since") or now) - paused)
+
+
+def rec_position(a: dict | None, wall: float):
+    """1.39.1: the second of the active recording ``a`` at wall time ``wall`` (like rec_elapsed for a moment in the
+    past) – None before the recording started or while it was paused (``a["pauses"]`` = [(from, to)], an open
+    pause ``paused_at``)."""
+    if not a or a.get("since") is None:
+        return None
+    since = float(a["since"])
+    if wall < since:
+        return None
+    off = 0.0
+    for p0, p1 in a.get("pauses") or ():
+        if wall >= p1:
+            off += p1 - p0
+        elif wall >= p0:
+            return None
+    if a.get("paused_at") is not None and wall >= float(a["paused_at"]):
+        return None
+    return max(0.0, wall - since - off)
 
 
 class ObsError(Exception):
@@ -836,6 +857,12 @@ class Recorder(threading.Thread):
         """1.4.2: F8 – note this moment in the running recording (the clip editor jumps to it later)."""
         self.cmds.put(("mark", None))
 
+    def inputs(self, events):
+        """1.39.1: the input card's changes of a round as [(wall time, code)] – kept with the recording on air
+        (seconds of its file, like the marks) and written next to it as its companion file."""
+        if events:
+            self.cmds.put(("inputs", list(events)))
+
     def set_keep(self, t: float, on: bool):
         """1.5: "behalten" – never deleted for room. Index writes stay on this thread."""
         self.cmds.put(("keep", (float(t), bool(on))))
@@ -987,6 +1014,8 @@ class Recorder(threading.Thread):
                 self._overlay_moved(arg)
             elif cmd == "mark":
                 self._mark()
+            elif cmd == "inputs":
+                self._inputs(arg)
             elif cmd == "rec_start":
                 self._manual_start(arg)
             elif cmd == "rec_stop":
@@ -1061,6 +1090,17 @@ class Recorder(threading.Thread):
         self.active.setdefault("marks", []).append(pos)
         self._post("marked", pos=pos, n=len(self.active["marks"]))
 
+    def _inputs(self, events):
+        """1.39.1: wall times → seconds of the recording on air (before it and in a pause: left out)."""
+        a = self.active
+        if a is None:
+            return
+        out = a.setdefault("inputs", [])
+        for wall, code in events:
+            pos = rec_position(a, float(wall))
+            if pos is not None and len(out) < MAX_INPUT_EVENTS:
+                out.append((round(pos, 2), int(code)))
+
     def _set_keep(self, t, on):
         folder = self.folder()
         if folder is None:
@@ -1091,7 +1131,7 @@ class Recorder(threading.Thread):
                 os.makedirs(dest, exist_ok=True)
             except OSError:
                 dest = None
-            for attr in ("file", "pre"):
+            for attr in ("file", "pre", "inputs"):                  # 1.39.1: the input file goes along
                 name = getattr(hit, attr)
                 src = rel_path(folder, name) if name else None
                 if dest is None or not src or not os.path.exists(src):
@@ -1099,6 +1139,16 @@ class Recorder(threading.Thread):
                 base = os.path.basename(src)
                 if os.path.dirname(src) == os.path.normpath(dest):
                     continue                                # already where it belongs
+                if attr == "inputs":                        # 1.39.1: named after its video (the editor finds it so)
+                    from .inputs import INPUTS_SUFFIX
+                    base = os.path.basename(hit.file) + INPUTS_SUFFIX
+                    if os.path.exists(os.path.join(dest, base)):
+                        continue
+                    target = os.path.join(dest, base)
+                    moved = self._move(src, target)
+                    if moved == target:
+                        hit.inputs = prefix + base
+                    continue
                 target = os.path.join(dest, self._unique(dest, base))
                 moved = self._move(src, target)
                 if moved == target:
@@ -1138,7 +1188,9 @@ class Recorder(threading.Thread):
         if hit is None:
             return
         gone = []
-        for n in (hit.file, hit.pre):
+        for n, own in own_files(hit):
+            if n == hit.inputs and not own:
+                continue                                                  # 1.39.1: only our own input file
             p = rel_path(folder, n) if n else None                        # only inside the folder
             if p:
                 try:
@@ -1605,11 +1657,12 @@ class Recorder(threading.Thread):
             return
         bad = check_file(final)                        # 1.4.1: OBS may have failed silently
         marks = list(rec.get("marks") or [])
-        pre_s, extra = 0.0, {}
+        pre_s, extra, shift = 0.0, {}, 0.0
         if pre_name and not bad and self.cfg.merge:    # 1.4.2: pre-roll + round → one file
             final, pre_name, pre_s, joined = self._join(dest, os.path.join(dest, pre_name), final)
             if joined:
                 marks = [round(m + pre_s, 1) for m in marks]
+                shift = pre_s
             else:
                 extra["merge_failed"] = True
         if bad:
@@ -1621,11 +1674,13 @@ class Recorder(threading.Thread):
         prefix = sub + "/" if sub else ""              # index names: "Farming/…" with "/" on every system
         if pre_name:
             pre_name = prefix + pre_name
+        inputs_name = self._write_inputs(dest, final, rec.get("inputs"), shift)
         recs = load_index(folder)
         recs.append(Recording(t=float(rec.get("t") or time.time()), file=prefix + os.path.basename(final), pre=pre_name,
                               map_id=rec.get("map_id", ""), label=rec.get("label", ""), role=rec.get("role", ""),
                               killer=rec.get("killer", ""), end=time.time(), extra=extra, marks=marks,
-                              farming=bool(rec.get("farming")), pre_s=pre_s))
+                              farming=bool(rec.get("farming")), pre_s=pre_s,
+                              inputs=prefix + inputs_name if inputs_name else ""))
         limit = int(self.cfg.limit_gb) * 1024 ** 3
         save_index(folder, recs)         # 1.38.24 (review STAB-3): the new round is in the index before anything is
         recs, deleted = prune(folder, recs, limit)   # deleted – a failing write after the prune left it out for good
@@ -1643,6 +1698,21 @@ class Recorder(threading.Thread):
             self._post("deleted", files=deleted)
         self._look_at_space(force=True)
         self._expire_farming(force=True)
+
+    @staticmethod
+    def _write_inputs(dest, video, events, shift):
+        """1.39.1: the round's input changes next to its file ("<file>.inputs.json", seconds of the file – the
+        pre-roll in front moves them like the marks). Never overwrites; returns the name or ""."""
+        if not events:
+            return ""
+        from .inputs import INPUTS_SUFFIX, dump
+        name = os.path.basename(video) + INPUTS_SUFFIX
+        try:
+            fsops.write_new(os.path.join(dest, name), dump([(t + shift, c) for t, c in events]))
+        except (OSError, fsops.UnsupportedFS) as e:
+            log.warning("Eingaben der Runde nicht gespeichert (%s)", type(e).__name__)
+            return ""
+        return name
 
     @staticmethod
     def _join(folder, pre_path, round_path):
@@ -1787,6 +1857,7 @@ class Recorder(threading.Thread):
             a["paused_at"] = now
         else:
             a["paused_s"] = float(a.get("paused_s") or 0.0) + max(0.0, now - float(a.get("paused_at") or now))
+            a.setdefault("pauses", []).append((float(a.get("paused_at") or now), now))   # 1.39.1: rec_position
             a["paused_at"] = None
         self.paused = bool(on)
         self._say(_("Aufnahme pausiert") if on else _("Aufnahme läuft weiter"), True)

@@ -91,7 +91,11 @@ TIPS = {
     "Eingaben im Spiel zeigen (Tasten, Maus, Gamepad)":
         "Eine Karte im Spiel zeigt, welche Tasten, Maustasten oder Gamepad-Knöpfe du gerade drückst – wie bei "
         "Streamern. Gelesen wird nur eine feste Liste von Tasten, nur während einer Runde und nur, solange DBD vorne "
-        "ist; nichts wird gespeichert oder gesendet.",
+        "ist; gesendet wird nichts, gespeichert nur mit „Eingaben mit der Aufnahme speichern“.",
+    "Eingaben mit der Aufnahme speichern (für den Clip-Editor)":
+        "Mit OBS-Aufnahmen: die gedrückten Tasten der Runde kommen als kleine Datei neben die Aufnahme – der "
+        "Clip-Editor zeigt sie als Spur und kann die Karte ins Video einbrennen. Die Datei wird mit der Aufnahme "
+        "verschoben und gelöscht.",
     "Dunkle Fläche hinter den Eingaben":
         "Eine halb durchsichtige dunkle Fläche mit runden Ecken hinter den Tasten.",
     "„Läuft gerade“: Titel, Interpret und Cover":

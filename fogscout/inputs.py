@@ -134,6 +134,95 @@ class DeviceChoice:
         return setting if setting in ("keyboard", "gamepad") else device
 
 
+# ---- 1.39.1: a round's states as compact numbers (the recorder's companion file, the editor's track)
+_KEY_BIT = {k: 1 << i for i, k in enumerate(KEY_IDS)}               # bits 0–12
+_PAD_BIT = {k: 1 << (13 + i) for i, k in enumerate(PAD_IDS)}        # bits 13–26
+_LT, _RT, _LS, _RS = 27, 31, 35, 40                                  # trigger eighths (4 bits), stick steps (5 bits)
+MAX_EVENTS = 100_000          # state changes kept per round at most (a busy 10-minute round has a few thousand)
+FILE_FORMAT = "fogscout-inputs"
+FILE_VERSION = 1
+INPUTS_SUFFIX = ".inputs.json"
+MAX_FILE_BYTES = 8_000_000
+
+
+def _step_index(x: float, y: float) -> int:
+    """0 = resting, 1–8 half way, 9–16 all the way (direction 0 = right, counter-clockwise) – stick_steps."""
+    sx, sy = stick_steps(x, y)
+    if sx == 0 and sy == 0:
+        return 0
+    d = round(math.atan2(sy, sx) / (2 * math.pi / STICK_DIRS)) % STICK_DIRS
+    return 1 + d + (STICK_DIRS if math.hypot(sx, sy) > 0.75 else 0)
+
+
+def _step_xy(i: int) -> tuple:
+    if i <= 0 or i > 2 * STICK_DIRS:
+        return (0.0, 0.0)
+    far, d = divmod(i - 1, STICK_DIRS)
+    a = d * 2 * math.pi / STICK_DIRS
+    r = 1.0 if far else 0.5
+    return (round(math.cos(a) * r, 3) + 0.0, round(math.sin(a) * r, 3) + 0.0)
+
+
+def encode(st: InputState) -> int:
+    """The state as the card shows it, in one number (keys, pad buttons, triggers in eighths, stick steps)."""
+    code = 0
+    for k in st.keys:
+        code |= _KEY_BIT.get(k, 0)
+    for k in st.pad:
+        code |= _PAD_BIT.get(k, 0)
+    code |= min(8, max(0, round(st.lt * 8))) << _LT
+    code |= min(8, max(0, round(st.rt * 8))) << _RT
+    code |= _step_index(st.lx, st.ly) << _LS
+    code |= _step_index(st.rx, st.ry) << _RS
+    return code
+
+
+def decode(code: int) -> InputState:
+    """encode backwards: what the card showed (sticks at their step, triggers in eighths)."""
+    code = int(code)
+    lx, ly = _step_xy((code >> _LS) & 31)
+    rx, ry = _step_xy((code >> _RS) & 31)
+    pad = frozenset(k for k, b in _PAD_BIT.items() if code & b)
+    return InputState(keys=frozenset(k for k, b in _KEY_BIT.items() if code & b), pad=pad,
+                      lt=min(8, (code >> _LT) & 15) / 8, rt=min(8, (code >> _RT) & 15) / 8,
+                      lx=lx, ly=ly, rx=rx, ry=ry, pad_on=bool(pad) or bool(code >> _LT))
+
+
+MAX_CODE = 1 << 45
+
+
+def load(path: str) -> list:
+    """A companion file → [(seconds of the recording, code)], sorted; [] for anything that is not ours (no format
+    mark, too big, broken, values out of range) – it is only ever read, never trusted."""
+    import json
+    import os
+    try:
+        if os.path.getsize(path) > MAX_FILE_BYTES:
+            return []
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict) or data.get("format") != FILE_FORMAT or not isinstance(data.get("events"), list):
+        return []
+    out = []
+    for e in data["events"][:MAX_EVENTS]:
+        if (isinstance(e, list) and len(e) == 2 and isinstance(e[0], (int, float)) and not isinstance(e[0], bool)
+                and isinstance(e[1], int) and not isinstance(e[1], bool) and math.isfinite(e[0])
+                and 0 <= e[0] < 1e6 and 0 <= e[1] < MAX_CODE):
+            out.append((float(e[0]), int(e[1])))
+    out.sort(key=lambda e: e[0])
+    return out
+
+
+def dump(events) -> bytes:
+    """[(seconds, code)] → the companion file's bytes."""
+    import json
+    rows = [[round(float(t), 2), int(c)] for t, c in events][:MAX_EVENTS]
+    return json.dumps({"format": FILE_FORMAT, "version": FILE_VERSION, "events": rows},
+                      separators=(",", ":")).encode("utf-8")
+
+
 SAMPLE = InputState(keys=frozenset({"w", "shift", "lmb"}), pad=frozenset({"a", "rb"}), rt=0.7, lx=0.0, ly=0.8,
                     rx=-0.5, ry=0.2, pad_on=True)      # the preview / edit mode / "Overlay testen"
 
@@ -236,6 +325,9 @@ class Reader:
         self._stop = threading.Event()
         self._thread = None
         self._failed = False
+        self._log = []                        # 1.39.1: (wall time, code) of every change while allowed
+        self._log_lock = threading.Lock()
+        self.dropped = 0                      # changes past MAX_EVENTS (only counted)
 
     @property
     def allowed(self) -> bool:
@@ -264,6 +356,21 @@ class Reader:
         if st != self.state:
             self.state = st
             self.changes += 1
+            code = encode(st)
+            with self._log_lock:
+                if self._log and self._log[-1][1] == code:
+                    return                    # a change the card does not show (a stick within its step)
+                if len(self._log) < MAX_EVENTS:
+                    self._log.append((time.time(), code))
+                else:
+                    self.dropped += 1
+
+    def take_log(self) -> list:
+        """1.39.1: the changes since the last call as [(wall time, code)] – and forget them (memory only; the
+        recorder turns them into seconds of its recording)."""
+        with self._log_lock:
+            out, self._log, self.dropped = self._log, [], 0
+        return out
 
     def look(self) -> None:
         """One look now (the thread's step; tests call it directly)."""

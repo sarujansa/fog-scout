@@ -253,6 +253,7 @@ class MontageMixin:
         if info is None or not info.ok:
             return
         tl.set_source(s, duration=info.duration, marks=self._src_marks.get(s, []))
+        self._input_source(s, path)                      # 1.39.1: its own input file
         self._fill_marks()
         if s not in self._src_threads:
             self._src_threads.add(s)
