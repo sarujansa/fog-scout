@@ -3033,6 +3033,21 @@ EN = {
     "Titel & Vorschaubild": "Title & thumbnail",
     "Claude fragt: {question}": "Claude asks: {question}",
     "Deine Antwort …": "Your answer …",
+    "Name der Vorlage": "Template name",
+    "Als Vorlage speichern": "Save as template",
+    "Merkt sich die eben übernommenen Schritte (ohne Zensurkästen) als Vorlage – Zeiten vom Anfang bzw. vom Ende aus, damit sie auch bei anderen Längen passen.":
+        "Keeps the steps you just took (without censor boxes) as a template – times from the start or from the end, so "
+        "they also fit other lengths.",
+    "Schlägt die Schritte der Vorlage für diesen Schnitt vor – ohne Claude, kostenlos; erst „Übernehmen“ ändert den Schnitt.":
+        "Proposes the template's steps for this cut – without Claude, free; only \"Apply\" changes the cut.",
+    "Vorlage löschen": "Delete template",
+    "Entfernt die gewählte Vorlage.": "Removes the chosen template.",
+    "Bitte einen Namen für die Vorlage eingeben.": "Please enter a name for the template.",
+    "Nichts, was als Vorlage taugt (Zensurkästen gehören nicht dazu).":
+        "Nothing that works as a template (censor boxes are not part of one).",
+    "Vorlage „{name}“ gespeichert.": "Template \"{name}\" saved.",
+    "Vorlage „{name}“": "Template \"{name}\"",
+    "Vorlage „{name}“ gelöscht.": "Template \"{name}\" deleted.",
     "Schickt dieselben acht Standbilder wie „Export prüfen“ an Claude; Claude wählt das beste Vorschaubild und schlägt einen Titel vor. Den Titel übernimmst du selbst, das Vorschaubild wird nur als Bild in „Clips“ gespeichert – nichts wird hochgeladen.": "Sends the same eight stills as \"Check the export\" to Claude; Claude picks the best thumbnail and proposes a title. You take the title yourself, the thumbnail is only saved as a picture in \"Clips\" – nothing is uploaded.",
     "Claude sucht unter {n} Standbildern ein Vorschaubild …": "Claude is picking a thumbnail among {n} stills …",
     "Als Short-Titel: „{title}“": "As the short's title: \"{title}\"",
