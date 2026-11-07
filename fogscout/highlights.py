@@ -185,3 +185,46 @@ def uncrop(box, crop):
         return list(box)
     cx, cy, cw, ch = crop[:4]
     return [round(cx + box[0] * cw, 4), round(cy + box[1] * ch, 4), round(box[2] * cw, 4), round(box[3] * ch, 4)]
+
+
+# ---- 1.43: „Titel & Vorschaubild“ – the same stills as the export check; Claude picks one and proposes a title
+MAX_TITLE = 70              # characters of a proposed title (YouTube allows 100; a thumbnail line stays short)
+THUMB_TITLE_SHARE = 0.09    # the title on the saved thumbnail: this share of the picture's height
+
+THUMB_SYSTEM = ("You help a Dead by Daylight player share a clip. You get stills of the finished cut, each labelled "
+                "with its number and time; areas already hidden are blurred or black. Pick the one still that makes "
+                "the most striking thumbnail ('still' = its number) and propose a short, catchy video title in the "
+                "language given ('title', at most 70 characters, no hashtags, no player names, no emojis). "
+                "'summary' is one sentence on why.")
+
+THUMB_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary", "title", "still"],
+                "properties": {"summary": {"type": "string"}, "title": {"type": "string"},
+                               "still": {"type": "integer"}}}
+
+
+def thumb_blocks(length: float, stills, language: str) -> list:
+    """The user content: the length and the language, then each still as „Still n at t s:“ and its image block."""
+    out = [{"type": "text", "text": f"Clip length: {_r(length)} s. Answer 'title' and 'summary' in {language}."}]
+    for n, (t, block) in enumerate(stills, 1):
+        out += [{"type": "text", "text": f"Still {n} at {_r(t)} s:"}, block]
+    return out
+
+
+def clean_title(t) -> str:
+    """A proposed title as one line of plain text: control and format characters out, at most MAX_TITLE."""
+    import unicodedata
+    text = "".join(c for c in str(t or "") if unicodedata.category(c)[0] != "C")
+    return " ".join(text.split())[:MAX_TITLE].strip()
+
+
+def thumb_parse(data, n: int) -> tuple[str, str, int]:
+    """(summary, title, 0-based index of the still) – the index only 1 … ``n``, else -1; the title cleaned.
+    ValueError when neither a usable title nor a still came back."""
+    if not isinstance(data, dict):
+        raise ValueError("thumb")
+    v = data.get("still")
+    index = v - 1 if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= n else -1
+    title = clean_title(data.get("title"))
+    if index < 0 and not title:
+        raise ValueError("thumb")
+    return " ".join(str(data.get("summary") or "").split())[:300], title, index

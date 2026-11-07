@@ -10,6 +10,7 @@ meanwhile). The key and the user's permission come from the App (``claude_key``:
 from __future__ import annotations
 
 import logging
+import os
 import threading
 
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
@@ -26,6 +27,22 @@ ERROR_WORDS = {**askclaude.ERRORS,                                           # 1
 
 
 CHECK_WORDS = {"name": N_("Name lesbar"), "chat": N_("Chat lesbar"), "other": N_("Auffällig")}   # 1.42
+
+
+def highlights_thumbnail(img, title: str):
+    """1.43: ``img`` (RGB) with ``title`` drawn centred in its lower part (shorts.text_picture: Inter Bold, white,
+    dark outline); without a title the picture as it is."""
+    if not title:
+        return img
+    from . import shorts
+    text = shorts.text_picture(title, max(12, int(img.height * highlights.THUMB_TITLE_SHARE)), int(img.width * 0.9))
+    if text is None:
+        return img
+    out = img.convert("RGB").copy()
+    x = (out.width - text.width) // 2
+    y = max(0, out.height - text.height - int(out.height * 0.06))
+    out.paste(text, (x, y), text)
+    return out
 
 
 class _NoStill(Exception):
@@ -80,11 +97,18 @@ class ClaudeMixin:
                                        "Namen oder Chat und anderes, das so nicht geteilt werden sollte. Ein Klick auf "
                                        "einen Fund springt hin und schlägt einen Zensurkasten vor."))
         self.cl_check_btn.clicked.connect(self.claude_check)
+        self.cl_thumb_btn = QPushButton(_("Titel & Vorschaubild"))   # 1.43: proposed, saved only on a click
+        self.cl_thumb_btn.setToolTip(_("Schickt dieselben acht Standbilder wie „Export prüfen“ an Claude; Claude wählt "
+                                       "das beste Vorschaubild und schlägt einen Titel vor. Den Titel übernimmst du "
+                                       "selbst, das Vorschaubild wird nur als Bild in „Clips“ gespeichert – nichts "
+                                       "wird hochgeladen."))
+        self.cl_thumb_btn.clicked.connect(self.claude_thumb)
         hl_row = QHBoxLayout()
         hl_row.setSpacing(6)
         hl_row.addWidget(self.cl_hl_btn)
         hl_row.addWidget(self.cl_short_btn)
         hl_row.addWidget(self.cl_check_btn)
+        hl_row.addWidget(self.cl_thumb_btn)
         hl_row.addStretch()
         sec.body.addLayout(hl_row)
         self.cl_hl_rows = QVBoxLayout()                           # one button per highlight Claude named
@@ -92,6 +116,7 @@ class ClaudeMixin:
         sec.body.addLayout(self.cl_hl_rows)
         self._hl_found = []
         self._check_found = []                             # 1.42: the export check's findings
+        self._thumb = None                                 # 1.43: (title, job of the still or None, base)
         self.cl_status = PlainLabel("", "dim")             # 1.28: Claude's summary – plain text, long runs broken
         sec.body.addWidget(self.cl_status)
         self.cl_list = PlainLabel("")                      # … and the steps (a short title comes from Claude)
@@ -132,6 +157,8 @@ class ClaudeMixin:
         self.cl_short_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
         self.cl_check_btn.setVisible(frame_ok)                                   # 1.42
         self.cl_check_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
+        self.cl_thumb_btn.setVisible(frame_ok)                                   # 1.43
+        self.cl_thumb_btn.setEnabled(frame_ok and self.history is not None and not self._claude_busy)
         self.cl_field.setEnabled(on)
         self.cl_ask_btn.setEnabled(on and self.history is not None and not self._claude_busy)
         if not on and self._claude_result is None:
@@ -205,6 +232,9 @@ class ClaudeMixin:
     def _claude_answer(self, item):
         if item and item[0] == "hl":                     # 1.37: the highlight search's answer
             self._highlights_answer(*item[1:])
+            return
+        if item and item[0] == "th":                     # 1.43: title and thumbnail
+            self._thumb_answer(*item[1:])
             return
         if item and item[0] == "ck":                     # 1.42: the export check's findings
             self._check_answer(*item[1:])
@@ -313,6 +343,35 @@ class ClaudeMixin:
         threading.Thread(target=work, name="claude-highlights", daemon=True).start()
 
     # ---- 1.42: „Export prüfen“ – stills of the finished cut (the export's crop), every censor box hidden
+    def _cut_jobs(self, base) -> list:
+        """[(output second, recording path, info, source second)] of the check stills (highlights.check_times)."""
+        jobs = []
+        for t in highlights.check_times(sequence.duration(base.parts)):
+            i, src_t = sequence.source_at(base.parts, t)
+            part = base.parts[i] if i is not None else None
+            if part is not None:
+                jobs.append((t, self._src_path(part), self._src_info(part), src_t))
+        return jobs
+
+    def _cut_picture(self, base):
+        """A function (path, info, source second, height) → the picture as the export shows it – every censor box
+        hidden (also outside a box's time: safer) and cut to the export's crop – or None. Safe in a thread."""
+        boxes = [list(b) for b in base.boxes]
+        style = base.censor_style if base.censor_style in imageedit.CENSOR_STYLES else "pixel"
+        crop = tuple(base.crop) if base.crop else None
+        ffmpeg = self.ffmpeg
+
+        def picture(path, info, src_t, height):
+            img = clipedit.frame_at(path, src_t, height, info, ffmpeg)
+            if img is None:
+                return None
+            for b in boxes:                      # always hidden in what is sent – also while „anwenden“ is off
+                img = imageedit.censor_area(img, b, style)
+            if crop:                             # the part the export shows
+                img = img.crop(imageedit.box_px(crop, img.size))
+            return img
+        return picture
+
     def claude_check(self):
         if self._claude_busy or self.history is None:
             return
@@ -322,19 +381,11 @@ class ClaudeMixin:
             return
         base = self._state()
         length = sequence.duration(base.parts)
-        jobs = []
-        for t in highlights.check_times(length):
-            i, src_t = sequence.source_at(base.parts, t)
-            part = base.parts[i] if i is not None else None
-            if part is not None:
-                jobs.append((t, self._src_path(part), self._src_info(part), src_t))
+        jobs = self._cut_jobs(base)
         if not jobs:
             return
-        boxes = [list(b) for b in base.boxes]
-        style = base.censor_style if base.censor_style in imageedit.CENSOR_STYLES else "pixel"
-        crop = tuple(base.crop) if base.crop else None
+        picture = self._cut_picture(base)
         language = "German" if i18n.current() == "de" else "English"
-        ffmpeg = self.ffmpeg
         self._claude_seq += 1
         seq = self._claude_seq
         self._claude_busy, self._claude_result = True, None
@@ -349,14 +400,9 @@ class ClaudeMixin:
             try:
                 stills = []
                 for t, path, info, src_t in jobs:
-                    img = clipedit.frame_at(path, src_t, highlights.CHECK_H, info, ffmpeg)
-                    if img is None:
-                        continue
-                    for b in boxes:              # always hidden in what is sent – also while „anwenden“ is off
-                        img = imageedit.censor_area(img, b, style)
-                    if crop:                     # the part the export shows
-                        img = img.crop(imageedit.box_px(crop, img.size))
-                    stills.append((t, askclaude.image_block(img, highlights.CHECK_SIDE)))
+                    img = picture(path, info, src_t, highlights.CHECK_H)
+                    if img is not None:
+                        stills.append((t, askclaude.image_block(img, highlights.CHECK_SIDE)))
                 if not stills:
                     raise _NoStill()
                 data = askclaude.request(key, highlights.CHECK_SYSTEM,
@@ -370,6 +416,135 @@ class ClaudeMixin:
                 log.warning("Claude-Prüfung: unerwarteter Fehler %s", e.__class__.__name__)
                 emit(("ck", seq, base, None, "bad"))
         threading.Thread(target=work, name="claude-check", daemon=True).start()
+
+    # ---- 1.43: „Titel & Vorschaubild“ – the check stills; Claude picks one and proposes a title, nothing uploaded
+    def claude_thumb(self):
+        if self._claude_busy or self.history is None:
+            return
+        key = self.claude_key()
+        if not key or not self.claude_frame():
+            self._claude_refresh()
+            return
+        base = self._state()
+        length = sequence.duration(base.parts)
+        jobs = self._cut_jobs(base)
+        if not jobs:
+            return
+        picture = self._cut_picture(base)
+        language = "German" if i18n.current() == "de" else "English"
+        self._claude_seq += 1
+        seq = self._claude_seq
+        self._claude_busy, self._claude_result = True, None
+        self._claude_buttons(False)
+        self._highlights_clear()
+        self.cl_list.hide()
+        self.cl_status.setText(_("Claude sucht unter {n} Standbildern ein Vorschaubild …", n=len(jobs)))
+        self._claude_refresh()
+        emit = self.bridge.claude.emit
+
+        def work():
+            try:
+                stills, sent = [], []
+                for job in jobs:
+                    img = picture(job[1], job[2], job[3], highlights.CHECK_H)
+                    if img is not None:
+                        stills.append((job[0], askclaude.image_block(img, highlights.CHECK_SIDE)))
+                        sent.append(job)
+                if not stills:
+                    raise _NoStill()
+                data = askclaude.request(key, highlights.THUMB_SYSTEM,
+                                         highlights.thumb_blocks(length, stills, language), highlights.THUMB_SCHEMA)
+                emit(("th", seq, base, sent, data, None))
+            except askclaude.AskError as e:
+                emit(("th", seq, base, [], None, e.kind))
+            except _NoStill:
+                emit(("th", seq, base, [], None, "still"))
+            except Exception as e:               # only the kind – never a picture or the key
+                log.warning("Claude-Vorschaubild: unerwarteter Fehler %s", e.__class__.__name__)
+                emit(("th", seq, base, [], None, "bad"))
+        threading.Thread(target=work, name="claude-thumb", daemon=True).start()
+
+    def _thumb_answer(self, seq, base, sent, data, error):
+        if self._closed or seq != self._claude_seq:
+            return
+        self._claude_busy = False
+        try:
+            if error is not None:
+                self.cl_status.setText(_(ERROR_WORDS.get(error, ERROR_WORDS["net"])))
+                return
+            try:
+                summary, title, index = highlights.thumb_parse(data, len(sent))
+            except ValueError:
+                self.cl_status.setText(_(ERROR_WORDS["bad"]))
+                return
+            job = sent[index] if index >= 0 else None
+            self._thumb = (title, job, base)
+            self.cl_status.setText(summary)
+            if title:
+                btn = ElideButton()
+                btn.set_full_text(_("Als Short-Titel: „{title}“", title=title))
+                btn.setToolTip(_("Übernimmt den Titel als Titel des Shorts (ein Schritt zum Rückgängigmachen). Für "
+                                 "YouTube kopierst du ihn selbst."))
+                btn.clicked.connect(self.thumb_take_title)
+                self.cl_hl_rows.addWidget(btn)
+            if job is not None:
+                btn = ElideButton()
+                btn.set_full_text(_("Vorschaubild bei {at} speichern", at=clipedit.fmt_pos(job[0])))
+                btn.setToolTip(_("Speichert dieses Standbild in voller Grösse als PNG in „Clips“ – zensiert wie im "
+                                 "Export, mit dem Titel. Hochgeladen wird nichts."))
+                btn.clicked.connect(self.thumb_save)
+                self.cl_hl_rows.addWidget(btn)
+                self.goto(job[0])
+        except Exception:                                # never left on „Claude sucht …“
+            self.cl_status.setText(_(ERROR_WORDS["bad"]))
+        finally:
+            self._claude_refresh()
+
+    def thumb_take_title(self):
+        """1.43: Claude's title becomes the short's title – one undo step (the short's own way)."""
+        if not self._thumb or not self._thumb[0]:
+            return
+        from . import shorts
+        spec = self._short_spec()
+        spec.title = shorts.clean_text(self._thumb[0])
+        self._short_set(spec)
+        self.status.setText(_("Short-Titel übernommen."))
+
+    def thumb_save(self):
+        """1.43: the picked still in full size as a PNG next to the clips – every censor box hidden and cut like the
+        export, the proposed title drawn in the lower part (shorts.text_picture). Saved like a still (_SaveJob,
+        the clips list); nothing is uploaded."""
+        if not self._thumb or self._thumb[1] is None:
+            return
+        title, job, base = self._thumb
+        _t, path, info, src_t = job
+        picture = self._cut_picture(base)
+        try:
+            os.makedirs(self.clips_dir, exist_ok=True)
+        except OSError as e:
+            self.status.setText(_("Clips-Ordner nicht anlegbar: {error}", error=e))
+            return
+        name = clipedit.NAME_CHARS.sub("", "{} – {}".format(os.path.splitext(os.path.basename(path))[0],
+                                                         _("Vorschaubild")))
+        out = clipedit.unique_path(self.clips_dir, name, ".png")
+        b, height = self.bridge, min(int(getattr(info, "height", 0) or 1080), 2160)
+        from .qt_clip import _SAVES, _SaveJob
+        save = _SaveJob(self, out)
+
+        def work():
+            ok = False
+            try:
+                img = picture(path, info, src_t, height)
+                if img is not None:
+                    img = highlights_thumbnail(img, title)
+                    img.save(out)
+                    ok = True
+            except Exception:                    # OSError, PIL: a result in any case
+                log.exception("Vorschaubild speichern")
+            b.still.emit(ok, out)
+        save.thread = threading.Thread(target=work, name="clip-thumb", daemon=True)
+        _SAVES.append(save)
+        save.thread.start()
 
     def _check_answer(self, seq, base, data, error):
         if self._closed or seq != self._claude_seq:
@@ -564,7 +739,7 @@ class ClaudeMixin:
         threading.Thread(target=work, name="claude-short", daemon=True).start()
 
     def _highlights_clear(self):
-        self._hl_found, self._check_found = [], []
+        self._hl_found, self._check_found, self._thumb = [], [], None
         while self.cl_hl_rows.count():
             w = self.cl_hl_rows.takeAt(0).widget()
             if w is not None:

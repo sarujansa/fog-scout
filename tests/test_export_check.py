@@ -95,3 +95,59 @@ def test_the_editor_checks_the_cut_and_a_finding_becomes_a_box_for_a_while(qapp,
         assert win.pos == pytest.approx(1.0) and win.preview.suggest == []
     finally:
         win.close()
+
+
+def test_a_thumbnail_answer_is_a_clean_title_and_a_still_in_range():
+    assert highlights.thumb_parse({"summary": "Gut", "title": "  Knapp\n entkommen​!  ", "still": 3}, 8) == \
+        ("Gut", "Knapp entkommen!", 2)
+    assert highlights.thumb_parse({"summary": "", "title": "x" * 200, "still": 99}, 8)[1:] == ("x" * 70, -1)
+    with pytest.raises(ValueError):
+        highlights.thumb_parse({"summary": "", "title": " ", "still": 0}, 8)
+    texts = [b["text"] for b in highlights.thumb_blocks(6, [(1.0, {"type": "image"}), (2.0, {"type": "image"})],
+                                                         "German") if b.get("type") == "text"]
+    assert texts[1:] == ["Still 1 at 1.0 s:", "Still 2 at 2.0 s:"]
+
+
+def test_the_editor_proposes_a_title_and_saves_a_censored_thumbnail_without_uploading(qapp, tmp_path, monkeypatch):
+    if FF is None:
+        pytest.skip("imageio-ffmpeg not installed")
+    from PIL import Image
+    from fogscout import qt_editor
+    clip = str(tmp_path / "2026-11-07 09-40 Coal Tower – Nurse.mkv")
+    subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                    "color=c=white:size=320x180:rate=15:duration=8", "-c:v", "libx264", "-preset", "veryfast",
+                    "-pix_fmt", "yuv420p", clip], check=True, timeout=120)
+    fake = FakeOpener({"summary": "Das dritte Bild ist am spannendsten.", "title": "Knapp entkommen", "still": 3})
+    monkeypatch.setattr(askclaude, "OPENER", fake)
+    saved = []
+    win = qt_editor.EditorWindow(clip, [], str(tmp_path / "Clips"), sound=False, on_saved=saved.append)
+    win.show()
+    try:
+        assert _pump(qapp, lambda: win.preview._img is not None and win.history is not None)
+        win.preview.clear_boxes()
+        win.preview.add_box([0.0, 0.0, 0.5, 0.5])
+        win._censor_style = "black"
+        win.claude_key, win.claude_frame = (lambda: KEY), (lambda: True)
+        win._claude_refresh()
+        assert win.cl_thumb_btn.isVisible()
+        win.claude_thumb()
+        assert _pump(qapp, lambda: not win._claude_busy, 60)
+        content = fake.bodies[0]["messages"][0]["content"]
+        words = json.dumps([b for b in content if b["type"] == "text"])
+        assert "Coal" not in words and "Nurse" not in words and "mkv" not in words and "Still 8 at" in words
+        pic = _decoded(next(b for b in content if b["type"] == "image")).convert("RGB")
+        assert sum(pic.getpixel((5, 5))) < 60                                   # censored in what was sent
+        assert win.cl_hl_rows.count() == 2 and win.pos == pytest.approx(highlights.check_times(8)[2])
+        win.thumb_take_title()
+        assert win._short.title == "Knapp entkommen"
+        win.undo()
+        assert win._short is None or win._short.title == ""
+        win.thumb_save()
+        assert _pump(qapp, lambda: saved, 30)
+        out = saved[0]
+        assert out.endswith(".png") and "Vorschaubild" in os.path.basename(out)
+        img = Image.open(out).convert("RGB")
+        assert img.size == (320, 180) and sum(img.getpixel((10, 10))) < 60     # censored in the file too
+        assert len(fake.bodies) == 1                                            # saving sent nothing
+    finally:
+        win.close()
