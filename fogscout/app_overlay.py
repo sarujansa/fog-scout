@@ -693,6 +693,7 @@ class OverlayTab:
         o["info_xy"], o["info_pos"] = [fx, fy], "custom"
         if hasattr(self, "info_pos_var"):
             self.info_pos_var.set(_(dict(INFO_SPOTS)["custom"]))
+        self._el_dropped("text")                     # 1.44.1: stays where it was put
         self._save_soon()
         self._tick_overlay(reschedule=False)
 

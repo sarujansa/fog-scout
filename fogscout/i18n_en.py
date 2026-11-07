@@ -825,8 +825,15 @@ EN = {
     "Test beendet.": "Test ended.",
     "Diagnose in die Zwischenablage kopiert (auch als diagnose.txt gespeichert).":
         "Diagnostics copied to the clipboard (also saved as diagnose.txt).",
-    "Karte, Systemwerte und Musik mit der Maus ziehen (im Spiel oder in der Vorschau), Strg+Mausrad = Grösse. Danach „Fertig“ oder Hotkey.":
-        "Drag the map, the system values and the music with the mouse (in the game or in the preview), Ctrl+mouse wheel = size. Then “Done” or the hotkey.",
+    "Alle Elemente mit der Maus ziehen (im Spiel oder in der Vorschau): Karte, Infos, Systemwerte, Heute, Eingaben, Musik. Rechtsklick auf ein Element = zurück an seinen üblichen Platz, Strg+Mausrad = Grösse. Danach „Fertig“ oder Hotkey.":
+        "Drag every element with the mouse (in the game or in the preview): map, infos, system values, today, "
+        "inputs, music. Right click on an element = back to its usual place, Ctrl+mouse wheel = size. Then “Done” "
+        "or the hotkey.",
+    "{name} wieder an seinem üblichen Platz.": "{name} back at its usual place.",
+    "Karte": "Map",
+    "Systemwerte": "System values",
+    "Musik": "Music",
+    "Eingaben": "Inputs",
     "Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = Grösse":
         "Moving is on – drag (snaps, Alt = free), arrow keys = fine, corner/Ctrl+wheel = size",
     "Rückgängig": "Undo",
@@ -1774,7 +1781,6 @@ EN = {
         'Below title and artist: how far the song is, with a bar and its length – like in Spotify.',
     # 1.64.7: names while moving
     'KARTE · Strg+Mausrad = Grösse': 'MAP · Ctrl+wheel = size',
-    'SYSTEMWERTE · HEUTE': 'SYSTEM VALUES · TODAY',
     'Karte': 'Map',
     'Systemwerte': 'System values',
     'Ziehst: {name}': 'Dragging: {name}',
