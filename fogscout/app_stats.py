@@ -1939,6 +1939,7 @@ class StatsTab:
         elif farm_on and (self._queue.get("crossplay_off") or f is not None):
             self._log(_("Keine Lobby zur Runde ({why}) – sie zählt nicht als Farming.",
                         why=_("Lobby zu alt") if f is not None else _("Lobby nicht gesehen")), "Erkennung")
+        self._inputs_round_start()                  # 1.39.1: nothing from before the round
         self.recorder.start_round(t=now, map_id=map_id, label=self._hist["map"], role=self._hist.get("role", ""),
                                   killer=self._hist.get("killer", ""),         # 1.4: OBS records the round
                                   farming=bool(self._hist.get("farming"))      # 1.4.2: goes first when room is needed
@@ -1958,6 +1959,7 @@ class StatsTab:
 
     def _hist_close(self, t, role=None):
         rec, self._hist = self._hist, None
+        self._inputs_round_end()                    # 1.39.1: the round's inputs go to its recording (before the stop)
         farm_region = self.settings.get("farming_region") or None       # 1.5.3: the region counts as farming too
         self.recorder.stop_round(role=role or (rec or {}).get("role", ""), killer=(rec or {}).get("killer", ""),
                                  farming=bool(rec and ((rec.get("farming") and not rec.get("custom"))

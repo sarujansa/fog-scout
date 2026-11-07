@@ -932,12 +932,18 @@ class Edit:
     short: object = None         # 1.20: shorts.ShortSpec (layout, title, subtitles) for the mode "shorts"
     music: object = None         # 1.21: musictrack.MusicSpec – the user's own track A2 under the game sound
     sources: list = field(default_factory=list)   # 1.22: a montage's recordings (paths; [] = the one recording)
+    inputs: object = None        # 1.39.1: (inputtrack.InputSpec, {source: [(second, code)]}) – the burned-in card
+
+    def card_on(self) -> bool:
+        """1.39.1: the input card goes into the picture (switched on, and some recording of the cut has inputs)."""
+        spec, events = self.inputs if self.inputs else (None, None)
+        return bool(spec is not None and spec.on and any(events.values()))
 
     def simple(self) -> bool:
         """One part at normal tempo and nothing else – cut() alone does it (stream copy possible)."""
         return (len(self.parts) == 1 and abs(self.parts[0].speed - 1.0) < 1e-6 and not self.crop
                 and not self.shapes and self.fade_in <= 0 and self.fade_out <= 0 and not has_effects(self.parts[0])
-                and self.music is None and not self.parts[0].src)
+                and self.music is None and not self.parts[0].src and not self.card_on())
 
     def montage(self) -> bool:
         """1.22: parts from another recording than the first – each is fitted to the first one's picture."""
@@ -1052,10 +1058,47 @@ def fit_filter(w: int, h: int, fps: float) -> str:
 AUDIO_FIT = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo"
 
 
+def frame_size(edit: Edit, info: Info, mode: str) -> tuple:
+    """1.39.1: width and height of the picture the input card is laid on – the shorts canvas, the crop's box or the
+    recording (before the mode's scaling, which scales the card with it)."""
+    if mode == "shorts":
+        from . import shorts
+        return shorts.W, shorts.H
+    if edit.crop:
+        cw, ch, _cx, _cy = crop_px(edit.crop, info.width, info.height)
+        return cw, ch
+    return info.width, info.height
+
+
+def _card_pictures(edit: Edit, info: Info, mode: str, tmpdir: str, args: list) -> tuple:
+    """1.39.1: the input card for export – one PNG per (state, device layout) and a concat list of them with their
+    durations in output time, added to ``args`` as one input. Returns (x, y) of the card on the picture."""
+    from . import inputs, inputtrack
+    from .overlay_render import input_card
+    spec, events = edit.inputs
+    width, height = frame_size(edit, info, mode)
+    x, y, h = inputtrack.card_box(spec, width, height)
+    segs = inputtrack.segments(edit.parts, events)
+    lays = inputtrack.layouts(segs, spec.layout)
+    files, entries = {}, []
+    for (t0, t1, code), lay in zip(segs, lays):
+        key = (code, lay)
+        if key not in files:
+            png = os.path.join(tmpdir, f"card{len(files)}.png")
+            input_card(inputs.decode(code), lay, h, None, spec.backdrop).save(png)
+            files[key] = png
+        entries.append((files[key], t1 - t0))
+    lst = os.path.join(tmpdir, "cards.txt")
+    with open(lst, "w", encoding="utf-8") as f:
+        f.write(inputtrack.concat_text(entries))
+    args += ["-f", "concat", "-safe", "0", "-i", lst]
+    return x, y
+
+
 def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = DEFAULT_TARGET_MB, censor=None,
                censor_style: str = "pixel", mix=None, shape_inputs=(), gif_h: int = DEFAULT_GIF_H,
                palette: int | None = None, encoding: Encoding | None = None, text_inputs=(),
-               music_input: int | None = None, infos=None):
+               music_input: int | None = None, infos=None, card_input=None):
     """The filter graph of ``edit`` (graph, video label, audio label or None, encoder arguments). The first inputs
     are the recording as part_inputs reads it (each seeked to its first part); an input that holds several parts is
     split and cut (trim) per part – the gaps are dropped right there, censor, drawings and crop work on the part
@@ -1065,8 +1108,10 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
     palette for the second (paletteuse) – in one run ffmpeg kept every frame until the palette came at the end
     (~32 MB per second of GIF). ``encoding`` (1.15) as in cut(). 1.22: ``infos`` = Info of each montage source
     (``info`` = the first, the finished clip's size and rate); censor, drawings and zoom work on each part's own
-    picture, then ``fit_filter`` makes it the first one's – a single recording keeps exactly the old graph. Pure –
-    tested without ffmpeg."""
+    picture, then ``fit_filter`` makes it the first one's – a single recording keeps exactly the old graph.
+    ``card_input`` (1.39.1) = (input index, x, y) of the input card (a concat list of its pictures in output time),
+    laid over the finished cut – after the shorts canvas, before frame rate, scaling and fades. Pure – tested
+    without ffmpeg."""
     w, h = info.width, info.height
     infos = list(infos) if infos else [info]
     multi = edit.montage() if hasattr(edit, "montage") else False
@@ -1219,6 +1264,10 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
             post.append(f"scale=-2:{th}")                          # even width and height for 4:2:0
         elif out_w % 2 or out_h % 2:
             post.append("scale=trunc(iw/2)*2:trunc(ih/2)*2")
+    if card_input is not None:                                     # 1.39.1: output time, never cut away
+        idx, cx, cy = card_input[:3]
+        chains.append(f"{vcur}[{idx}:v]overlay={cx}:{cy}:eof_action=pass:format=auto[vin]")
+        vcur = "[vin]"
     fi, fo = max(0.0, edit.fade_in), max(0.0, edit.fade_out)
     if fi > 0:
         post.append(f"fade=t=in:st=0:d={min(fi, total):.3f}")
@@ -1283,9 +1332,11 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
     if not parts:
         return False, "Ende vor Anfang"
     # the editor's drawings as they are now: the window keeps changing its own (colour, size, times, text)
+    card = getattr(edit, "inputs", None)
     edit = Edit(parts, edit.crop, copy.deepcopy(list(edit.shapes)), edit.fade_in, edit.fade_out,
                 edit.short.copy() if getattr(edit.short, "copy", None) else None,
-                edit.music.copy() if getattr(edit.music, "copy", None) else None, list(paths) if len(paths) > 1 else [])
+                edit.music.copy() if getattr(edit.music, "copy", None) else None, list(paths) if len(paths) > 1 else [],
+                (card[0].copy(), dict(card[1])) if card else None)
     if edit.simple() and mode not in ("gif", "shorts"):
         extra = {"censor": censor, "censor_style": censor_style} if censor else {}
         return cut(path, parts[0].start, parts[0].end, out, mode, ffmpeg, run=run, target_mb=target_mb, info=info,
@@ -1353,20 +1404,24 @@ def export(path: str, edit: Edit, out: str, mode: str = "exact", ffmpeg: str | N
                 from . import musictrack
                 music_input = len(inputs) + len(shape_inputs) + len(text_inputs)
                 args += musictrack.input_args(edit.music, 0.0, edit.seconds())
+            card_input = None
+            if edit.card_on():                                   # 1.39.1: the input card, one PNG per state
+                card_input = (args.count("-i"),) + _card_pictures(edit, info, mode, tmpdir, args)
             os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         except OSError as e:                                     # %TEMP% full or not writable, the drive gone
             return False, str(e)
 
         def graph(palette=None):
             return edit_graph(edit, info, mode, target_mb, censor, censor_style, mix, shape_inputs, gif_h, palette,
-                              encoding=encoding, text_inputs=text_inputs, music_input=music_input, infos=infos)
+                              encoding=encoding, text_inputs=text_inputs, music_input=music_input, infos=infos,
+                              card_input=card_input)
         if mode == "gif":
             pal = os.path.join(tmpdir, "palette.png")              # "-update 1": a file name, not a pattern
             rc, err = call(args + ["-filter_complex", graph()[0], "-map", "[vout]", "-frames:v", "1", "-update", "1",
                                    "-f", "image2", pal])
             if rc == 0:
                 rc, err = call(args + ["-f", "png_pipe", "-i", pal, "-filter_complex",
-                                       graph(len(inputs) + len(shape_inputs))[0], "-map", "[vout]", "-an", *fmt, tmp])
+                                       graph(args.count("-i"))[0], "-map", "[vout]", "-an", *fmt, tmp])
         else:
             g, vmap, amap, enc = graph()
             rc, err = call(args + ["-filter_complex", g, "-map", vmap] + (["-map", amap] if amap else ["-an"]) + enc

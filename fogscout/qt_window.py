@@ -191,7 +191,7 @@ SPECS = {
                     ("check", "ov.inputs"),
                     ("row", (("label", "ov.inputs_layout.label"), ("combo", "ov.inputs_layout"), ("stretch",))),
                     ("row", (("label", "ov.inputs_pos.label"), ("combo", "ov.inputs_pos"), ("stretch",))),
-                    ("check", "ov.inputs_backdrop"), ("hint", "ov.inputs_hint"))),
+                    ("check", "ov.inputs_record"), ("check", "ov.inputs_backdrop"), ("hint", "ov.inputs_hint"))),
                 ("ov.pos", N_("Allgemein"), (
                     ("check", "ov.master"),                                                          # 1.8.18
                     ("check", "ov.small_off"),                                                       # 1.8.62

@@ -220,13 +220,15 @@ class EditState:
     short: object = None                     # 1.20: shorts.ShortSpec – layout, title, subtitles of a vertical short
     music: object = None                     # 1.21: musictrack.MusicSpec – the track A2 and how it mixes
     sources: list = field(default_factory=list)   # 1.22: a montage's recordings (paths, Part.src indexes them)
+    inputs: object = None                    # 1.39.1: inputtrack.InputSpec – the burned-in input card
 
     def copy(self) -> "EditState":
         return EditState([replace(p) for p in self.parts], self.crop, self.crop_key,
                          [replace(s, pts=list(s.pts)) for s in self.shapes], self.fade_in, self.fade_out,
                          [list(b) for b in self.boxes], self.censor_on, self.censor_style,
                          self.short.copy() if self.short is not None else None,
-                         self.music.copy() if self.music is not None else None, list(self.sources))
+                         self.music.copy() if self.music is not None else None, list(self.sources),
+                         self.inputs.copy() if self.inputs is not None else None)
 
 
 class History:
