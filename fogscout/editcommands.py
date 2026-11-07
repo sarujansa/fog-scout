@@ -311,3 +311,104 @@ def apply(state: sequence.EditState, ops, mode: str, picture: bool = False):
     if not new.parts:
         return state.copy(), None, [], [(None, (N_("würde alles entfernen"), {}))]
     return new, new_mode, done, skipped
+
+
+# ---- 1.44: cut templates („Schnitt-Vorlagen“) – an applied proposal kept as a recipe, used again locally
+MAX_TEMPLATES = 20               # templates kept at most
+MAX_NAME = 40                    # characters of a template's name
+TIMES = ("from", "to", "at")     # the fields that are moments of the clip (made relative in a template)
+NO_TEMPLATE = ("censor",)        # a box belongs to the picture it was drawn on – never part of a template
+
+
+def _anchor(t: float, length: float) -> list:
+    """A moment as seconds from the start ("s") in the first half of the clip, else seconds before the end ("e") –
+    "first 2 s away" and "last 5 s slow" stay so on a longer clip."""
+    return ["s", _r(t)] if t <= length / 2 else ["e", _r(max(0.0, length - t))]
+
+
+def _unanchor(v, length: float):
+    if not (isinstance(v, list) and len(v) == 2 and v[0] in ("s", "e")) or isinstance(v[1], bool) \
+            or not isinstance(v[1], (int, float)) or v[1] != v[1] or not 0 <= v[1] < 1e6:
+        return None
+    return _r(v[1] if v[0] == "s" else length - v[1])
+
+
+def _clean_op(op: dict) -> dict | None:
+    """Only the known fields with the right type (texts as plain text) – what a template may hold."""
+    if not isinstance(op, dict) or op.get("op") not in KINDS or op.get("op") in NO_TEMPLATE:
+        return None
+    out = {"op": op["op"]}
+    for k in ("factor", "seconds", "in", "out"):
+        v = _num(op, k)
+        if v is not None:
+            out[k] = v
+    for k, limit in (("value", 20), ("text", MAX_SUB)):
+        if isinstance(op.get(k), str):
+            out[k] = plain(op[k], limit)
+    return out
+
+
+def to_template(state: sequence.EditState, ops, mode: str, name: str) -> dict | None:
+    """The applied operations ``ops`` (in order, as ``apply`` took them on ``state``) as a template: each moment
+    relative to the clip as it was when that step ran. None when nothing is left (only boxes, say)."""
+    kept, now = [], state
+    for op in list(ops or ())[:MAX_OPS]:
+        clean = _clean_op(op)
+        if clean is not None:
+            length = sequence.duration(now.parts)
+            for k in TIMES:
+                v = _num(op, k)
+                if v is not None:
+                    clean[k] = _anchor(v, length)
+            kept.append(clean)
+        try:
+            now, _m, _d, _s = apply(now, [op], mode)
+        except ValueError:
+            return None
+    name = plain(name, MAX_NAME)
+    if not kept or not name:
+        return None
+    return {"name": name, "ops": kept}
+
+
+def from_template(state: sequence.EditState, template, mode: str) -> list:
+    """The template's operations in seconds of ``state`` – each moment for the clip as it is when that step runs;
+    a step with a broken moment is left out (the rest still runs). [] for a broken template."""
+    if not isinstance(template, dict) or not isinstance(template.get("ops"), list):
+        return []
+    out, now = [], state
+    for raw in template["ops"][:MAX_OPS]:
+        op = _clean_op(raw)
+        if op is None:
+            continue
+        length = sequence.duration(now.parts)
+        broken = False
+        for k in TIMES:
+            if k in raw:
+                v = _unanchor(raw[k], length)
+                if v is None:
+                    broken = True
+                op[k] = v
+        if broken:
+            continue
+        out.append(op)
+        try:
+            now, _m, _d, _s = apply(now, [op], mode)
+        except ValueError:
+            return []
+    return out
+
+
+def templates(value) -> list:
+    """The stored templates that are usable (a hand-edited settings file may hold anything), at most MAX_TEMPLATES."""
+    out = []
+    for t in value if isinstance(value, list) else ():
+        if isinstance(t, dict) and plain(t.get("name"), MAX_NAME) and isinstance(t.get("ops"), list) and t["ops"]:
+            out.append({"name": plain(t["name"], MAX_NAME), "ops": t["ops"][:MAX_OPS]})
+    return out[:MAX_TEMPLATES]
+
+
+def with_template(value, template: dict) -> list:
+    """``value`` (stored templates) with ``template`` first – one of the same name is replaced, the oldest drop."""
+    rest = [t for t in templates(value) if t["name"] != template["name"]]
+    return ([template] + rest)[:MAX_TEMPLATES]

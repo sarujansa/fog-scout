@@ -17,11 +17,11 @@ import logging
 import os
 import threading
 
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
 
 from . import askclaude, clipedit, editcommands, highlights, i18n, imageedit, moments, sequence, textfind
 from .i18n import N_, _
-from .qt_common import PlainLabel
+from .qt_common import PlainLabel, guard_wheel
 from .qt_views import ElideButton
 
 log = logging.getLogger(__name__)
@@ -69,6 +69,9 @@ class ClaudeMixin:
         self._claude_busy = False            # 1.28 (audit F3): a wish is on its way – no second (paid) request
         self.claude_frame = lambda: False    # 1.35: set by the App – a still may go along („Standbilder an Claude“)
         self._claude_talk = None             # 1.43.1: (base, mode, picture, messages, rounds) while Claude asks back
+        self.templates_from = lambda: []     # 1.44: set by the App – the stored cut templates (settings)
+        self._claude_ops = []                # 1.44: the steps of the shown proposal, as apply took them
+        self._tpl_source = None              # 1.44: (state, ops, mode) of the last proposal taken – may become one
 
     # ---- the inspector section
     def _section_claude(self, sec, mode):
@@ -147,8 +150,106 @@ class ClaudeMixin:
         row2.addWidget(self.cl_drop_btn)
         row2.addStretch()
         sec.body.addLayout(row2)
+        self._section_templates(sec)
         self._claude_buttons(False)
         self._claude_refresh()
+
+    # ---- 1.44: cut templates – local, no request
+    def _section_templates(self, sec):
+        save = QHBoxLayout()
+        save.setSpacing(6)
+        self.tpl_name = QLineEdit()
+        self.tpl_name.setPlaceholderText(_("Name der Vorlage"))
+        self.tpl_name.setMaxLength(editcommands.MAX_NAME)
+        self.tpl_name.returnPressed.connect(self.template_save)
+        self.tpl_save_btn = QPushButton(_("Als Vorlage speichern"))
+        self.tpl_save_btn.setToolTip(_("Merkt sich die eben übernommenen Schritte (ohne Zensurkästen) als Vorlage – "
+                                       "Zeiten vom Anfang bzw. vom Ende aus, damit sie auch bei anderen Längen passen."))
+        self.tpl_save_btn.clicked.connect(self.template_save)
+        save.addWidget(self.tpl_name, 1)
+        save.addWidget(self.tpl_save_btn)
+        sec.body.addLayout(save)
+        use = QHBoxLayout()
+        use.setSpacing(6)
+        self.tpl_box = guard_wheel(QComboBox())
+        self.tpl_apply_btn = QPushButton(_("Vorlage anwenden"))
+        self.tpl_apply_btn.setToolTip(_("Schlägt die Schritte der Vorlage für diesen Schnitt vor – ohne Claude, "
+                                        "kostenlos; erst „Übernehmen“ ändert den Schnitt."))
+        self.tpl_apply_btn.clicked.connect(self.template_apply)
+        self.tpl_del_btn = QPushButton(_("Vorlage löschen"))
+        self.tpl_del_btn.setToolTip(_("Entfernt die gewählte Vorlage."))
+        self.tpl_del_btn.clicked.connect(self.template_delete)
+        use.addWidget(self.tpl_box, 1)
+        use.addWidget(self.tpl_apply_btn)
+        use.addWidget(self.tpl_del_btn)
+        sec.body.addLayout(use)
+        self._tpl_widgets = (self.tpl_box, self.tpl_apply_btn, self.tpl_del_btn)
+        self._templates_refresh()
+
+    def _templates(self) -> list:
+        try:
+            return editcommands.templates(self.templates_from())
+        except Exception:                                # a broken store never breaks the editor
+            return []
+
+    def _templates_refresh(self):
+        if getattr(self, "tpl_box", None) is None:
+            return
+        found = self._templates()
+        picked = self.tpl_box.currentText()
+        self.tpl_box.blockSignals(True)
+        self.tpl_box.clear()
+        for t in found:
+            self.tpl_box.addItem(t["name"])
+        if picked:
+            self.tpl_box.setCurrentIndex(max(0, self.tpl_box.findText(picked)))
+        self.tpl_box.blockSignals(False)
+        for w in self._tpl_widgets:
+            w.setVisible(bool(found))
+        for w in (self.tpl_name, self.tpl_save_btn):
+            w.setVisible(self._tpl_source is not None)
+
+    def template_save(self):
+        source, name = self._tpl_source, self.tpl_name.text()
+        if source is None:
+            return
+        state, ops, mode = source
+        tpl = editcommands.to_template(state, ops, mode, name)
+        if tpl is None:
+            self.cl_status.setText(_("Bitte einen Namen für die Vorlage eingeben.")
+                                   if not editcommands.plain(name, editcommands.MAX_NAME)
+                                   else _("Nichts, was als Vorlage taugt (Zensurkästen gehören nicht dazu)."))
+            return
+        self._setting("edit_templates", editcommands.with_template(self.templates_from(), tpl))
+        self._tpl_source = None
+        self.tpl_name.clear()
+        self.tpl_box.setCurrentIndex(-1)
+        self._templates_refresh()
+        self.tpl_box.setCurrentIndex(max(0, self.tpl_box.findText(tpl["name"])))
+        self.cl_status.setText(_("Vorlage „{name}“ gespeichert.", name=tpl["name"]))
+
+    def _template_picked(self):
+        found = self._templates()
+        i = self.tpl_box.currentIndex()
+        return found[i] if 0 <= i < len(found) else None
+
+    def template_apply(self):
+        tpl = self._template_picked()
+        if tpl is None or self.history is None or self._claude_busy:
+            return
+        base = self._state()
+        mode = str(self.mode_box.currentData() or "copy")
+        ops = editcommands.from_template(base, tpl, mode)
+        self._claude_base, self._claude_result = base, None
+        self._claude_show(base, mode, {"summary": _("Vorlage „{name}“", name=tpl["name"]), "ops": ops}, None)
+
+    def template_delete(self):
+        tpl = self._template_picked()
+        if tpl is None:
+            return
+        self._setting("edit_templates", [t for t in self._templates() if t["name"] != tpl["name"]])
+        self._templates_refresh()
+        self.cl_status.setText(_("Vorlage „{name}“ gelöscht.", name=tpl["name"]))
 
     def _claude_buttons(self, shown: bool):
         for b in (self.cl_take_btn, self.cl_drop_btn):
@@ -307,6 +408,8 @@ class ClaudeMixin:
             self.cl_field.setFocus()
             self.cl_drop_btn.show()
             return
+        self._claude_ops = [op for op, _w in done]       # 1.44: what „Übernehmen“ would take (for a template)
+        self._claude_mode = mode
         lines = ["• " + _(w, **kw) + _why(op) for op, (w, kw) in done]
         lines += ["– " + _("übersprungen: {why}", why=_(w, **kw)) for _op, (w, kw) in skipped]
         self.cl_list.setText("\n".join(lines))
@@ -842,6 +945,8 @@ class ClaudeMixin:
             self.mode_box.setCurrentIndex(max(0, self.mode_box.findData(new_mode)))
         self._apply(new)
         self._commit()                                   # one step back with Ctrl+Z
+        self._tpl_source = (base, list(self._claude_ops), getattr(self, "_claude_mode", "copy"))
+        self._templates_refresh()
         self._claude_result = None
         self._claude_buttons(False)
         self.cl_list.hide()
