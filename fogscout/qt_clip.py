@@ -17,7 +17,7 @@ import threading
 from collections import OrderedDict
 import time
 
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
                                QProgressBar, QPushButton, QSizePolicy, QSlider, QVBoxLayout, QWidget)
@@ -110,7 +110,8 @@ class _Bridge(Bridge):
              "music",        # 1.21: a file for the own audio track measured (path, output second or None, seconds)
              "montage",      # 1.22: a montage's recordings (kind, …): added, opened, thumb, wave, hash
              "claude",       # 1.27: Claude's answer to a wish in the editor (editorclaude)
-             "moments")      # 1.39.2: the dark pictures at the start/end looked at (editormoments)
+             "moments",      # 1.39.2: the dark pictures at the start/end looked at (editormoments)
+             "textfind")     # 1.41.1: text boxes found on the still at the playhead (textfind) or why not
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
     LABEL = "Clip-Editor"
@@ -417,6 +418,7 @@ class PreviewView(QWidget):
         self._img = None                  # QImage of the frame
         self._scaled = None               # (size, QImage) cache of the frame at the drawn size
         self.boxes = []                   # [[x, y, w, h] …] fractions of the picture
+        self.suggest = []                 # 1.41.1: text found (textfind) – numbered, dashed, not yet boxes
         self.style = "pixel"
         self.active = False               # boxes are applied when saving (and shown applied here)
         self.editing = False              # the tool is on: boxes can be drawn/moved
@@ -451,6 +453,11 @@ class PreviewView(QWidget):
 
     def set_frame(self, img: QImage):
         self._img, self._scaled = img, None
+        self.update()
+
+    def set_suggest(self, boxes):
+        """1.41.1: the text boxes found (fractions), drawn numbered over the picture; [] = none."""
+        self.suggest = [list(map(float, b[:4])) for b in boxes]
         self.update()
 
     def set_boxes(self, boxes):
@@ -749,6 +756,14 @@ class PreviewView(QWidget):
                     p.setBrush(accent if i == self.selected else QColor(255, 255, 255, 200))
                     p.setPen(Qt.NoPen)
                     p.drawRect(QRectF(r.right() - self.HANDLE / 2, r.bottom() - self.HANDLE / 2, self.HANDLE, self.HANDLE))
+        if self.suggest:                                 # 1.41.1: „Text finden“ – numbered, not hidden yet
+            p.setBrush(Qt.NoBrush)
+            for n, box in enumerate(self.suggest, 1):
+                r = self._box_rect(box)
+                p.setPen(QPen(QColor(255, 0, 255), 2, Qt.DashLine))
+                p.drawRect(r)
+                p.setPen(QColor(255, 0, 255))                    # right of the box: stacked lines stay apart
+                p.drawText(QPointF(r.right() + 4, r.center().y() + 4), str(n))
         if self.editing and self._drag and self._drag[0] == "new":
             p.setPen(QPen(accent, 1, Qt.DashLine))
             p.setBrush(Qt.NoBrush)

@@ -14,7 +14,7 @@ import threading
 
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
 
-from . import askclaude, clipedit, editcommands, highlights, i18n, imageedit, moments, sequence
+from . import askclaude, clipedit, editcommands, highlights, i18n, imageedit, moments, sequence, textfind
 from .i18n import N_, _
 from .qt_common import PlainLabel
 from .qt_views import ElideButton
@@ -193,6 +193,9 @@ class ClaudeMixin:
         if item and item[0] == "hl":                     # 1.37: the highlight search's answer
             self._highlights_answer(*item[1:])
             return
+        if item and item[0] == "tx":                     # 1.41.1: which text boxes show names
+            self._text_names_answer(*item[1:])
+            return
         seq, base, mode, data, error = item
         picture = error is True                          # 1.35: the slot carries "a still went along" on success
         error = None if isinstance(error, bool) else error
@@ -292,6 +295,75 @@ class ClaudeMixin:
                 log.warning("Claude-Highlights: unerwarteter Fehler %s", e.__class__.__name__)
                 emit(("hl", seq, base, mode, None, "bad"))
         threading.Thread(target=work, name="claude-highlights", daemon=True).start()
+
+    # ---- 1.41.1: „Claude: nur Namen“ – the still with the numbered text boxes, the answer only numbers
+    def claude_text_names(self):
+        hits = [list(b) for b in self.preview.suggest]
+        if self._claude_busy or not hits:
+            return
+        key = self.claude_key()
+        if not key or not self.claude_frame():
+            self._censor_hint()
+            return
+        i, src_t = sequence.source_at(self.parts, self.pos)
+        part = self.parts[i] if i is not None else None
+        if part is None:
+            return
+        path, info, ffmpeg = self._src_path(part), self._src_info(part), self.ffmpeg
+        boxes = [list(b) for b in self.preview.boxes]
+        style = self._censor_style if self._censor_style in imageedit.CENSOR_STYLES else "pixel"
+        language = "German" if i18n.current() == "de" else "English"
+        self._claude_seq += 1
+        seq = self._claude_seq
+        self._claude_busy = True
+        self.status.setText(_("Claude sieht sich {n} Fundstellen an …", n=len(hits)))
+        self._censor_hint()
+        emit = self.bridge.claude.emit
+
+        def work():
+            try:
+                img = clipedit.frame_at(path, src_t, min(int(getattr(info, "height", 0) or 1080), 1440), info, ffmpeg)
+                if img is None:
+                    raise _NoStill()
+                for b in boxes:                  # always hidden in what is sent – also while „anwenden“ is off
+                    img = imageedit.censor_area(img, b, style)
+                block = askclaude.image_block(textfind.numbered(img, hits))
+                data = askclaude.request(key, textfind.SYSTEM, textfind.blocks(len(hits), language, block),
+                                         textfind.SCHEMA)
+                emit(("tx", seq, hits, data, None))
+            except askclaude.AskError as e:
+                emit(("tx", seq, hits, None, e.kind))
+            except _NoStill:
+                emit(("tx", seq, hits, None, "still"))
+            except Exception as e:               # only the kind – never a picture or the key
+                log.warning("Claude-Namen: unerwarteter Fehler %s", e.__class__.__name__)
+                emit(("tx", seq, hits, None, "bad"))
+        threading.Thread(target=work, name="claude-names", daemon=True).start()
+
+    def _text_names_answer(self, seq, hits, data, error):
+        if self._closed or seq != self._claude_seq:
+            return
+        self._claude_busy = False
+        try:
+            if error is not None:
+                self.status.setText(_(ERROR_WORDS.get(error, ERROR_WORDS["net"])))
+                return
+            if [list(b) for b in self.preview.suggest] != hits:
+                return                                   # found again or taken meanwhile: the answer is stale
+            try:
+                summary, keep = textfind.parse(data, len(hits))
+            except ValueError:
+                self.status.setText(_(ERROR_WORDS["bad"]))
+                return
+            self.preview.set_suggest([hits[k] for k in keep])
+            self.status.setText(summary or (_("Claude hält keine Fundstelle für einen Namen oder Chat.") if not keep
+                                            else _("{n} Fundstellen zeigen laut Claude Namen oder Chat.",
+                                                   n=len(keep))))
+        except Exception:                                # never left on „Claude sieht sich … an“
+            self.status.setText(_(ERROR_WORDS["bad"]))
+        finally:
+            self._claude_refresh()
+            self._censor_hint()
 
     # ---- 1.39.2: „Short vorschlagen“
     def claude_short(self):
