@@ -228,6 +228,7 @@ DEFAULTS = {
     "claude_image": False,              # 1.35: the screenshot editor may send the picture to Claude – user's pick
     "claude_frame": False,              # 1.35: the clip editor may send a still of the recording to Claude
     "claude_stats": False,              # 1.35: the search may ask Claude about summed-up round values
+    "edit_templates": [],               # 1.44: [{name, ops}] – applied edits kept as recipes (editcommands.to_template)
     "crash_seen": 0.0,                  # 1.36: time of the last crash the start already asked about (diagnose)
     "inputs_told": False,               # 1.39: the note on what the input card reads was shown once
     "inputs_record": True,              # 1.39.1: with the input card on, a round's inputs go next to its recording
