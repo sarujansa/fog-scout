@@ -28,6 +28,8 @@ EDGE = 7                                       # px from a clip's edge that trim
 MIN_SCALE, MAX_SCALE = 0.02, 600.0             # px per second
 ZOOM_STEP = 1.4
 PAD_END_S = 2.0                                # seconds of room after the last clip at "fit"
+SUB_BAND = 9                                   # 1.42.1: px at the foot of the ruler where a subtitle bar is grabbed
+MIN_SUB_S = 0.1                                # … and the shortest it can be trimmed to
 SNAP_PX = 6                                    # a trimmed edge snaps to the playhead / a mark this close
 CLIP_COLOURS = {True: {"video": "#355a80", "audio": "#2f6b4c", "text": "#ffffff", "label": QColor(0, 0, 0, 110)},
                 False: {"video": "#a9c4e2", "audio": "#b4dac2", "text": "#17191c", "label": QColor(255, 255, 255, 140)}}
@@ -62,6 +64,7 @@ class SequenceTimeline(QWidget):
     music_edited = Signal(object)     # 1.21: the clips on A2 after a drag (list of musictrack.AudioClip)
     music_selected = Signal(object)   # 1.21: a clip on A2 (index) or None
     music_dropped = Signal(str, float)    # 1.21: an audio file dropped on A2 at this output time
+    subs_edited = Signal(int, object)     # 1.42.1: (subtitle dragged, [(from, to)] of all) after a drag in the ruler
 
     def __init__(self, dark=True):
         super().__init__()
@@ -329,12 +332,34 @@ class SequenceTimeline(QWidget):
         x0, x1 = self._x(st[i]), self._x(st[i + 1])
         return QRectF(x0, lane_r.top(), max(1.0, x1 - x0), lane_r.height())
 
+    def sub_rect(self, k: int, span=None) -> QRectF:
+        """1.42.1: where subtitle ``k`` (or ``span`` = (from, to)) lies in the foot of the ruler."""
+        a, b = span or self.subs[k]
+        xa, xb = self._x(a), self._x(b)
+        return QRectF(xa, RULER_H - SUB_BAND, max(2.0, xb - xa), SUB_BAND)
+
+    def _hit_subs(self, x):
+        for k in range(len(self.subs) - 1, -1, -1):
+            r = self.sub_rect(k)
+            if r.left() - EDGE / 2 <= x <= r.right() + EDGE / 2:
+                if abs(x - r.left()) <= EDGE / 2:
+                    return "s_edge_start", k
+                if abs(x - r.right()) <= EDGE / 2:
+                    return "s_edge_end", k
+                if r.left() <= x <= r.right():
+                    return "s_body", k
+        return None, None
+
     def _hit(self, pt) -> tuple:
-        """("ruler" | "edge_start" | "edge_end" | "body" | "lane" | "head" | None, clip index or None)."""
+        """("ruler" | "edge_start" | "edge_end" | "body" | "lane" | "head" | "s_…" | None, index or None)."""
         x, y = pt.x(), pt.y()
         if x < HEAD_W:
             return "head", None
         if y < RULER_H:
+            if self.subs and y >= RULER_H - SUB_BAND:                 # 1.42.1: a subtitle bar is grabbed here
+                kind, k = self._hit_subs(x)
+                if kind:
+                    return kind, k
             return "ruler", None
         mr = self._m_rect()
         if mr.top() <= y <= mr.bottom():
@@ -373,7 +398,8 @@ class SequenceTimeline(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         live = (self._drag is not None and self._drag[0] in ("trim_start", "trim_end", "move", "m_trim_start",
-                                                               "m_trim_end", "m_move")) or self._drop_hover
+                                                               "m_trim_end", "m_move", "s_move", "s_trim_start",
+                                                               "s_trim_end")) or self._drop_hover
         if live:
             self._paint_tracks(p, c, cc)
         else:
@@ -521,9 +547,11 @@ class SequenceTimeline(QWidget):
             sub = QColor(c["accent"])
             sub.setAlpha(170)
             p.setBrush(sub)
-            for a, b in self.subs:
+            for k, (a, b) in enumerate(self._shown_subs()):
                 xa, xb = self._x(a), self._x(b)
-                p.drawRoundedRect(QRectF(xa, RULER_H - 5, max(2.0, xb - xa), 4), 2, 2)
+                grabbed = self._drag is not None and self._drag[0].startswith("s_") and self._drag[1] == k
+                p.drawRoundedRect(QRectF(xa, RULER_H - (7 if grabbed else 5), max(2.0, xb - xa), 6 if grabbed else 4),
+                                  2, 2)
 
     def _paint_clip(self, p, c, cc, i, part, vrect, arect, faded=False):
         sel = i == self.selection
@@ -692,10 +720,17 @@ class SequenceTimeline(QWidget):
         p.drawPath(path)
 
     # ---- mouse
+    def _shown_subs(self) -> list:
+        """1.42.1: the subtitles as drawn – during a drag where the mouse has them (``subs`` keeps the original until
+        the release, like the clips)."""
+        if self._drag is not None and self._drag[0] in ("s_move", "s_trim_start", "s_trim_end"):
+            return self._drag[2]
+        return self.subs
+
     def _cursor_for(self, kind):
-        if kind in ("edge_start", "edge_end", "m_edge_start", "m_edge_end"):
+        if kind in ("edge_start", "edge_end", "m_edge_start", "m_edge_end", "s_edge_start", "s_edge_end"):
             return Qt.SizeHorCursor
-        if kind in ("body", "m_body"):
+        if kind in ("body", "m_body", "s_body"):
             return Qt.OpenHandCursor
         if kind in ("ruler", "lane", "m_lane"):
             return Qt.PointingHandCursor
@@ -706,7 +741,13 @@ class SequenceTimeline(QWidget):
             return
         pt = e.position()
         kind, i = self._hit(pt)
-        if kind == "ruler" or kind == "lane":
+        if kind in ("s_edge_start", "s_edge_end"):            # 1.42.1: a subtitle's edge in the ruler
+            self._drag = ("s_trim_start" if kind == "s_edge_start" else "s_trim_end", i, list(self.subs))
+            self.setCursor(Qt.SizeHorCursor)
+        elif kind == "s_body":
+            self._drag = ("s_press", i, pt.x(), pt)
+            self.setCursor(Qt.ClosedHandCursor)
+        elif kind == "ruler" or kind == "lane":
             self._drag = ("seek",)
             if kind == "lane":
                 self.select(None)
@@ -768,6 +809,15 @@ class SequenceTimeline(QWidget):
                 self._music_move_to(pt.x())
         elif kind == "m_move":
             self._music_move_to(pt.x())
+        elif kind == "s_press":
+            _k, k, x0, p0 = self._drag
+            if (pt - p0).manhattanLength() >= QApplication.startDragDistance():
+                self._drag = ("s_move", k, list(self.subs), x0)
+                self._sub_move_to(pt.x())
+        elif kind == "s_move":
+            self._sub_move_to(pt.x())
+        elif kind in ("s_trim_start", "s_trim_end"):
+            self._sub_trim_to(kind, pt.x())
         elif kind in ("m_trim_start", "m_trim_end"):
             self._music_trim_to(kind, pt.x())
 
@@ -791,6 +841,36 @@ class SequenceTimeline(QWidget):
         new = [replace(c) for c in self.music]
         new[k] = replace(orig, at=round(snapped, 3))
         self._drag = ("m_move", k, new, x0)
+        self.update()
+
+    def _sub_move_to(self, x):
+        """1.42.1: the whole subtitle follows the mouse, its start (or end) snapping like a clip on A2, inside the
+        cut."""
+        k, x0 = self._drag[1], self._drag[3]
+        a, b = self.subs[k]
+        length, total = b - a, self.total()
+        at = min(max(0.0, a + (x - x0) / self.scale), max(0.0, total - length))
+        snapped = self._music_snap(at)
+        if snapped == at:
+            end = self._music_snap(at + length)
+            snapped = end - length if end != at + length and 0 <= end - length else at
+        at = min(max(0.0, snapped), max(0.0, total - length))
+        new = list(self.subs)
+        new[k] = (round(at, 2), round(at + length, 2))
+        self._drag = ("s_move", k, new, x0)
+        self.update()
+
+    def _sub_trim_to(self, kind, x):
+        """1.42.1: one edge of the subtitle, never past the other (MIN_SUB_S apart) nor outside the cut."""
+        k = self._drag[1]
+        a, b = self.subs[k]
+        t = self._music_snap(self._t(x))
+        new = list(self.subs)
+        if kind == "s_trim_start":
+            new[k] = (round(min(max(0.0, t), b - MIN_SUB_S), 2), b)
+        else:
+            new[k] = (a, round(max(min(self.total(), t), a + MIN_SUB_S), 2))
+        self._drag = (kind, k, new)
         self.update()
 
     def _music_trim_to(self, kind, x):
@@ -870,6 +950,9 @@ class SequenceTimeline(QWidget):
         elif kind in ("m_move", "m_trim_start", "m_trim_end"):    # 1.21: the editor cleans (no overlaps) and commits
             if drag[2] != self.music:
                 self.music_edited.emit(drag[2])
+        elif kind in ("s_move", "s_trim_start", "s_trim_end"):    # 1.42.1: the editor takes it as one undo step
+            if drag[2] != self.subs:
+                self.subs_edited.emit(drag[1], list(drag[2]))
         self.update()
 
     def mouseDoubleClickEvent(self, e):
@@ -878,6 +961,8 @@ class SequenceTimeline(QWidget):
             self.seek.emit(sequence.starts(self.parts)[i])
         elif kind == "m_body" and i is not None:
             self.seek.emit(self.music[i].at)
+        elif kind == "s_body" and i is not None:
+            self.seek.emit(self.subs[i][0])
 
     def leaveEvent(self, e):
         if self.hover is not None:
