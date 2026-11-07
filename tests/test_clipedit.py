@@ -1487,3 +1487,16 @@ def test_a_closed_editor_stops_its_ffmpeg_analysis_and_leaves_no_process(clip, m
     assert len(clipedit.waveform(clip, 12.0, FF, cancel=cancel)) >= 12 * clipedit.WAVE_PER_S - 2   # not set: as before
     assert all(p.poll() is not None for p in started)
     assert clipedit._run_cancellable([os.path.join("no", "such", "ffmpeg")], 5) is None
+
+
+def test_a_burst_gives_frame_at_s_pictures_in_one_run(clip):
+    """1.40: frames_from reads several pictures in one ffmpeg run – each the very picture frame_at gives for its
+    frame (the first = frame_at(t)), keyed by frame_key; a stop ends it."""
+    info = clipedit.probe(clip, FF)
+    got = list(clipedit.frames_from(clip, 2.5, 5, 54, info, FF))
+    assert [k for k, _img in got] == [75, 76, 77, 78, 79] and clipedit.frame_key(2.5, 30) == 75
+    for k, img in got:
+        assert img.tobytes() == clipedit.frame_at(clip, k / 30, 54, info, FF).tobytes(), k
+    assert clipedit.frame_key(2.51, 30) == 76 and clipedit.frame_key(0.0, 30) == 0
+    assert list(clipedit.frames_from(clip, 2.5, 5, 54, info, FF, stop=lambda: True)) == []
+    assert list(clipedit.frames_from(clip, 2.5, 0, 54, info, FF)) == []

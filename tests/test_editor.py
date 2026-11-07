@@ -805,3 +805,67 @@ def test_editor_sliders_draw_a_thin_track_not_a_grey_box(qapp):
             frame.close()
             assert 0 < track <= 6 < img.height(), (dark, enabled, track, img.height())
             assert (c["accent"] if enabled else c["border"]) in filled
+
+
+def test_stepping_on_shows_cached_pictures_without_a_new_decode(qapp, clip, tmp_path, monkeypatch):
+    """1.40: one scrub read decodes the wanted picture and the next ones (clipedit.frames_from); stepping on then
+    shows them from the cache – no new ffmpeg run (clipedit's test checks they are frame_at's pictures)."""
+    from fogscout import clipedit
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.goto(5.0)
+        assert _pump(qapp, lambda: win._last_key == clipedit.frame_key(5.0, win.info.fps))
+        runs = []
+        for name in ("frames_from", "frame_at"):
+            orig = getattr(clipedit, name)
+            monkeypatch.setattr(clipedit, name, lambda *a, _o=orig, _n=name, **k: (runs.append(_n), _o(*a, **k))[1])
+        for _ in range(4):
+            win.step_frame(1)
+        want = clipedit.frame_key(win.pos, win.info.fps)
+        assert _pump(qapp, lambda: win._last_key == want)
+        assert runs == []                                      # the four pictures came from the first read
+        win.goto(9.0)                                         # far away: a new read
+        assert _pump(qapp, lambda: win._last_key == clipedit.frame_key(9.0, win.info.fps))
+        assert "frames_from" in runs
+    finally:
+        win.close()
+
+
+
+def test_j_k_l_play_spool_faster_without_sound_stop_and_jump_back(qapp, clip, tmp_path):
+    """1.40: L plays, L again ×2 then ×4 (picture only – no sound while spooling); the playhead still runs in the
+    cut's output time; K stops where it is; J stops and jumps 5 s back."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    from fogscout import clipedit
+
+    def key(k):
+        win.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, k, Qt.NoModifier, ""))
+    win = _window(qapp, clip, tmp_path)
+    try:
+        win.parts = [clipedit.Part(0.0, 12.0, 2.0)]                   # a ×2 clip: 6 s of output
+        win.timeline.set_parts(win.parts)
+        win._commit()
+        win.goto(0.0)
+        key(Qt.Key_L)
+        assert win.playing and win._shuttle == 1.0 and win._seg[2] == 2.0
+        key(Qt.Key_L)
+        assert win.playing and win._shuttle == 2.0 and win._seg[2] == 4.0 and "×2" in win.pos_label.text()
+        win.sound_box.setChecked(True)
+        win._volume = 1.0
+        assert not win._sound_wanted()
+        key(Qt.Key_L)
+        key(Qt.Key_L)
+        assert win._shuttle == 4.0 and win._seg[2] == 8.0                 # never past ×4
+        win._played_at(win._seg[0] + 4.0)                                  # 4 s of source in a ×2 clip
+        assert win.pos == pytest.approx(win._seg[3] + 2.0)
+        key(Qt.Key_K)
+        assert not win.playing and win._shuttle == 1.0
+        at = win.pos
+        key(Qt.Key_K)
+        assert win.pos == at
+        win.goto(5.5)
+        key(Qt.Key_J)
+        assert not win.playing and win.pos == pytest.approx(0.5)
+    finally:
+        win.close()
