@@ -2,14 +2,22 @@
 the preview. Pure logic in layoutmem.py."""
 from __future__ import annotations
 
+import copy
 import time
 
 from . import layoutmem
 from .appconst import SELECTABLE
-from .i18n import _
+from .i18n import N_, _
 
 CAP_FIT = 0.97             # 1.8.24: shown below 97 % of the asked size = the bar holds the element back
 SIZE_SETTLE = 2.0          # s a new window size must stay before its layout is loaded (no switch while resizing)
+
+
+# 1.44.1: right click on an element in edit mode puts it back – the overlay keys of its usual place (config.DEFAULTS)
+RESET_KEYS = {"map": ("anchor",), "today": ("today_pos", "today_xy"), "music": ("media_pos", "media_xy"),
+              "text": ("info_pos", "info_xy"), "inputs": ("inputs_pos", "inputs_xy")}
+RESET_NAMES = {"map": N_("Karte"), "hud": N_("Systemwerte"), "today": N_("Heute"), "music": N_("Musik"),
+               "text": N_("Infos"), "inputs": N_("Eingaben")}
 
 
 class LayoutMemory:
@@ -24,6 +32,30 @@ class LayoutMemory:
             return
         self._undo.mark(layoutmem.snapshot(self.settings.data), time.monotonic())
         self._undo_btn_state()
+
+    def _el_reset(self, name):
+        """1.44.1: one element back to its usual place (right click on it in edit mode, game or preview) – one undo
+        step; the others stay where they are ("Zurücksetzen" only ever put the map back)."""
+        from .config import DEFAULTS
+        if name not in RESET_NAMES:
+            return
+        self._layout_mark()
+        data = self.settings.data
+        o = data.setdefault("overlay", {})
+        if name == "hud":
+            if data.get("sysinfo") == "custom":
+                data["sysinfo"] = DEFAULTS["sysinfo"]
+            data["sysinfo_pos"] = copy.deepcopy(DEFAULTS["sysinfo_pos"])
+        else:
+            for k in RESET_KEYS[name]:
+                o[k] = copy.deepcopy(DEFAULTS["overlay"][k])
+        self._drop_order = [n for n in getattr(self, "_drop_order", []) if n != name]
+        getattr(self, "_el_shift", {}).pop(name, None)
+        if name == "inputs" and hasattr(self, "inputs_pos_var"):
+            from .appconst import INPUT_SPOTS
+            self.inputs_pos_var.set(_(dict(INPUT_SPOTS).get(o["inputs_pos"], "")))
+        self._layout_apply(layoutmem.snapshot(data))      # every control that shows it, saved, one tick
+        self._log(_("{name} wieder an seinem üblichen Platz.", name=_(RESET_NAMES[name])), "Overlay")
 
     def undo_layout(self):
         """Button "Rückgängig" / Ctrl+Z on the overlay page: the layout before the last change."""

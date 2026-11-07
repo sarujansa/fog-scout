@@ -155,6 +155,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         # window procedures: hand over to _poll (one place, in order with the other events)
         self.overlay.on_moved = lambda x, y: self.events.put(("call", self._overlay_dragged, (x, y)))
         self.overlay.on_wheel = lambda d: self.events.put(("call", self._resize, (0.02 * d,)))
+        self.overlay.on_reset = lambda: self.events.put(("call", self._el_reset, ("map",)))     # 1.44.1
         self._layout_init()              # undo + one layout per DBD window size (1.65)
         self._hud_init()                 # system values at the top of a black bar (CPU/GPU temperature …)
         self._inputs_init()              # 1.39: the input card (keys / mouse / gamepad held right now)
@@ -788,8 +789,9 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._unload_test_map()              # still the test map (no map chosen meanwhile): away again
         self.edit_btn.configure(text=_("Fertig") if on else _("Mit der Maus verschieben"))
         if on:                     # 1.64.1: also without a map – the preview (tab Overlay) shows everything
-            self._log(_("Karte, Systemwerte und Musik mit der Maus ziehen (im Spiel oder in der Vorschau), "
-                        "Strg+Mausrad = Grösse. Danach „Fertig“ oder Hotkey."), "Overlay")
+            self._log(_("Alle Elemente mit der Maus ziehen (im Spiel oder in der Vorschau): Karte, Infos, "
+                        "Systemwerte, Heute, Eingaben, Musik. Rechtsklick auf ein Element = zurück an seinen "
+                        "üblichen Platz, Strg+Mausrad = Grösse. Danach „Fertig“ oder Hotkey."), "Overlay")
         self._tick_overlay(reschedule=False)
 
     def _overlay_dragged(self, x, y):
@@ -805,6 +807,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._set_pos_sliders(o["pos_x"], o["pos_y"])
         self._pos_hint()
         self._save_soon()
+        self._tick_overlay(reschedule=False)             # 1.44.1: at once – a tick in between showed the old place
 
     def _text_height(self, gh):
         """Size of the map's name and the lines below it (1.65, user: "nur die Map grösser, die Schrift gleich"):
