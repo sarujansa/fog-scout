@@ -341,7 +341,7 @@ def hangs_on_hud(name: str, spots: dict) -> bool:
 
 
 def place_cards(game, cards: dict, hud_box, margin: int, align: str = "centre", gap=None,
-                up: bool = False, below_box=None, bands=None) -> dict:
+                up: bool = False, below_box=None, bands=None, own_lines=None) -> dict:
     """Top-left corner and size of every card ("today", "music") in stacking order (1.2.11: the one place for
     App and preview). ``cards`` = {name: ((w, h) or None, position setting, own place)}; a card hangs below its
     anchor's box – below the system values when the anchor is not there – or stands in the bar / at its own
@@ -373,7 +373,7 @@ def place_cards(game, cards: dict, hud_box, margin: int, align: str = "centre", 
         # 1.8.14: between the limiter lines of its bar (a bottom corner from the bottom line up). 1.45 (user: "fühlt
         # sich eng an"): an own place is free – only inside the window (media_xy), never pulled between the lines
         box = (int(x), int(y), int(size[0]), int(size[1]))
-        out[name] = boxes[name] = box if spot == "custom" and not anchor else clamp_box(box, game, bands)
+        out[name] = boxes[name] = clamp_box(box, game, own_lines if spot == "custom" and not anchor else bands)
         if anchor:                                      # two cards below the same element: the second below the
             boxes[anchor] = out[name]                   # first (1.2.11 sweep: they sat on top of each other)
         elif spot in ("bottom_left", "bottom_right"):
@@ -621,6 +621,13 @@ def box_side(box, game):
     return "left" if cx < gx + bar else "right" if cx > gx + gw - bar else None
 
 
+def own_bands(o: dict, bands):
+    """1.45 (user: "fühlt sich eng an"): the lines that hold an own place – only those the user switched on
+    (Grenzen an); the bands narrowed by Discord's areas alone no longer hold what was put there by hand. Kept
+    when on (1.8.22, user: "Midwich ignoriert die Regel")."""
+    return bands if o.get("bar_limits_on") else None
+
+
 def clamp_box(box, game, bands):
     """The box moved up/down so it stays between the lines of its bar (taller than the room: at the top line)."""
     side = box_side(box, game) if bands else None
@@ -751,7 +758,7 @@ def own_block(o: dict, size, gap: int):
 
 
 def info_xy(spot: str, map_rect, size, game, gap: int, margin: int, own=None, align: str = "centre",
-            bands=None):
+            bands=None, own_lines=None):
     """Top-left corner of the lines: centred (or aligned like the bar) right below / above the map – the other
     side when there is no room –, in the map's bar; ``custom``: their centre at ``own`` (shares of the window,
     like the music card)."""
@@ -775,7 +782,9 @@ def info_xy(spot: str, map_rect, size, game, gap: int, margin: int, own=None, al
         elif bar >= MIN_BAR and mx + mw > gx + gw - bar:
             x = clamp_x("right", x, w, gx, gw, bar, margin)
     x = min(max(x, gx), gx + max(0, gw - w))
-    y = min(max(y, gy), gy + max(0, gh - h))      # 1.45: an own place is free – inside the window, not the lines
+    y = min(max(y, gy), gy + max(0, gh - h))
+    if spot == "custom" and own_lines:            # 1.45: an own place keeps only to the lines switched on
+        y = clamp_box((x, y, w, h), game, own_lines)[1]
     return int(x), int(y)
 
 

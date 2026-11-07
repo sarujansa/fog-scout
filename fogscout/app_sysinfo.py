@@ -243,9 +243,9 @@ class SysInfo:
         else:                                               # own place in the narrow window: the bar above
             x, y = layout.hud_x("left" if side == "left" else "right", gx, gw, margin, sw, 0 if vb else bar,
                                 o.get("bar_align", "centre")), gy + margin
-        if not vb and not own:                              # 1.8.14: between the limiter lines of its bar
-            y = layout.clamp_box((x, y, sw, h), (gx, gy, gw, gh), self._bands(gx, gy, gw, gh))[1]   # (1.45: not
-            #                                                 an own place – that one is free in the window)
+        if not vb:                                          # 1.8.14: between the limiter lines of its bar (1.45:
+            lines = self._bands(gx, gy, gw, gh)             # an own place only between lines switched on)
+            y = layout.clamp_box((x, y, sw, h), (gx, gy, gw, gh), layout.own_bands(o, lines) if own else lines)[1]
         self._fade_show("hud", fade)
         self.worker.hud_rect = self._el_show("hud", self.hud, x, y, (w, h))
         self._hud_box = (int(x), self.worker.hud_rect[1], sw, h)    # steady box: the music card centres below it
@@ -295,7 +295,8 @@ class SysInfo:
                                     up=self.settings.get("sysinfo") == "above" and hud is not None
                                     and bool(self._last_place) and hud[1] < self._last_place[1],
                                     below_box=getattr(self, "_map_block", None) or self._last_place,
-                                    bands=self._bands(gx, gy, gw, gh))
+                                    bands=self._bands(gx, gy, gw, gh),
+                                    own_lines=layout.own_bands(o, self._bands(gx, gy, gw, gh)))   # 1.45
         self._today_box = placed.get("today")
         if "today" in placed:
             self._fade_show("today", bool(o.get("fade", True)) and not self.overlay.editing)
