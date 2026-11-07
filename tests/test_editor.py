@@ -853,6 +853,7 @@ def test_j_k_l_play_spool_faster_without_sound_stop_and_jump_back(qapp, clip, tm
         assert win.playing and win._shuttle == 2.0 and win._seg[2] == 4.0 and "×2" in win.pos_label.text()
         win.sound_box.setChecked(True)
         win._volume = 1.0
+        assert win._shuttle == 2.0 and win.playing                         # a sound change keeps the tempo
         assert not win._sound_wanted()
         key(Qt.Key_L)
         key(Qt.Key_L)

@@ -1828,9 +1828,9 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
             self._restart_playing()
 
     def _restart_playing(self):
-        back = self._play_to
+        back, fast = self._play_to, getattr(self, "_shuttle", 1.0)
         self._stop_player()
-        self._play_to = back
+        self._play_to, self._shuttle = back, fast       # 1.40: a sound change keeps the J/K/L tempo
         self.toggle_play()
 
     # ---- editing the sequence
