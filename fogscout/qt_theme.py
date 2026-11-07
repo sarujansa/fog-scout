@@ -338,6 +338,7 @@ QTabWidget#formtabs::pane {{ background: {c['card']}; border: 1px solid {c['bord
 QTabWidget#formtabs[found="true"]::pane {{ border: 1px solid {c['accent']}; }}
 QTabWidget#formtabs QWidget#page {{ background: {c['card']}; }}
 QTabWidget#formtabs > QTabBar::tab {{ font-weight: 600; padding: 8px 16px; }}
+QTabWidget#formtabs > QTabBar[dense="true"]::tab {{ padding: 8px 9px; }}  /* 1.39: a row wider than its page */
 QTabBar::tab {{ background: transparent; color: {c['dim']}; padding: 7px 14px; border: none; }}
 QTabBar[dense="true"]::tab {{ padding: 7px 9px; }}  /* 1.8.46/1.8.48: rows with many tabs (statistics) */
 QTabBar::tab:selected {{ color: {c['accent']}; border-bottom: 2px solid {c['accent']}; }}

@@ -1139,8 +1139,11 @@ class FitTabs(QTabWidget):
     """Tabs as tall as the open tab, not the tallest one (QStackedLayout asks every page): no empty room below
     a short tab."""
 
+    DENSE_SAVES = 2 * (16 - 9)             # px a tab gets narrower with the dense padding (qt_theme)
+
     def __init__(self):
         super().__init__()
+        self._auto_dense = False
         self.currentChanged.connect(lambda _i: self._fit())
 
     def addTab(self, page, label):
@@ -1154,7 +1157,24 @@ class FitTabs(QTabWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        self._dense_fit()
         self._fit()
+
+    def _dense_fit(self):
+        """1.39: a row of tabs wider than its page (the overlay page's six tabs beside the preview on a small
+        window) gets the dense padding instead of scroll arrows that hide the first tab; the normal one again once
+        it fits. A row made dense for its number of tabs (DENSE_TABS) stays as it is."""
+        bar = self.tabBar()
+        if bar.count() < 2 or (bar.property("dense") and not self._auto_dense):
+            return
+        need = bar.sizeHint().width() + (bar.count() * self.DENSE_SAVES if self._auto_dense else 0)
+        dense = need > self.width()
+        if dense != self._auto_dense:
+            self._auto_dense = dense
+            bar.setProperty("dense", dense)
+            bar.style().unpolish(bar)
+            bar.style().polish(bar)
+            bar.updateGeometry()
 
     def _fit(self):
         """1.8.8: the parent kept the height of the tab shown before (an empty band below a short tab, e.g.

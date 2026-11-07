@@ -10,7 +10,7 @@ import threading
 import time
 import traceback
 
-from . import corpus, i18n, launch, layout, mapimage, mapnotes, mapstyle, obsrec, regions, restart, tooltip
+from . import corpus, i18n, inputs, launch, layout, mapimage, mapnotes, mapstyle, obsrec, regions, restart, tooltip
 from . import uimodel as ui
 from .capture import IS_WIN, find_game_window
 from .catalog import Catalog
@@ -43,6 +43,7 @@ from .app_discord import DiscordPresence
 from .app_spotify import SpotifyUpNext
 from .app_youtube import YouTubeUpload
 from .app_palette import PaletteMixin
+from .app_inputs import InputsCard
 
 LANGS = [("en", "EN"), ("de", "DE"), ("fr", "FR"), ("es", "ES"), ("es-MX", "ES-MX"), ("it", "IT"),
          ("pl", "PL"), ("pt-BR", "PT"), ("tr", "TR")]
@@ -68,7 +69,7 @@ log = logging.getLogger("fogscout")
 
 class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, SpotifyUpNext, YouTubeUpload, LobbyInfo,
           Hotkeys, SettingsTab, PaletteMixin,
-          SysInfo, OverlayPlacement, LayoutMemory, OverlayTab, QtShell):
+          SysInfo, InputsCard, OverlayPlacement, LayoutMemory, OverlayTab, QtShell):
     def __init__(self, root_dir: str, simulate: str | None = None, start_in_tray: bool = False, progress=None,
                  data_dir: str | None = None, start_clock=None):
         self.root_dir = root_dir
@@ -156,6 +157,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.overlay.on_wheel = lambda d: self.events.put(("call", self._resize, (0.02 * d,)))
         self._layout_init()              # undo + one layout per DBD window size (1.65)
         self._hud_init()                 # system values at the top of a black bar (CPU/GPU temperature …)
+        self._inputs_init()              # 1.39: the input card (keys / mouse / gamepad held right now)
         self._start_step("Overlay")
 
         self._progress(0.5, _("Baue Oberfläche …"))
@@ -1382,6 +1384,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         music = preview.music_rows(self.media.now, now) if o.get("show_media", True) else None
         upnext = self._upnext(self.media.now, sample=True) if music else None      # 1.8: the Spotify queue
         accent = self._skin_accent()                     # 1.3: the modern styles use the theme's colour
+        layout_in = self._inputs_choice.layout(o.get("inputs_layout", "auto"), inputs.SAMPLE) \
+            if o.get("show_inputs", False) else None       # 1.39: the input card with made-up keys
         key = (gw, gh, repr(sorted((k, v) for k, v in o.items() if not isinstance(v, dict))), hud_side,
                bool(self.overlay.editing), accent,
                repr(rows), repr(today_rows), repr(self.settings.get("sysinfo_pos")), id(pic), caption, repr(info),
@@ -1393,7 +1397,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             fits = {}                                    # 1.8.24: how much the bar holds each element back
             layers, rect = preview.layers(round(gw * f), round(gh * f), o, hud_side, rows,
                                           self.settings.get("sysinfo_pos"), pic, caption, info, self._map_height(),
-                                          music, today_rows, bool(self.overlay.editing), accent, upnext, fits)
+                                          music, today_rows, bool(self.overlay.editing), accent, upnext, fits,
+                                          inputs=layout_in)
             self._preview_cache = cached = (key, layers, tuple(round(v / f) for v in rect), f, fits)
         _key, layers, (x, y, w, h), f, fits = cached
         return {"screen": (gw, gh), "bar": layout.bar_width(gw, gh), "rect": (x, y, w, h, h),
@@ -1510,7 +1515,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 extra, shift = layout.own_block(dict(self.settings["overlay"], anchor="custom"), lines,
                                                 layout.stack_gap(self.settings["overlay"], gh))
                 fy = round(min(1.0, max(0.0, (y - shift) / max(1, gh - size[1] - extra))), 4)
-            if name in ("music", "today", "text"):
+            if name in ("music", "today", "text", "inputs"):
                 fx, fy = layout.media_own(gw, gh, size, x, y)       # by its centre (1.2.5)
             if name == "hud":
                 self._hud_own_place(fx, fy)
@@ -1520,6 +1525,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 self._today_own_place(fx, fy)
             elif name == "text":                                     # 1.8.24: the map's lines apart
                 self._info_own_place(fx, fy)
+            elif name == "inputs":                                   # 1.39
+                self._inputs_own_place(fx, fy)
             elif name == "map":
                 self._map_own_place(fx, fy)
             return
@@ -1834,11 +1841,12 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             t.start()
         try:
             # 1.8.38: every step on its own – one that raises must not skip saving or the other stops
-            wins = [w for w in (self.media_win, getattr(self, "today_win", None), getattr(self, "info_win", None))
-                    if w is not None]
+            wins = [w for w in (self.media_win, getattr(self, "today_win", None), getattr(self, "info_win", None),
+                                getattr(self, "inputs_win", None)) if w is not None]
             # first the clip saves still running: stopped, or done ones into the clips list while the recorder runs
             steps = [self._clip_saves_stop, self._hist_quit,     # 1.38.24: an open round is noted as lost
                      self._qt_close, self.settings.save, self.tray.stop, self.conn.stop, self.sysmon.stop,
+                     self._inputs_quit,
                      self.media.stop, self.recorder.quit, self.presence.quit, self.spotify.quit, self.youtube.quit,
                      lambda: getattr(self, "asker", None) is not None and self.asker.stop(),
                      self.worker.stop,
