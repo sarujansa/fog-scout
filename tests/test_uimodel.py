@@ -838,7 +838,8 @@ def test_the_recordings_tab_lists_the_index_and_acts_on_the_marked_row(app_root)
         app._confirmed = True                                  # the question bar answered with OK
         app._rec_delete()
         deadline = time.time() + 5
-        while time.time() < deadline and (folder / "one.mkv").exists():
+        while time.time() < deadline and ((folder / "one.mkv").exists()   # the file goes first, the index after it
+                                          or [r.file for r in obsrec.load_index(str(folder))] != ["two.mkv"]):
             time.sleep(0.05)
         assert not (folder / "one.mkv").exists() and [r.file for r in obsrec.load_index(str(folder))] == ["two.mkv"]
         assert (folder / "two.mkv").exists()

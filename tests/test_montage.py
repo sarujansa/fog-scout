@@ -33,7 +33,7 @@ def test_format_6_keeps_the_montage_and_a_single_recording_keeps_its_hash():
     shape = annotate.Shape("arrow", [(0.1, 0.1), (0.3, 0.3)], t0=11.0, t1=13.0, src=1)
     st = sequence.EditState([Part(0, 4), Part(10, 14, src=1)], shapes=[shape], sources=["a.mkv", "b.mkv"])
     d = project.to_dict2(project.content_dict(st, {"name": "m"}), "a" * 32, {"kind": "montage"}, {}, None)
-    assert d["version"] == project.CURRENT == 7 and d["sources"] == ["a.mkv", "b.mkv"]    # 1.39.1: format 7
+    assert d["version"] == project.CURRENT == 8 and d["sources"] == ["a.mkv", "b.mkv"]    # 1.41: format 8
     back = project.validate(json.loads(json.dumps(d)), 60.0, [], durations=[60.0, 12.0])[0]
     assert [(p.start, p.end, p.src) for p in back.parts] == [(0.0, 4.0, 0), (10.0, 12.0, 1)]   # held to its file
     assert back.shapes[0].src == 1 and back.shapes[0].t1 == 12.0 and back.sources == ["a.mkv", "b.mkv"]
