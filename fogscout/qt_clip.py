@@ -108,7 +108,8 @@ class _Bridge(Bridge):
              "hash",         # 1.18.1: the full SHA-256 of the recording (filehash.Hasher: done/progress/…)
              "music",        # 1.21: a file for the own audio track measured (path, output second or None, seconds)
              "montage",      # 1.22: a montage's recordings (kind, …): added, opened, thumb, wave, hash
-             "claude")       # 1.27: Claude's answer to a wish in the editor (editorclaude)
+             "claude",       # 1.27: Claude's answer to a wish in the editor (editorclaude)
+             "moments")      # 1.39.2: the dark pictures at the start/end looked at (editormoments)
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
     LABEL = "Clip-Editor"
