@@ -22,6 +22,9 @@ MAX_SUB = 120                    # characters of one subtitle
 EPS = 0.05                       # seconds: edges this close count as the same moment
 KINDS = ("cut", "keep", "speed", "split", "hold", "fade", "mode", "short_title", "subtitle", "censor")
 MAX_BOXES = 20                   # 1.35: censor boxes in one edit at most
+MAX_ROUNDS = 3                   # 1.43.1: requests of one talk at most (Claude may ask back twice)
+MAX_QUESTION = 200               # characters of Claude's question shown at most
+MAX_WHY = 120                    # characters of the reason of one step shown at most
 
 SYSTEM = ("You are the editing assistant of a clip editor for Dead by Daylight gameplay recordings. You get the "
           "current edit as JSON (all times are seconds of the finished clip, the 'output time') and the user's "
@@ -37,18 +40,45 @@ SYSTEM = ("You are the editing assistant of a clip editor for Dead by Daylight g
           "lists), as fractions 0–1 of that picture (x, y = top left corner) – make the box generously larger than "
           "the text. If the wish cannot be done "
           "with these operations, return no operations and say why. Write 'summary' as one short sentence in the "
-          "language of the wish.")
+          "language of the wish. Give each operation a short 'why' in that language. Only when the wish is unclear "
+          "in a way that changes the result (e.g. which of several marked moments), you may return no operations "
+          "and ask one short 'question' in that language instead; the user's answer follows. Otherwise leave "
+          "'question' empty.")
 
 _OP = {"type": "object", "additionalProperties": False, "required": ["op"],
        "properties": {"op": {"type": "string", "enum": list(KINDS)},
                       "from": {"type": "number"}, "to": {"type": "number"}, "at": {"type": "number"},
                       "factor": {"type": "number"}, "seconds": {"type": "number"},
                       "in": {"type": "number"}, "out": {"type": "number"},
-                      "value": {"type": "string"}, "text": {"type": "string"},
+                      "value": {"type": "string"}, "text": {"type": "string"}, "why": {"type": "string"},
                       "x": {"type": "number"}, "y": {"type": "number"},
                       "w": {"type": "number"}, "h": {"type": "number"}}}
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary", "ops"],
-          "properties": {"summary": {"type": "string"}, "ops": {"type": "array", "items": _OP}}}
+          "properties": {"summary": {"type": "string"}, "ops": {"type": "array", "items": _OP},
+                         "question": {"type": "string"}}}
+
+
+def plain(t, limit: int) -> str:
+    """1.43.1: one line of plain text from Claude – control and format characters out, at most ``limit``."""
+    import unicodedata
+    text = "".join(c for c in str(t if isinstance(t, str) else "") if unicodedata.category(c)[0] != "C")
+    return " ".join(text.split())[:limit].strip()
+
+
+def question(data) -> str:
+    """1.43.1: Claude's question back – only when it gave no operation (a proposal always wins), else ""."""
+    if not isinstance(data, dict) or data.get("ops"):
+        return ""
+    return plain(data.get("question"), MAX_QUESTION)
+
+
+def follow_up(answer: str, rounds: int) -> str:
+    """1.43.1: the user's answer to Claude's question as the next user turn; the last allowed round says so, then
+    Claude must decide (``rounds`` = requests sent so far in this talk)."""
+    text = "Answer to your question: " + str(answer or "").strip()[:MAX_REQUEST]
+    if rounds + 1 >= MAX_ROUNDS:
+        text += "\n\nNo more questions now: answer with operations, or with none and say why."
+    return text
 
 
 def _r(t: float) -> float:
