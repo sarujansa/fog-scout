@@ -111,7 +111,8 @@ class _Bridge(Bridge):
              "montage",      # 1.22: a montage's recordings (kind, …): added, opened, thumb, wave, hash
              "claude",       # 1.27: Claude's answer to a wish in the editor (editorclaude)
              "moments",      # 1.39.2: the dark pictures at the start/end looked at (editormoments)
-             "textfind")     # 1.41.1: text boxes found on the still at the playhead (textfind) or why not
+             "textfind",     # 1.41.1: text boxes found on the still at the playhead (textfind) or why not
+             "save_turn")    # 1.42.2: a queued export's turn came (path) – ffmpeg starts now
     LATEST = ("frame", "played")      # pictures: only the newest of a batch is drawn
     AFTER_CLOSE = ("saved", "still")  # a save that ends after the window closed still reaches the clips list
     LABEL = "Clip-Editor"
@@ -158,6 +159,39 @@ class _SaveJob:
                 pass
 
 
+class _ExportQueue:
+    """1.42.2 (editor package E4): the exports of all editors one after another, in the order they were asked for –
+    a click while one runs queues instead of waiting for the button; two ffmpeg encodes side by side only shared the
+    cores. A stopped job leaves at once (``enter`` looks at ``stopped`` while it waits)."""
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._order = []
+
+    def join(self, job) -> int:
+        """In line; how many are before it."""
+        with self._cond:
+            self._order.append(job)
+            return len(self._order) - 1
+
+    def enter(self, job, wait: float = 0.5):
+        """Blocks until ``job`` is first in line (or stopped)."""
+        with self._cond:
+            while self._order and self._order[0] is not job and not job.stopped:
+                self._cond.wait(wait)
+
+    def leave(self, job):
+        with self._cond:
+            if job in self._order:
+                self._order.remove(job)
+            self._cond.notify_all()
+
+    def ahead(self, job) -> int:
+        with self._cond:
+            return self._order.index(job) if job in self._order else -1
+
+
+EXPORTS = _ExportQueue()
 _SAVES = []                       # the _SaveJob of every editor still running or not yet handed over (GUI thread)
 _closed_pumping = False
 
@@ -1589,6 +1623,7 @@ class ClipBase(QWidget):
         b.strip_done.connect(lambda: self._loaded("strip"))
         b.ended.connect(self._player_ended)
         b.saved.connect(self._saved)
+        b.save_turn.connect(self._save_turn)
         b.still.connect(self._still_saved)
         b.sound.connect(self._sound_ready)
         b.levels.connect(self._show_levels)
@@ -2007,7 +2042,6 @@ class ClipBase(QWidget):
             self.status.setText(_("Clips-Ordner nicht anlegbar: {error}", error=e))
             return
         out = clipedit.unique_path(self.clips_dir, name, ".gif" if mode == "gif" else ".mp4")
-        self.save_btn.setEnabled(False)
         self.status.setText(_("Schreibe {file} …", file=os.path.basename(out)))
         self.saved_seconds[out] = round(edit.seconds(), 1)
 
@@ -2018,7 +2052,6 @@ class ClipBase(QWidget):
         if mode == "shorts":                                      # 1.20: refused before ffmpeg starts
             from . import shorts
             if edit.seconds() > shorts.MAX_S + 0.05:
-                self.save_btn.setEnabled(True)
                 self.saved_seconds.pop(out, None)
                 self.status.setText(_("Ein Short ist höchstens {limit} min lang, dieser Schnitt {seconds} s – kürzer "
                                       "schneiden.", limit=f"{shorts.MAX_S / 60:g}", seconds=f"{edit.seconds():.0f}"))
@@ -2028,14 +2061,25 @@ class ClipBase(QWidget):
                                   how=encoding.summary(_)))
         job = _SaveJob(self, out)                         # outlives the window, stoppable on quit (_SaveJob)
         path, ffmpeg, bridge = self.path, self.ffmpeg, self.bridge
+        ahead = EXPORTS.join(job)                         # 1.42.2: after the exports asked for before it
+        if ahead:
+            self.status.setText(_("{file} wartet – {n} Export(e) davor.", file=os.path.basename(out), n=ahead))
 
         def work():
             try:
-                ok, why = clipedit.export(path, edit, out, mode, ffmpeg, run=job.run, target_mb=target, info=info,
-                                          mix=mix, gif_h=gif_h, encoding=encoding, **censor)
+                EXPORTS.enter(job)
+                if job.stopped:
+                    ok, why = False, ""
+                else:
+                    if ahead:
+                        bridge.save_turn.emit(out)
+                    ok, why = clipedit.export(path, edit, out, mode, ffmpeg, run=job.run, target_mb=target,
+                                              info=info, mix=mix, gif_h=gif_h, encoding=encoding, **censor)
             except Exception as e:                        # a result in any case: the save must not hang on
                 log.exception("Clip speichern")
                 ok, why = False, f"{type(e).__name__}: {e}"
+            finally:
+                EXPORTS.leave(job)
             bridge.saved.emit(ok, out, why)
         job.thread = threading.Thread(target=work, name="clip-save", daemon=True)
         _SAVES.append(job)
@@ -2094,6 +2138,11 @@ class ClipBase(QWidget):
             if self.on_saved:                       # 1.8.13: stills are in the clips list too
                 self.on_saved(out)
 
+    def _save_turn(self, out):
+        """1.42.2: a queued export starts now."""
+        if not self._closed:
+            self.status.setText(_("Kodiere {file} …", file=os.path.basename(out)))
+
     def _saved(self, ok, out, why):
         job = _forget_save(self, out)
         if job is not None and job.stopped and not ok:
@@ -2101,8 +2150,7 @@ class ClipBase(QWidget):
         if ok:
             self._last_out = out
         if not self._closed:                        # closed: a compact editor may be deleted, widgets and all
-            self.save_btn.setEnabled(True)
-            self._saving(False)
+            self._saving(any(j.win is self and not j.out.lower().endswith(".png") for j in _SAVES))
             if ok:
                 self.show_btn.setEnabled(True)
                 try:

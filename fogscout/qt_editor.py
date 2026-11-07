@@ -1668,13 +1668,9 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
         self.tl_delete_btn.setEnabled(sel is not None)
         self.split_btn.setEnabled(bool(self.parts))
         self.tl_split_btn.setEnabled(bool(self.parts))
-        self.save_btn.setEnabled(bool(self.parts) and self.info.ok and not self._exporting()
+        self.save_btn.setEnabled(bool(self.parts) and self.info.ok         # 1.42.2: while one runs, a click queues
                                  and not self._export_blocked())
         self.export_btn.setEnabled(self.save_btn.isEnabled())
-
-    def _exporting(self) -> bool:
-        from .qt_clip import _SAVES
-        return any(job.win is self and not job.out.lower().endswith(".png") for job in _SAVES)
 
     # ---- modes (the tool rail)
     def _set_mode(self, mode: str):
@@ -2041,9 +2037,7 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
                              self._input_burn())
 
     def _saving(self, on: bool):
-        self.busy.setVisible(on)
-        self.save_btn.setEnabled(not on and bool(self.parts))
-        self.export_btn.setEnabled(self.save_btn.isEnabled())
+        self.busy.setVisible(on)                      # 1.42.2: the buttons stay – another export queues
 
     # ---- picture: crop (1.12) and black borders (1.12.6)
     def _content_found(self, box):
