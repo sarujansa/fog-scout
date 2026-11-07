@@ -17,11 +17,11 @@ import logging
 import os
 import threading
 
-from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton, QVBoxLayout
 
 from . import askclaude, clipedit, editcommands, highlights, i18n, imageedit, moments, sequence, textfind
 from .i18n import N_, _
-from .qt_common import PlainLabel, guard_wheel
+from .qt_common import PlainLabel
 from .qt_views import ElideButton
 
 log = logging.getLogger(__name__)
@@ -171,7 +171,7 @@ class ClaudeMixin:
         sec.body.addLayout(save)
         use = QHBoxLayout()
         use.setSpacing(6)
-        self.tpl_box = guard_wheel(QComboBox())
+        self.tpl_box = self._choice()                 # no focus, no wheel – like every box of the editor
         self.tpl_apply_btn = QPushButton(_("Vorlage anwenden"))
         self.tpl_apply_btn.setToolTip(_("Schlägt die Schritte der Vorlage für diesen Schnitt vor – ohne Claude, "
                                         "kostenlos; erst „Übernehmen“ ändert den Schnitt."))
