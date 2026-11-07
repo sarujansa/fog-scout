@@ -16,6 +16,7 @@ MIN_S = 5.0                 # a highlight shorter than this is no clip
 MAX_S = 60.0                # … longer is no short (YouTube Shorts allow up to 3 min, a highlight is shorter)
 EVEN_STILLS = 16            # stills spread over the edit
 MAX_MARK_STILLS = 8         # stills at F8 marks at most
+MAX_PEAK_STILLS = 8         # 1.39.2: stills at the local moments (moments.find) at most
 MERGE_S = 2.0               # a mark this close to an even still replaces it (no two pictures of the same moment)
 STILL_H = 360               # height of a still as ffmpeg decodes it …
 STILL_SIDE = 640            # … and its long side as sent (askclaude.image_block)
@@ -40,15 +41,25 @@ def _r(t: float) -> float:
     return round(float(t), 1)
 
 
-def still_times(length: float, marks=()) -> list:
+def still_times(length: float, marks=(), peaks=()) -> list:
     """The output seconds to take stills at: EVEN_STILLS in the middle of equal stretches, the marks (at most
-    MAX_MARK_STILLS) replacing an even still closer than MERGE_S. Sorted, inside [0, length)."""
+    MAX_MARK_STILLS) and – 1.39.2 – the local moments' peaks (at most MAX_PEAK_STILLS) replacing an even still closer
+    than MERGE_S. Sorted, inside [0, length), no two closer than MERGE_S."""
     if length <= 0:
         return []
     even = [length * (i + 0.5) / EVEN_STILLS for i in range(EVEN_STILLS)]
     inside = sorted({_r(m) for m in marks if 0 <= m < length})[:MAX_MARK_STILLS]
+    for p in [_r(p) for p in peaks if 0 <= p < length][:MAX_PEAK_STILLS]:
+        if all(abs(p - m) > MERGE_S for m in inside):
+            inside.append(p)
     kept = [t for t in even if all(abs(t - m) > MERGE_S for m in inside)]
     return sorted(_r(t) for t in kept + inside)
+
+
+SHORT_WISH = ("Make one vertical short (mode shorts) of at most {limit} seconds from the best of this clip: keep the "
+              "best range (a busy moment or a mark), cut the rest, slow the key second down to 0.5 for 1 to 2 "
+              "seconds if it helps, add a short_title of at most six words and two to four subtitles at the key "
+              "moments. Titles and subtitles in {language}, no player names.")
 
 
 def blocks(length: float, marks, stills, language: str) -> list:
