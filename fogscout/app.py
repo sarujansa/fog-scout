@@ -1478,14 +1478,17 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                         "today": "ov.today_backdrop",
                         "music": "ov.media_backdrop"}.get(name, ""))
         hide = reg.get({"today": "ov.today", "music": "ov.media"}.get(name, ""))
-        items = [("size", _("Grösse zurücksetzen"), True)]
+        items = [("place", _("Position zurücksetzen"), True),          # 1.44.2: like a right click in the game
+                 ("size", _("Grösse zurücksetzen"), True)]
         if dark is not None:
             items.append(("dark", _("Dunkle Fläche dahinter"), True, dark.instate(["selected"])))
         if hide is not None:
             items += [None, ("hide", _("Ausblenden"), hide.instate(["selected"]))]
 
         def act(ident):
-            if ident == "size":
+            if ident == "place":
+                self._el_reset(name)
+            elif ident == "size":
                 if name == "map" and self._own_size_map() and self._own_size_map() in \
                         self.settings["overlay"].get("map_heights", {}):
                     self._reset_map_size()

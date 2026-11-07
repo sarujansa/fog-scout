@@ -834,8 +834,13 @@ EN = {
     "Systemwerte": "System values",
     "Musik": "Music",
     "Eingaben": "Inputs",
-    "Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = Grösse":
-        "Moving is on – drag (snaps, Alt = free), arrow keys = fine, corner/Ctrl+wheel = size",
+    "Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = Grösse, Rechtsklick = zurücksetzen":
+        "Moving is on – drag (snaps, Alt = free), arrow keys = fine, corner/Ctrl+wheel = size, right click = reset",
+    "Klick auf ein Element wählt es für den Regler „Grösse“. Mit „Mit der Maus verschieben“: Element ziehen = verschieben (der gestrichelte Rahmen zeigt, wo es landet), an der Ecke ziehen oder Strg+Mausrad = Grösse, Rechtsklick = Position oder Grösse zurücksetzen. Ende mit „Fertig“.":
+        "A click on an element picks it for the “Size” slider. With “Move with the mouse”: drag an element = move "
+        "it (the dashed frame shows where it lands), drag its corner or Ctrl+mouse wheel = size, right click = reset "
+        "place or size. Finish with “Done”.",
+    "Position zurücksetzen": "Reset position",
     "Rückgängig": "Undo",
     "Karte darf grösser als der Balken werden": "The map may grow bigger than the bar",
     "Karte füllt den Balken aus": "The map fills the bar",
@@ -1605,8 +1610,6 @@ EN = {
     'über {n} Runden': 'over {n} rounds',
     # 1.61: overlay preview
     'Bilanz: Ø 2,8 Kills · 12 Runden': 'Record: avg. 2.8 kills · 12 rounds',
-    'Klick auf Karte, Systemwerte oder Musik wählt das Element für den Regler „Grösse“. Mit „Mit der Maus verschieben“: Element ziehen = verschieben, an der Ecke ziehen oder Strg+Mausrad = Grösse, Klick auf eine freie Stelle setzt die Karte dorthin. Ende mit „Fertig“.':
-        'A click on the map, the system values or the music picks the element for the “Size” slider. With “Move with the mouse”: drag an element = move it, drag its corner or Ctrl+mouse wheel = size, a click on an empty spot puts the map there. End with “Done”.',
     "Element": "Element",
     "Infos und Schrift (Name, Timer, Bilanz, Server)": "Info and text (name, timer, record, server)",
     # 1.8.24: the map's lines as an element of their own, the size slider marks where the bar stops it
