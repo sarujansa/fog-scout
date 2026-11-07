@@ -870,3 +870,27 @@ def test_j_k_l_play_spool_faster_without_sound_stop_and_jump_back(qapp, clip, tm
         assert not win.playing and win.pos == pytest.approx(0.5)
     finally:
         win.close()
+
+
+def test_dragging_the_playhead_shows_key_frames_at_once_and_the_exact_picture_at_rest(qapp, clip, tmp_path,
+                                                                                     monkeypatch):
+    """1.40.1: while the playhead is dragged each wish first gets the key frame before it (fast), the exact picture
+    follows once no newer wish waits; a jump from the keys or buttons (no drag) stays exact only."""
+    from fogscout import clipedit
+    win = _window(qapp, clip, tmp_path)
+    try:
+        looks = []
+        orig = clipedit.frame_at
+        monkeypatch.setattr(clipedit, "frame_at", lambda *a, **k: (looks.append(bool(k.get("keyframe"))),
+                                                                   orig(*a, **k))[1])
+        monkeypatch.setattr(win.timeline, "gesture_active", lambda: True)
+        win.goto(7.5)
+        assert _pump(qapp, lambda: win._last_key == clipedit.frame_key(7.5, win.info.fps))
+        assert looks and looks[0] is True                               # the key frame came first
+        looks.clear()
+        monkeypatch.setattr(win.timeline, "gesture_active", lambda: False)
+        win.goto(2.5)
+        assert _pump(qapp, lambda: win._last_key == clipedit.frame_key(2.5, win.info.fps))
+        assert True not in looks                                         # no drag: no key-frame look
+    finally:
+        win.close()
