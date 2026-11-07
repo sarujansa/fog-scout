@@ -454,7 +454,7 @@ class PreviewView(QWidget):
         self.update()
 
     def set_boxes(self, boxes):
-        self.boxes = [list(map(float, b)) for b in boxes if len(b) == 4]
+        self.boxes = [list(map(float, b)) for b in boxes if len(b) in (4, 6)]     # 1.41: (6 = with a time window)
         self.selected = None
         self.update()
 
@@ -664,9 +664,19 @@ class PreviewView(QWidget):
         view = self.view
         return self._box_rect(view) if view else self.frame_rect()
 
+    def set_box_window(self, i: int, window):
+        """1.41: box ``i`` hides only between the seconds ``window`` = (t0, t1) of the recording, None = always."""
+        if not 0 <= i < len(self.boxes):
+            return
+        box = self.boxes[i][:4] + ([float(window[0]), float(window[1])] if window else [])
+        if box != self.boxes[i]:
+            self.boxes[i] = box
+            self.boxes_changed.emit()
+            self.update()
+
     def _box_rect(self, box) -> QRectF:
         f = self.frame_rect()
-        x, y, w, h = box
+        x, y, w, h = box[:4]
         return QRectF(f.left() + x * f.width(), f.top() + y * f.height(), w * f.width(), h * f.height())
 
     def _to_frac(self, pt) -> tuple:
@@ -722,13 +732,16 @@ class PreviewView(QWidget):
             return
         accent = QColor(c["accent"])
         for i, box in enumerate(self._boxes_shown()):
+            now = self.now is None or clipedit.box_active(box, self.now)    # 1.41: a windowed box only then
+            if not now and not self.editing:
+                continue
             r = self._box_rect(box)
-            if self.active:
+            if self.active and now:
                 self._draw_censored(p, scaled, r, vr)
             if self.editing or not self.active:
                 pen = QPen(accent if i == self.selected else QColor(255, 255, 255, 170), 2 if i == self.selected else 1)
-                if not self.active:
-                    pen.setStyle(Qt.DashLine)
+                if not self.active or not now:
+                    pen.setStyle(Qt.DashLine if self.active or now else Qt.DotLine)
                 p.setPen(pen)
                 p.setBrush(Qt.NoBrush)
                 p.drawRect(r)
@@ -988,11 +1001,11 @@ class PreviewView(QWidget):
             w, h = orig[2], orig[3]
             x = min(max(0.0, orig[0] + fx - px), 1.0 - w)
             y = min(max(0.0, orig[1] + fy - py), 1.0 - h)
-            self._drag = (kind, (px, py), orig, [x, y, w, h])      # 1.18: boxes keep the original until release
+            self._drag = (kind, (px, py), orig, [x, y, w, h] + orig[4:])   # 1.18: the original until release
         else:
             w = min(max(self.MIN_BOX, orig[2] + fx - px), 1.0 - orig[0])
             h = min(max(self.MIN_BOX, orig[3] + fy - py), 1.0 - orig[1])
-            self._drag = (kind, (px, py), orig, [orig[0], orig[1], w, h])
+            self._drag = (kind, (px, py), orig, [orig[0], orig[1], w, h] + orig[4:])
         self.update()
 
     def mouseReleaseEvent(self, e):
@@ -1547,7 +1560,8 @@ class ClipBase(QWidget):
         return {}
 
     def _boxes_changed(self):
-        self._setting("clip_censor_boxes", [[round(v, 4) for v in b] for b in self.preview.boxes])
+        self._setting("clip_censor_boxes", [[round(v, 4) for v in b] for b in self.preview.boxes   # 1.41: a window
+                                            if len(b) == 4])                    # belongs to this recording only
         self._show_size()
 
     # ---- threads
