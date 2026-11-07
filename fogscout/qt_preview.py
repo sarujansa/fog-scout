@@ -169,10 +169,11 @@ class PreviewView(QWidget):
             p.setFont(tf)
             rects = {name: QRectF(ox + lx * s, oy + ly * s, lw * s, lh * s).adjusted(-2, -2, 2, 2)   # 1.8.8: off the text
                      for name, lx, ly, lw, lh in self._layers()}
+            over = set(d.get("overlaps") or ())    # 1.45: put on another by hand – allowed, but shown
             for name, r in rects.items():
                 on = name == held or name == d.get("selected")
-                p.setPen(QPen(accent if on else QColor(255, 255, 255, 140), 2 if on else 1,
-                              Qt.SolidLine if on else Qt.DashLine))
+                colour = QColor("#ef4444") if name in over else accent if on else QColor(255, 255, 255, 140)
+                p.setPen(QPen(colour, 2 if on or name in over else 1, Qt.SolidLine if on else Qt.DashLine))
                 p.setBrush(Qt.NoBrush)
                 p.drawRect(r)
                 tag = _(PREVIEW_NAMES.get(name, name))

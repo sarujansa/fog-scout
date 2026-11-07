@@ -30,8 +30,8 @@ def bar_side(anchor: str, x: float, w: float, gx: float, gw: float, bar: float):
         return "right"
     centre = x + w / 2              # 1.44.1: an own place counts as "in the bar" only with its middle in it – any
     if centre < gx + bar:           # overlap did before: a map dragged past the bar's edge stuck to it, then
-        return "left"               # jumped back into it smaller
-    if centre > gx + gw - bar:
+        return "left"               # jumped back into it smaller (1.45: kept – a map put into the bar fits it;
+    if centre > gx + gw - bar:      # the limiter lines and the other elements no longer push it)
         return "right"
     return None
 
@@ -370,8 +370,10 @@ def place_cards(game, cards: dict, hud_box, margin: int, align: str = "centre", 
                 below_box = (floor[0], y, size[0], size[1])
         if spot in corners:                             # two cards in the same bottom corner: the second above
             y = max(lo, corners[spot][1] - g - size[1])
-        # 1.8.14: between the limiter lines of its bar (a bottom corner from the bottom line up)
-        out[name] = boxes[name] = clamp_box((int(x), int(y), int(size[0]), int(size[1])), game, bands)
+        # 1.8.14: between the limiter lines of its bar (a bottom corner from the bottom line up). 1.45 (user: "fühlt
+        # sich eng an"): an own place is free – only inside the window (media_xy), never pulled between the lines
+        box = (int(x), int(y), int(size[0]), int(size[1]))
+        out[name] = boxes[name] = box if spot == "custom" and not anchor else clamp_box(box, game, bands)
         if anchor:                                      # two cards below the same element: the second below the
             boxes[anchor] = out[name]                   # first (1.2.11 sweep: they sat on top of each other)
         elif spot in ("bottom_left", "bottom_right"):
@@ -504,7 +506,22 @@ SOFT_SLACK = 0.04     # 1.14.3: a keep-out area counts against an element only w
 #                       41–52 px into the right bar on 21:9 screens and sent every bar-wide card past the whole area
 
 
-def resolve(boxes, fixed, game, bands, gap: int, soft=()) -> dict:
+def own_places(o: dict, sysinfo: str) -> set:
+    """1.45: the elements standing at a place the user put them (position setting "custom") – kept exactly there;
+    only the others make way (resolve ``keep``)."""
+    spots = {"hud": sysinfo, "today": o.get("today_pos"), "music": o.get("media_pos"), "text": o.get("info_pos"),
+             "inputs": o.get("inputs_pos")}
+    return {name for name, spot in spots.items() if spot == "custom"}
+
+
+def own_overlaps(boxes, keep) -> set:
+    """1.45: the hand-placed elements lying on another hand-placed one – allowed (the user's will), only shown in the
+    edit mode."""
+    own = [(n, b) for n, b in boxes if b and n in keep]
+    return {n for i, (n, b) in enumerate(own) for m, c in own if m != n and boxes_overlap(b, c)}
+
+
+def resolve(boxes, fixed, game, bands, gap: int, soft=(), keep=()) -> dict:
     """1.8.25 (user: "alle UI-Elemente beachten, damit es immer sauber aussieht"): {name: (dx, dy)} so that no box
     lies on an earlier one or on a ``fixed`` box (the map). ``boxes`` = [(name, (x, y, w, h))] in priority order;
     a box that collides moves up or down to the nearest free place in its bar between its lines (else on the
@@ -514,22 +531,33 @@ def resolve(boxes, fixed, game, bands, gap: int, soft=()) -> dict:
     a zone reaches a few pixels into the bar (bar-wide cards of one column did). 1.14.3 (user: "ich will einfach
     nicht, dass das so schlimm verschoben kommt"): a soft area counts only where it reaches more than
     ``SOFT_SLACK`` into an element from both sides – its edge grazing a card (the chat area reaching 41 px into
-    the right bar) no longer sends the card past the area or sideways to the screen's edge."""
-    out = _resolve(boxes, fixed, game, bands, gap, soft, int(SOFT_SLACK * game[3]))
+    the right bar) no longer sends the card past the area or sideways to the screen's edge. 1.45 (user: "fühlt
+    sich eng an"): the names in ``keep`` (own places, see own_places) move only off a ``fixed`` box (the map) – not
+    for another element or a keep-out area; the others go around them."""
+    keep = set(keep)
+    first = {}
+    for n, b in boxes:                                # own places: each moves off the map only (not off another)
+        if n in keep and b:
+            first.update(_resolve([(n, b)], fixed, game, bands, gap))
+    if first:
+        boxes = [(n, (b[0] + first[n][0], b[1] + first[n][1], b[2], b[3]) if n in first else b) for n, b in boxes]
+    out = _resolve(boxes, fixed, game, bands, gap, soft, int(SOFT_SLACK * game[3]), keep)
     if soft:
-        final = [(x + out.get(n, (0, 0))[0], y + out.get(n, (0, 0))[1], w, h) for n, (x, y, w, h) in
+        final = [(n, (x + out.get(n, (0, 0))[0], y + out.get(n, (0, 0))[1], w, h)) for n, (x, y, w, h) in
                  ((n, b) for n, b in boxes if b)]
-        hard = [tuple(f) for f in fixed if f]
-        for i, b in enumerate(final):
-            if any(boxes_overlap(b, p) for p in hard + final[:i]):
-                return _resolve(boxes, fixed, game, bands, gap)
-    return out
+        hard = [tuple(f) for f in fixed if f] + [b for n, b in final if n in keep]
+        moving = [b for n, b in final if n not in keep]
+        for i, b in enumerate(moving):
+            if any(boxes_overlap(b, p) for p in hard + moving[:i]):
+                out = _resolve(boxes, fixed, game, bands, gap, keep=keep)
+                break
+    return {**out, **first}
 
 
-def _resolve(boxes, fixed, game, bands, gap: int, soft=(), slack: int = 0) -> dict:
+def _resolve(boxes, fixed, game, bands, gap: int, soft=(), slack: int = 0, keep=frozenset()) -> dict:
     gx, gy, gw, gh = game
     bar = bar_width(gw, gh)
-    placed = [tuple(f) for f in fixed if f]
+    placed = [tuple(f) for f in fixed if f] + [tuple(b) for n, b in boxes if b and n in keep]
     zones = [tuple(z) for z in soft if z]
 
     def taken(b) -> bool:                  # on a placed box, or deeper than ``slack`` into a keep-out area
@@ -537,7 +565,7 @@ def _resolve(boxes, fixed, game, bands, gap: int, soft=(), slack: int = 0) -> di
 
     out = {}
     for name, box in boxes:
-        if not box:
+        if not box or name in keep:                   # 1.45: an own place stays – the others go around it
             continue
         x, y, w, h = box
         if taken(box):
@@ -747,9 +775,7 @@ def info_xy(spot: str, map_rect, size, game, gap: int, margin: int, own=None, al
         elif bar >= MIN_BAR and mx + mw > gx + gw - bar:
             x = clamp_x("right", x, w, gx, gw, bar, margin)
     x = min(max(x, gx), gx + max(0, gw - w))
-    y = min(max(y, gy), gy + max(0, gh - h))
-    if spot == "custom" and bands:
-        y = clamp_box((x, y, w, h), game, bands)[1]
+    y = min(max(y, gy), gy + max(0, gh - h))      # 1.45: an own place is free – inside the window, not the lines
     return int(x), int(y)
 
 
