@@ -243,8 +243,9 @@ class SysInfo:
         else:                                               # own place in the narrow window: the bar above
             x, y = layout.hud_x("left" if side == "left" else "right", gx, gw, margin, sw, 0 if vb else bar,
                                 o.get("bar_align", "centre")), gy + margin
-        if not vb:                                          # 1.8.14: between the limiter lines of its bar
-            y = layout.clamp_box((x, y, sw, h), (gx, gy, gw, gh), self._bands(gx, gy, gw, gh))[1]
+        if not vb and not own:                              # 1.8.14: between the limiter lines of its bar
+            y = layout.clamp_box((x, y, sw, h), (gx, gy, gw, gh), self._bands(gx, gy, gw, gh))[1]   # (1.45: not
+            #                                                 an own place – that one is free in the window)
         self._fade_show("hud", fade)
         self.worker.hud_rect = self._el_show("hud", self.hud, x, y, (w, h))
         self._hud_box = (int(x), self.worker.hud_rect[1], sw, h)    # steady box: the music card centres below it
@@ -774,8 +775,9 @@ class SysInfo:
             if win is not None and win.shown and name in orig:
                 boxes.append((name, orig[name]))
         boxes = self._el_priority(boxes)
+        own = layout.own_places(o, self.settings.get("sysinfo", "off"))     # 1.45: put there by hand – they stay
         shift = layout.resolve(boxes, [self.worker.overlay_rect], game, self._bands(gx, gy, gw, gh),
-                               layout.stack_gap(o, gh), soft=layout.keep_out_boxes(o, game)) if gh else {}
+                               layout.stack_gap(o, gh), soft=layout.keep_out_boxes(o, game), keep=own) if gh else {}
         # 1.8.29: which cards stand in the same bar – next tick they are drawn at the widest natural width
         self._col_min = layout.column_widths({n: b for n, b in boxes if n in self.CARDS}, game,
                                              getattr(self, "_col_nat", {})) if gh else {}

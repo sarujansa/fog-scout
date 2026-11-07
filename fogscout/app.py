@@ -1404,9 +1404,12 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                                           inputs=layout_in)
             self._preview_cache = cached = (key, layers, tuple(round(v / f) for v in rect), f, fits)
         _key, layers, (x, y, w, h), f, fits = cached
+        boxes = [(name, (round(lx / f), round(ly / f), round(img.width / f), round(img.height / f)))
+                 for name, img, lx, ly in layers]
         return {"screen": (gw, gh), "bar": layout.bar_width(gw, gh), "rect": (x, y, w, h, h),
-                "layers": [(name, round(lx / f), round(ly / f), round(img.width / f), round(img.height / f))
-                           for name, img, lx, ly in layers],
+                "layers": [(name,) + box for name, box in boxes],
+                # 1.45: elements put on another by hand – allowed, shown red while moving
+                "overlaps": sorted(layout.own_overlaps(boxes, layout.own_places(o, hud_side))),
                 "pics": {name: img for name, img, _lx, _ly in layers}, "opacity": o["opacity"], "fits": dict(fits),
                 "opacities": {n: float(o.get(k, o["opacity"])) for n, k in OPACITY_KEYS.items()},
                 "editing": bool(self.overlay.editing), "selected": getattr(self, "_sel", "map"),

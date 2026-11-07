@@ -178,3 +178,35 @@ def test_the_preview_shows_where_a_dragged_element_lands_and_snaps_to_where_othe
     assert view._landing() is None                                    # dropped: no frame any more
     sent = [posted.get_nowait() for _ in range(posted.qsize())]
     assert sent[-1][1][1][:2] == ("place", "music") and not any(v[1][1][0] == "select" for v in sent)
+
+
+# ---- 1.45 (user: „fühlt sich eng an … überarbeite das Verschieben“): an own place is free
+GAME = (0, 0, 3440, 1440)
+
+
+def test_an_own_place_stays_beyond_the_limiter_lines_and_keep_out_areas():
+    bands = {"left": (200, 1100), "right": (200, 1100)}                       # lines high in both bars
+    cards = {"music": ((300, 120), "custom", [0.95, 0.95]), "today": ((300, 80), "bottom_right", None)}
+    placed = layout.place_cards(GAME, cards, None, 17, bands=bands)
+    assert placed["music"][1] + placed["music"][3] > 1100                      # below the lower line: stays
+    assert placed["today"][1] + placed["today"][3] <= 1100                     # an automatic place keeps to them
+    x, y = layout.info_xy("custom", (0, 0, 400, 500), (200, 60), GAME, 8, 17, [0.06, 0.97], bands=bands)
+    assert y + 60 > 1100 and y + 60 <= 1440                                    # free, but inside the window
+
+
+def test_own_places_move_only_off_the_map_and_the_others_go_around_them():
+    m = (17, 100, 400, 800)
+    own = {"music", "today"}
+    boxes = [("hud", (3100, 300, 300, 100)), ("today", (3100, 300, 300, 100)), ("music", (3100, 340, 300, 100))]
+    shift = layout.resolve(boxes, [m], GAME, None, 8, keep=own)
+    assert "today" not in shift and "music" not in shift                       # two own places may overlap
+    assert shift["hud"] != (0, 0)                                              # the automatic one makes way
+    assert layout.own_overlaps(boxes, own) == {"today", "music"}
+    on_map = layout.resolve([("text", (40, 300, 200, 60))], [m], GAME, None, 8, keep={"text"})
+    dx, dy = on_map["text"]                                                    # off the map (it would hide it):
+    assert not layout.boxes_overlap((40 + dx, 300 + dy, 200, 60), m)           # to the nearest free spot
+    zone = [(3000, 250, 440, 300)]                                             # a keep-out area (Discord)
+    assert layout.resolve([("music", (3100, 300, 300, 100))], [], GAME, None, 8, soft=zone, keep={"music"}) == {}
+    assert layout.resolve([("music", (3100, 300, 300, 100))], [], GAME, None, 8, soft=zone) != {}
+    o = {"today_pos": "custom", "media_pos": "below", "info_pos": "custom", "inputs_pos": "bottom_left"}
+    assert layout.own_places(o, "custom") == {"hud", "today", "text"}
