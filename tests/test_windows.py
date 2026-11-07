@@ -264,6 +264,38 @@ def test_single_key_hotkeys_only_while_dbd_is_in_front():
     assert not t.is_alive()
 
 
+def test_a_dragged_window_keeps_its_place_until_the_drop_and_a_right_click_resets(root):
+    """1.44.1 (user: elements jump while dragging): during Windows' move loop new pictures change only the pixels,
+    never the place; a right click in edit mode asks for the usual place."""
+    from fogscout import overlay_win32 as ow
+    hud = ow.HudWindow()
+    rows = [[("CPU ", (210, 214, 224, 255)), ("62°C", (134, 239, 172, 255))]]
+    hud.render(rows, 1440)
+    hud.show_at(40, 40)
+    pump()
+    hud.set_editing(True)
+    hud.render(rows, 1440)
+    hud.show_at(40, 40)
+    assert not hud.dragging
+    hud._wndproc(hud.hwnd(), ow.WM_ENTERSIZEMOVE, 0, 0)
+    assert hud.dragging
+    hud.render([[("CPU ", (210, 214, 224, 255)), ("63°C", (134, 239, 172, 255))]], 1440)   # a new value
+    hud.show_at(400, 400)                                     # a tick wants the old/computed place
+    pump()
+    rc = ow.wintypes.RECT()
+    ow._u.GetWindowRect(hud.hwnd(), ow.ctypes.byref(rc))
+    assert (rc.left, rc.top) == (40, 40)                      # the window stayed where the mouse holds it
+    moved, reset = [], []
+    hud.on_moved, hud.on_reset = (lambda x, y: moved.append((x, y))), (lambda: reset.append(1))
+    hud._wndproc(hud.hwnd(), ow.WM_EXITSIZEMOVE, 0, 0)
+    assert moved == [(40, 40)] and not hud.dragging
+    assert hud._wndproc(hud.hwnd(), ow.WM_NCRBUTTONUP, 0, 0) == 0 and reset == [1]
+    hud.set_editing(False)
+    hud._wndproc(hud.hwnd(), ow.WM_NCRBUTTONUP, 0, 0)
+    assert reset == [1]                                       # only in edit mode
+    hud.destroy()
+
+
 def test_system_values_window_can_be_dragged_in_edit_mode(root):
     from fogscout import overlay_win32 as ow
     hud = ow.HudWindow()

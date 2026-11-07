@@ -21,7 +21,7 @@ from .mapimage import FONT as FIRA, floor_frames, floor_view   # FIRA: re-export
 from .overlay import BACKDROP, MAX_LOAD_H, load_frames   # BACKDROP: re-exported
 from .overlay_render import (  # 1.38.34: the drawing lives there; every name stays importable from here
     _HAS, _GLYPHS, _CHAR_LEN,
-    BORDER, CARD_BACKDROP, CARD_EDGE, DIM_LABEL, FALLBACK_FONTS, FIT_MIN, GLYPHS_KEPT, INFO_DOT, INFO_MEMO,
+    BORDER, CARD_BACKDROP, CARD_EDGE, GRAB_SURFACE, DIM_LABEL, FALLBACK_FONTS, FIT_MIN, GLYPHS_KEPT, INFO_DOT, INFO_MEMO,
     INFO_SERVER, INFO_TIMER, INFO_WARN, PING_COLOURS, REC_DOT, TIMER_GAP, TITLE_SCALE, UPNEXT_SCALE, _ascent, _below,
     _beside, _char_len, _content_bottom, _draw_run, _fallback_font, _font, _font_key, _glyph, _has_glyph, _line_cap,
     _paste, _run_len, _stack, _tracked_width, add_border, add_info, backdrop, backdrop_pad, blend_cards, body_cols,
@@ -30,7 +30,7 @@ from .overlay_render import (  # 1.38.34: the drawing lives there; every name st
     progress_strip, rec_dot, rec_phase, render_hud, render_music, render_music_compact, upnext_block, upnext_rows)
 from .overlay_render import (  # 1.39: the input card
     INPUT_BG, INPUT_CAP, INPUT_CAP_DOWN, INPUT_EDGE, INPUT_EDGE_PX, INPUT_GAP, INPUT_H, INPUT_IDLE, INPUT_KEPT, INPUT_PAD, INPUT_PATCHES_KEPT, INPUT_RATIO, INPUT_SS, INPUT_W, PAD_FACE, _INPUT_MEMO, _INPUT_PATCHES, _cap_font, _centred_text, _draw_gamepad, _draw_keyboard, _input_box, _input_controls, _input_full, _input_keys, input_card, input_size)
-_RENDER_NAMES = (FIRA, BACKDROP, _HAS, _GLYPHS, _CHAR_LEN, BORDER, CARD_BACKDROP, CARD_EDGE, DIM_LABEL, FALLBACK_FONTS, FIT_MIN, GLYPHS_KEPT, INFO_DOT, INFO_MEMO, INFO_SERVER, INFO_TIMER, INFO_WARN, PING_COLOURS, REC_DOT, TIMER_GAP, TITLE_SCALE, UPNEXT_SCALE, _ascent, _below, _beside, _char_len, _content_bottom, _draw_run, _fallback_font, _font, _font_key, _glyph, _has_glyph, _line_cap, _paste, _run_len, _stack, _tracked_width, add_border, add_info, backdrop, backdrop_pad, blend_cards, body_cols, compose, cover_radius, fira, fit_lines, font_for, guide_line, info_card, lines_above, map_backdrop, map_body, music_body, music_card, music_picture, pad_to, ping_colour, premultiplied_bgra, premultiplied_bgra_numpy, progress_strip, rec_dot, rec_phase, render_hud, render_music, render_music_compact, upnext_block, upnext_rows, INPUT_BG, INPUT_CAP, INPUT_CAP_DOWN, INPUT_EDGE, INPUT_EDGE_PX, INPUT_GAP, INPUT_H, INPUT_IDLE, INPUT_KEPT, INPUT_PAD, INPUT_PATCHES_KEPT, INPUT_RATIO, INPUT_SS, INPUT_W, PAD_FACE, _INPUT_MEMO, _INPUT_PATCHES, _cap_font, _centred_text, _draw_gamepad, _draw_keyboard, _input_box, _input_controls, _input_full, _input_keys, input_card, input_size)   # re-exported (keeps pyflakes from calling them unused)
+_RENDER_NAMES = (FIRA, BACKDROP, _HAS, _GLYPHS, _CHAR_LEN, BORDER, CARD_BACKDROP, CARD_EDGE, GRAB_SURFACE, DIM_LABEL, FALLBACK_FONTS, FIT_MIN, GLYPHS_KEPT, INFO_DOT, INFO_MEMO, INFO_SERVER, INFO_TIMER, INFO_WARN, PING_COLOURS, REC_DOT, TIMER_GAP, TITLE_SCALE, UPNEXT_SCALE, _ascent, _below, _beside, _char_len, _content_bottom, _draw_run, _fallback_font, _font, _font_key, _glyph, _has_glyph, _line_cap, _paste, _run_len, _stack, _tracked_width, add_border, add_info, backdrop, backdrop_pad, blend_cards, body_cols, compose, cover_radius, fira, fit_lines, font_for, guide_line, info_card, lines_above, map_backdrop, map_body, music_body, music_card, music_picture, pad_to, ping_colour, premultiplied_bgra, premultiplied_bgra_numpy, progress_strip, rec_dot, rec_phase, render_hud, render_music, render_music_compact, upnext_block, upnext_rows, INPUT_BG, INPUT_CAP, INPUT_CAP_DOWN, INPUT_EDGE, INPUT_EDGE_PX, INPUT_GAP, INPUT_H, INPUT_IDLE, INPUT_KEPT, INPUT_PAD, INPUT_PATCHES_KEPT, INPUT_RATIO, INPUT_SS, INPUT_W, PAD_FACE, _INPUT_MEMO, _INPUT_PATCHES, _cap_font, _centred_text, _draw_gamepad, _draw_keyboard, _input_box, _input_controls, _input_full, _input_keys, input_card, input_size)   # re-exported (keeps pyflakes from calling them unused)
 
 IS_WIN = sys.platform == "win32"
 
@@ -49,7 +49,9 @@ ULW_ALPHA = 2
 WM_NCHITTEST = 0x0084
 WM_MOUSEWHEEL = 0x020A
 MK_CONTROL = 0x0008                     # wParam key state of WM_MOUSEWHEEL: Ctrl held
-WM_EXITSIZEMOVE = 0x0232
+WM_ENTERSIZEMOVE = 0x0231              # 1.44.1: Windows' own move loop begins (drag in edit mode) …
+WM_EXITSIZEMOVE = 0x0232               # … and ends
+WM_NCRBUTTONUP = 0x00A5                # 1.44.1: right click on the window (it says HTCAPTION in edit mode)
 HTCAPTION = 2
 
 if IS_WIN:
@@ -137,7 +139,8 @@ class LayeredSurface:
         self._bits, self._size, self._data = 0, None, None
 
     def push(self, hwnd, data: bytes, w: int, h: int, pos, opacity: float) -> str:
-        """Show premultiplied BGRA pixels in the layered window ``hwnd`` at ``pos``; returns an error text or ""."""
+        """Show premultiplied BGRA pixels in the layered window ``hwnd`` at ``pos``; returns an error text or "".
+        1.44.1: ``pos`` None = only the picture, the window stays where it is (the user is dragging it)."""
         try:
             if self._dc is None or self._size != (w, h):
                 self.free()
@@ -148,7 +151,8 @@ class LayeredSurface:
             screen = _u.GetDC(None)
             try:
                 blend = BLENDFUNCTION(0, 0, max(1, min(255, int(round(opacity * 255)))), 1)
-                ok = _u.UpdateLayeredWindow(hwnd, screen, ctypes.byref(wintypes.POINT(int(pos[0]), int(pos[1]))),
+                dst = None if pos is None else ctypes.byref(wintypes.POINT(int(pos[0]), int(pos[1])))
+                ok = _u.UpdateLayeredWindow(hwnd, screen, dst,
                                             ctypes.byref(wintypes.SIZE(w, h)), self._dc,
                                             ctypes.byref(wintypes.POINT(0, 0)), 0, ctypes.byref(blend), ULW_ALPHA)
             finally:
@@ -230,6 +234,9 @@ class HudWindow:
         self.edit_label = ""                   # name on the edit frame ("SYSTEMWERTE", "MUSIK")
         self.fade = 1.0                        # share of the opacity while fading in/out (music card, 1.2.4)
         self.on_moved = None
+        self.on_reset = None                   # 1.44.1: right click in edit mode = back to its usual place
+        self._moving = False                   # 1.44.1: Windows' move loop runs (the user drags it)
+        self._moving_sig = None                # … the picture pushed during it (only the picture, not the place)
         self._proc = WNDPROC(self._wndproc)                    # keep a reference!
         self._old_proc = _SetLong(self._hwnd, GWLP_WNDPROC, ctypes.cast(self._proc, ctypes.c_void_p).value)
 
@@ -238,21 +245,34 @@ class HudWindow:
             if self.editing:
                 if msg == WM_NCHITTEST:
                     return HTCAPTION                  # drag anywhere on it
+                if msg == WM_ENTERSIZEMOVE:
+                    self._moving, self._moving_sig = True, None
                 if msg == WM_EXITSIZEMOVE:
+                    self._moving = False
                     rc = wintypes.RECT()
                     _u.GetWindowRect(self._hwnd, ctypes.byref(rc))
                     self._pos = (rc.left, rc.top, round(self.opacity, 3))
                     if self.on_moved:
                         self.on_moved(rc.left, rc.top)
+                if msg == WM_NCRBUTTONUP and self.on_reset:
+                    self.on_reset()
+                    return 0
         except Exception as e:  # never let an exception escape into Windows
             self.last_error = repr(e)
         return _u.CallWindowProcW(self._old_proc, hwnd, msg, wp, lp)
+
+    @property
+    def dragging(self) -> bool:
+        """1.44.1: the user is moving it right now – the App leaves its place alone until the drop (before, every
+        tick and every new value put it back at the old place while the mouse still held it)."""
+        return self._moving and self.editing
 
     def set_editing(self, on: bool):
         """Edit mode: clickable and draggable, with the yellow edit border."""
         if bool(on) == self.editing:
             return
         self.editing = bool(on)
+        self._moving = False
         ex = _GetLong(self._hwnd, GWL_EXSTYLE)
         ex = ex & ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE) if on else ex | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         _SetLong(self._hwnd, GWL_EXSTYLE, ex)
@@ -335,6 +355,15 @@ class HudWindow:
         if not self._data:
             self.hide()
             return
+        if self.dragging:                             # 1.44.1: only a new picture, the place is the user's
+            sig = (id(self._data), round(self.opacity * self.fade, 3))
+            if sig != self._moving_sig:
+                self._moving_sig = sig
+                err = _surface(self).push(self._hwnd, self._data, self.size[0], self.size[1], None,
+                                          self.opacity * self.fade)
+                if err:
+                    self.last_error = err
+            return
         pos = (int(x), int(y), round(self.opacity, 3))
         if pos != self._pos:
             self._pos = pos
@@ -364,8 +393,8 @@ class HudWindow:
             return
         self.fade = fade
         if self._shown and self._data and self._pos:
-            err = _surface(self).push(self._hwnd, self._data, self.size[0], self.size[1], self._pos[:2],
-                                      self.opacity * fade)
+            err = _surface(self).push(self._hwnd, self._data, self.size[0], self.size[1],
+                                      None if self.dragging else self._pos[:2], self.opacity * fade)
             if err:
                 self.last_error = err
 
@@ -804,6 +833,8 @@ class PictureOverlay:
         if not self._prepared:
             self.hide()
             return
+        if self.dragging:                             # 1.44.1: the place belongs to the user until the drop
+            return
         pos = (int(x), int(y))
         opacity_key = round(self.opacity * self.fade, 3)
         if not self._shown or pos != self._pos or opacity_key != getattr(self, "_pushed_opacity", None):
@@ -851,8 +882,10 @@ class PictureOverlay:
 
     @property
     def dragging(self) -> bool:
-        """The user is moving it right now (the native window: Windows' own move loop, nothing to wait for)."""
-        return False
+        """The user is moving it right now. 1.44.1: Windows' own move loop (WM_ENTERSIZEMOVE … WM_EXITSIZEMOVE) –
+        before always False: the ticks, the timer and the floor animation pushed the window back to its old place
+        while the mouse still held it."""
+        return bool(getattr(self, "_moving", False)) and self._editing
 
     def destroy(self):
         self._stop_anim()
@@ -873,6 +906,8 @@ class Win32Overlay(PictureOverlay):
         if not self._hwnd:
             raise OSError(f"CreateWindowExW fehlgeschlagen (Fehler {ctypes.get_last_error()})")
         self._hwnd = int(self._hwnd)
+        self._moving = False                                   # 1.44.1: see PictureOverlay.dragging
+        self.on_reset = None                                   # 1.44.1: right click in edit mode
         self._proc = WNDPROC(self._wndproc)                    # keep a reference!
         self._old_proc = _SetLong(self._hwnd, GWLP_WNDPROC, ctypes.cast(self._proc, ctypes.c_void_p).value)
         self._start()
@@ -882,7 +917,13 @@ class Win32Overlay(PictureOverlay):
             if self._editing:
                 if msg == WM_NCHITTEST:
                     return HTCAPTION                  # drag anywhere on the picture
+                if msg == WM_ENTERSIZEMOVE:
+                    self._moving = True
+                if msg == WM_NCRBUTTONUP and self.on_reset:
+                    self.on_reset()
+                    return 0
                 if msg == WM_EXITSIZEMOVE:
+                    self._moving = False
                     rc = wintypes.RECT()
                     _u.GetWindowRect(self._hwnd, ctypes.byref(rc))
                     self._pos = (rc.left, rc.top)
@@ -901,7 +942,8 @@ class Win32Overlay(PictureOverlay):
         if not self._prepared:
             return
         data, w, h, _ = self._prepared[self._frame_i]
-        err = _surface(self).push(self._hwnd, data, w, h, pos or self._pos or (0, 0), self.opacity * self.fade)
+        pos = None if self.dragging else (pos or self._pos or (0, 0))   # 1.44.1: dragged = the picture only
+        err = _surface(self).push(self._hwnd, data, w, h, pos, self.opacity * self.fade)
         if err:
             self.last_error = err
 
