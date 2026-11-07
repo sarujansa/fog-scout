@@ -1672,6 +1672,8 @@ class RecordingsTab:
             win.claude_key = self._claude_editor_key
             win.claude_frame = lambda: bool(self.settings.get("claude_frame", False))   # 1.35: a still may go along
             win._claude_refresh()
+            win.templates_from = lambda: self.settings.get("edit_templates") or []     # 1.44: cut templates
+            win._templates_refresh()
         return win
 
     def _rec_preview_follow(self, r):
