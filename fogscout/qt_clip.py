@@ -457,7 +457,7 @@ class PreviewView(QWidget):
 
     def set_suggest(self, boxes):
         """1.41.1: the text boxes found (fractions), drawn numbered over the picture; [] = none."""
-        self.suggest = [list(map(float, b[:4])) for b in boxes]
+        self.suggest = [list(map(float, b[:6] if len(b) >= 6 else b[:4])) for b in boxes]   # 1.42: may carry a window
         self.update()
 
     def set_boxes(self, boxes):
