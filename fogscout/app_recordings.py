@@ -1650,6 +1650,7 @@ class RecordingsTab:
             from .qt_editor import EditorWindow as Window
             extra.update(media=self._media_items, on_open=self._editor_open,
                          cache_dir=os.path.join(self.data_dir, "cache", "clipthumbs"),
+                         models_dir=os.path.join(self.root_dir, "models"),               # 1.41.1: „Text finden“
                          layout=self.settings.get("editor_layout") or {},
                          autosave=bool(self.settings.get("editor_autosave", True)),     # 1.18.1
                          round_t=(getattr(r, "t", 0.0) or None))
