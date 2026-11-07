@@ -1708,14 +1708,14 @@ def test_right_click_menus_of_recordings_last_rounds_and_the_overlay_preview(app
         app._preview_pick(("menu", "hud", 3, 4))
         items, _pos = shown[-1]
         ids = [i[0] for i in items if i]
-        assert ids == ["size", "dark"] and app._sel == "hud"
+        assert ids == ["place", "size", "dark"] and app._sel == "hud"           # 1.44.2: + position
         app._menu_act("size")
         assert abs(app.settings["overlay"]["hud_scale"] - 1.0) < 0.01
         before = bool(o.get("hud_backdrop"))
         app._menu_act("dark")
         assert bool(app.settings["overlay"].get("hud_backdrop")) != before
         app._preview_pick(("menu", "music", 3, 4))
-        assert [i[0] for i in shown[-1][0] if i] == ["size", "dark", "hide"]
+        assert [i[0] for i in shown[-1][0] if i] == ["place", "size", "dark", "hide"]
     finally:
         app.quit()
 
