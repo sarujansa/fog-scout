@@ -635,3 +635,60 @@ def test_the_marks_section_lists_the_marks_and_makes_a_clip_around_one(qapp, cli
         assert not hasattr(compact, "mark_list")
     finally:
         compact.close()
+
+
+def test_exports_queue_one_after_another_across_editors_and_quit_stops_the_waiting_ones(qapp, clip, tmp_path,
+                                                                                       monkeypatch):
+    """1.42.2: a click on „Exportieren“ while an export runs queues it (the button stays); the exports of all editors
+    run one at a time in the order asked for, a waiting one says how many are before it and when its turn comes;
+    quitting stops the running and the waiting ones."""
+    from fogscout import qt_clip
+    running, order, release = [], [], threading.Event()
+
+    def fake_export(path, edit, out, mode, ffmpeg, run=None, **kw):
+        running.append(out)
+        order.append(out)
+        assert len(running) == 1                                            # never two at once
+        release.wait(10)
+        running.remove(out)
+        if run([ffmpeg, "-version"])[0] != 0:                               # stopped meanwhile
+            return False, "stopped"
+        with open(out, "wb") as f:
+            f.write(b"x")
+        return True, ""
+    monkeypatch.setattr(qt_clip.clipedit, "export", fake_export)
+    saved = []
+    a = _window(qapp, clip, tmp_path, on_saved=saved.append)
+    b = _window(qapp, clip, tmp_path / "b", on_saved=saved.append)
+    try:
+        for w in (a, b):
+            w.parts = [qt_clip.clipedit.Part(0.0, 2.0)]
+        a.name_edit.setText("eins")
+        a.save()
+        assert _pump(qapp, lambda: len(running) == 1)
+        assert a.save_btn.isEnabled()                                       # a second click queues
+        a.name_edit.setText("zwei")
+        a.save()
+        assert "1 Export(e) davor" in a.status.text()
+        b.name_edit.setText("drei")
+        b.save()
+        assert "2 Export(e) davor" in b.status.text()
+        release.set()
+        assert _pump(qapp, lambda: len(saved) == 3, 30)
+        assert [os.path.basename(p) for p in order] == ["eins.mp4", "zwei.mp4", "drei.mp4"]
+        assert [os.path.basename(p) for p in saved] == ["eins.mp4", "zwei.mp4", "drei.mp4"]
+        assert qt_clip.running_saves() == [] and qt_clip.EXPORTS.ahead(object()) == -1
+        release.clear()                                                     # quitting with one running, one waiting
+        a.name_edit.setText("vier")
+        a.save()
+        b.name_edit.setText("fünf")
+        b.save()
+        assert _pump(qapp, lambda: len(running) == 1)
+        stopped = qt_clip.stop_saves(wait=0.5)
+        release.set()
+        assert sorted(os.path.basename(p) for p in stopped) == ["fünf.mp4", "vier.mp4"]
+        assert _pump(qapp, lambda: qt_clip.running_saves() == [], 10) and len(saved) == 3
+    finally:
+        release.set()
+        a.close()
+        b.close()
