@@ -392,6 +392,11 @@ class OverlayTab:
                                                       values=[_(t) for _k, t in INPUT_SPOTS]))
         pcb.pack(side="left", padx=6)
         pcb.bind("<<ComboboxSelected>>", lambda e: self._inputs_spot_changed())
+        self.inputs_record_var = ui.BooleanVar(value=bool(self.settings.get("inputs_record", True)))   # 1.39.1
+        self._reg("ov.inputs_record", ui.Checkbutton(inf, text=_("Eingaben mit der Aufnahme speichern (für den "
+                                                                 "Clip-Editor)"),
+                                                     variable=self.inputs_record_var,
+                                                     command=self._inputs_record_changed)).pack(anchor="w", pady=(2, 0))
         self.inputs_backdrop_var = ui.BooleanVar(value=bool(o.get("inputs_backdrop", True)))
         self._reg("ov.inputs_backdrop", ui.Checkbutton(inf, text=_("Dunkle Fläche hinter den Eingaben"),
                                                        variable=self.inputs_backdrop_var,
@@ -399,8 +404,9 @@ class OverlayTab:
                                                                                                     pady=(2, 0))
         self._reg("ov.inputs_hint", ui.Label(inf, text=_("Gelesen werden nur W, A, S, D, Q, E, R, Leertaste, Shift, "
                                                          "Strg, die Maustasten und ein Gamepad – nur während einer "
-                                                         "Runde und nur, solange DBD vorne ist. Nichts wird "
-                                                         "gespeichert oder gesendet."),
+                                                         "Runde und nur, solange DBD vorne ist. Gesendet wird "
+                                                         "nichts; gespeichert nur mit dem Häkchen oben, als Datei "
+                                                         "neben der eigenen Aufnahme."),
                                              style="Dim.TLabel", wraplength=420)).pack(anchor="w")
 
     def _small_off_changed(self):

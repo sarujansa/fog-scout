@@ -230,6 +230,7 @@ DEFAULTS = {
     "claude_stats": False,              # 1.35: the search may ask Claude about summed-up round values
     "crash_seen": 0.0,                  # 1.36: time of the last crash the start already asked about (diagnose)
     "inputs_told": False,               # 1.39: the note on what the input card reads was shown once
+    "inputs_record": True,              # 1.39.1: with the input card on, a round's inputs go next to its recording
     "claude_model": "opus",             # 1.36: opus | sonnet | haiku for every Claude request (askclaude.MODELS)
     "claude_spent": {},                 # 1.36: {"YYYY-MM": estimated $} – what the requests cost per month, this PC
     "claude_key": "",                   # the user's own Anthropic API key, DPAPI-protected (spotify.protect), PC-specific
