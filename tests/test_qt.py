@@ -971,13 +971,15 @@ def test_preview_draws_the_screen_and_posts_a_click(qapp, keep):
     assert set(view._pix) == {"map", "hud"}
     ox, oy, s = view._frame()
     QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(round(ox + 3000 * s), round(oy + 900 * s)))
-    action, (key, (what, x, y)) = posted.get_nowait()
-    assert action == "act" and key == "ov.preview" and what == "move" and abs(x - 3000) < 8 and abs(y - 900) < 8
+    assert posted.empty()                     # 1.44.2: an empty spot no longer moves the map there
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(round(ox + 3300 * s), round(oy + 60 * s)))
+    assert posted.get_nowait() == ("act", ("ov.preview", ("select", "hud")))
 
 
 def test_preview_drags_the_element_under_the_mouse(qapp, keep):
     """1.64.1 (user: "nur die Map moven, nicht das andere"): the element under the mouse is grabbed and its corner
-    follows the mouse; an empty spot still moves the map's centre there."""
+    follows the mouse. 1.44.2: an empty spot moves nothing (it put the map there), a second click on the picked
+    element does not pick it again (that switched the settings tab each time)."""
     from PIL import Image
     from PySide6.QtCore import QPoint, Qt
     from PySide6.QtTest import QTest
@@ -1008,8 +1010,11 @@ def test_preview_drags_the_element_under_the_mouse(qapp, keep):
     QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, at(3150, 1020))
     action, (key, (what, name, x, y)) = posted.get_nowait()
     assert (what, name) == ("place", "music") and abs(x - 3100) < 8 and abs(y - 1000) < 8
-    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, at(1700, 700))     # empty spot: the map goes there
-    assert posted.get_nowait()[1][1][0] == "move"
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, at(1700, 700))     # empty spot: nothing moves
+    assert posted.empty()
+    view.show_state({"data": dict(data, editing=True, selected="music"), "visible": True})
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, at(3150, 320))     # the picked one again: no new pick
+    assert posted.empty()
 
 
 def test_preview_sizes_the_picked_element_by_its_corner_and_the_wheel(qapp, keep):
