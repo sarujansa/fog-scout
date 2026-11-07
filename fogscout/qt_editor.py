@@ -1684,7 +1684,8 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
         part = self.parts[i] if i is not None else None
         self.preview.set_now(src, getattr(part, "src", 0))
         self._show_pos()
-        self._scrub(src, vf=self._effects_vf(i, src), part=part)
+        drag = self.timeline.gesture_active() or None   # 1.40.1: while dragging the key frame at once, exact at rest
+        self._scrub(src, quick=drag, vf=self._effects_vf(i, src), part=part)
 
     def _effects_vf(self, i, src) -> list:
         """1.19: the effects of clip ``i`` on the still at ``src`` – the zoom tool shows the whole picture (its boxes
