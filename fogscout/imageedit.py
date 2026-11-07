@@ -189,7 +189,7 @@ def base(img: Image.Image, edit: ImageEdit) -> Image.Image:
 def box_px(box, size: tuple) -> tuple:
     """Fraction box -> whole pixels (x0, y0, x1, y1) inside a picture ``size``, at least 1 px."""
     w, h = size
-    x, y, bw, bh = box
+    x, y, bw, bh = box[:4]                     # 1.41: a censor box may carry its time window after these
     x0, y0 = max(0, min(w - 1, int(round(x * w)))), max(0, min(h - 1, int(round(y * h))))
     x1, y1 = max(x0 + 1, min(w, int(round((x + bw) * w)))), max(y0 + 1, min(h, int(round((y + bh) * h))))
     return x0, y0, x1, y1

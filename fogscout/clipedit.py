@@ -521,7 +521,7 @@ def cut(path: str, start: float, end: float, out: str, mode: str = "copy", ffmpe
         args += ["-c", "copy", "-avoid_negative_ts", "make_zero"]
     graphs, vmap = [], "0:v:0"
     if censor:
-        graphs.append(censor_graph(censor, censor_style, info.width, info.height, vf))
+        graphs.append(censor_graph(censor, censor_style, info.width, info.height, vf, base=start))
         vmap = "[vout]"
     elif vf:
         args += ["-vf", vf]
@@ -570,9 +570,28 @@ def names_box(width: int, height: int) -> tuple:
     return (off + x * gw / width, y, w * gw / width, h)
 
 
+def box_window(box):
+    """1.41: (t0, t1) – the seconds of the recording a censor box is limited to ([x, y, w, h, t0, t1]); None = the
+    whole recording ([x, y, w, h], as before)."""
+    return (float(box[4]), float(box[5])) if len(box) >= 6 else None
+
+
+def box_active(box, t: float) -> bool:
+    """1.41: the box hides something at second ``t`` of the recording."""
+    win = box_window(box)
+    return win is None or win[0] - 1e-6 <= float(t) <= win[1] + 1e-6
+
+
+def boxes_in(boxes, start: float, end: float, still: bool = False) -> list:
+    """1.41: the boxes that hide something between ``start`` and ``end`` of the recording (a still: at ``start``)."""
+    if still:
+        return [b for b in boxes if box_active(b, start)]
+    return [b for b in boxes if box_window(b) is None or (box_window(b)[1] > start and box_window(b)[0] < end)]
+
+
 def box_px(box, width: int, height: int) -> tuple:
     """A fraction box -> whole, even pixel values (x, y, w, h) inside the frame (ffmpeg wants even sizes)."""
-    x, y, w, h = box
+    x, y, w, h = box[:4]
     x0 = min(max(0, int(x * width)), width - 2) // 2 * 2
     y0 = min(max(0, int(y * height)), height - 2) // 2 * 2
     x1 = min(width, int((x + w) * width + 1)) // 2 * 2
@@ -581,22 +600,31 @@ def box_px(box, width: int, height: int) -> tuple:
 
 
 def censor_graph(boxes, style: str, width: int, height: int, tail: str = "", src: str = "[0:v]",
-                 out: str = "[vout]", tag: str = "") -> str:
+                 out: str = "[vout]", tag: str = "", base: float = 0.0, still_at: float | None = None) -> str:
     """1.7.2 (user: censor the names on the left): the ffmpeg filter graph that hides ``boxes`` (fraction
     boxes) in a ``width`` × ``height`` picture – "pixel" = coarse blocks, "blur" = blurred, "black" = a black
     box, "retouch" = ffmpeg's delogo (the area is interpolated from its surroundings, no visible box); ``tail`` =
     filters to run after it (scale/fps of the Discord mode). From ``src`` (default [0:v]) to ``out`` (default
-    [vout]); ``tag`` = a suffix for the labels inside (one graph per part of an edit)."""
+    [vout]); ``tag`` = a suffix for the labels inside (one graph per part of an edit). 1.41: a box with a time window
+    (box_window, seconds of the recording) works only then – ``base`` = the recording's second at t = 0 of this
+    input; ``still_at`` = a held still showing that second (the box is in or out, no timeline)."""
     parts, cur = [], src
     for i, box in enumerate(boxes):
+        win, when = box_window(box), ""
+        if win is not None:
+            if still_at is not None:
+                if not box_active(box, still_at):
+                    continue
+            else:
+                when = f":enable='between(t,{max(0.0, win[0] - base):.3f},{max(0.0, win[1] - base):.3f})'"
         x, y, w, h = box_px(box, width, height)
         nxt = f"[c{i}{tag}]"
         if style == "black":
-            parts.append(f"{cur}drawbox=x={x}:y={y}:w={w}:h={h}:color=black:t=fill{nxt}")
+            parts.append(f"{cur}drawbox=x={x}:y={y}:w={w}:h={h}:color=black:t=fill{when}{nxt}")
         elif style == "retouch":            # 1.7.3 (user: "retouchieren"): painted over from the surroundings
             x, y = max(EDGE_PX, x), max(EDGE_PX, y)
             w, h = max(2, min(w, width - EDGE_PX - x)), max(2, min(h, height - EDGE_PX - y))
-            parts.append(f"{cur}delogo=x={x}:y={y}:w={w}:h={h}{nxt}")
+            parts.append(f"{cur}delogo=x={x}:y={y}:w={w}:h={h}{when}{nxt}")
         else:
             if style == "blur":
                 r = max(2, min(w, h) // 6)
@@ -605,7 +633,7 @@ def censor_graph(boxes, style: str, width: int, height: int, tail: str = "", src
                 p = max(4, min(w, h) // 8)
                 inner = f"scale={max(1, w // p)}:{max(1, h // p)}:flags=area,scale={w}:{h}:flags=neighbor"
             a, b, pix = f"[a{i}{tag}]", f"[b{i}{tag}]", f"[p{i}{tag}]"
-            parts.append(f"{cur}split{a}{b};{b}crop={w}:{h}:{x}:{y},{inner}{pix};{a}{pix}overlay={x}:{y}{nxt}")
+            parts.append(f"{cur}split{a}{b};{b}crop={w}:{h}:{x}:{y},{inner}{pix};{a}{pix}overlay={x}:{y}{when}{nxt}")
         cur = nxt
     parts.append(f"{cur}{tail or 'null'}{out}")
     return ";".join(parts)
@@ -1214,8 +1242,10 @@ def edit_graph(edit: Edit, info: Info, mode: str = "exact", target_mb: float = D
                           f"setpts=N/({fps:g})/TB[vh{i}]")
             cur = f"[vh{i}]"
         pw, ph = (src_info(p.src).width, src_info(p.src).height) if multi else (w, h)   # this part's own picture
-        if censor:                                               # on the recording's own picture
-            chains.append(censor_graph(censor, censor_style, pw, ph, src=cur, out=f"[vc{i}]", tag=f"_{i}"))
+        mine = boxes_in(censor or (), p.start, p.end, still=p.hold > 0)   # 1.41: boxes with a window in this part
+        if mine:                                                 # on the recording's own picture
+            chains.append(censor_graph(mine, censor_style, pw, ph, src=cur, out=f"[vc{i}]", tag=f"_{i}", base=base,
+                                       still_at=p.start if p.hold > 0 else None))
             cur = f"[vc{i}]"
         for j, inp in enumerate(shape_inputs):
             idx, t0, t1 = inp[:3]

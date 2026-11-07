@@ -5,6 +5,7 @@ dict in, dict out; the editor turns its state into the dict and back. Nothing bu
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from dataclasses import replace
@@ -104,14 +105,24 @@ def _part_row(p) -> list:
     return row + [fx] if fx else row
 
 
-def _box(v) -> list | None:
+def _box(v, timed: bool = False) -> list | None:
+    """A fraction box [x, y, w, h] inside the picture – 1.41 (``timed``, censor boxes): or [x, y, w, h, t0, t1]
+    with its window in seconds of the recording (0 ≤ t0 < t1); a broken window drops the box (never a box that
+    would suddenly hide all the time instead – or nothing)."""
     try:
-        x, y, w, h = (float(a) for a in v)
+        vals = [float(a) for a in v]
     except (TypeError, ValueError):
         return None
+    if len(vals) == 6 and timed:
+        t0, t1 = vals[4], vals[5]
+        if not (math.isfinite(t0) and math.isfinite(t1) and 0 <= t0 < t1):
+            return None
+    elif len(vals) != 4:
+        return None
+    x, y, w, h = vals[:4]
     if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1):
         return None
-    return [x, y, min(w, 1 - x), min(h, 1 - y)]
+    return [x, y, min(w, 1 - x), min(h, 1 - y)] + vals[4:]
 
 
 def from_dict(d, duration: float = 0.0) -> tuple[EditState, dict] | None:
@@ -131,7 +142,7 @@ def from_dict(d, duration: float = 0.0) -> tuple[EditState, dict] | None:
         crop = _box(d.get("crop")) if d.get("crop") else None
         shapes = [s for s in (annotate.from_dict(x) for x in list(d.get("shapes") or [])[:MAX_SHAPES]) if s is not None]
         censor = d.get("censor") if isinstance(d.get("censor"), dict) else {}
-        boxes = [b for b in (_box(x) for x in list(censor.get("boxes") or [])[:MAX_BOXES]) if b is not None]
+        boxes = [b for b in (_box(x, timed=True) for x in list(censor.get("boxes") or [])[:MAX_BOXES]) if b is not None]
         style = str(censor.get("style") or "pixel")
         state = EditState(parts, tuple(crop) if crop else None, str(d.get("crop_key") or ("free" if crop else "none")),
                           shapes, max(0.0, float(d.get("fade_in") or 0)), max(0.0, float(d.get("fade_out") or 0)),
@@ -172,7 +183,8 @@ VERSION4 = 4                      # 1.20: the short (layout, title, subtitles) �
 VERSION5 = 5                      # 1.21: the own audio track A2 (music, ducking, fades) – 1.20 opens these read-only
 VERSION6 = 6                      # 1.22: montages (clips of several recordings) – 1.21 opens these read-only
 VERSION7 = 7                      # 1.39.1: the input card (on, device, corner, size) – 1.39 opens these read-only
-CURRENT = VERSION7                # read-only ("aus neuerer Version") instead of saving the effects away
+VERSION8 = 8                      # 1.41: censor boxes with a time window – 1.40 would drop them, so read-only there
+CURRENT = VERSION8                # read-only ("aus neuerer Version") instead of saving the effects away
 ID_SHOWN = 10                     # hex digits of the project id in the file name
 STEM_MAX = 80
 QFP_BYTES = 1 << 20               # quick fingerprint: size + first and last MiB (preselection only, never proof)
@@ -350,7 +362,7 @@ def validate(d, duration: float, default_parts, durations=None) -> tuple[EditSta
         s.t0, s.t1 = t0, t1
         shapes.append(s)
     censor = d.get("censor") if isinstance(d.get("censor"), dict) else {}
-    boxes = [b for b in (_box(x) for x in list(censor.get("boxes") or [])[:MAX_BOXES]) if b is not None] \
+    boxes = [b for b in (_box(x, timed=True) for x in list(censor.get("boxes") or [])[:MAX_BOXES]) if b is not None] \
         if isinstance(censor.get("boxes"), list) else []
     style = str(censor.get("style") or "pixel")
     crop = _box(d.get("crop")) if d.get("crop") else None

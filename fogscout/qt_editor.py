@@ -1226,6 +1226,15 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
                                     _("Entfernt den markierten Kasten (Taste Entf)."))
         self.clear_btn = self._btn(zb, _("Alle entfernen"), self._clear_boxes, "")
         sec.body.addLayout(zb)
+        wb = FlowRow(spacing=6)                                 # 1.41: a box only for a while (seconds of the recording)
+        self.box_from_btn = self._btn(wb, _("Kasten ab hier"), self.box_from_here,
+                                      _("Der markierte Kasten gilt erst ab dem Bild am Abspielkopf – z. B. wenn ein "
+                                        "Name erst später erscheint."))
+        self.box_until_btn = self._btn(wb, _("Kasten bis hier"), self.box_until_here,
+                                       _("Der markierte Kasten gilt nur bis zum Bild am Abspielkopf."))
+        self.box_always_btn = self._btn(wb, _("Kasten immer"), self.box_always,
+                                        _("Der markierte Kasten gilt wieder für die ganze Aufnahme."))
+        sec.body.addLayout(wb)
         self.censor_hint = QLabel("")
         self.censor_hint.setProperty("class", "dim")
         self.censor_hint.setWordWrap(True)
@@ -2175,6 +2184,50 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
     def _clear_boxes(self):
         self.preview.clear_boxes()
 
+    # ---- 1.41: a censor box for a while – seconds of the recording, like the drawings' times
+    def _box_target(self):
+        pv = self.preview
+        if pv.selected is not None and 0 <= pv.selected < len(pv.boxes):
+            return pv.selected
+        return len(pv.boxes) - 1 if pv.boxes else None
+
+    def _box_now(self) -> float:
+        return float(self.preview.now or 0.0)
+
+    def _set_box_window(self, i, window):
+        self.preview.selected = i
+        self.preview.set_box_window(i, window)
+        if window:
+            self.status.setText(_("Kasten {n} gilt von {a} bis {b} der Aufnahme.", n=i + 1,
+                                  a=clipedit.fmt_pos(window[0]), b=clipedit.fmt_pos(window[1])))
+        else:
+            self.status.setText(_("Kasten {n} gilt für die ganze Aufnahme.", n=i + 1))
+        self._censor_hint()
+
+    def box_from_here(self):
+        i = self._box_target()
+        if i is None:
+            return
+        now, win = self._box_now(), clipedit.box_window(self.preview.boxes[i])
+        length = float(getattr(self._src_info(clipedit.Part(now, now, src=self.preview.now_src)), "duration", 0) or 0)
+        end = win[1] if win and win[1] > now + 0.05 else max(length, now + 0.1)
+        self._set_box_window(i, (now, end))
+
+    def box_until_here(self):
+        i = self._box_target()
+        if i is None:
+            return
+        now, win = self._box_now(), clipedit.box_window(self.preview.boxes[i])
+        if now <= 0.05:
+            self.status.setText(_("Am Anfang der Aufnahme gibt es kein „bis hier“."))
+            return
+        self._set_box_window(i, (win[0] if win and win[0] < now - 0.05 else 0.0, now))
+
+    def box_always(self):
+        i = self._box_target()
+        if i is not None:
+            self._set_box_window(i, None)
+
     def _censor_hint(self):
         n = len(self.preview.boxes)
         if not n:
@@ -2184,9 +2237,12 @@ class EditorWindow(ClaudeMixin, InputMixin, MomentsMixin, MontageMixin, MusicMix
             text = _("{n} Kasten/Kästen – ziehen = verschieben, Ecke rechts unten = Grösse, Klick = markieren.", n=n)
         else:
             text = _("{n} Kasten/Kästen gemerkt – sie gelten auch für den nächsten Clip.", n=n)
+        timed = sum(1 for b in self.preview.boxes if clipedit.box_window(b) is not None)
+        if timed:
+            text += " " + _("{n} davon nur zeitweise.", n=timed)
         self.censor_hint.setText(text)
-        self.remove_btn.setEnabled(n > 0)
-        self.clear_btn.setEnabled(n > 0)
+        for b in (self.remove_btn, self.clear_btn, self.box_from_btn, self.box_until_btn, self.box_always_btn):
+            b.setEnabled(n > 0)
 
     # ---- projects (1.16)
     def _project_extra(self) -> dict:
