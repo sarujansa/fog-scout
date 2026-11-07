@@ -27,7 +27,7 @@ def test_the_reader_calls_only_polling_apis_never_a_hook():
     called = {n.func.attr for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
     win = {c for c in called if c[:1].isupper()}
     assert win <= {"GetAsyncKeyState", "XInputGetState", "GetForegroundWindow", "GetAncestor", "WinDLL", "Thread",
-                   "Event", "Structure", "POINTER"}
+                   "Event", "Structure", "POINTER", "Lock"}
     text = (PKG / "inputs.py").read_text(encoding="utf-8")
     for bad in ("SetWindowsHookEx", "RegisterRawInputDevices", "GetRawInputData", "GetKeyboardState", "ToUnicode",
                 "OpenProcess"):

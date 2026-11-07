@@ -17,6 +17,7 @@ from dataclasses import MISSING, asdict, dataclass, field
 
 from . import fsops
 from .fsops import rel_path
+from .inputs import INPUTS_SUFFIX
 from .i18n import _
 
 INDEX = "fogscout-recordings.jsonl"
@@ -53,6 +54,7 @@ class Recording:
     farming: bool = False        # 1.4.2: a farming round (cross-play off) – goes first when room is needed
     pre_s: float = 0.0           # 1.4.2: seconds of pre-roll at the start of the file (0 = none or separate)
     yt: str = ""                 # 1.10: the YouTube video id once uploaded (ytupload)
+    inputs: str = ""             # 1.39.1: companion file with the round's input changes ("<file>.inputs.json")
 
 
 def adopt_old_file(folder: str, old: str, new: str) -> bool:
@@ -109,16 +111,24 @@ def _entry(cls, d):
     return cls(**kw)
 
 
-def deletable(name: str) -> bool:
+def deletable(name: str, companion: bool = False) -> bool:
     """1.38.57 (security review): may pruning delete the index's ``name``? Only a recording file (VIDEO_EXTS), never
     one of the index files – the index is user-writable, an entry {"file": "fogscout-recordings.jsonl"} would
-    otherwise delete the index itself."""
+    otherwise delete the index itself. ``companion`` (1.39.1): the input file next to a recording – only names with
+    INPUTS_SUFFIX."""
     if not isinstance(name, str) or not name:
         return False
     base = re.split(r"[\\/]", name)[-1]
     if base.lower() in {n.lower() for n in (INDEX, OLD_INDEX, CLIPS_INDEX, OLD_CLIPS_INDEX)}:
         return False
+    if companion:
+        return base.lower().endswith(INPUTS_SUFFIX)
     return base.lower().endswith(VIDEO_EXTS)
+
+
+def own_files(r: Recording) -> list:
+    """1.39.1: (name, deletable) of every file a recording entry owns – the video, its pre-roll, its inputs."""
+    return [(n, deletable(n, companion=i == 2)) for i, n in enumerate((r.file, r.pre, r.inputs)) if n]
 
 
 def load_index(folder: str) -> list[Recording]:
@@ -164,8 +174,8 @@ def prune_farming(folder: str, recs: list[Recording], days: int, now: float | No
     gone = expired_farming(recs, days, time.time() if now is None else now)
     deleted = []
     for r in gone:
-        for n in (r.file, r.pre):
-            p = rel_path(folder, n) if n and deletable(n) else None     # 1.38.57: only recording files
+        for n, ok in own_files(r):
+            p = rel_path(folder, n) if ok else None                     # 1.38.57: only recording files
             if p and os.path.exists(p):
                 try:
                     fsops.delete_inside(folder, p)      # 1.33.5 (S2): never through a link out of the folder
@@ -210,8 +220,8 @@ def prune(folder: str, recs: list[Recording], limit: int, reserve: int = RESERVE
     for r in sorted([r for r in left if not r.keep], key=lambda r: (prune_rank(r), r.t)):
         if (limit <= 0 or total <= limit) and free >= reserve:
             break
-        for n in (r.file, r.pre):
-            p = rel_path(folder, n) if n and deletable(n) else None       # only inside the folder, only videos
+        for n, ok in own_files(r):
+            p = rel_path(folder, n) if ok else None                       # only inside the folder, only videos
             if p:
                 try:
                     fsops.delete_inside(folder, p)                        # 1.33.5 (S2): and no link out of it

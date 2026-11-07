@@ -56,7 +56,7 @@ def to_dict(state: EditState, source: str, name: str, extra: dict | None = None)
             "censor": {"on": bool(state.censor_on), "style": str(state.censor_style or "pixel"),
                        "boxes": [[round(float(v), 5) for v in b] for b in state.boxes]},
             "extra": dict(extra or {}), **_short_field(state), **_music_field(state),
-            **_sources_field(state)}
+            **_sources_field(state), **_inputs_field(state)}
 
 
 def _short_field(state) -> dict:
@@ -71,6 +71,13 @@ def _music_field(state) -> dict:
     from . import musictrack
     d = musictrack.to_dict(getattr(state, "music", None))
     return {"music": d} if d else {}
+
+
+def _inputs_field(state) -> dict:
+    """1.39.1: {"inputs": …} only when the cut has the input card's choice – without it the content (and hash) of
+    1.39."""
+    spec = getattr(state, "inputs", None)
+    return {"inputs": spec.to_dict()} if spec is not None else {}
 
 
 def _sources_field(state) -> dict:
@@ -164,7 +171,8 @@ VERSION3 = 3                      # 1.19: clips carry effects (colour, zoom, bac
 VERSION4 = 4                      # 1.20: the short (layout, title, subtitles) – 1.19 opens these read-only
 VERSION5 = 5                      # 1.21: the own audio track A2 (music, ducking, fades) – 1.20 opens these read-only
 VERSION6 = 6                      # 1.22: montages (clips of several recordings) – 1.21 opens these read-only
-CURRENT = VERSION6                # read-only ("aus neuerer Version") instead of saving the effects away
+VERSION7 = 7                      # 1.39.1: the input card (on, device, corner, size) – 1.39 opens these read-only
+CURRENT = VERSION7                # read-only ("aus neuerer Version") instead of saving the effects away
 ID_SHOWN = 10                     # hex digits of the project id in the file name
 STEM_MAX = 80
 QFP_BYTES = 1 << 20               # quick fingerprint: size + first and last MiB (preselection only, never proof)
@@ -351,11 +359,12 @@ def validate(d, duration: float, default_parts, durations=None) -> tuple[EditSta
     for key in ("fade_in", "fade_out"):
         f = _finite(d.get(key)) or 0.0
         fades.append(min(max(0.0, f), total / 2))
-    from . import musictrack, shorts
+    from . import inputtrack, musictrack, shorts
     state = EditState(parts, tuple(crop) if crop else None, str(d.get("crop_key") or ("free" if crop else "none")),
                       shapes, fades[0], fades[1], boxes, bool(censor.get("on")),
                       style if style in ("pixel", "blur", "black", "retouch") else "pixel",
-                      shorts.from_dict(d.get("short")), musictrack.from_dict(d.get("music")), list(sources))
+                      shorts.from_dict(d.get("short")), musictrack.from_dict(d.get("music")), list(sources),
+                      inputtrack.from_dict(d.get("inputs")))
     extra = dict(d.get("extra")) if isinstance(d.get("extra"), dict) else {}
     extra.setdefault("name", str(d.get("name") or ""))
     view = None
