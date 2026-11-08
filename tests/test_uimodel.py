@@ -1723,6 +1723,20 @@ def test_right_click_menus_of_recordings_last_rounds_and_the_overlay_preview(app
         assert place[2] is False and next(i for i in shown[-1][0] if i and i[0] == "lock")[3] is True
         app._menu_act("lock")                                     # … and unlocked
         assert app.settings["overlay"]["locked"] == []
+
+        # 1.46.2 (Saru: „Rechtsklick im Overlay, um das Feld auszublenden“): a right click on an element in the game
+        # opens the same menu at the mouse pointer (pos None) – its "Ausblenden" hides the element
+        for win, name in ((app.overlay, "map"),):             # the HudWindows exist on Windows (test_windows)
+            assert win.on_menu is not None
+            win.on_menu()                                         # what the window procedure calls on WM_NCRBUTTONUP
+            while not app.events.empty():
+                app._dispatch(app.events.get_nowait())
+            items, pos = shown[-1]
+            assert pos is None and app._sel == name
+            assert [i[0] for i in items if i] == ["place", "size", "dark", "lock", "hide"]
+            assert app._el_shown(name)
+            app._menu_act("hide")
+            assert not app._el_shown(name)
     finally:
         app.quit()
 

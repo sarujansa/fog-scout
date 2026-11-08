@@ -307,9 +307,12 @@ def test_a_dragged_window_keeps_its_place_until_the_drop_and_a_right_click_reset
     hud._wndproc(hud.hwnd(), ow.WM_EXITSIZEMOVE, 0, 0)
     assert moved == [(40, 40)] and not hud.dragging
     assert hud._wndproc(hud.hwnd(), ow.WM_NCRBUTTONUP, 0, 0) == 0 and reset == [1]
+    menus = []                                                # 1.46.2: with a menu the right click opens it
+    hud.on_menu = lambda: menus.append(1)
+    assert hud._wndproc(hud.hwnd(), ow.WM_NCRBUTTONUP, 0, 0) == 0 and menus == [1] and reset == [1]
     hud.set_editing(False)
     hud._wndproc(hud.hwnd(), ow.WM_NCRBUTTONUP, 0, 0)
-    assert reset == [1]                                       # only in edit mode
+    assert reset == [1] and menus == [1]                      # only in edit mode
     hud.destroy()
 
 

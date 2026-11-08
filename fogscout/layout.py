@@ -28,10 +28,17 @@ def bar_side(anchor: str, x: float, w: float, gx: float, gw: float, bar: float):
         return "left"
     if anchor in ("top-right", "bottom-right"):
         return "right"
-    centre = x + w / 2              # 1.44.1: an own place counts as "in the bar" only with its middle in it – any
-    if centre < gx + bar:           # overlap did before: a map dragged past the bar's edge stuck to it, then
-        return "left"               # jumped back into it smaller (1.45: kept – a map put into the bar fits it;
-    if centre > gx + gw - bar:      # the limiter lines and the other elements no longer push it)
+    # 1.44.1: an own place counts as "in the bar" only with its middle in it – any overlap did before: a map dragged
+    # past the bar's edge stuck to it, then jumped back into it smaller (1.45: kept – a map put into the bar fits
+    # it; the limiter lines and the other elements no longer push it).
+    # 1.46.3 (Saru's screenshot: a 870 × 1342 map over the survivors' portraits): the App asks with the size from
+    # the slider, before fitting. A map wider than the bar had its "middle" at x + w/2 – at 80 % height and 1 %
+    # from the edge already outside the 440-px bar, so it was never fitted. Judged now by the part a fitted map
+    # takes at its outer edge: at most the bar's width.
+    part = min(w, bar) / 2
+    if x + part < gx + bar:
+        return "left"
+    if x + w - part > gx + gw - bar:
         return "right"
     return None
 
