@@ -296,7 +296,7 @@ def test_the_program_starts_shows_every_page_and_quits(app_root):
             app._qt_post("act", ("ov.preview", ("select", "hud")))            # picked (1.64.9) …
             app._qt_post("act", ("ov.sel_size", 150))                         # … and sized by the one slider
             app._qt_post("act", ("ov.preview", ("resize", "music", 10 ** 6)))  # corner/wheel: as big as it goes
-            app._qt_post("act", ("ov.sel", "Karte"))                          # the map from the list
+            app._qt_post("act", ("ov.elements", ("select", "map")))           # 1.46: the map from the list
             app._qt_post("act", ("ov.sel_size", 50))
             app._qt_post("act", ("ov.edit", None))                   # "Fertig"
             app._qt_post("setup_done")
@@ -644,7 +644,7 @@ def test_position_sliders_only_for_an_own_position_and_folded_cards_are_gone(app
         x, y = (app._qt_reg[k] for k in ("ov.posx", "ov.posy"))
         app.anchor_var.set(anchor_label("auto"))
         app._anchor_changed()
-        assert not ui_shown(x) and not ui_shown(y) and "Mit der Maus verschieben" in app.pos_hint_var.get()
+        assert not ui_shown(x) and not ui_shown(y) and "„Anordnen“" in app.pos_hint_var.get()
         app.anchor_var.set(anchor_label("custom"))
         app._anchor_changed()
         assert ui_shown(x) and ui_shown(y)
@@ -1708,14 +1708,21 @@ def test_right_click_menus_of_recordings_last_rounds_and_the_overlay_preview(app
         app._preview_pick(("menu", "hud", 3, 4))
         items, _pos = shown[-1]
         ids = [i[0] for i in items if i]
-        assert ids == ["place", "size", "dark"] and app._sel == "hud"           # 1.44.2: + position
+        assert ids == ["place", "size", "dark", "lock", "hide"] and app._sel == "hud"   # 1.44.2: + position; 1.46
         app._menu_act("size")
         assert abs(app.settings["overlay"]["hud_scale"] - 1.0) < 0.01
         before = bool(o.get("hud_backdrop"))
         app._menu_act("dark")
         assert bool(app.settings["overlay"].get("hud_backdrop")) != before
         app._preview_pick(("menu", "music", 3, 4))
-        assert [i[0] for i in shown[-1][0] if i] == ["place", "size", "dark", "hide"]
+        assert [i[0] for i in shown[-1][0] if i] == ["place", "size", "dark", "lock", "hide"]
+        app._menu_act("lock")                                     # 1.46: locked from the menu …
+        assert app.settings["overlay"]["locked"] == ["music"]
+        app._preview_pick(("menu", "music", 3, 4))
+        place = next(i for i in shown[-1][0] if i and i[0] == "place")
+        assert place[2] is False and next(i for i in shown[-1][0] if i and i[0] == "lock")[3] is True
+        app._menu_act("lock")                                     # … and unlocked
+        assert app.settings["overlay"]["locked"] == []
     finally:
         app.quit()
 

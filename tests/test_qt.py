@@ -1727,43 +1727,176 @@ def test_the_settings_page_is_split_into_tabs_with_its_cards(qapp, keep):
     assert rec_tab.isAncestorOf(page.controls["st.more.rec_on"][1])
 
 
-def test_the_overlay_preview_and_its_tools_sit_side_by_side_on_a_wide_page(qapp, keep):
-    """1.8.2: preview left, the picked element's tools right while the page is wide; below each other when it
-    is narrow (the tabs with the settings were below the fold on a 760-px window). 1.11.14 (user picked "Vorschau
-    links, Einstellungen rechts"): on a wider page the tabs stand beside preview and tools (a "split"), which then
-    sit below each other in the left column."""
-    from fogscout import qt_pages, qt_window
+def test_the_overlay_editor_has_a_tool_bar_list_canvas_and_inspector_in_three_widths(qapp, keep):
+    """1.46 (user: "das Overlay-Fenster ist sehr klein … ein vollwertiger Overlay-Editor"): the page is an editor –
+    tool bar, list of elements, the canvas with the room left over, the inspector of the element picked. Wide: side
+    by side; medium: the list as chips on top; narrow: all below each other. (Before: preview + tools | tabs.)"""
+    from fogscout import qt_overlay, qt_window
     page = keep(qt_window.FormPage(lambda a, arg=None: None, "Overlay", qt_window.SPECS["overlay"], "overlay"))
-    split = page.findChild(qt_pages.SideBySide, "split")
-    side = next(s for s in page.findChildren(qt_pages.SideBySide) if s is not split)
-    assert split is not None and len(split.cards) == 2 and len(side.cards) == 2
-    assert page.controls["ov.preview"][1].parentWidget() is side.cards[0]
-    assert page.controls["ov.edit"][1].parentWidget() is side.cards[1]
-    tabs = page.controls["ov.look"][1]
-    assert split.cards[1].isAncestorOf(tabs) and split.cards[0].isAncestorOf(side)
-    # the widths decided directly – a real window is limited to the screen (the Windows runner's is smaller)
-    split.arrange(qt_pages.SPLIT_FROM + 200)
-    side.arrange((qt_pages.SPLIT_FROM + 200) // 2)
-    assert split.beside() and not side.beside()                    # tabs beside, preview above the tools
-    split.arrange(qt_pages.SPLIT_FROM - 20)
-    side.arrange(qt_pages.SPLIT_FROM - 20)
-    assert not split.beside() and side.beside()                    # as before 1.11.14
-    split.arrange(600)
-    side.arrange(600)
-    assert not split.beside() and not side.beside()
-    # 1.24.2 (phase 2: at 1280 px the tabs sat below the fold): SPLIT_FROM 1080 → 940. 1.38.11: → 840 – a 1100 window
-    # (the default; its split measured 856 px) shows preview + tools | tabs too, every setting of a tab without
-    # scrolling (checked in tools/screenshots.py pictures: nothing cut at 1100 px)
-    assert 800 <= qt_pages.SPLIT_FROM < 856
-    page.show()                  # and in a real window, as wide as fits a Windows runner's screen
-    page.resize(1100, 700)
+    ed = page.editor
+    assert isinstance(ed, qt_overlay.OverlayEditor)
+    assert ed.bar.isAncestorOf(page.controls["ov.edit"][1]) and ed.bar.isAncestorOf(page.controls["ov.focus_mode"][1])
+    assert ed.rail.isAncestorOf(page.controls["ov.elements"][1])
+    assert ed.canvas is page.controls["ov.preview"][1] and ed.canvas_box.isAncestorOf(ed.canvas)
+    assert ed.inspector.isAncestorOf(page.controls["ov.anchors"][1])
+    assert ed.inspector.isAncestorOf(page.controls["ov.sel_size"][1]) and ed.inspector.isAncestorOf(ed.tabs)
+    assert ed.tabs.tabBar().isHidden() and ed.tabs.count() == 6         # the list picks the tab, not a tab row
+    assert not ed.canvas.hasHeightForWidth()                           # fills its place – no 380-px cap
+    for width, mode in ((1600, "wide"), (900, "medium"), (600, "narrow")):
+        ed.arrange(width)
+        assert ed.mode() == mode
+    page.show()
+    page.resize(1500, 860)
+    for _i in range(3):
+        qapp.processEvents()
+    assert ed.mode() == "wide"
+    r, c, i = (w.geometry() for w in (ed.rail, ed.canvas_box, ed.inspector))
+    assert r.right() < c.left() and c.right() < i.left() and c.width() > r.width() + i.width() - 200
+    page.resize(700, 860)
+    for _i in range(3):
+        qapp.processEvents()
+    assert ed.mode() == "narrow"
+    r, c, i = (w.geometry() for w in (ed.rail, ed.canvas_box, ed.inspector))
+    assert r.bottom() < c.top() and c.bottom() < i.top()
+    keys = qt_window.page_keys("overlay")
+    assert {"ov.preview", "ov.undo", "ov.elements", "ov.anchors", "ov.focus_mode", "ov.master"} <= keys
+    assert "ov.sel" not in keys                                          # the list replaced the choice
+
+
+def test_the_element_list_shows_the_state_and_posts_its_acts(qapp, keep):
+    """1.46: one row per element (+ "Allgemein"): its place and size, an eye and a lock; a click picks it."""
+    from fogscout import qt_overlay
+    posted = queue.Queue()
+    rail = keep(qt_overlay.ElementRail("ov.elements", lambda a, arg=None: posted.put((a, arg))))
+    rows = {"map": {"shown": True, "own": True, "place": "eigener Platz", "size": 36, "locked": True},
+            "music": {"shown": False, "own": False, "place": "automatisch", "size": 100, "locked": False},
+            "text": {"shown": True, "place": "automatisch", "size": 100, "can_hide": False}}
+    rail.show_state({"visible": True, "data": {"order": ["map", "text", "music"], "rows": rows,
+                                               "selected": "music", "editing": False}})
+    rail.show()
+    row = rail.rows()
+    assert set(row) == {"map", "text", "music", "general"}
+    assert row["map"].info.text() == "eigener Platz · 36 %" and row["music"].info.text() == "ausgeblendet"
+    assert row["music"].property("selected") and not row["map"].property("selected")
+    assert row["map"].lock.property("on") and not row["music"].eye.property("on")
+    assert row["text"].eye.isHidden() and row["general"].eye is None
+    row["map"].lock.click()
+    row["music"].eye.click()
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    QTest.mouseClick(row["text"], Qt.LeftButton, Qt.NoModifier, QPoint(5, 5))
+    QTest.mouseClick(row["general"], Qt.LeftButton, Qt.NoModifier, QPoint(5, 5))
+    got = [posted.get_nowait()[1] for _i in range(4)]
+    assert got == [("ov.elements", ("lock", "map", False)), ("ov.elements", ("show", "music", True)),
+                   ("ov.elements", ("select", "text")), ("ov.elements", ("general",))]
+    rail.set_compact(True)                                    # a narrower page: the rows as chips, 4 per line
+    assert rail.grid.columnCount() == 4
+
+
+def test_the_quick_places_show_where_the_element_is_and_post_a_cell(qapp, keep):
+    """1.46: 3×3 cells and "Üblicher Platz"; the cell the element is at is checked; locked = disabled."""
+    from fogscout import qt_overlay
+    posted = queue.Queue()
+    grid = keep(qt_overlay.AnchorGrid("ov.anchors", lambda a, arg=None: posted.put((a, arg))))
+    grid.show_state({"visible": True, "data": {"name": "hud", "cell": [2, 0], "enabled": True}})
+    assert grid.cells[(2, 0)].isChecked() and not grid.auto.isChecked()
+    assert sum(b.isChecked() for b in grid.cells.values()) == 1
+    grid.cells[(1, 2)].click()
+    grid.auto.click()
+    assert [posted.get_nowait()[1] for _i in range(2)] == [("ov.anchors", ("cell", 1, 2)), ("ov.anchors", ("auto",))]
+    assert grid.cells[(2, 0)].isChecked() and not grid.cells[(1, 2)].isChecked()   # the App's answer decides
+    grid.show_state({"visible": True, "data": {"name": "hud", "cell": "auto", "enabled": False}})
+    assert grid.auto.isChecked() and not grid.screen.isEnabled() and not grid.auto.isEnabled()
+    assert "entsperren" in grid.note.text()
+
+
+def test_the_editor_canvas_says_what_the_mouse_does_and_tab_and_esc_work(qapp, keep):
+    """1.46: the status line follows the mouse without the App; Tab picks the next element, Esc ends moving, a
+    locked element is not grabbed."""
+    from PIL import Image
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from fogscout import qt_window
+    posted = queue.Queue()
+    page = keep(qt_window.FormPage(lambda a, arg=None: posted.put((a, arg)), "Overlay", qt_window.SPECS["overlay"],
+                                   "overlay"))
+    ed, view = page.editor, page.editor.canvas
+    page.resize(1500, 860)
+    page.show()
+    pics = {n: Image.new("RGBA", (300, 200), "white") for n in ("map", "music")}
+    data = {"screen": (3440, 1440), "bar": 440, "rect": (20, 20, 300, 200, 200), "opacity": 1.0, "pics": pics,
+            "layers": [("map", 20, 20, 300, 200), ("music", 3000, 1100, 300, 200)], "editing": True,
+            "selected": "map", "locked": ["music"], "layout_key": "3440x1440"}
+    page.show_states({"ov.preview": {"visible": True, "data": data},
+                      "ov.elements": {"visible": True, "data": {"order": ["map", "music"], "rows": {},
+                                                                "selected": "map", "editing": True,
+                                                                "layout": "3440x1440"}}})
     qapp.processEvents()
-    assert split.beside() and not side.beside() and side.cards[0].y() < side.cards[1].y()
-    page.resize(600, 700)
+    assert "Anordnen aktiv" in ed.status.text() and ed.layout_label.text() == "Layout für 3440×1440"
+    assert ed.canvas_box.property("editing")
+    ox, oy, s = view._frame()
+    at = lambda x, y: QPoint(round(ox + x * s), round(oy + y * s))          # noqa: E731
+    QTest.mouseMove(view, at(100, 100))
+    assert ed.status.text().startswith("Karte: ziehen")
+    QTest.mouseMove(view, at(3100, 1150))
+    assert "gesperrt" in ed.status.text()
+    QTest.mousePress(view, Qt.LeftButton, Qt.NoModifier, at(3100, 1150))
+    QTest.mouseMove(view, at(2000, 700))
+    QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, at(2000, 700))
+    assert not [a for a in list(posted.queue) if a[1][1][0] == "place"]       # the locked card stayed
+    while not posted.empty():
+        posted.get_nowait()
+    view.setFocus()
+    QTest.keyClick(view, Qt.Key_Tab)
+    QTest.keyClick(view, Qt.Key_Backtab)
+    QTest.keyClick(view, Qt.Key_Escape)
+    got = [posted.get_nowait()[1] for _i in range(3)]
+    assert got == [("ov.preview", ("select", "music")), ("ov.preview", ("select", "music")), ("ov.edit", None)]
+
+
+def test_focus_hides_the_side_panels_and_keeps_the_navigation_narrow(qapp, keep):
+    """1.46: "Fokus" – only tool bar and canvas, the navigation narrow; a resize keeps it narrow; Esc ends it."""
+    from fogscout import qt_window
+    posted = []
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.append((a, arg))))
+    win.resize(1500, 900)
+    win.show()
+    win.show_page("overlay")
     qapp.processEvents()
-    assert not split.beside() and not side.beside() and side.cards[0].y() < side.cards[1].y()
-    assert "ov.preview" in qt_window.page_keys("overlay") and "ov.undo" in qt_window.page_keys("overlay")
-    assert "ov.fade" in qt_window.page_keys("overlay")                # keys inside the split's columns
+    page = win.forms["overlay"]
+    ed = page.editor
+    assert not win._nav_compact
+    win.set_focus_nav(True)
+    page.show_states({"ov.focus_mode": {"visible": True, "text": "Fokus", "pressed": True}})
+    assert win._nav_compact and ed.rail.isHidden() and ed.inspector.isHidden() and ed.focus_on()
+    assert page.controls["ov.focus_mode"][1].isChecked()
+    win.resize(1600, 900)
+    qapp.processEvents()
+    assert win._nav_compact                                  # a wide window does not undo the focus
+    posted.clear()
+    ed._escape()
+    assert posted == [("act", ("ov.focus_mode", None))]
+    win.set_focus_nav(False)
+    page.show_states({"ov.focus_mode": {"visible": True, "text": "Fokus", "pressed": False}})
+    assert not win._nav_compact and not ed.rail.isHidden() and not ed.inspector.isHidden()
+    assert not page.controls["ov.focus_mode"][1].isChecked()
+
+
+def test_a_tab_opened_by_the_search_picks_its_element(qapp, keep):
+    """1.46: the inspector's tab row is hidden – a tab opened by the search (or open_tab) picks its element in the
+    list, "Allgemein" lights the list's last row."""
+    from fogscout import qt_window
+    posted = []
+    page = keep(qt_window.FormPage(lambda a, arg=None: posted.append((a, arg)), "Overlay", qt_window.SPECS["overlay"],
+                                   "overlay"))
+    page.show_states({"ov.elements": {"visible": True, "data": {"order": ["map", "hud"], "rows": {},
+                                                                "selected": "map"}}})
+    kind, tabs, body = page.controls["ov.sys"]
+    tabs.setCurrentWidget(body)
+    assert posted[-1] == ("act", ("ov.elements", ("select", "hud")))
+    tabs.setCurrentWidget(page.controls["ov.pos"][2])
+    assert posted[-1] == ("act", ("ov.elements", ("general",)))
+    assert page.editor.rail_view.rows()["general"].property("selected")
 
 
 def test_a_right_click_on_a_row_marks_it_and_asks_for_the_menu(qapp, keep):

@@ -279,6 +279,13 @@ def primary(w):
     return w
 
 
+def pressed(w, fn):
+    """1.46: a button that stays pressed while ``fn()`` is true (the overlay editor's "Anordnen" and "Fokus") –
+    drawn checked in the accent colour (Qt: checkable, property class "toggle")."""
+    w._dbdms_pressed = fn
+    return w
+
+
 def folded(w, title: str = "Erklärung"):
     """1.38.13: a long explanation (a label) shut behind a fold "› title" on its page (qt_pages.make_fold); ``title``
     is the German key, translated where it is drawn. The search still finds the text and opens the fold."""
@@ -650,6 +657,16 @@ class Preview(Widget):
         super().__init__(master, **kw)
         self.source = source or (lambda: {})
         self.command = command
+
+
+class Elements(Preview):
+    """1.46: the overlay editor's list of elements (qt_overlay.ElementRail) – ``source()`` gives their rows (shown,
+    own place, size, locked), ``command(value)`` gets select / show / lock / menu / general."""
+
+
+class Anchors(Preview):
+    """1.46: the overlay editor's quick places (qt_overlay.AnchorGrid) – 3×3 cells and "the usual place" for the
+    element picked; ``command(("cell", col, row))`` or ``command(("auto",))``."""
 
 
 class Host(Widget):

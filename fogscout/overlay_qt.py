@@ -79,7 +79,7 @@ class QtOverlay(PictureOverlay):
 
     def _apply_editing(self):
         shown = self.win.isVisible()
-        self.win.setWindowFlags(FLAGS if self._editing else FLAGS | Qt.WindowTransparentForInput)
+        self.win.setWindowFlags(FLAGS if self.grabbable() else FLAGS | Qt.WindowTransparentForInput)   # 1.46: lock
         if shown:
             self.win.show()                   # changing the flags hides the window
 

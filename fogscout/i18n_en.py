@@ -79,7 +79,6 @@ EN = {
     "Zurücksetzen": "Reset",
     "Horizontal": "Horizontal",
     "Vertikal": "Vertical",
-    "Mit der Maus verschieben": "Move with the mouse",
     "Fertig": "Done",
     "0 % = links/oben, 100 % = rechts/unten": "0 % = left/top, 100 % = right/bottom",
     "Karte im schwarzen Rand halten": "Keep the map in the black bar",
@@ -836,10 +835,6 @@ EN = {
     "Eingaben": "Inputs",
     "Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = Grösse, Rechtsklick = zurücksetzen":
         "Moving is on – drag (snaps, Alt = free), arrow keys = fine, corner/Ctrl+wheel = size, right click = reset",
-    "Klick auf ein Element wählt es für den Regler „Grösse“. Mit „Mit der Maus verschieben“: Element ziehen = verschieben (der gestrichelte Rahmen zeigt, wo es landet), an der Ecke ziehen oder Strg+Mausrad = Grösse, Rechtsklick = Position oder Grösse zurücksetzen. Ende mit „Fertig“.":
-        "A click on an element picks it for the “Size” slider. With “Move with the mouse”: drag an element = move "
-        "it (the dashed frame shows where it lands), drag its corner or Ctrl+mouse wheel = size, right click = reset "
-        "place or size. Finish with “Done”.",
     "Position zurücksetzen": "Reset position",
     "Rückgängig": "Undo",
     "Karte darf grösser als der Balken werden": "The map may grow bigger than the bar",
@@ -1090,7 +1085,6 @@ EN = {
         "Shows for 10 s everything the overlay shows in a match – map, system values, \"Today\" and music (sample "
         "values when nothing is there) – at their places, also without DBD. Press again to end the test.",
     "Verschieben beenden.": "Stop moving.",
-    "Karte direkt mit der Maus ziehen, Strg+Mausrad ändert die Grösse.": "Drag the map with the mouse, Ctrl+mouse wheel changes the size.",
     "Sucht sofort auf dem ganzen Bildschirm nach einem Map- oder Realm-Namen – falls die automatische Erkennung "
     "das Banner verpasst hat.":
         "Searches the whole screen for a map or realm name right away – in case automatic detection missed the "
@@ -1440,8 +1434,6 @@ EN = {
         'The map appears by itself when a match starts and goes away after the round. "automatic" puts it into the black border next to the game picture (ultrawide) or next to the DBD window.',
     'Die wichtigsten Tasten – zum Ändern draufklicken und die neue Kombination drücken. Alle Tasten findest du später unter Einstellungen.':
         'The most important keys – click one to change it, then press the new combination. All keys are under Settings later.',
-    '„Overlay testen“ zeigt die Karte sofort, „Mit der Maus verschieben“ lässt sie dich hinziehen.':
-        '"Test overlay" shows the map right away, "Move with the mouse" lets you drag it into place.',
     'Einrichtung starten': 'Start setup',
     'Öffnet noch einmal die Einrichtung vom ersten Start: Spielsprache, Overlay-Position und die wichtigsten Tasten.':
         'Opens the setup of the first start again: game language, overlay position and the most important keys.',
@@ -1610,7 +1602,6 @@ EN = {
     'über {n} Runden': 'over {n} rounds',
     # 1.61: overlay preview
     'Bilanz: Ø 2,8 Kills · 12 Runden': 'Record: avg. 2.8 kills · 12 rounds',
-    "Element": "Element",
     "Infos und Schrift (Name, Timer, Bilanz, Server)": "Info and text (name, timer, record, server)",
     # 1.8.24: the map's lines as an element of their own, the size slider marks where the bar stops it
     "Eigenes Element unter der Karte": "Own element below the map",
@@ -1826,11 +1817,6 @@ EN = {
     'Eigene Einstellungen dieser Map: {what}': 'Own settings of this map: {what}',
     'Eigene Grösse und Drehung zurücksetzen': 'Reset own size and rotation',
     'Kartenbild ersetzen …': 'Replace map picture …',
-    'Automatisch: im schwarzen Rand neben dem Spielbild bzw. neben dem DBD-Fenster. Frei platzieren: „Mit der Maus '
-    'verschieben“.': 'Automatic: in the black bar next to the game picture or next to the DBD window. Place freely: '
-                     '"Move with the mouse".',
-    'Frei platzieren: „Mit der Maus verschieben“ oder Vorgabe „eigene Position“.':
-        'Place freely: "Move with the mouse" or preset "own position".',
     'Im schwarzen Rand, solange die Karte im Match zu sehen ist. GPU-Werte von NVIDIA (Treiber), CPU-Temperatur nur '
     'mit HWiNFO („Shared Memory Support“ an) – kein eigener Treiber.':
         'In the black bar while the map is on screen in the match. GPU values from NVIDIA (driver), CPU temperature '
@@ -2500,8 +2486,6 @@ EN = {
     'Kein Clip': 'No clip',
     'Zeigt beim Sofort-Clip (F8) unten rechts ein kleines Hinweisfenster – „Clip wird gespeichert …“ und danach „Clip gespeichert“ bzw. warum nicht. Auch im Spiel, ohne Ton; nimmt nie den Fokus.':
         'Shows a small notification window bottom right for the instant clip (F8) – "Saving clip …" and then "Clip saved" or why not. Also in the game, without sound; never takes the focus.',
-    'Die Linien in der Vorschau mit „Mit der Maus verschieben“ ziehen – Karte, Systemwerte, Heute und Musik bleiben im Balken dazwischen.':
-        'Drag the lines in the preview with "Move with the mouse" – map, system values, today and music stay in the bar between them.',
     'Grenzen oben und unten in den schwarzen Balken': 'Limits at the top and bottom of the black bars',
     'Grenzen zurücksetzen': 'Reset limits',
     'Links und rechts gleich': 'Left and right alike',
@@ -3958,4 +3942,56 @@ EN = {
     'viele Tasten': 'many keys',
     '{n} Leerlauf-Stelle(n) gekürzt ({seconds} s) – Strg+Z macht es rückgängig.': '{n} idle stretch(es) trimmed ({seconds} s) – Ctrl+Z undoes it.',
     '{n} schwarze Stelle(n) abgeschnitten ({seconds} s) – Strg+Z macht es rückgängig.': '{n} black stretch(es) cut ({seconds} s) – Ctrl+Z undoes it.',
+    # 1.46: the overlay editor
+    'Anordnen': 'Arrange',
+    'Anordnen aktiv – auch im Spiel: Elemente ziehen · Pfeiltasten = fein (Shift = 10 px) · Tab = nächstes Element · Esc = fertig': 'Arranging – in the game too: drag elements · arrow keys = fine (Shift = 10 px) · Tab = next element · Esc = done',
+    'Anordnen: alle Elemente mit der Maus ziehen – in der Vorschau und direkt im Spiel. Strg+Mausrad ändert die Grösse, Esc beendet.': 'Arrange: drag every element with the mouse – in the preview and right in the game. Ctrl+wheel changes the size, Esc ends it.',
+    'Automatisch: im schwarzen Rand neben dem Spielbild bzw. neben dem DBD-Fenster. Frei platzieren: „Anordnen“ oder eine Schnellposition.': 'Automatic: in the black border beside the game picture or beside the DBD window. To place it freely: “Arrange” or a quick place.',
+    'CPU, GPU, RAM': 'CPU, GPU, RAM',
+    'Callout-Karte der Map': "The map's callout map",
+    'Die Linien in der Vorschau mit „Anordnen“ ziehen – Karte, Systemwerte, Heute und Musik bleiben im Balken dazwischen.': 'Drag the lines in the preview with “Arrange” – map, system values, today and music stay between them in the bar.',
+    'Ein- oder ausblenden': 'Show or hide',
+    'Elemente': 'Elements',
+    'Entsperren: wieder verschiebbar': 'Unlock: can be moved again',
+    'Fokus': 'Focus',
+    'Frei platzieren: „Anordnen“, eine Schnellposition oder Vorgabe „eigene Position“.': 'To place it freely: “Arrange”, a quick place or the setting “own position”.',
+    'Gesperrt – erst entsperren': 'Locked – unlock it first',
+    'Gilt für alle Elemente': 'Applies to every element',
+    'Grenzen und Platz': 'Limits and room',
+    'Grenzlinie: ziehen, bis wohin die Elemente im Balken reichen': 'Limit line: drag it to where the elements in the bar may reach',
+    'Grösse und Deckkraft': 'Size and opacity',
+    'Grösse von {name}: Ecke ziehen': 'Size of {name}: drag the corner',
+    'Klick auf ein Element wählt es. Mit „Anordnen“: Element ziehen = verschieben (der gestrichelte Rahmen zeigt, wo es landet), an der Ecke ziehen oder Strg+Mausrad = Grösse, Rechtsklick = Menü. Ende mit „Fertig“ oder Esc.': 'A click on an element picks it. With “Arrange”: drag an element = move it (the dashed frame shows where it lands), drag its corner or Ctrl+wheel = size, right click = menu. End with “Done” or Esc.',
+    'Klick wählt ein Element · „Anordnen“ schaltet das Verschieben ein – hier und im Spiel': 'A click picks an element · “Arrange” switches moving on – here and in the game',
+    'Klick wählt {name}': 'A click picks {name}',
+    'Layout für {size}': 'Layout for {size}',
+    'Läuft gerade': 'Now playing',
+    'Mitte': 'centre',
+    'Nach {where} legen (mit Rand)': 'Put it {where} (with a margin)',
+    'Position und Grösse werden je DBD-Fenstergrösse gemerkt (Reiter Allgemein).': 'Place and size are kept per DBD window size (tab General).',
+    'Runden und Zeit heute': 'Rounds and time today',
+    'Schnellposition': 'Quick place',
+    'Sperren': 'Lock',
+    'Sperren: im Modus „Anordnen“ nicht mehr verschiebbar': 'Lock: no longer moved in “Arrange”',
+    'Stil, Abstand, Grenzen, Discord': 'Style, gap, limits, Discord',
+    'Tasten und Gamepad': 'Keys and gamepad',
+    'Timer, Bilanz, Server': 'Timer, record, server',
+    'Verhalten': 'Behaviour',
+    'Zeilen': 'Rows',
+    'Zurück an den automatischen Platz (im schwarzen Balken, neben den anderen)': 'Back to the automatic place (in the black bar, beside the others)',
+    'eigener Platz': 'own place',
+    'eingerastet': 'snapped',
+    'graue Linien in den Balken = Grenzen (aus) – eine ziehen schaltet sie ein': 'grey lines in the bars = limits (off) – dragging one switches them on',
+    'links Mitte': 'left centre',
+    'oben Mitte': 'top centre',
+    'rastet an Mitte, Balken und anderen ein (Alt = frei)': 'snaps to the centre, the bars and the others (Alt = free)',
+    'rechts Mitte': 'right centre',
+    'unten Mitte': 'bottom centre',
+    '{name} entsperrt.': '{name} unlocked.',
+    '{name} gesperrt – bleibt beim Anordnen, wo es ist.': '{name} locked – stays where it is while arranging.',
+    '{name} ist gesperrt – das Schloss in der Liste löst es': '{name} is locked – the lock in the list frees it',
+    '{name}: ziehen = verschieben · Ecke oder Strg+Mausrad = Grösse · Rechtsklick = Menü': '{name}: drag = move · corner or Ctrl+wheel = size · right click = menu',
+    'Üblicher Platz': 'Usual place',
+    '„Overlay testen“ zeigt die Karte sofort, mit „Anordnen“ ziehst du sie hin.': '“Test overlay” shows the map at once, with “Arrange” you drag it there.',
+    'Nur die Vorschau: Liste und Einstellungen weg, die Navigation schmal – die ganze Fläche zum Anordnen. Esc oder nochmal klicken beendet es.': 'Only the preview: list and settings away, the navigation narrow – the whole area for arranging. Esc or another click ends it.',
 }

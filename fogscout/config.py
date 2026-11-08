@@ -97,6 +97,7 @@ DEFAULTS = {
         "inputs_scale": 1.0,            #   size (slider 60–200 %)
         "inputs_opacity": 0.85,
         "inputs_backdrop": True,        #   dark area behind the keys
+        "locked": [],                   # 1.46: elements locked in place ("map", "hud", "today", …) – not dragged
     },
     "hotkeys": {
         "toggle_overlay": "ctrl+alt+m",

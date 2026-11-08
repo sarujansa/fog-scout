@@ -31,6 +31,9 @@ SEARCH_ALSO = {"tast": "hotkey shortcut tastenkürzel", "hotkey": "taste tastenk
                "setup": "einrichtung assistent wizard", "aktualis": "update", "update": "aktualisieren",
                # 1.23: the folded part at the foot of the log page – found by what it holds (1.38.12: window
                # capture and scan rate are on Einstellungen → Erkennung → Technik now, found by their own labels)
+               # 1.46: "Mit der Maus verschieben" is called "Anordnen" now – the old words still find it
+               "anordnen": "verschieben ziehen bewegen bearbeiten mit der maus", "arrange": "move drag edit mouse",
+               "sperren": "lock fixieren", "lock": "sperren fix",
                "erweitert (fehlersuche": "advanced debug-bilder rundenende diagnose",
                "advanced (troubleshooting": "erweitert debug pictures end of round"}
 

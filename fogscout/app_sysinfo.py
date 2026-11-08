@@ -203,7 +203,7 @@ class SysInfo:
         rows = sysinfo.hud_rows(snap, self.settings["overlay"].get("hud_rows")) if on else []
         editing = on and self.overlay.editing          # 1.64.1: always draggable while moving, like the music
         if self.hud is not None:
-            self.hud.set_editing(editing)
+            self.hud.set_editing(editing and not self._el_locked("hud"))      # 1.46: locked = click-through
         if editing and not rows:
             rows = [[(_("SYSTEMWERTE"), sysinfo.DIM)]]          # something to drag before the first reading
         vb = layout.vbars(self.worker.vbars, gw, gh, time.time())      # narrow window: bar above the picture
@@ -325,7 +325,7 @@ class SysInfo:
         if win is None:
             return None
         editing = on and self.overlay.editing
-        win.set_editing(editing)
+        win.set_editing(editing and not self._el_locked("today"))         # 1.46: locked = click-through
         spot = o.get("today_pos", "below")
         gx, gy, gw, gh, show = ctx or (0, 0, 0, 0, False)
         bar = layout.bar_width(gw, gh) if gh else 0
@@ -536,7 +536,7 @@ class SysInfo:
         if win is None:
             return None
         editing = music and self.overlay.editing
-        win.set_editing(editing)
+        win.set_editing(editing and not self._el_locked("music"))         # 1.46: locked = click-through
         now = self.media.now
         if now.kind == "video" and not o.get("media_videos", True):    # 1.8.4: "only music" – a video stays off
             now = media.NowPlaying()
@@ -963,10 +963,6 @@ class SysInfo:
         qt = getattr(self, "qt", None)              # 1.2.12 (analysis point 10): its settings tab opens with it
         if qt is not None and hasattr(qt, "open_tab"):     # (also when it was picked already: a second click)
             qt.open_tab("overlay", ELEMENT_TABS.get(name, "ov.look"))
-
-    def _sel_picked(self):
-        names = {_(label): k for k, label in SELECTABLE}
-        self._select(names.get(self.sel_var.get(), "map"))
 
     def _own_size_map(self):
         """The map whose own size the size controls change (1.65.5, user: "sobald ich eine Map in der Runde
