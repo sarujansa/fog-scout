@@ -829,17 +829,17 @@ EN = {
     "Test beendet.": "Test ended.",
     "Diagnose in die Zwischenablage kopiert (auch als diagnose.txt gespeichert).":
         "Diagnostics copied to the clipboard (also saved as diagnose.txt).",
-    "Alle Elemente mit der Maus ziehen (im Spiel oder in der Vorschau): Karte, Infos, Systemwerte, Heute, Eingaben, Musik. Rechtsklick auf ein Element = zurück an seinen üblichen Platz, Strg+Mausrad = Grösse. Danach „Fertig“ oder Hotkey.":
+    "Alle Elemente mit der Maus ziehen (im Spiel oder in der Vorschau): Karte, Infos, Systemwerte, Heute, Eingaben, Musik. Rechtsklick auf ein Element = Menü (Ausblenden, Position zurücksetzen, Sperren), Strg+Mausrad = Grösse. Danach „Fertig“ oder Hotkey.":
         "Drag every element with the mouse (in the game or in the preview): map, infos, system values, today, "
-        "inputs, music. Right click on an element = back to its usual place, Ctrl+mouse wheel = size. Then “Done” "
-        "or the hotkey.",
+        "inputs, music. Right click on an element = menu (hide, reset position, lock), Ctrl+mouse wheel = size. "
+        "Then “Done” or the hotkey.",
     "{name} wieder an seinem üblichen Platz.": "{name} back at its usual place.",
     "Karte": "Map",
     "Systemwerte": "System values",
     "Musik": "Music",
     "Eingaben": "Inputs",
-    "Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = Grösse, Rechtsklick = zurücksetzen":
-        "Moving is on – drag (snaps, Alt = free), arrow keys = fine, corner/Ctrl+wheel = size, right click = reset",
+    "Verschieben aktiv – ziehen (rastet ein, Alt = frei), Pfeiltasten = fein, Ecke/Strg+Mausrad = Grösse, Rechtsklick = Menü":
+        "Moving is on – drag (snaps, Alt = free), arrow keys = fine, corner/Ctrl+wheel = size, right click = menu",
     "Position zurücksetzen": "Reset position",
     "Rückgängig": "Undo",
     "Karte darf grösser als der Balken werden": "The map may grow bigger than the bar",
