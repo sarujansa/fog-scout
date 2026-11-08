@@ -28,6 +28,14 @@ def _release(build=42, name="FogScout-Setup-1.33.exe", digest=True, **over):
     return data
 
 
+@pytest.fixture(autouse=True)
+def _no_waits(monkeypatch):
+    """1.46.1: retries wait seconds in the program – not in the tests."""
+    waits = []
+    monkeypatch.setattr(relupdate, "SLEEP", waits.append)
+    return waits
+
+
 class _Resp(io.BytesIO):
     def __enter__(self):
         return self
@@ -501,3 +509,60 @@ def test_the_download_is_held_and_checked_again_while_windows_asks(update_folder
     with pytest.raises(ValueError):
         with restart.held_setup(str(setup), SUM):
             pytest.fail("a changed setup was handed out")
+
+
+class _Busy(FakeGitHub):
+    """GitHub's gateway answers 504 to the first ``fails`` requests for URLs ending in ``suffix``."""
+
+    def __init__(self, fails, suffix=".exe", code=504, **kw):
+        super().__init__(**kw)
+        self.fails, self.suffix, self.code = fails, suffix, code
+
+    def open(self, req, timeout=None):
+        import urllib.error
+        if req.full_url.endswith(self.suffix) and self.fails > 0:
+            self.fails -= 1
+            self.asked.append(req.full_url)
+            raise urllib.error.HTTPError(req.full_url, self.code, "Gateway Time-out", {}, None)
+        return super().open(req, timeout)
+
+
+@pytest.mark.parametrize("suffix", [".exe", ".sha256"])
+def test_a_gateway_timeout_is_tried_again_and_the_download_still_checked(suffix, tmp_path, _no_waits):
+    """User report 1.45.1: "Update not downloaded: HTTP Error 504: Gateway Time-out" – a busy GitHub is asked again."""
+    gh, tries = _Busy(2, suffix), []
+    rel = relupdate.parse_release(_release())
+    path = relupdate.download(rel, str(tmp_path), opener=gh, retried=lambda n, t: tries.append((n, t)))
+    assert open(path, "rb").read() == SETUP and rel.sha256 == SUM
+    assert tries == [(2, 3), (3, 3)] and _no_waits == list(relupdate.RETRY_WAITS_S)
+    assert os.listdir(tmp_path / relupdate.UPDATE_DIR) == ["FogScout-Setup-1.33.exe"]
+
+
+def test_a_gateway_that_stays_down_gives_up_with_words_and_leaves_nothing(tmp_path):
+    import urllib.error
+    gh = _Busy(99)
+    with pytest.raises(urllib.error.HTTPError) as err:
+        relupdate.download(relupdate.parse_release(_release()), str(tmp_path), opener=gh)
+    assert sum(u.endswith(".exe") for u in gh.asked) == len(relupdate.RETRY_WAITS_S) + 1
+    assert os.listdir(tmp_path / relupdate.UPDATE_DIR) == []
+    msg = relupdate.describe_error(err.value)
+    assert "504" in msg and "Gateway" not in msg
+
+
+def test_a_refusal_or_a_wrong_file_is_never_tried_again(tmp_path, _no_waits):
+    import urllib.error
+    gh = _Busy(1, relupdate.API[-6:], code=403)              # rate limit on the release look
+    assert relupdate.check(_info(tmp_path), opener=gh)[0] == "error"
+    assert gh.asked == [relupdate.API] and _no_waits == []
+    bad = FakeGitHub(setup=SETUP[:-1] + b"!")
+    with pytest.raises(ValueError):
+        relupdate.download(relupdate.parse_release(_release()), str(tmp_path), opener=bad)
+    assert sum(u.endswith(".exe") for u in bad.asked) == 1 and _no_waits == []
+    assert not relupdate.transient(urllib.error.URLError("Weiterleitung ohne HTTPS abgelehnt: http://x"))
+    assert relupdate.transient(urllib.error.URLError(TimeoutError("timed out")))
+
+
+def test_the_release_look_survives_one_busy_answer(tmp_path):
+    gh = _Busy(1, relupdate.API[-6:])
+    state, _msg, can, rel = relupdate.check(_info(tmp_path), opener=gh)
+    assert state == "available" and can and rel.build == 42

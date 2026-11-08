@@ -1143,8 +1143,11 @@ class MainWindow(QMainWindow):
             self.nav.setCurrentRow(row)
 
     def popup_menu(self, items, pos):
-        """1.8.10: a context menu at screen ``pos``; a picked line posts ("menu_act", id). Not modal (popup)."""
+        """1.8.10: a context menu at screen ``pos``; a picked line posts ("menu_act", id). Not modal (popup).
+        1.46.2: ``pos`` None = at the mouse pointer (a right click on an overlay window in the game: Windows gives
+        device pixels there, Qt places in its own units – the pointer is where the click was)."""
         from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QCursor
         from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
         menu.setAttribute(Qt.WA_DeleteOnClose)
@@ -1162,7 +1165,9 @@ class MainWindow(QMainWindow):
                 a.setChecked(bool(it[3]))
             a.triggered.connect(lambda _c=False, i=ident: self._post("menu_act", i))
         self._menu = menu                                  # kept alive while open
-        menu.popup(QPoint(int(pos[0]), int(pos[1])))
+        menu.popup(QCursor.pos() if pos is None else QPoint(int(pos[0]), int(pos[1])))
+        if pos is None:
+            menu.activateWindow()                          # over the game: the menu takes the clicks and Esc
         return menu
 
     def host(self, key: str):
