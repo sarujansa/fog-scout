@@ -1889,6 +1889,23 @@ def test_focus_hides_the_side_panels_and_keeps_the_navigation_narrow(qapp, keep)
     assert not page.controls["ov.focus_mode"][1].isChecked()
 
 
+def test_a_tab_the_app_opens_for_its_pick_is_not_reported_back(qapp, keep):
+    """1.46 (found by the start test: it hung): the App opens the tab of the element it picked (open_tab); the
+    editor must not send that back as a pick – with a stale pick on a page not shown, both sent picks back and forth
+    for ever."""
+    from fogscout import qt_window
+    posted = []
+    win = keep(qt_window.MainWindow(lambda a, arg=None: posted.append((a, arg))))
+    page = win.forms["overlay"]
+    page.show_states({"ov.elements": {"visible": True, "data": {"order": ["map", "hud", "music"], "rows": {},
+                                                                "selected": "map"}}})
+    posted.clear()
+    for frame in ("ov.sys", "ov.music_f", "ov.look", "ov.pos"):
+        win.open_tab("overlay", frame)
+        assert page.controls[frame][1].currentWidget() is page.controls[frame][2]
+    assert not [p for p in posted if p[0] == "act" and p[1][0] == "ov.elements"]
+
+
 def test_a_tab_opened_by_the_search_picks_its_element(qapp, keep):
     """1.46: the inspector's tab row is hidden – a tab opened by the search (or open_tab) picks its element in the
     list, "Allgemein" lights the list's last row."""
