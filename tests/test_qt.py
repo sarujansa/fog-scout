@@ -1745,19 +1745,23 @@ def test_the_overlay_editor_has_a_tool_bar_list_canvas_and_inspector_in_three_wi
     for width, mode in ((1600, "wide"), (900, "medium"), (600, "narrow")):
         ed.arrange(width)
         assert ed.mode() == mode
+
+    def placed(mode):                     # the parts where the mode puts them
+        r, c, i = (w.geometry() for w in (ed.rail, ed.canvas_box, ed.inspector))
+        if mode == "wide":
+            return r.right() < c.left() and c.right() < i.left() and c.width() > r.width() + i.width() - 200
+        if mode == "medium":
+            return r.bottom() < c.top() and c.right() < i.left() and c.top() == i.top()
+        return r.bottom() < c.top() and c.bottom() < i.top()
     page.show()
-    page.resize(1500, 860)
-    for _i in range(3):
-        qapp.processEvents()
-    assert ed.mode() == "wide"
-    r, c, i = (w.geometry() for w in (ed.rail, ed.canvas_box, ed.inspector))
-    assert r.right() < c.left() and c.right() < i.left() and c.width() > r.width() + i.width() - 200
-    page.resize(700, 860)
-    for _i in range(3):
-        qapp.processEvents()
-    assert ed.mode() == "narrow"
-    r, c, i = (w.geometry() for w in (ed.rail, ed.canvas_box, ed.inspector))
-    assert r.bottom() < c.top() and c.bottom() < i.top()
+    # a real window is limited to the screen (the Windows runner's is smaller than 1500 px): the editor follows the
+    # width it really got – wide here (Linux offscreen), medium on a small screen
+    for width in (1500, 700):
+        page.resize(width, 860)
+        for _i in range(3):
+            qapp.processEvents()
+        assert ed.mode() == ed.mode_for(ed.width()) and placed(ed.mode()), (width, ed.width(), ed.mode())
+    assert ed.mode() == "narrow"                                       # 700 px fit every screen
     keys = qt_window.page_keys("overlay")
     assert {"ov.preview", "ov.undo", "ov.elements", "ov.anchors", "ov.focus_mode", "ov.master"} <= keys
     assert "ov.sel" not in keys                                          # the list replaced the choice
