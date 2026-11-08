@@ -697,6 +697,11 @@ EN = {
     "Kein Update – Version {version} (Build {build}) ist aktuell.": "No update – version {version} (build {build}) is current.",
     "Update verfügbar: {old} → {new} (Build {build}).": "Update available: {old} → {new} (build {build}).",
     "Lade Update …": "Downloading update …",
+    "GitHub antwortet gerade nicht (HTTP {code}) – bitte in einigen Minuten erneut versuchen.":
+        "GitHub is not answering right now (HTTP {code}) – please try again in a few minutes.",
+    "Keine Antwort von GitHub (Zeitüberschreitung/Verbindung) – bitte später erneut versuchen.":
+        "No answer from GitHub (timeout/connection) – please try again later.",
+    "GitHub antwortet nicht – neuer Versuch {n} von {total} …": "GitHub is not answering – try {n} of {total} …",
     "Lade Update … {pct} %": "Downloading update … {pct} %",
     "Update nicht geladen: {error}": "Update not downloaded: {error}",
     "Update {version} (Build {build}) geladen und geprüft.": "Update {version} (build {build}) downloaded and checked.",
