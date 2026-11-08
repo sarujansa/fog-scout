@@ -1186,7 +1186,11 @@ class MainWindow(QMainWindow):
         form = self._form(page)
         ctl = form.controls.get(frame) if form is not None else None
         if ctl is not None and ctl[0] == "tab" and ctl[1].currentWidget() is not ctl[2]:
-            ctl[1].setCurrentWidget(ctl[2])                 # 1.7.6: by widget – the tabs can be reordered
+            ctl[1]._by_app = True          # 1.46: the overlay editor does not report it back (it was a loop)
+            try:
+                ctl[1].setCurrentWidget(ctl[2])             # 1.7.6: by widget – the tabs can be reordered
+            finally:
+                ctl[1]._by_app = False
 
     def apply_theme(self, dark: bool, zoom: float):
         pal = QPalette()

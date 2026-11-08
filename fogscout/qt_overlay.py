@@ -514,9 +514,13 @@ class OverlayEditor(QWidget):
         return next((k for k, (kind, w, body) in self.page.controls.items() if kind == "tab" and body is cur), None)
 
     def _tab_changed(self, _i):
-        """A tab opened by the search / reveal: the list follows (the element of that tab is picked)."""
+        """A tab opened by the search / reveal: the list follows (the element of that tab is picked). A tab the App
+        opened for its own pick (MainWindow.open_tab) is not reported back – with a stale pick on a page not shown,
+        the two picks sent each other back and forth for ever."""
         frame = self._current_frame()
-        if frame == GENERAL_TAB:
+        if self.tabs.__dict__.get("_by_app"):
+            pass
+        elif frame == GENERAL_TAB:
             self._post("act", ("ov.elements", ("general",)))
         elif frame and TABS.get(self._selected) != frame:
             name = next((n for n, f in TABS.items() if f == frame), None)
