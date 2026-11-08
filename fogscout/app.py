@@ -156,6 +156,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.overlay.on_moved = lambda x, y: self.events.put(("call", self._overlay_dragged, (x, y)))
         self.overlay.on_wheel = lambda d: self.events.put(("call", self._resize, (0.02 * d,)))
         self.overlay.on_reset = lambda: self.events.put(("call", self._el_reset, ("map",)))     # 1.44.1
+        self.overlay.on_menu = lambda: self.events.put(("call", self._game_menu, ("map",)))     # 1.46.2
         self._edit_comfort("map", self.overlay)                 # 1.45.1: snap, arrows, Ctrl+Z
         self._layout_init()              # undo + one layout per DBD window size (1.65)
         self._hud_init()                 # system values at the top of a black bar (CPU/GPU temperature …)
@@ -793,8 +794,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.overlay.set_locked(on and "map" in self._locked_names())       # 1.46: a locked map stays put
         if on:                     # 1.64.1: also without a map – the preview (tab Overlay) shows everything
             self._log(_("Alle Elemente mit der Maus ziehen (im Spiel oder in der Vorschau): Karte, Infos, "
-                        "Systemwerte, Heute, Eingaben, Musik. Rechtsklick auf ein Element = zurück an seinen "
-                        "üblichen Platz, Strg+Mausrad = Grösse. Danach „Fertig“ oder Hotkey."), "Overlay")
+                        "Systemwerte, Heute, Eingaben, Musik. Rechtsklick auf ein Element = Menü "
+                        "(Ausblenden, Position zurücksetzen, Sperren), Strg+Mausrad = Grösse. Danach „Fertig“ oder Hotkey."), "Overlay")
         self._tick_overlay(reschedule=False)
 
     def _overlay_dragged(self, x, y):
@@ -1479,6 +1480,12 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._nudge(value[1], value[2])
             return
         self._preview_pick_now(value)
+
+    def _game_menu(self, name):
+        """1.46.2 (Saru: „Rechtsklick im Overlay, um das Feld auszublenden“): a right click on an element in the game
+        while arranging opens the preview's quick actions (hide, reset, size, lock) at the mouse pointer; until
+        1.46.1 it only put the element back at its usual place (that is the menu's first line now)."""
+        self._preview_menu(name, None)
 
     def _preview_menu(self, name, pos):
         """1.8.10: quick actions of one overlay element (right click in the preview): size back to the default,

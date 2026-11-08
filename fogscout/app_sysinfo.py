@@ -119,24 +119,28 @@ class SysInfo:
         if self.hud is not None:
             self.hud.on_moved = lambda x, y: self.events.put(("call", self._hud_dragged, (x, y)))   # see app.py
             self.hud.on_reset = lambda: self.events.put(("call", self._el_reset, ("hud",)))   # 1.44.1
+            self.hud.on_menu = lambda: self.events.put(("call", self._game_menu, ("hud",)))   # 1.46.2
             self._edit_comfort("hud", self.hud)               # 1.45.1
             self.hud.edit_label = _("SYSTEMWERTE")        # 1.44.1: "· HEUTE" – "today" has its own window
         self.media_win = make_hud("Fog Scout Musik")     # 1.64: the music card, a window of its own
         if self.media_win is not None:
             self.media_win.on_moved = lambda x, y: self.events.put(("call", self._media_dragged, (x, y)))
             self.media_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("music",)))   # 1.44.1
+            self.media_win.on_menu = lambda: self.events.put(("call", self._game_menu, ("music",)))   # 1.46.2
             self._edit_comfort("music", self.media_win)               # 1.45.1
             self.media_win.edit_label = _("MUSIK")
         self.today_win = make_hud("Fog Scout Heute")     # 1.2.6: "today", a card of its own
         if self.today_win is not None:
             self.today_win.on_moved = lambda x, y: self.events.put(("call", self._today_dragged, (x, y)))
             self.today_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("today",)))   # 1.44.1
+            self.today_win.on_menu = lambda: self.events.put(("call", self._game_menu, ("today",)))   # 1.46.2
             self._edit_comfort("today", self.today_win)               # 1.45.1
             self.today_win.edit_label = _("HEUTE")
         self.info_win = make_hud("Fog Scout Infos")      # 1.8.24: timer/record/server, an element of their own
         if self.info_win is not None:
             self.info_win.on_moved = lambda x, y: self.events.put(("call", self._info_dragged, (x, y)))
             self.info_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("text",)))   # 1.44.1
+            self.info_win.on_menu = lambda: self.events.put(("call", self._game_menu, ("text",)))   # 1.46.2
             self._edit_comfort("text", self.info_win)               # 1.45.1
             self.info_win.edit_label = _("INFOS")
         self._info_size = None             # (w, h) of the lines' card this tick, None = not shown

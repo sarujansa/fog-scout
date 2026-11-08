@@ -31,6 +31,10 @@ class _Window(QWidget):
     def mousePressEvent(self, e):
         if self.owner.editing and e.button() == Qt.LeftButton:
             self._drag = e.globalPosition().toPoint() - self.pos()
+        elif self.owner.editing and e.button() == Qt.RightButton:    # 1.46.2: like the Win32 window
+            act = getattr(self.owner, "on_menu", None) or getattr(self.owner, "on_reset", None)
+            if act:
+                act()
 
     def mouseMoveEvent(self, e):
         if self._drag is not None:
