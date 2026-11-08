@@ -1836,12 +1836,19 @@ def test_the_editor_canvas_says_what_the_mouse_does_and_tab_and_esc_work(qapp, k
     assert ed.canvas_box.property("editing")
     ox, oy, s = view._frame()
     at = lambda x, y: QPoint(round(ox + x * s), round(oy + y * s))          # noqa: E731
-    QTest.mouseMove(view, at(100, 100))
+
+    def move(p, buttons=Qt.NoButton):     # sent to the view: QTest.mouseMove moves the real cursor (no event when
+        from PySide6.QtCore import QEvent, QPointF     # an earlier test left it there)
+        from PySide6.QtGui import QMouseEvent
+        QApplication.sendEvent(view, QMouseEvent(QEvent.MouseMove, QPointF(p), QPointF(view.mapToGlobal(p)),
+                                                 Qt.NoButton, buttons, Qt.NoModifier))
+    from PySide6.QtWidgets import QApplication
+    move(at(100, 100))
     assert ed.status.text().startswith("Karte: ziehen")
-    QTest.mouseMove(view, at(3100, 1150))
+    move(at(3100, 1150))
     assert "gesperrt" in ed.status.text()
     QTest.mousePress(view, Qt.LeftButton, Qt.NoModifier, at(3100, 1150))
-    QTest.mouseMove(view, at(2000, 700))
+    move(at(2000, 700), Qt.LeftButton)
     QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, at(2000, 700))
     assert not [a for a in list(posted.queue) if a[1][1][0] == "place"]       # the locked card stayed
     while not posted.empty():
