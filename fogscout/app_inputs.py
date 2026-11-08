@@ -87,7 +87,7 @@ class InputsCard:
         if win is None:
             return
         o = self.settings["overlay"]
-        win.set_editing(bool(o.get("show_inputs", False)) and self.overlay.editing)
+        win.set_editing(bool(o.get("show_inputs", False)) and self._el_editable("inputs"))   # 1.46: lock
         mode = self._inputs_mode()
         gx, gy, gw, gh = game = self._game_rect()
         if mode is None or gh <= 0:

@@ -38,16 +38,16 @@ class OverlayTab:
         pos.pack(fill="x")
         # 1.61: the screen with the map on it – where and how big, live; a click or drag places it there
         self._reg("ov.preview", ui.Preview(pos, source=self._preview_data, command=self._preview_pick)).pack(fill="x")
-        # 1.64.9: the element picked in the preview (or here) – one slider sizes it
-        rs = ui.Frame(pos)
-        rs.pack(fill="x", pady=(4, 0))
-        self._reg("ov.sel.label", ui.Label(rs, text=_("Element"), width=12)).pack(side="left")
+        # 1.46: the overlay editor's list of elements (pick, show/hide, lock) and quick places for the one picked;
+        # the list replaces the choice "Element" (1.64.9)
         self._sel = "map"
         self.sel_var = ui.StringVar(value=_(dict(SELECTABLE)["map"]))
-        scb = self._reg("ov.sel", ui.Combobox(rs, textvariable=self.sel_var, state="readonly", width=24,
-                                               values=[_(t) for _k, t in SELECTABLE]))
-        scb.pack(side="left", padx=6)
-        scb.bind("<<ComboboxSelected>>", lambda e: self._sel_picked())
+        self._reg("ov.elements", ui.Elements(pos, source=self._elements_data, command=self._elements_act)
+                  ).pack(fill="x")
+        self._reg("ov.anchors", ui.Anchors(pos, source=self._anchors_data, command=self._anchor_cell)).pack(fill="x")
+        self._editor_focus = False
+        self._reg("ov.focus_mode", ui.pressed(ui.Button(pos, text=_("Fokus"), command=self._focus_mode_toggle),
+                                              lambda: self._editor_focus)).pack(anchor="w")
         self.sel_size_var = ui.DoubleVar(value=o["height"] * 100)
         self.sel_size_label = self._slider(pos, _("Grösse"), self.sel_size_var, *MAP_SCALE, self._sel_size_changed,
                                            key="ov.sel_size")
@@ -89,9 +89,8 @@ class OverlayTab:
                   ).pack(side="left")
         self._reg("ov.limits_reset", ui.Button(lr, text=_("Grenzen zurücksetzen"), command=self._limits_reset)
                   ).pack(side="left", padx=(6, 0))
-        self._reg("ov.limits_hint", ui.Label(pos, text=_("Die Linien in der Vorschau mit „Mit der Maus verschieben“ "
-                                                         "ziehen – Karte, Systemwerte, Heute und Musik bleiben im "
-                                                         "Balken dazwischen."),
+        self._reg("ov.limits_hint", ui.Label(pos, text=_("Die Linien in der Vorschau mit „Anordnen“ ziehen – Karte, "
+                                                         "Systemwerte, Heute und Musik bleiben im Balken dazwischen."),
                                              style="Dim.TLabel", wraplength=520)).pack(anchor="w")
         # 1.8.25 (user's screenshots with Discord's overlay open): keep its widgets free
         self.keep_out_var = ui.BooleanVar(value=bool(o.get("keep_out_on", True)))
@@ -137,7 +136,8 @@ class OverlayTab:
         r2 = ui.Frame(pos)
         r2.pack(fill="x", pady=(4, 0))
         self._pos_rows = (self.posx_label.master, self.posy_label.master, r2)   # 1.66.3: only for "eigene Position"
-        self.edit_btn = self._reg("ov.edit", ui.Button(r2, text=_("Mit der Maus verschieben"), command=self.toggle_edit))
+        self.edit_btn = self._reg("ov.edit", ui.pressed(ui.Button(r2, text=_("Anordnen"), command=self.toggle_edit),
+                                                        lambda: bool(self.overlay.editing)))      # 1.46
         self.edit_btn.pack(side="left")
         self.test_btn = self._reg("ov.test", ui.Button(r2, text=_("Overlay testen"), command=self.test_overlay))
         self.test_btn.pack(side="left", padx=(6, 0))
@@ -147,17 +147,18 @@ class OverlayTab:
         self.master_var = ui.BooleanVar(value=bool(self.settings.get("overlay_on", True)))     # 1.8.18
         self._reg("ov.master", ui.Checkbutton(pos, text=_("Overlay anzeigen"),
                                               variable=self.master_var,
-                                              command=lambda: self.set_overlay_on(self.master_var.get())))
+                                              command=lambda: self.set_overlay_on(self.master_var.get()))
+                  ).pack(anchor="w")                       # 1.46: packed – unpacked, the Qt page never showed it
         self.small_off_var = ui.BooleanVar(value=bool(self.settings.get("overlay_small_off", True)))   # 1.8.62
         self._reg("ov.small_off", ui.Checkbutton(
             pos, text=_("In kleinen DBD-Fenstern ausblenden"),
-            variable=self.small_off_var, command=self._small_off_changed))
+            variable=self.small_off_var, command=self._small_off_changed)).pack(anchor="w")   # 1.46: see above
         self.per_size_var = ui.BooleanVar(value=self.settings.get("layout_per_size", True))
         self._reg("ov.per_size", ui.Checkbutton(pos, text=_("Position und Grösse je DBD-Fenstergrösse merken"),
                                                 variable=self.per_size_var, command=self._per_size_changed)
                   ).pack(anchor="w", pady=(4, 0))
         self.per_size_text = ui.StringVar(value="")
-        self._reg("ov.per_size_hint", ui.Label(pos, textvariable=self.per_size_text, style="Dim.TLabel"))
+        self._reg("ov.per_size_hint", ui.Label(pos, textvariable=self.per_size_text, style="Dim.TLabel")).pack(anchor="w")
         self.pos_hint_var = ui.StringVar(value="")
         self._reg("ov.pos_hint", ui.Label(pos, textvariable=self.pos_hint_var, style="Dim.TLabel",
                                            wraplength=520)).pack(anchor="w", pady=(4, 0))
@@ -531,9 +532,9 @@ class OverlayTab:
             text = _("0 % = links/oben, 100 % = rechts/unten")
         elif anchor == "auto":
             text = _("Automatisch: im schwarzen Rand neben dem Spielbild bzw. neben dem DBD-Fenster. Frei "
-                     "platzieren: „Mit der Maus verschieben“.")
+                     "platzieren: „Anordnen“ oder eine Schnellposition.")
         else:
-            text = _("Frei platzieren: „Mit der Maus verschieben“ oder Vorgabe „eigene Position“.")
+            text = _("Frei platzieren: „Anordnen“, eine Schnellposition oder Vorgabe „eigene Position“.")
         self.pos_hint_var.set(text)
 
     def _anchor_text(self, key):
@@ -640,7 +641,7 @@ class OverlayTab:
         from .overlay_render import add_border
         win, o = self.info_win, self.settings["overlay"]
         editing = bool(self.overlay.editing)
-        win.set_editing(editing)
+        win.set_editing(editing and not self._el_locked("text"))          # 1.46: locked = click-through
         self._info_size = None
         if self.overlay.waiting() or not self.overlay.has_map():
             return None

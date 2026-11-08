@@ -399,6 +399,33 @@ QPushButton[class="seg"]:hover {{ background: {c['hover']}; color: {c['fg']}; }}
 QPushButton[class="seg"]:checked {{ background: {c['btn_hover']}; color: {c['head']}; border-color: {c['border']}; font-weight: 600; }}
 QPushButton[class="seg"]:focus {{ border-color: {c['accent']}; }}  /* 1.22.3: the transparent border hid the focus */
 QPushButton[class="seg"]:disabled {{ color: {c['fg_dis']}; }}
+QPushButton[class="toggle"]:checked {{ background: {c['accent']}; color: {c['on_accent']}; border-color: {c['accent']};
+    font-weight: 700; }}  /* 1.46: ui.pressed – "Anordnen" while moving is on */
+QPushButton[class="toggle"]:checked:hover {{ background: {c['accent_hover']}; }}
+QFrame#ovbar {{ background: {c['panel']}; border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; }}
+QFrame#ovrail, QFrame#ovinspector {{ background: {c['panel']}; border: 1px solid {c['border']};
+    border-radius: {RADIUS['l']}px; }}  /* 1.46: the overlay editor's side panels */
+QFrame#ovinspector QTabWidget#formtabs::pane {{ border: 1px solid transparent; background: transparent;
+    border-radius: {RADIUS['m']}px; }}  /* 1.46: the inspector's tabs – no tab row, no card in the card */
+QFrame#ovinspector QTabWidget#formtabs[found="true"]::pane {{ border-color: {c['accent']}; }}
+QFrame#ovinspector QWidget#page {{ background: {c['panel']}; }}
+QFrame#ovcanvas {{ background: {c['field']}; border: 1px solid {c['border']}; border-radius: {RADIUS['l']}px; }}
+QFrame#ovcanvas[editing="true"] {{ border: 2px solid {c['accent']}; }}
+QLabel#ovstatus {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; }}
+QLabel#ovstatus[editing="true"] {{ color: {c['head']}; }}
+QFrame#ovrow {{ border-radius: {RADIUS['m']}px; border: 1px solid transparent; }}
+QFrame#ovrow:hover {{ background: {c['hover']}; }}
+QFrame#ovrow[selected="true"] {{ background: {c['nav_sel']}; border-color: {c['accent']}; }}
+QLabel#ovrowname {{ font-weight: 600; }}
+QLabel#ovrowname[off="true"] {{ color: {c['fg_dis']}; font-weight: 400; }}
+QLabel#ovrowinfo {{ color: {c['dim']}; font-size: {px(TYPE['small'])}; }}
+QLabel#ovhead {{ font-size: {px(TYPE['big'])}; font-weight: 700; }}
+QLabel#ovsection {{ color: {c['dim']}; font-size: {px(TYPE['label'])}; font-weight: 700; }}
+QToolButton#ovicon {{ background: transparent; border: 1px solid transparent; border-radius: {RADIUS['s']}px; padding: 2px; }}
+QToolButton#ovicon:hover {{ background: {c['btn_hover']}; border-color: {c['border']}; }}
+QToolButton#ovicon:focus {{ border-color: {c['accent']}; }}
+QPushButton#ovcell {{ padding: 0; border-radius: {RADIUS['s']}px; }}
+QPushButton#ovcell:checked {{ background: {c['accent']}; border-color: {c['accent']}; }}
 QProgressBar {{ background: {c['bar']}; border: none; border-radius: {RADIUS['bar']}px; max-height: 6px; min-height: 6px; }}
 QProgressBar::chunk {{ background: {c['accent']}; border-radius: {RADIUS['bar']}px; }}
 QProgressBar#factbar {{ max-height: 4px; min-height: 4px; border-radius: {RADIUS['xs']}px; }}

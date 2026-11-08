@@ -120,12 +120,19 @@ def snap_lines(screen, bar, layers, moving):
     return xs, ys
 
 
-def snap_on_screen(game, bar, others, box, tol=SNAP_GAME_PX):
+def snap_game_tol(gh: int) -> int:
+    """1.46: the snap distance in the game grows with the game picture (10 px at 1440p, 15 at 2160p, 8 at 1080p) –
+    a fixed 10 px was hard to hit on 4K and grabby on a small window."""
+    return max(4, round(SNAP_GAME_PX * max(1, gh) / 1440))
+
+
+def snap_on_screen(game, bar, others, box, tol=None):
     """1.45.1: snapping while an element is dragged in the game – the same lines as the preview (snap_lines: window
     edges and centre, black bars, the other elements' edges), in screen pixels. ``game`` (x, y, w, h), ``others``
     boxes of the other shown elements, ``box`` the proposed (x, y, w, h). Returns (x, y, line_x, line_y), lines in
     screen pixels or None."""
     gx, gy, gw, gh = game
+    tol = snap_game_tol(gh) if tol is None else tol
     layers = [(i, ox - gx, oy - gy, ow, oh) for i, (ox, oy, ow, oh) in enumerate(others)]
     xs, ys = snap_lines((gw, gh), bar, layers, None)
     x, y, lx, ly = snap_rect(box[0] - gx, box[1] - gy, box[2], box[3], xs, ys, tol)

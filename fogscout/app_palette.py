@@ -67,7 +67,7 @@ class PaletteMixin:
             if v:
                 out.append((key, v[1]))
         out.append(("test", self.test_btn.cget("text") if hasattr(self, "test_btn") else _("Overlay testen")))
-        out.append(("edit", self.edit_btn.cget("text") if hasattr(self, "edit_btn") else _("Mit der Maus verschieben")))
+        out.append(("edit", self.edit_btn.cget("text") if hasattr(self, "edit_btn") else _("Anordnen")))
         if self.settings.get("rec_on") or self.settings.get("rec_folder"):
             rec = getattr(self, "recorder", None)
             out.append(("record", _("Aufnahme stoppen") if rec is not None and rec.recording else _("Aufnahme starten")))

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
@@ -25,10 +25,14 @@ class PreviewView(QWidget):
     puts the map there: post("act", (key, ("move", x, y))) in screen pixels – the App makes it the own position."""
 
     MAX_H = 380
+    # 1.46: what the mouse does over the canvas, for the overlay editor's status line (GUI thread only)
+    status_changed = Signal(dict)
 
     def __init__(self, key, post):
         super().__init__()
         self._key, self._post = key, post
+        self._fill = False                     # 1.46: the overlay editor's canvas – as big as its place, no cap
+        self._status = None                    # the last status sent (status_changed only on a change)
         self._data = {}
         self._pix = None                       # (picture object, size) -> QPixmap
         self._dragging = False
@@ -49,13 +53,21 @@ class PreviewView(QWidget):
         self.setSizePolicy(sp)
         self.setMinimumHeight(120)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip(_("Klick auf ein Element wählt es für den Regler „Grösse“. Mit „Mit der Maus verschieben“: "
-                          "Element ziehen = verschieben (der gestrichelte Rahmen zeigt, wo es landet), an der Ecke "
-                          "ziehen oder Strg+Mausrad = Grösse, Rechtsklick = Position oder Grösse zurücksetzen. Ende "
-                          "mit „Fertig“."))
+        self.setToolTip(_("Klick auf ein Element wählt es. Mit „Anordnen“: Element ziehen = verschieben (der "
+                          "gestrichelte Rahmen zeigt, wo es landet), an der Ecke ziehen oder Strg+Mausrad = Grösse, "
+                          "Rechtsklick = Menü. Ende mit „Fertig“ oder Esc."))
+
+    def set_fill(self, on: bool = True):
+        """1.46 (user: "das Overlay-Fenster ist sehr klein"): in the overlay editor the canvas takes all the room it
+        gets – no height cap, no note strip (the editor's status line says it); the setup page keeps the old view."""
+        self._fill = bool(on)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setFocusPolicy(Qt.StrongFocus)            # Tab picks the next element (event below)
+        self.setMinimumSize(240, 140)
+        self.updateGeometry()
 
     def hasHeightForWidth(self):
-        return True
+        return not self._fill
 
     def heightForWidth(self, w):
         sw, sh = self._data.get("screen") or (16, 9)
@@ -63,10 +75,28 @@ class PreviewView(QWidget):
 
     def _note_h(self) -> int:
         """1.8.8: in moving mode a strip below the screen holds the note (over the picture it hid the music card)."""
-        return NOTE_H if self._data.get("editing") else 0
+        return NOTE_H if self._data.get("editing") and not self._fill else 0
 
     def sizeHint(self):
+        if self._fill:
+            return QSize(720, 400)
         return QSize(560, self.heightForWidth(560))
+
+    def _send_status(self):
+        """1.46: hover / held element / snap lines / moving mode → status_changed, only when something changed."""
+        d = self._data
+        st = {"hover": self._hover, "grab": self._grab[0] if self._grab else None,
+              "sizing": self._sizing[0] if self._sizing else None,
+              "snapped": self._snapped != (None, None) and bool(self._grab), "limit": bool(self._limit),
+              "editing": bool(d.get("editing")), "selected": d.get("selected"),
+              "locked": tuple(d.get("locked") or ()), "layout_key": d.get("layout_key") or "",
+              "limits_off": bool(d.get("limits") and not d.get("limits_on", True))}
+        if st != self._status:
+            self._status = st
+            self.status_changed.emit(dict(st))
+
+    def _locked(self, name) -> bool:
+        return name in (self._data.get("locked") or ())
 
     def show_state(self, st):
         data = st.get("data") or {}
@@ -85,6 +115,7 @@ class PreviewView(QWidget):
         if shape:
             self.updateGeometry()
         self.update()
+        self._send_status()
 
     def _frame(self):
         """(left, top, scale): where the screen is drawn in the widget, screen px -> widget px."""
@@ -159,7 +190,8 @@ class PreviewView(QWidget):
             if d.get("limits") and not d.get("limits_on", True):       # 1.8.15: the faint limiter lines
                 note += "\n" + _("Graue Linien in den Balken = Grenzen (aus) – eine ziehen schaltet sie ein")
             strip = QRectF(screen.left(), screen.bottom() + 4, screen.width(), self.height() - screen.bottom() - 4)
-            p.drawText(strip, Qt.AlignHCenter | Qt.AlignTop | Qt.TextWordWrap, note)
+            if not self._fill:                     # 1.46: the editor says it in its status line
+                p.drawText(strip, Qt.AlignHCenter | Qt.AlignTop | Qt.TextWordWrap, note)
         if d.get("editing"):                       # every element named; the one under the mouse in accent colour
             accent = QColor(qt_theme.colours(True)["accent"])
             held = self._grab[0] if self._grab else self._hover
@@ -177,6 +209,8 @@ class PreviewView(QWidget):
                 p.setBrush(Qt.NoBrush)
                 p.drawRect(r)
                 tag = _(PREVIEW_NAMES.get(name, name))
+                if self._locked(name):             # 1.46: locked – not dragged
+                    tag = tag + " · " + _("gesperrt")
                 tw = p.fontMetrics().horizontalAdvance(tag) + 8
                 tr = QRectF(max(screen.left(), min(r.left(), screen.right() - tw)), max(oy, r.top() - 15), tw, 15)
                 if any(tr.intersects(o) for n2, o in rects.items() if n2 != name):
@@ -197,12 +231,12 @@ class PreviewView(QWidget):
                 p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 40))
                 p.drawRect(QRectF(ox + ax * s, oy + ay * s, aw * s, ah * s))
             sel = self._layer(d.get("selected"))
-            if sel:                                # the picked element: its corner sizes it (1.64.9)
+            if sel and not self._locked(sel[0]):   # the picked element: its corner sizes it (1.64.9)
                 hr = self._handle_rect(sel, ox, oy, s)
                 p.setPen(QPen(QColor(20, 16, 4), 1))
                 p.setBrush(accent)
                 p.drawRect(hr)
-            if held:
+            if held and not self._fill:
                 p.setPen(accent)
                 p.setFont(tf)
                 what = _("Ziehst: {name}", name=_(PREVIEW_NAMES.get(held, held))) if self._grab else \
@@ -213,6 +247,11 @@ class PreviewView(QWidget):
         sel = self._layer(d.get("selected"))
         if sel:                                    # the element the size slider works on (1.64.9)
             _n, x, y, w, h = sel
+        hov = self._layer(self._hover) if self._fill and not d.get("editing") else None
+        if hov and hov[0] != d.get("selected"):     # 1.46: the element a click would pick
+            p.setPen(QPen(QColor(255, 255, 255, 110), 1, Qt.DashLine))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(QRectF(ox + hov[1] * s, oy + hov[2] * s, hov[3] * s, hov[4] * s))
         if w and h and not d.get("editing"):
             rx, ry = ox + x * s, oy + y * s
             pen = QPen(QColor(qt_theme.colours(True)["accent"]), 1.5, Qt.DashLine)
@@ -343,9 +382,9 @@ class PreviewView(QWidget):
         return QRectF(ox + (lx + lw) * s - k / 2, oy + (ly + lh) * s - k / 2, k, k)
 
     def _on_handle(self, e):
-        """The picked element when the mouse is on its corner (moving mode only)."""
+        """The picked element when the mouse is on its corner (moving mode only; 1.46: not when locked)."""
         sel = self._layer(self._data.get("selected")) if self._data.get("editing") else None
-        if sel is None:
+        if sel is None or self._locked(sel[0]):
             return None
         ox, oy, s = self._frame()
         return sel if self._handle_rect(sel, ox, oy, s).adjusted(-3, -3, 3, 3).contains(e.position()) else None
@@ -358,7 +397,7 @@ class PreviewView(QWidget):
         pt = self._screen_pos(e) if self._data.get("editing") and ctrl else None
         hit = self.layer_at(*pt) if pt else None
         steps = e.angleDelta().y() / 120
-        if not hit or not steps:
+        if not hit or not steps or self._locked(hit[0]):
             e.ignore()
             return
         lay = self._layer(hit[0])
@@ -423,6 +462,7 @@ class PreviewView(QWidget):
                 x, y, lx, ly = snap_rect(x, y, lay[3], lay[4], xs, ys, SNAP_PX / max(1e-6, self._frame()[2]))
                 self._snapped = (lx, ly)
             self._held = (name, x, y, time.monotonic())
+            self._send_status()
             self.update()
             self._post("act", (self._key, ("place", name, x, y)))
 
@@ -436,17 +476,19 @@ class PreviewView(QWidget):
         corner = self._on_handle(e)
         if corner:
             self._sizing = corner
+            self._send_status()
             return
         pt = self._screen_pos(e)
         hit = self.layer_at(*pt) if pt else None
         if hit and hit[0] != self._data.get("selected"):   # 1.64.9: picks it for the size slider (1.44.2: only a
             self._post("act", (self._key, ("select", hit[0])))   # new pick – each click switched the tab before)
-        if self._data.get("editing") and hit:  # 1.44.2: a click on an empty place no longer moves the map there
+        if self._data.get("editing") and hit and not self._locked(hit[0]):   # 1.46: a locked one stays
             self._grab = hit
             self._snap_from = tuple(self._data.get("layers") or ())   # lines frozen for this drag (no flicker)
             self._answered = False
             self._dragging = True
             self.setCursor(Qt.ClosedHandCursor)
+            self._send_status()
 
     def mouseMoveEvent(self, e):
         if self._limit:
@@ -466,21 +508,28 @@ class PreviewView(QWidget):
             return
         if self._dragging:
             self._move(e)
-        elif not self._data.get("editing"):
-            self.setCursor(Qt.ArrowCursor)
+        elif not self._data.get("editing"):             # 1.46: a click picks the element under the mouse
+            pt = self._screen_pos(e)
+            self.setCursor(Qt.PointingHandCursor if pt and self.layer_at(*pt) else Qt.ArrowCursor)
         else:
             pt = self._screen_pos(e)
             hit = self.layer_at(*pt) if pt else None
             self.setCursor(Qt.SizeVerCursor if self._limit_at(e) else Qt.SizeFDiagCursor if self._on_handle(e) else
+                           Qt.ForbiddenCursor if hit and self._locked(hit[0]) else
                            Qt.OpenHandCursor if hit else Qt.PointingHandCursor)
-            if (hit[0] if hit else None) != self._hover:
+        if not self._dragging and not self._sizing and not self._limit:
+            pt = self._screen_pos(e)
+            hit = self.layer_at(*pt) if pt else None
+            if (hit[0] if hit else None) != self._hover:     # 1.46: also outside moving mode (status line)
                 self._hover = hit[0] if hit else None
                 self.update()
+                self._send_status()
 
     def leaveEvent(self, _e):
         if self._hover:
             self._hover = None
             self.update()
+            self._send_status()
 
     def mouseReleaseEvent(self, _e):
         self._limit = self._limit_y = None
@@ -491,11 +540,34 @@ class PreviewView(QWidget):
         if self._snapped != (None, None):
             self._snapped = (None, None)
             self.update()
+        self._send_status()
+
+    def event(self, e):
+        """1.46: Tab / Shift+Tab on the editor's canvas picks the next / previous element (not the next widget)."""
+        from PySide6.QtCore import QEvent
+        if self._fill and e.type() == QEvent.KeyPress and e.key() in (Qt.Key_Tab, Qt.Key_Backtab):
+            self._cycle(-1 if e.key() == Qt.Key_Backtab or e.modifiers() & Qt.ShiftModifier else 1)
+            return True
+        return super().event(e)
+
+    def _cycle(self, step: int):
+        names = [lay[0] for lay in self._data.get("layers") or ()]
+        if not names:
+            return
+        cur = self._data.get("selected")
+        i = names.index(cur) if cur in names else (-1 if step > 0 else 0)
+        self._post("act", (self._key, ("select", names[(i + step) % len(names)])))
 
     def keyPressEvent(self, e):
-        """Arrow keys (moving mode): the picked element by 1 px, with Shift by 10 px (1.65)."""
+        """Arrow keys (moving mode): the picked element by 1 px, with Shift by 10 px (1.65). 1.46: Esc on the
+        editor's canvas ends moving; a locked element does not move."""
+        if e.key() == Qt.Key_Escape and self._fill and self._data.get("editing"):
+            self._post("act", ("ov.edit", None))
+            e.accept()
+            return
         step = {Qt.Key_Left: (-1, 0), Qt.Key_Right: (1, 0), Qt.Key_Up: (0, -1), Qt.Key_Down: (0, 1)}.get(e.key())
-        if step is None or not self._data.get("editing") or not self._data.get("selected"):
+        if (step is None or not self._data.get("editing") or not self._data.get("selected")
+                or self._locked(self._data.get("selected"))):
             super().keyPressEvent(e)
             return
         n = 10 if e.modifiers() & Qt.ShiftModifier else 1

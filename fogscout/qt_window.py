@@ -142,70 +142,72 @@ STYLE_IDLE_MS = 120               # ms between restyling two hidden pages after 
 # wide page, below each other on a narrow one (qt_pages.SideBySide).
 SPECS = {
     "overlay": (
-        # 1.66.4 (user: "6 passt"): the preview stays on top; 1.2.12 (analysis point 9): below it the tools for the
-        # element picked (list, size, opacity, move/test/undo – on every tab), then one tab per element and
-        # "Allgemein"; a click on an element in the preview opens its tab (MainWindow.open_tab)
-        # 1.8.2: preview and the tools of the picked element side by side when the page is wide enough – the
-        # tabs with the settings were below the fold on a 760-px window, every change needed scrolling
-        # 1.11.14 (user picked "Vorschau links, Einstellungen rechts"): on a wide page the preview with the tools
-        # of the picked element on the left and the tabs on the right – no scrolling down to every setting
-        ("split", (
-            ("side", (
-                ("panel", (("preview", "ov.preview"),)),
-                ("panel", (
-                    ("row", (("label", "ov.sel.label"), ("combo", "ov.sel"), ("stretch",))), ("slider", "ov.sel_size"),
-                    ("slider", "ov.opacity"), ("hint", "ov.size_scope"), ("hint", "ov.size_cap"),
-                    ("row", (("button", "ov.edit"), ("button", "ov.test"), ("button", "ov.undo"), ("stretch",))))))),
-        ), (
-            ("tabs", (
-                ("ov.look", N_("Karte"), (
-                    ("row", (("label", "ov.anchor.label"), ("combo", "ov.anchor"), ("stretch",), ("button", "ov.reset"))),
-                    ("slider", "ov.posx"), ("slider", "ov.posy"), ("hint", "ov.pos_hint"),
-                    ("row", (("hint", "ov.map_size"), ("stretch",), ("button", "ov.map_size_reset"))),
-                    ("row", (("label", "ov.map_style.label"), ("combo", "ov.map_style"), ("stretch",))),
-                    ("row", (("label", "ov.info_pos.label"), ("combo", "ov.info_pos"), ("stretch",))),     # 1.8.24
-                    ("sub", N_("Darstellung")), ("check", "ov.show_map"), ("check", "ov.caption"), ("check", "ov.floors"),
-                    ("check", "ov.transparent"), ("check", "ov.map_backdrop"), ("check", "ov.keep_bar"), ("check", "ov.grow"), ("check", "ov.fill_bar"),
-                    ("sub", N_("Infos (Timer, Bilanz, Server)")), ("check", "ov.timer"), ("check", "ov.server"), ("check", "ov.record"), ("check", "ov.notes"),
-                    ("sub", N_("Wann zeigen")), ("check", "ov.focus"), ("check", "ov.waiting"))),
-                ("ov.sys", N_("Systemwerte"), (
-                    ("row", (("label", "ov.sysinfo.label"), ("combo", "ov.sysinfo"), ("stretch",))),
-                    ("hint", "ov.sys_text"), ("hint", "ov.sys_hint"), ("check", "ov.hud_backdrop"),
-                    ("check", "ov.hud_row_cpu"), ("check", "ov.hud_row_gpu"), ("check", "ov.hud_row_spot"),
-                    ("check", "ov.hud_row_vram"), ("check", "ov.hud_row_ram"))),
-                ("ov.today_f", N_("Heute"), (
-                    ("check", "ov.today"),
-                    ("row", (("label", "ov.today_pos.label"), ("combo", "ov.today_pos"), ("stretch",))),
-                    ("check", "ov.today_backdrop"))),
-                ("ov.music_f", N_("Musik"), (
-                    ("check", "ov.media"), ("row", (("label", "ov.media_pos.label"), ("combo", "ov.media_pos"), ("stretch",))),
-                    ("row", (("label", "ov.media_style.label"), ("combo", "ov.media_style"), ("stretch",))),
-                    ("check", "ov.media_cover"),
-                    ("row", (("label", "ov.media_shape.label"), ("combo", "ov.media_shape"), ("stretch",))),   # 1.8.24
-                    ("check", "ov.media_progress"), ("check", "ov.media_accent"),
-                    ("check", "ov.media_remaining"), ("check", "ov.media_backdrop"), ("check", "ov.media_fade"),
-                    ("check", "ov.media_videos"),
-                    ("row", (("label", "ov.media_next.label"), ("combo", "ov.media_next"), ("stretch",))),   # 1.8
-                    ("slider", "ov.media_next_n"), ("hint", "ov.media_next_hint"))),
-                ("ov.inputs_f", N_("Eingaben"), (                                                    # 1.39
-                    ("check", "ov.inputs"),
-                    ("row", (("label", "ov.inputs_layout.label"), ("combo", "ov.inputs_layout"), ("stretch",))),
-                    ("row", (("label", "ov.inputs_pos.label"), ("combo", "ov.inputs_pos"), ("stretch",))),
-                    ("check", "ov.inputs_record"), ("check", "ov.inputs_backdrop"), ("hint", "ov.inputs_hint"))),
-                ("ov.pos", N_("Allgemein"), (
-                    ("check", "ov.master"),                                                          # 1.8.18
-                    ("check", "ov.small_off"),                                                       # 1.8.62
-                    ("row", (("label", "ov.style.label"), ("combo", "ov.style"), ("stretch",))),     # 1.3
-                    ("slider", "ov.gap"),
-                    ("row", (("label", "ov.bar_align.label"), ("combo", "ov.bar_align"), ("stretch",))),
-                    ("check", "ov.limits"),                                                          # 1.8.14
-                    ("row", (("check", "ov.limits_same"), ("button", "ov.limits_reset"), ("stretch",))),
-                    ("hint", "ov.limits_hint"), ("check", "ov.keep_out"),                         # 1.8.25
-                    ("row", (("check", "ov.same_width"), ("button", "ov.merge_column"), ("stretch",))),   # 1.8.29
-                    ("row", (("label", "ov.preset.label"), ("combo", "ov.preset"), ("button", "ov.preset_apply"),
-                             ("stretch",))),
-                    ("check", "ov.fade"), ("check", "ov.per_size"), ("hint", "ov.per_size_hint"))))),
-        )),
+        # 1.46 (user: "Overlay-Steuerung grundlegend modernisieren … das Overlay-Fenster ist sehr klein"): the page is
+        # an editor (qt_overlay.OverlayEditor) – tool bar; the list of elements | the canvas with all the room the
+        # window has + a status line | the inspector of the element picked (quick places, size, opacity and its
+        # settings tab – the tab row is hidden, the list picks the tab). Before: preview + tools | six tabs (1.11.14).
+        ("editor",
+         (("button", "ov.edit"), ("button", "ov.undo"), ("label", "ov.preset.label"), ("combo", "ov.preset"),
+          ("button", "ov.preset_apply"), ("button", "ov.test"), ("stretch",), ("button", "ov.focus_mode")),
+         (("elements", "ov.elements"),),
+         (("preview", "ov.preview"),),
+         (("sub", N_("Schnellposition")), ("anchors", "ov.anchors"),
+          ("sub", N_("Grösse und Deckkraft")), ("slider", "ov.sel_size"), ("slider", "ov.opacity"),
+          ("hint", "ov.size_scope"), ("hint", "ov.size_cap"),
+          ("tabs", (
+              ("ov.look", N_("Karte"), (
+                  ("sub", N_("Position")),
+                  ("row", (("label", "ov.anchor.label"), ("combo", "ov.anchor"), ("stretch",))),
+                  ("row", (("button", "ov.reset"), ("stretch",))),
+                  ("slider", "ov.posx"), ("slider", "ov.posy"), ("hint", "ov.pos_hint"),
+                  ("check", "ov.keep_bar"), ("check", "ov.grow"), ("check", "ov.fill_bar"),
+                  ("row", (("hint", "ov.map_size"), ("stretch",), ("button", "ov.map_size_reset"))),
+                  ("sub", N_("Darstellung")),
+                  ("row", (("label", "ov.map_style.label"), ("combo", "ov.map_style"), ("stretch",))),
+                  ("row", (("label", "ov.info_pos.label"), ("combo", "ov.info_pos"), ("stretch",))),     # 1.8.24
+                  ("check", "ov.show_map"), ("check", "ov.caption"), ("check", "ov.floors"),
+                  ("check", "ov.transparent"), ("check", "ov.map_backdrop"),
+                  ("sub", N_("Infos (Timer, Bilanz, Server)")), ("check", "ov.timer"), ("check", "ov.server"),
+                  ("check", "ov.record"), ("check", "ov.notes"),
+                  ("sub", N_("Wann zeigen")), ("check", "ov.focus"), ("check", "ov.waiting"))),
+              ("ov.sys", N_("Systemwerte"), (
+                  ("row", (("label", "ov.sysinfo.label"), ("combo", "ov.sysinfo"), ("stretch",))),
+                  ("hint", "ov.sys_text"), ("hint", "ov.sys_hint"), ("check", "ov.hud_backdrop"),
+                  ("sub", N_("Zeilen")),
+                  ("check", "ov.hud_row_cpu"), ("check", "ov.hud_row_gpu"), ("check", "ov.hud_row_spot"),
+                  ("check", "ov.hud_row_vram"), ("check", "ov.hud_row_ram"))),
+              ("ov.today_f", N_("Heute"), (
+                  ("check", "ov.today"),
+                  ("row", (("label", "ov.today_pos.label"), ("combo", "ov.today_pos"), ("stretch",))),
+                  ("check", "ov.today_backdrop"))),
+              ("ov.music_f", N_("Musik"), (
+                  ("check", "ov.media"), ("row", (("label", "ov.media_pos.label"), ("combo", "ov.media_pos"), ("stretch",))),
+                  ("row", (("label", "ov.media_style.label"), ("combo", "ov.media_style"), ("stretch",))),
+                  ("check", "ov.media_cover"),
+                  ("row", (("label", "ov.media_shape.label"), ("combo", "ov.media_shape"), ("stretch",))),   # 1.8.24
+                  ("check", "ov.media_progress"), ("check", "ov.media_accent"),
+                  ("check", "ov.media_remaining"), ("check", "ov.media_backdrop"), ("check", "ov.media_fade"),
+                  ("check", "ov.media_videos"),
+                  ("row", (("label", "ov.media_next.label"), ("combo", "ov.media_next"), ("stretch",))),   # 1.8
+                  ("slider", "ov.media_next_n"), ("hint", "ov.media_next_hint"))),
+              ("ov.inputs_f", N_("Eingaben"), (                                                    # 1.39
+                  ("check", "ov.inputs"),
+                  ("row", (("label", "ov.inputs_layout.label"), ("combo", "ov.inputs_layout"), ("stretch",))),
+                  ("row", (("label", "ov.inputs_pos.label"), ("combo", "ov.inputs_pos"), ("stretch",))),
+                  ("check", "ov.inputs_record"), ("check", "ov.inputs_backdrop"), ("hint", "ov.inputs_hint"))),
+              ("ov.pos", N_("Allgemein"), (
+                  ("check", "ov.master"),                                                          # 1.8.18
+                  ("check", "ov.small_off"),                                                       # 1.8.62
+                  ("row", (("label", "ov.style.label"), ("combo", "ov.style"), ("stretch",))),     # 1.3
+                  ("slider", "ov.gap"),
+                  ("row", (("label", "ov.bar_align.label"), ("combo", "ov.bar_align"), ("stretch",))),
+                  ("sub", N_("Grenzen und Platz")),
+                  ("check", "ov.limits"),                                                          # 1.8.14
+                  ("row", (("check", "ov.limits_same"), ("button", "ov.limits_reset"), ("stretch",))),
+                  ("hint", "ov.limits_hint"), ("check", "ov.keep_out"),                         # 1.8.25
+                  ("row", (("check", "ov.same_width"), ("button", "ov.merge_column"), ("stretch",))),   # 1.8.29
+                  ("sub", N_("Verhalten")),
+                  ("check", "ov.fade"), ("check", "ov.per_size"), ("hint", "ov.per_size_hint"))))))),
     ),
     "settings": (
         # 1.8.90 (user: "Bei Settings ist es riesig geworden"): six tabs instead of one column of 15 cards and the
@@ -362,7 +364,7 @@ def _spec_keys(items):
             yield from _spec_keys(it[1])
         elif kind == "fold":                        # 1.29.1: (fold, title, items)
             yield from _spec_keys(it[2])
-        elif kind == "split":                       # 1.11.14: columns of items
+        elif kind in ("split", "editor"):           # 1.11.14: columns of items; 1.46: the overlay editor's parts
             for items in it[1:]:
                 yield from _spec_keys(items)
         elif kind == "tabs":
@@ -372,7 +374,7 @@ def _spec_keys(items):
         elif kind == "grid":
             yield from _spec_keys(it[2])
         elif kind in ("check", "button", "combo", "slider", "label", "hint", "value", "plain", "hotkey", "preview", "entry",
-                      "swatches"):
+                      "swatches", "elements", "anchors"):
             yield it[1]
 
 
@@ -634,6 +636,7 @@ class MainWindow(QMainWindow):
         self.nav.setFixedWidth(nav_w())
         self._nav_compact = False
         self._nav_kept = False
+        self._focus_nav = False           # 1.46: the overlay editor's focus view keeps the navigation narrow
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.stack = QStackedWidget()
         self.overview = OverviewPage(post)
@@ -977,7 +980,7 @@ class MainWindow(QMainWindow):
             w.click()                                  # 1.23: a closed fold opens (Log → Erweitert)
         if self._nav_kept:
             self._nav_kept = False
-            self._compact_nav(self.width() < NAV_COMPACT_BELOW)
+            self._compact_nav(self._focus_nav or self.width() < NAV_COMPACT_BELOW)
         self._reveal_widget(w, delay=150 if folded else 0)
 
     def reveal(self, page: str, key: str):
@@ -1323,7 +1326,13 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, e):
         self.geometry_changed = True
         super().resizeEvent(e)
-        self._compact_nav(self.width() < NAV_COMPACT_BELOW)
+        self._compact_nav(self._focus_nav or self.width() < NAV_COMPACT_BELOW)
+
+    def set_focus_nav(self, on: bool):
+        """1.46: the overlay editor's "Fokus" – the navigation shows only its icons while it is on (not the search's
+        latch ``keep``: a search must not end the focus view)."""
+        self._focus_nav = bool(on)
+        self._compact_nav(self._focus_nav or self.width() < NAV_COMPACT_BELOW)
 
     def _brand_row(self) -> QWidget:
         """1.24 (phase 2, prompt_phase2.md): the compass of the program's icon and its name above the search – the
