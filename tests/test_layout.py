@@ -29,6 +29,18 @@ def test_custom_follows_the_bar_it_starts_in():
     assert L.bar_side("custom", 1200, 500, GX, GW, BAR) is None             # over the game on purpose
 
 
+def test_a_big_map_near_the_bar_is_fitted_into_it():
+    """1.46.3 (Saru's screenshot: the map 870 × 1342 px over the game): at 80 % height a map 1 % from the left edge
+    had its unfitted middle outside the bar and was never fitted – a step of 1 % flipped it from 411 to 870 px."""
+    assert L.bar_side("custom", 26, 870, GX, GW, BAR) == "left"
+    assert L.bar_side("custom", GW - 26 - 870, 870, GX, GW, BAR) == "right"
+    assert L.bar_side("custom", 600, 870, GX, GW, BAR) is None              # dragged into the game: stays free
+    for px in (0.0, 0.01, 0.05):
+        for hf in (0.36, 0.6, 0.8):
+            x, _y, w, _h, _mh = L.preview_rect(GW, GH, "custom", px, 0.02, hf, 0.012, True, 0.755, info_rows=3)
+            assert w <= L.max_width(BAR, M) and x + w <= BAR, (px, hf, x, w)
+
+
 def test_clamp_inside_the_bar():
     assert L.clamp_x("left", 300, 406, GX, GW, BAR, M) == 17                # pushed back left
     assert L.clamp_x("left", 0, 200, GX, GW, BAR, M) == 17

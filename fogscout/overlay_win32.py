@@ -267,6 +267,7 @@ class HudWindow:
         self.fade = 1.0                        # share of the opacity while fading in/out (music card, 1.2.4)
         self.on_moved = None
         self.on_reset = None                   # 1.44.1: right click in edit mode = back to its usual place
+        self.on_menu = None                    # 1.46.2: … or, when set, its quick-action menu (hide, reset, lock)
         self.on_snap = self.on_undo = None     # 1.45.1: snap while dragged, Ctrl+Z (edit_message)
         self._moving = False                   # 1.44.1: Windows' move loop runs (the user drags it)
         self._moving_sig = None                # … the picture pushed during it (only the picture, not the place)
@@ -287,8 +288,8 @@ class HudWindow:
                     self._pos = (rc.left, rc.top, round(self.opacity, 3))
                     if self.on_moved:
                         self.on_moved(rc.left, rc.top)
-                if msg == WM_NCRBUTTONUP and self.on_reset:
-                    self.on_reset()
+                if msg == WM_NCRBUTTONUP and (self.on_menu or self.on_reset):
+                    (self.on_menu or self.on_reset)()
                     return 0
                 done = edit_message(self, hwnd, msg, wp, lp)
                 if done is not None:
@@ -955,6 +956,7 @@ class Win32Overlay(PictureOverlay):
         self._hwnd = int(self._hwnd)
         self._moving = False                                   # 1.44.1: see PictureOverlay.dragging
         self.on_reset = None                                   # 1.44.1: right click in edit mode
+        self.on_menu = None                                    # 1.46.2: … its quick-action menu, when set
         self.on_snap = self.on_undo = None                     # 1.45.1: see edit_message
         self._proc = WNDPROC(self._wndproc)                    # keep a reference!
         self._old_proc = _SetLong(self._hwnd, GWLP_WNDPROC, ctypes.cast(self._proc, ctypes.c_void_p).value)
@@ -967,8 +969,8 @@ class Win32Overlay(PictureOverlay):
                     return HTCAPTION                  # drag anywhere on the picture
                 if msg == WM_ENTERSIZEMOVE:
                     self._moving = True
-                if msg == WM_NCRBUTTONUP and self.on_reset:
-                    self.on_reset()
+                if msg == WM_NCRBUTTONUP and (self.on_menu or self.on_reset):
+                    (self.on_menu or self.on_reset)()
                     return 0
                 if msg == WM_EXITSIZEMOVE:
                     self._moving = False

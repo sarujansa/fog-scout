@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -38,6 +39,12 @@ MAX_JSON = 2 * 1024 * 1024
 TIMEOUT_S = 30
 CHUNK = 1024 * 1024
 USER_AGENT = "FogScout-updater"
+# 1.46.1: GitHub answers now and then with 502/503/504 (user: "HTTP Error 504: Gateway Time-out" on "Aktualisieren
+# und neu starten"). Such an answer and a dropped connection are tried again after a short wait; a refusal
+# (403 rate limit, 404) or a wrong file never is.
+TRANSIENT_HTTP = frozenset({500, 502, 503, 504})
+RETRY_WAITS_S = (3, 10)              # waits before the 2nd and 3rd try
+SLEEP = time.sleep                   # the tests replace it
 
 
 @dataclass
@@ -112,10 +119,48 @@ def _opener():
     return opener()
 
 
-def _get(url: str, opener, limit: int) -> bytes:
+def transient(e: BaseException) -> bool:
+    """A failure that may be gone in a few seconds: a 5xx gateway/server answer, a timeout, a dropped connection.
+    Never a refusal (403/404), a redirect without https (SafeRedirect) or a wrong file (ValueError)."""
+    if isinstance(e, urllib.error.HTTPError):
+        return e.code in TRANSIENT_HTTP
+    if isinstance(e, urllib.error.URLError):
+        return isinstance(e.reason, (TimeoutError, ConnectionError))
+    return isinstance(e, (TimeoutError, ConnectionError))
+
+
+def _retrying(fn, retried=None):
+    """fn() – tried again after RETRY_WAITS_S while it fails transiently; ``retried(n, total)`` before try n."""
+    total = len(RETRY_WAITS_S) + 1
+    for n, wait in enumerate((0,) + tuple(RETRY_WAITS_S), start=1):
+        if wait:
+            if retried:
+                retried(n, total)
+            SLEEP(wait)
+        try:
+            return fn()
+        except Exception as e:
+            if n == total or not transient(e):
+                raise
+
+
+def describe_error(e: BaseException) -> str:
+    """What the user reads when a look or download failed – a busy GitHub said in words, else the error itself."""
+    if isinstance(e, urllib.error.HTTPError) and e.code in TRANSIENT_HTTP:
+        return _("GitHub antwortet gerade nicht (HTTP {code}) – bitte in einigen Minuten erneut versuchen.",
+                 code=e.code)
+    if transient(e):
+        return _("Keine Antwort von GitHub (Zeitüberschreitung/Verbindung) – bitte später erneut versuchen.")
+    return str(e)
+
+
+def _get(url: str, opener, limit: int, retried=None) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"})
-    with opener.open(req, timeout=TIMEOUT_S) as r:
-        data = r.read(limit + 1)
+
+    def once():
+        with opener.open(req, timeout=TIMEOUT_S) as r:
+            return r.read(limit + 1)
+    data = _retrying(once, retried)
     if len(data) > limit:
         raise ValueError("Antwort zu gross")
     return data
@@ -132,7 +177,7 @@ def check(root: str, opener=None):
     try:
         rel = latest(opener)
     except (OSError, ValueError) as e:
-        return "error", _("Update-Prüfung fehlgeschlagen: {error}", error=e), False, None
+        return "error", _("Update-Prüfung fehlgeschlagen: {error}", error=describe_error(e)), False, None
     if rel.build <= mine.get("build", 0):
         return "current", _("Kein Update – Version {version} (Build {build}) ist aktuell.",
                             version=mine.get("version") or "?", build=shown_build(mine)), False, None
@@ -140,9 +185,9 @@ def check(root: str, opener=None):
                            new=rel.version, build=shown_build(rel)), True, rel)
 
 
-def expected_sha(rel: Release, opener=None) -> str:
+def expected_sha(rel: Release, opener=None, retried=None) -> str:
     """The SHA-256 the release states: its .sha256 file (first word), equal to GitHub's digest when that is listed."""
-    text = _get(rel.sha_url, opener or _opener(), 4096).decode("ascii", "replace").strip()
+    text = _get(rel.sha_url, opener or _opener(), 4096, retried).decode("ascii", "replace").strip()
     word = (text.split() or [""])[0].lower()
     if not re.fullmatch(r"[0-9a-f]{64}", word):
         raise ValueError("Prüfsummen-Datei unlesbar")
@@ -151,18 +196,20 @@ def expected_sha(rel: Release, opener=None) -> str:
     return word
 
 
-def download(rel: Release, data_dir: str, opener=None, progress=None) -> str:
+def download(rel: Release, data_dir: str, opener=None, progress=None, retried=None) -> str:
     """Fetch the setup into data_dir/cache/update, check size and SHA-256; returns its path. A failed or wrong
-    download leaves nothing behind; older setups there are removed."""
+    download leaves nothing behind; older setups there are removed. 1.46.1: a 5xx answer or a dropped connection
+    starts the download again from the beginning (``retried(n, total)``), at most len(RETRY_WAITS_S) times."""
     opener = opener or _opener()
-    want = expected_sha(rel, opener)
+    want = expected_sha(rel, opener, retried)
     folder = os.path.join(data_dir, UPDATE_DIR)
     os.makedirs(folder, exist_ok=True)
     final = os.path.join(folder, rel.setup_name)
     tmp = final + ".part"
-    h, got = hashlib.sha256(), 0
     req = urllib.request.Request(rel.setup_url, headers={"User-Agent": USER_AGENT})
-    try:
+
+    def once() -> str:
+        h, got = hashlib.sha256(), 0
         with opener.open(req, timeout=TIMEOUT_S) as r, open(tmp, "wb") as fh:
             while True:
                 block = r.read(CHUNK)
@@ -177,7 +224,9 @@ def download(rel: Release, data_dir: str, opener=None, progress=None) -> str:
                     progress(got, rel.size)
         if got != rel.size:
             raise ValueError("Download unvollständig")
-        if h.hexdigest() != want:
+        return h.hexdigest()
+    try:
+        if _retrying(once, retried) != want:
             raise ValueError("Prüfsumme passt nicht – Datei verworfen")
         if os.path.exists(final):
             os.remove(final)

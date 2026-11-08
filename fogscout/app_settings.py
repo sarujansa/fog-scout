@@ -1339,12 +1339,18 @@ class SettingsTab:
                 last[0] = pct
                 self.events.put(("status_upd", _("Lade Update … {pct} %", pct=pct)))
 
+        def retried(n, total):
+            last[0] = 0                             # the next try starts from the beginning
+            self.events.put(("status_upd", _("GitHub antwortet nicht – neuer Versuch {n} von {total} …",
+                                             n=n, total=total)))
+
         def work():
             from . import relupdate
             try:
-                path = relupdate.download(rel, self.data_dir, progress=progress)
+                path = relupdate.download(rel, self.data_dir, progress=progress, retried=retried)
             except Exception as e:
-                self.events.put(("upd_failed", _("Update nicht geladen: {error}", error=e)))
+                self.events.put(("upd_failed", _("Update nicht geladen: {error}",
+                                                 error=relupdate.describe_error(e))))
                 return
             self.events.put(("upd_ready", path, rel.version, relupdate.shown_build(rel), rel.sha256))
         threading.Thread(target=work, daemon=True, name="update-download").start()
