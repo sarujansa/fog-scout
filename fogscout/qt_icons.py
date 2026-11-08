@@ -519,6 +519,50 @@ def _external(p, c):
     _lines(p, [(13.5, 5), (19, 5), (19, 10.5)])
 
 
+def _eye(p, c):                                # 1.46: an element shown (overlay editor)
+    p.setBrush(Qt.NoBrush)
+    path = QPainterPath()
+    path.moveTo(3, 12)
+    path.quadTo(12, 3, 21, 12)
+    path.quadTo(12, 21, 3, 12)
+    p.drawPath(path)
+    p.drawEllipse(QPointF(12, 12), 3, 3)
+
+
+def _eye_off(p, c):                            # 1.46: … hidden
+    _eye(p, c)
+    p.drawLine(QPointF(4.5, 19.5), QPointF(19.5, 4.5))
+
+
+def _lock(p, c):                               # 1.46: an element locked in place
+    p.setBrush(Qt.NoBrush)
+    p.drawRoundedRect(QRectF(5.5, 11, 13, 9.5), 2, 2)
+    path = QPainterPath()
+    path.moveTo(8.5, 11)
+    path.lineTo(8.5, 8)
+    path.arcTo(QRectF(8.5, 4.5, 7, 7), 180, -180)
+    path.lineTo(15.5, 11)
+    p.drawPath(path)
+
+
+def _lock_open(p, c):                          # 1.46: … free to move
+    p.setBrush(Qt.NoBrush)
+    p.drawRoundedRect(QRectF(5.5, 11, 13, 9.5), 2, 2)
+    path = QPainterPath()
+    path.moveTo(8.5, 11)
+    path.lineTo(8.5, 8)
+    path.arcTo(QRectF(8.5, 4.5, 7, 7), 180, -150)
+    p.drawPath(path)
+
+
+def _grid(p, c):                               # 1.46: the quick places (3×3)
+    p.setBrush(Qt.NoBrush)
+    p.drawRoundedRect(QRectF(4, 4, 16, 16), 2, 2)
+    for v in (9.33, 14.67):
+        p.drawLine(QPointF(v, 4), QPointF(v, 20))
+        p.drawLine(QPointF(4, v), QPointF(20, v))
+
+
 GLYPHS = {
     "star": _star, "warning": _warning, "chevron_right": _chevron_right, "chevron_down": _chevron_down,
     "chevron_up": _chevron_up, "rotate": _rotate, "record": _record, "back": _back, "external": _external,
@@ -533,6 +577,7 @@ GLYPHS = {
     "rect": _rect, "ellipse": _ellipse, "line": _line, "arrow": _arrow, "free": _free, "censor": _censor,
     "names": _names, "camera": _camera, "close": _close, "check": _check, "plus": _plus, "more": _more,
     "info": _info, "compass": _compass, "clip": _clip_tool, "speed": _speed,
+    "eye": _eye, "eye_off": _eye_off, "lock": _lock, "lock_open": _lock_open, "grid": _grid,     # 1.46
 }
 
 

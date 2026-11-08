@@ -48,6 +48,9 @@ TIPS = {
                                    "nicht dazu.",
     "Einstellungen importieren …": "Lädt eine exportierte Einstellungsdatei und startet das Programm neu. Fehlende "
                                    "Werte (ältere Sicherung) bekommen ihren Standard.",
+    # 1.46: the overlay editor's tool bar
+    "Fokus": "Nur die Vorschau: Liste und Einstellungen weg, die Navigation schmal – die ganze Fläche zum Anordnen. "
+             "Esc oder nochmal klicken beendet es.",
     "Rückgängig": "Nimmt die letzte Änderung an Position oder Grösse zurück (Karte, Systemwerte, Musik) – auch "
                   "mit Strg+Z auf dieser Seite. Ein ganzes Ziehen zählt als ein Schritt.",
     "Position und Grösse je DBD-Fenstergrösse merken":
