@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import time
 
-from . import dashboard, history, layout, media, official, qt_theme, selfload, skin, spotify, sysinfo
+from . import dashboard, history, layout, layoutmem, media, official, qt_theme, selfload, skin, spotify, sysinfo
 from .capture import IS_WIN
 from .i18n import _
 from .textnorm import fmt_duration
@@ -119,21 +119,25 @@ class SysInfo:
         if self.hud is not None:
             self.hud.on_moved = lambda x, y: self.events.put(("call", self._hud_dragged, (x, y)))   # see app.py
             self.hud.on_reset = lambda: self.events.put(("call", self._el_reset, ("hud",)))   # 1.44.1
+            self._edit_comfort("hud", self.hud)               # 1.45.1
             self.hud.edit_label = _("SYSTEMWERTE")        # 1.44.1: "· HEUTE" – "today" has its own window
         self.media_win = make_hud("Fog Scout Musik")     # 1.64: the music card, a window of its own
         if self.media_win is not None:
             self.media_win.on_moved = lambda x, y: self.events.put(("call", self._media_dragged, (x, y)))
             self.media_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("music",)))   # 1.44.1
+            self._edit_comfort("music", self.media_win)               # 1.45.1
             self.media_win.edit_label = _("MUSIK")
         self.today_win = make_hud("Fog Scout Heute")     # 1.2.6: "today", a card of its own
         if self.today_win is not None:
             self.today_win.on_moved = lambda x, y: self.events.put(("call", self._today_dragged, (x, y)))
             self.today_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("today",)))   # 1.44.1
+            self._edit_comfort("today", self.today_win)               # 1.45.1
             self.today_win.edit_label = _("HEUTE")
         self.info_win = make_hud("Fog Scout Infos")      # 1.8.24: timer/record/server, an element of their own
         if self.info_win is not None:
             self.info_win.on_moved = lambda x, y: self.events.put(("call", self._info_dragged, (x, y)))
             self.info_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("text",)))   # 1.44.1
+            self._edit_comfort("text", self.info_win)               # 1.45.1
             self.info_win.edit_label = _("INFOS")
         self._info_size = None             # (w, h) of the lines' card this tick, None = not shown
         self._map_block = None             # map + lines on screen: what hangs above/below the map goes around both
@@ -799,15 +803,70 @@ class SysInfo:
                         self._today_box = box
         self._el_orig = {}
 
+    # 1.45.1: comfort while dragging in the game – the same snap lines as the preview, Ctrl+Z, arrow keys
+    SNAP_RECTS = (("map", "overlay_rect"), ("hud", "hud_rect"), ("text", "info_rect"), ("today", "today_rect"),
+                  ("music", "media_rect"), ("inputs", "inputs_rect"))
+
+    def _edit_comfort(self, name, win):
+        """Hook an overlay window up: it snaps while dragged (asked at once, inside Windows' move loop), Ctrl+Z
+        undoes the last layout change; arrow keys go through its ``on_moved`` like a drop (overlay_win32)."""
+        win.on_snap = lambda x, y, w, h: self._el_snap(name, x, y, w, h)
+        win.on_undo = lambda: self.events.put(("call", self.undo_layout, ()))
+
+    def _el_snap(self, name, x, y, w, h):
+        """Where the dragged element ``name`` snaps: (x, y) on screen or None; shows the line it snapped to."""
+        gx, gy, gw, gh = game = self._game_rect()
+        if gw <= 0 or gh <= 0:
+            return None
+        others = [b for n, rect in self.SNAP_RECTS if n != name
+                  for b in (getattr(self.worker, rect, None),) if b]
+        nx, ny, lx, ly = layoutmem.snap_on_screen(game, int(layout.bar_width(gw, gh)), others, (x, y, w, h))
+        self._snap_guides_show(lx, ly)
+        return (nx, ny) if (lx is not None or ly is not None) else None
+
+    def _snap_guides_show(self, lx, ly):
+        """The line(s) a dragged element snapped to: two thin windows over the game picture, None = hidden."""
+        guides = getattr(self, "_snap_guides", None)
+        if guides is None:
+            guides = self._snap_guides = [g for g in (make_hud("Fog Scout Einrasten"), make_hud("Fog Scout Einrasten"))
+                                          if g is not None]
+        if len(guides) < 2:
+            return
+        from .overlay_render import guide_line
+        gx, gy, gw, gh = self._game_rect()
+        v, hz = guides
+        rects = []
+        if lx is None:
+            v.hide()
+        else:
+            v.set_picture(guide_line(gh, True), ("v", gh))
+            v.show_at(int(lx) - 1, gy)
+            rects.append((int(lx) - 1, gy, 3, gh))
+        if ly is None:
+            hz.hide()
+        else:
+            hz.set_picture(guide_line(gw, False), ("h", gw))
+            hz.show_at(gx, int(ly) - 1)
+            rects.append((gx, int(ly) - 1, gw, 3))
+        self._snap_rects = tuple(rects)
+        self.worker.guide_rects = tuple(getattr(self, "_guide_base", ())) + self._snap_rects
+
+    def _el_any_dragged(self):
+        return any(getattr(getattr(self, attr, None), "dragging", False)
+                   for attr in ("overlay", "hud", "info_win", "today_win", "media_win", "inputs_win"))
+
     def _guides_place(self):
         """Centre cross over the DBD window while moving (1.64.5): two thin click-through windows, hidden
         otherwise. The worker blacks them out (a long light line would look like a banner's separator)."""
         on = self.overlay.editing and self.game is not None
         if not on:
-            for g in (*getattr(self, "_guides", ()), *getattr(self, "_limit_guides", ())):
+            for g in (*getattr(self, "_guides", ()), *getattr(self, "_limit_guides", ()),
+                      *(getattr(self, "_snap_guides", None) or ())):
                 g.hide()
-            self.worker.guide_rects = ()
+            self.worker.guide_rects = self._guide_base = self._snap_rects = ()
             return
+        if getattr(self, "_snap_rects", ()) and not self._el_any_dragged():
+            self._snap_guides_show(None, None)          # 1.45.1: dropped – the snap line goes
         if not getattr(self, "_guides", None):
             self._guides = [g for g in (make_hud("Fog Scout Mitte"), make_hud("Fog Scout Mitte"))
                             if g is not None]
@@ -834,7 +893,8 @@ class SysInfo:
                 rects.append((int(lines[i][0]), int(lines[i][1]), bar, 3))
             else:
                 g.hide()
-        self.worker.guide_rects = tuple(rects)
+        self._guide_base = tuple(rects)
+        self.worker.guide_rects = self._guide_base + tuple(getattr(self, "_snap_rects", ()))
 
     def _media_dragged(self, x, y):
         """Music card dropped somewhere (edit mode): from now on its own place there."""
