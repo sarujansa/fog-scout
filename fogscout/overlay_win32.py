@@ -52,6 +52,11 @@ MK_CONTROL = 0x0008                     # wParam key state of WM_MOUSEWHEEL: Ctr
 WM_ENTERSIZEMOVE = 0x0231              # 1.44.1: Windows' own move loop begins (drag in edit mode) …
 WM_EXITSIZEMOVE = 0x0232               # … and ends
 WM_NCRBUTTONUP = 0x00A5                # 1.44.1: right click on the window (it says HTCAPTION in edit mode)
+WM_MOVING = 0x0216                     # 1.45.1: during the move loop, lParam = the proposed RECT (may be changed)
+WM_KEYDOWN = 0x0100                    # 1.45.1: arrow keys in the active own overlay window (edit mode only)
+WM_CHAR = 0x0102                       # 1.45.1: Ctrl+Z arrives as character 26
+NUDGE_KEYS = {0x25: (-1, 0), 0x26: (0, -1), 0x27: (1, 0), 0x28: (0, 1)}   # VK_LEFT/UP/RIGHT/DOWN
+NUDGE_HELD = 5                         # px per auto-repeat while an arrow key is held (first press: 1 px)
 HTCAPTION = 2
 
 if IS_WIN:
@@ -204,6 +209,33 @@ def _surface(win) -> LayeredSurface:
 
 
 
+def edit_message(win, hwnd, msg, wp, lp):
+    """1.45.1: the comfort messages of an own overlay window in edit mode – the window's own messages, nothing is
+    read from the keyboard or sent anywhere: ``WM_MOVING`` lets ``win.on_snap(x, y, w, h) -> (x, y) | None`` move
+    the proposed rectangle onto a line (Windows computes the next one from the mouse again, so it lets go by
+    itself); arrow keys move it by 1 px (held: NUDGE_HELD) through ``win.on_moved`` like a drop; Ctrl+Z
+    (WM_CHAR 26) calls ``win.on_undo``. Returns the result for Windows, or None = not handled."""
+    if msg == WM_MOVING and getattr(win, "on_snap", None) and lp:
+        rc = ctypes.cast(lp, ctypes.POINTER(wintypes.RECT)).contents
+        w, h = rc.right - rc.left, rc.bottom - rc.top
+        hit = win.on_snap(rc.left, rc.top, w, h)
+        if hit:
+            rc.left, rc.top = int(hit[0]), int(hit[1])
+            rc.right, rc.bottom = rc.left + w, rc.top + h
+        return 1
+    if msg == WM_KEYDOWN and wp in NUDGE_KEYS and getattr(win, "on_moved", None):
+        step = NUDGE_HELD if lp & (1 << 30) else 1      # bit 30: the key was down before = auto-repeat
+        dx, dy = NUDGE_KEYS[wp]
+        rc = wintypes.RECT()
+        _u.GetWindowRect(hwnd, ctypes.byref(rc))
+        win.on_moved(rc.left + dx * step, rc.top + dy * step)
+        return 0
+    if msg == WM_CHAR and wp == 26 and getattr(win, "on_undo", None):
+        win.on_undo()
+        return 0
+    return None
+
+
 class HudWindow:
     """Small click-through layered window for the system values at the top of a black bar (and, 1.64, the
     music card). In edit mode (the overlay's "Mit der Maus verschieben") it can be dragged like the map:
@@ -235,6 +267,7 @@ class HudWindow:
         self.fade = 1.0                        # share of the opacity while fading in/out (music card, 1.2.4)
         self.on_moved = None
         self.on_reset = None                   # 1.44.1: right click in edit mode = back to its usual place
+        self.on_snap = self.on_undo = None     # 1.45.1: snap while dragged, Ctrl+Z (edit_message)
         self._moving = False                   # 1.44.1: Windows' move loop runs (the user drags it)
         self._moving_sig = None                # … the picture pushed during it (only the picture, not the place)
         self._proc = WNDPROC(self._wndproc)                    # keep a reference!
@@ -257,6 +290,9 @@ class HudWindow:
                 if msg == WM_NCRBUTTONUP and self.on_reset:
                     self.on_reset()
                     return 0
+                done = edit_message(self, hwnd, msg, wp, lp)
+                if done is not None:
+                    return done
         except Exception as e:  # never let an exception escape into Windows
             self.last_error = repr(e)
         return _u.CallWindowProcW(self._old_proc, hwnd, msg, wp, lp)
@@ -908,6 +944,7 @@ class Win32Overlay(PictureOverlay):
         self._hwnd = int(self._hwnd)
         self._moving = False                                   # 1.44.1: see PictureOverlay.dragging
         self.on_reset = None                                   # 1.44.1: right click in edit mode
+        self.on_snap = self.on_undo = None                     # 1.45.1: see edit_message
         self._proc = WNDPROC(self._wndproc)                    # keep a reference!
         self._old_proc = _SetLong(self._hwnd, GWLP_WNDPROC, ctypes.cast(self._proc, ctypes.c_void_p).value)
         self._start()
@@ -929,6 +966,9 @@ class Win32Overlay(PictureOverlay):
                     self._pos = (rc.left, rc.top)
                     if self.on_moved:
                         self.on_moved(rc.left, rc.top)
+                done = edit_message(self, hwnd, msg, wp, lp)
+                if done is not None:
+                    return done
                 if msg == WM_MOUSEWHEEL and self.on_wheel and wp & MK_CONTROL:   # 1.3.2: Ctrl + wheel only
                     delta = ctypes.c_short((wp >> 16) & 0xFFFF).value
                     self.on_wheel(1 if delta > 0 else -1)

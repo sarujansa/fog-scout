@@ -296,6 +296,37 @@ def test_a_dragged_window_keeps_its_place_until_the_drop_and_a_right_click_reset
     hud.destroy()
 
 
+def test_a_dragged_window_snaps_and_takes_arrow_keys_and_ctrl_z_in_edit_mode(root):
+    """1.45.1: WM_MOVING lets the App move the proposed rectangle onto a line; arrow keys move by 1 px (held: more)
+    like a drop; Ctrl+Z (WM_CHAR 26) asks for undo – only in edit mode, nothing sent anywhere."""
+    from fogscout import overlay_win32 as ow
+    hud = ow.HudWindow()
+    hud.render([[("CPU ", (210, 214, 224, 255))]], 1440)
+    hud.show_at(40, 40)
+    pump()
+    moved, undo = [], []
+    hud.on_snap = lambda x, y, w, h: (x - 3, y) if x == 103 else None
+    hud.on_moved, hud.on_undo = (lambda x, y: moved.append((x, y))), (lambda: undo.append(1))
+    rc = ow.wintypes.RECT(103, 50, 203, 90)
+    hud._wndproc(hud.hwnd(), ow.WM_MOVING, 0, ow.ctypes.addressof(rc))
+    assert (rc.left, rc.top, rc.right, rc.bottom) == (103, 50, 203, 90)        # not in edit mode: untouched
+    hud.set_editing(True)
+    assert hud._wndproc(hud.hwnd(), ow.WM_MOVING, 0, ow.ctypes.addressof(rc)) == 1
+    assert (rc.left, rc.top, rc.right, rc.bottom) == (100, 50, 200, 90)        # snapped, same size
+    rc2 = ow.wintypes.RECT(300, 50, 400, 90)
+    hud._wndproc(hud.hwnd(), ow.WM_MOVING, 0, ow.ctypes.addressof(rc2))
+    assert rc2.left == 300                                                     # no line: free
+    assert hud._wndproc(hud.hwnd(), ow.WM_KEYDOWN, 0x27, 1) == 0               # → once
+    hud._wndproc(hud.hwnd(), ow.WM_KEYDOWN, 0x28, 1 | (1 << 30))               # ↓ held (auto-repeat)
+    assert moved == [(41, 40), (40, 40 + ow.NUDGE_HELD)]
+    assert hud._wndproc(hud.hwnd(), ow.WM_CHAR, 26, 1) == 0 and undo == [1]
+    hud.set_editing(False)
+    hud._wndproc(hud.hwnd(), ow.WM_KEYDOWN, 0x25, 1)
+    hud._wndproc(hud.hwnd(), ow.WM_CHAR, 26, 1)
+    assert len(moved) == 2 and undo == [1]                                     # only in edit mode
+    hud.destroy()
+
+
 def test_system_values_window_can_be_dragged_in_edit_mode(root):
     from fogscout import overlay_win32 as ow
     hud = ow.HudWindow()

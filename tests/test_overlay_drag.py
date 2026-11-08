@@ -216,3 +216,35 @@ def test_own_places_move_only_off_the_map_and_the_others_go_around_them():
     assert layout.resolve([("music", (3100, 300, 300, 100))], [], GAME, None, 8, soft=zone) != {}
     o = {"today_pos": "custom", "media_pos": "below", "info_pos": "custom", "inputs_pos": "bottom_left"}
     assert layout.own_places(o, "custom") == {"hud", "today", "text"}
+
+
+# ---- 1.45.1: comfort while dragging in the game
+def test_a_dragged_element_snaps_to_the_centre_the_bars_and_the_other_elements():
+    from fogscout.layoutmem import SNAP_GAME_PX, snap_on_screen
+    game, bar = (100, 0, 3440, 1440), 440
+    # centre of the window: an element 200 wide whose middle is 6 px off the window's middle
+    x, y, lx, ly = snap_on_screen(game, bar, [], (100 + 1720 - 100 + 6, 500, 200, 80))
+    assert (x, lx) == (100 + 1620, 100 + 1720) and ly is None and y == 500
+    # the bar's inner edge, and the top of another element
+    x, y, lx, ly = snap_on_screen(game, bar, [(150, 300, 120, 60)], (100 + 440 - 200 + 4, 296, 200, 80))
+    assert (x, lx) == (100 + 240, 100 + 440) and (y, ly) == (300, 300)
+    # too far from every line: nothing
+    assert snap_on_screen(game, bar, [], (100 + 1000, 700 + SNAP_GAME_PX + 25, 37, 41))[2:] == (None, None)
+
+
+def test_the_app_snaps_a_dragged_window_and_ctrl_z_undoes_in_the_game(app_root):
+    from fogscout.app import App
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        app._game_rect = lambda: (0, 0, 3440, 1440)
+        app.worker.hud_rect = (60, 200, 300, 120)
+        assert app.overlay.on_snap(63, 500, 280, 400) == (60, 500)        # left edge onto the system values
+        assert app.overlay.on_snap(1300, 500, 50, 50) is None             # far from every line: free
+        o = app.settings["overlay"]
+        app._layout_mark()                                                # as a drop does
+        app._music_own_place(0.3, 0.4)
+        app.overlay.on_undo()                                             # Ctrl+Z in an overlay window …
+        app._drain_events_now()                                           # … goes through the event queue
+        assert o["media_pos"] != "custom" or o["media_xy"] != [0.3, 0.4]
+    finally:
+        app.quit()

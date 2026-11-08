@@ -156,6 +156,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.overlay.on_moved = lambda x, y: self.events.put(("call", self._overlay_dragged, (x, y)))
         self.overlay.on_wheel = lambda d: self.events.put(("call", self._resize, (0.02 * d,)))
         self.overlay.on_reset = lambda: self.events.put(("call", self._el_reset, ("map",)))     # 1.44.1
+        self._edit_comfort("map", self.overlay)                 # 1.45.1: snap, arrows, Ctrl+Z
         self._layout_init()              # undo + one layout per DBD window size (1.65)
         self._hud_init()                 # system values at the top of a black bar (CPU/GPU temperature …)
         self._inputs_init()              # 1.39: the input card (keys / mouse / gamepad held right now)
