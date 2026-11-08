@@ -37,6 +37,7 @@ class InputsCard:
         if self.inputs_win is not None:
             self.inputs_win.on_moved = lambda x, y: self.events.put(("call", self._inputs_dragged, (x, y)))
             self.inputs_win.on_reset = lambda: self.events.put(("call", self._el_reset, ("inputs",)))   # 1.44.1
+            self._edit_comfort("inputs", self.inputs_win)                 # 1.45.1: snap, arrows, Ctrl+Z
             self.inputs_win.edit_label = _("EINGABEN")
 
     # ---- what may be read, what is shown

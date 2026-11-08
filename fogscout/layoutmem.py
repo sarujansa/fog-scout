@@ -32,6 +32,7 @@ def standard_layout(defaults: dict) -> dict:
 
 UNDO_KEPT = 50
 GESTURE_GAP = 0.8      # s: changes closer together than this are one step (a drag, a row of arrow keys)
+SNAP_GAME_PX = 10       # 1.45.1: px on screen while dragging in the game (the mouse moves in screen pixels there)
 SNAP_PX = 6            # px in the preview: this close to a line, an element snaps to it (1.65.2: was 8)
 
 
@@ -117,3 +118,16 @@ def snap_lines(screen, bar, layers, moving):
             xs += [lx, lx + lw]
             ys += [ly, ly + lh]
     return xs, ys
+
+
+def snap_on_screen(game, bar, others, box, tol=SNAP_GAME_PX):
+    """1.45.1: snapping while an element is dragged in the game – the same lines as the preview (snap_lines: window
+    edges and centre, black bars, the other elements' edges), in screen pixels. ``game`` (x, y, w, h), ``others``
+    boxes of the other shown elements, ``box`` the proposed (x, y, w, h). Returns (x, y, line_x, line_y), lines in
+    screen pixels or None."""
+    gx, gy, gw, gh = game
+    layers = [(i, ox - gx, oy - gy, ow, oh) for i, (ox, oy, ow, oh) in enumerate(others)]
+    xs, ys = snap_lines((gw, gh), bar, layers, None)
+    x, y, lx, ly = snap_rect(box[0] - gx, box[1] - gy, box[2], box[3], xs, ys, tol)
+    return (round(x + gx), round(y + gy), None if lx is None else round(lx + gx),
+            None if ly is None else round(ly + gy))
