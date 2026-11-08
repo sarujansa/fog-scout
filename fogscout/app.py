@@ -31,7 +31,7 @@ from .app_stats import StatsTab
 from .app_lobby import LobbyInfo
 from .app_hotkeys import Hotkeys
 from .app_settings import SettingsTab
-from .app_layout import LayoutMemory
+from .app_layout import LOCKED_TOO, LayoutMemory
 from .app_sysinfo import TEXT_BASE, text_scale
 from .app_sysinfo import HUD_SHOWN, OPACITY_KEYS, SysInfo
 from .app_qt import QtShell
@@ -706,7 +706,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             return lambda: _("Spalte „{name}“ mit ausgeben.", name=w.cget("text"))
         if w is self.edit_btn:
             return lambda: (_("Verschieben beenden.") if self.edit_btn.cget("text") == _("Fertig") else
-                            _("Karte direkt mit der Maus ziehen, Strg+Mausrad ändert die Grösse.")
+                            _("Anordnen: alle Elemente mit der Maus ziehen – in der Vorschau und direkt im Spiel. "
+                              "Strg+Mausrad ändert die Grösse, Esc beendet.")
                             + self._hk_hint("edit_position")
                             + self._hk_hint("edit_position"))
         if w in hk:
@@ -788,7 +789,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.overlay.set_editing(on)
         if not on and getattr(self, "_test_map", False) and time.time() >= getattr(self, "_force_until", 0):
             self._unload_test_map()              # still the test map (no map chosen meanwhile): away again
-        self.edit_btn.configure(text=_("Fertig") if on else _("Mit der Maus verschieben"))
+        self.edit_btn.configure(text=_("Fertig") if on else _("Anordnen"))
+        self.overlay.set_locked(on and "map" in self._locked_names())       # 1.46: a locked map stays put
         if on:                     # 1.64.1: also without a map – the preview (tab Overlay) shows everything
             self._log(_("Alle Elemente mit der Maus ziehen (im Spiel oder in der Vorschau): Karte, Infos, "
                         "Systemwerte, Heute, Eingaben, Musik. Rechtsklick auf ein Element = zurück an seinen "
@@ -1421,6 +1423,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                                            zones=False),
                 "zones": layout.keep_out_boxes(o, (0, 0, gw, gh)),        # 1.8.25: Discord's overlay
                 "limits_on": bool(o.get("bar_limits_on")),
+                "locked": sorted(self._locked_names()),                  # 1.46: the editor's locks
+                "layout_key": self.settings.get("layout_key") if self.settings.get("layout_per_size", True) else "",
                 "limits_same": bool(o.get("bar_limits_same", False))}
 
     def _preview_sample(self):
@@ -1460,7 +1464,10 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         if value[0] == "select":                  # 1.64.9: a click on an element picks it for the size slider
             self._select(value[1])
             return
-        if not self.overlay.editing:              # only after "Mit der Maus verschieben" (user, 1.64.1)
+        if not self.overlay.editing:              # only after "Anordnen" (user, 1.64.1)
+            return
+        name = value[1] if value[0] in ("place", "resize") else getattr(self, "_sel", "map")
+        if value[0] in LOCKED_TOO and self._el_locked(name):     # 1.46: a locked element stays where it is
             return
         if value[0] == "resize":                  # corner of the picked element / wheel over it
             self._resize_to(value[1], value[2])
@@ -1481,13 +1488,14 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         dark = reg.get({"map": "ov.map_backdrop", "text": "ov.map_backdrop", "hud": "ov.hud_backdrop",
                         "today": "ov.today_backdrop",
                         "music": "ov.media_backdrop"}.get(name, ""))
-        hide = reg.get({"today": "ov.today", "music": "ov.media"}.get(name, ""))
-        items = [("place", _("Position zurücksetzen"), True),          # 1.44.2: like a right click in the game
+        locked = self._el_locked(name)
+        items = [("place", _("Position zurücksetzen"), not locked),     # 1.44.2: like a right click in the game
                  ("size", _("Grösse zurücksetzen"), True)]
         if dark is not None:
             items.append(("dark", _("Dunkle Fläche dahinter"), True, dark.instate(["selected"])))
-        if hide is not None:
-            items += [None, ("hide", _("Ausblenden"), hide.instate(["selected"]))]
+        items += [None, ("lock", _("Sperren"), True, locked)]           # 1.46: the editor's lock
+        if name != "text":                                             # 1.46: every element (the list's eye)
+            items.append(("hide", _("Ausblenden"), self._el_shown(name)))
 
         def act(ident):
             if ident == "place":
@@ -1502,8 +1510,10 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                     self._set_size(name, 100)
             elif ident == "dark" and dark is not None:
                 dark.invoke()
-            elif ident == "hide" and hide is not None and hide.instate(["selected"]):
-                hide.invoke()
+            elif ident == "lock":
+                self._lock_toggle(name, not self._el_locked(name))
+            elif ident == "hide":
+                self._el_show_switch(name, False)
         self._context_menu(items, pos, act)
 
     def _preview_pick_now(self, value):

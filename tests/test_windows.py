@@ -75,6 +75,23 @@ def test_native_overlay_renders_and_shows(root):
     ov.destroy()
 
 
+def test_a_locked_map_stays_click_through_while_moving(root):
+    """1.46: the overlay editor's lock – the map's window keeps WS_EX_TRANSPARENT in moving mode while locked."""
+    from fogscout import overlay_win32 as ow
+    ov = ow.make_overlay(root, prefer_native=True)
+    assert isinstance(ov, ow.Win32Overlay), getattr(ov, "last_error", "")
+    ex = lambda: ow._GetLong(ov._hwnd, ow.GWL_EXSTYLE)          # noqa: E731
+    ov.set_editing(True)
+    assert not ex() & ow.WS_EX_TRANSPARENT and ov.grabbable()
+    ov.set_locked(True)
+    assert ex() & ow.WS_EX_TRANSPARENT and ov.editing and not ov.grabbable()
+    ov.set_locked(False)
+    assert not ex() & ow.WS_EX_TRANSPARENT
+    ov.set_editing(False)
+    assert ex() & ow.WS_EX_TRANSPARENT
+    ov.destroy()
+
+
 def test_notification_window_never_takes_the_focus(root):
     import ctypes
     from fogscout.overlay import GWL_EXSTYLE, WS_EX_NOACTIVATE, _GetLong

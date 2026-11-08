@@ -49,7 +49,7 @@ SETUP = (
         ("row", (("label", "ov.anchor.label"), ("combo", "ov.anchor"), ("stretch",))),
         ("slider", "ov.size"),
         ("row", (("button", "ov.test"), ("button", "ov.edit"), ("stretch",))),
-        ("note", N_("„Overlay testen“ zeigt die Karte sofort, „Mit der Maus verschieben“ lässt sie dich hinziehen.")),
+        ("note", N_("„Overlay testen“ zeigt die Karte sofort, mit „Anordnen“ ziehst du sie hin.")),
         ("sub", N_("Systemwerte")),              # 1.8.2: "Position" alone did not say what it places
         ("row", (("label", "ov.sysinfo.label"), ("combo", "ov.sysinfo"), ("stretch",))),
         ("check", "ov.today"), ("check", "ov.media"))),
@@ -703,6 +703,9 @@ def make_control(kind, key, post):
         w = TilesView(post)                       # 1.38.54: clickable tiles (Tile.open)
     elif kind == "preview":
         w = PreviewView(key, post)
+    elif kind in ("elements", "anchors"):                  # 1.46: the overlay editor's list and quick places
+        from .qt_overlay import AnchorGrid, ElementRail
+        w = (ElementRail if kind == "elements" else AnchorGrid)(key, post)
     elif kind == "swatches":
         w = SwatchView(key, post)
     elif kind == "host":
@@ -770,6 +773,14 @@ def show_control(kind, w, extra, st):
         w.style().polish(w)
     # 1.24.5 (measured): the caches are read from the widget's own __dict__ – getattr() of a name a PySide widget
     # lacks searches Qt's meta data first (3.7 µs, every control on every refresh), a dict lookup costs 0.17 µs
+    if "pressed" in st and isinstance(w, QPushButton):      # 1.46: ui.pressed – stays down while on
+        if not w.isCheckable():
+            w.setCheckable(True)
+            w.setProperty("class", "toggle")
+            w.style().unpolish(w)
+            w.style().polish(w)
+        if w.isChecked() != bool(st["pressed"]):
+            w.setChecked(bool(st["pressed"]))                  # setChecked does not emit clicked
     if "glyph" in st or w.__dict__.get("_glyph_key"):
         set_glyph(w, st.get("glyph"), primary=bool(st.get("primary")))
     if "level" in st and w.__dict__.get("_level", "") != st["level"]:   # 1.24.3: ui.level – state colour
@@ -827,7 +838,7 @@ def show_control(kind, w, extra, st):
             s.setValue(round(st.get("value", 0)))
             s.blockSignals(False)
         s.set_cap(st.get("cap"))
-    elif kind in ("table", "chart", "log", "dashboard", "tiles", "preview", "swatches", "host"):
+    elif kind in ("table", "chart", "log", "dashboard", "tiles", "preview", "swatches", "host", "elements", "anchors"):
         w.show_state(st)
     elif kind == "hotkey":
         w.show_text(st.get("text", ""))
@@ -1185,7 +1196,8 @@ class FitTabs(QTabWidget):
         self.updateGeometry()
 
     def _extra(self):
-        return self.tabBar().sizeHint().height() + 2
+        bar = self.tabBar()                              # 1.46: the overlay editor hides its tab row
+        return (bar.sizeHint().height() if not bar.isHidden() else 0) + 2
 
     def hasHeightForWidth(self):
         return True
@@ -1272,6 +1284,11 @@ class FormPage(QWidget, _Arranged):
                     self._add(c, row)
                 row.addStretch()
                 lay.addLayout(row)
+            elif kind == "editor":
+                # 1.46: the overlay page as an editor (qt_overlay) – tool bar, list, canvas, inspector
+                from .qt_overlay import OverlayEditor
+                self.editor = OverlayEditor(self, item, page_key)
+                lay.addWidget(self.editor, 1)
             elif kind == "split":
                 # 1.11.14 (user picked "Vorschau links, Einstellungen rechts"): two columns of items side by side
                 # from SPLIT_FROM px on (the overlay page: preview + tools | the tabs), below each other when narrow
@@ -1347,12 +1364,12 @@ class FormPage(QWidget, _Arranged):
         entry[1] = key
         labels = [lbl for lbl, _w in group]
         if len(labels) > 1:
-            width = min(ALIGN_LABEL_MAX, max(_one_line_width(lbl) for lbl in labels))
+            width = min(self.__dict__.get("align_label_max", ALIGN_LABEL_MAX), max(_one_line_width(lbl) for lbl in labels))
             for lbl in labels:
                 lbl.setMinimumWidth(width)
         combos = [w for _l, w in group if isinstance(w, QComboBox)]
         if len(combos) > 1:
-            width = min(ALIGN_COMBO_MAX, max(c.sizeHint().width() for c in combos))
+            width = min(self.__dict__.get("align_combo_max", ALIGN_COMBO_MAX), max(c.sizeHint().width() for c in combos))
             for c in combos:
                 c.setMinimumWidth(width)
 
@@ -1432,6 +1449,9 @@ class FormPage(QWidget, _Arranged):
                 show_control(kind, w, extra, st)
         for entry in getattr(self, "_groups", {}).values():   # 1.8.8: after the texts are in
             self._align_group(entry)
+        editor = self.__dict__.get("editor")
+        if editor is not None:                                # 1.46: the overlay editor's own parts
+            editor.show_states(states)
 
 
 def make_fold(title: str, lay) -> QVBoxLayout:

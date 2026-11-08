@@ -52,6 +52,7 @@ def _side(w) -> str:
 KINDS = ((ui.Treeview, "table"), (ui.Checkbutton, "check"), (ui.Button, "button"), (ui.Combobox, "combo"),
          (ui.Scale, "slider"), (ui.Entry, "entry"), (ui.Radiobutton, "radio"), (ui.Log, "log"),
          (ui.Chart, "chart"), (ui.Dashboard, "dashboard"), (ui.Tiles, "tiles"),
+         (ui.Elements, "elements"), (ui.Anchors, "anchors"),          # 1.46: before Preview (subclasses)
          (ui.Preview, "preview"), (ui.Swatches, "swatches"), (ui.Host, "host"))
 
 
@@ -187,6 +188,9 @@ def ui_state(w) -> dict:
         st["danger"] = True
     if getattr(w, "_dbdms_primary", False):      # 1.24: the main action (ui.primary)
         st["primary"] = True
+    pressed = getattr(w, "_dbdms_pressed", None)
+    if pressed is not None:                      # 1.46: a button that stays pressed (ui.pressed)
+        st["pressed"] = bool(pressed())
     if getattr(w, "_dbdms_glyph", None):         # 1.24: a drawn sign before the text (ui.glyph)
         st["glyph"] = w._dbdms_glyph
     if hasattr(w, "_dbdms_level"):               # 1.24.3: a label's state colour (ui.level)
@@ -498,6 +502,8 @@ class QtShell:
                 self.nb.select(tab)                  # its "opened" work runs (statistics computed, pings …)
             if arg == "log":
                 self._log_alert = False
+            if arg != "overlay" and getattr(self, "_editor_focus", False):
+                self._focus_mode_toggle()            # 1.46: the focus view belongs to the overlay page
         elif action == "undo":                       # Ctrl+Z on the overlay page (1.65)
             self.undo_layout()
         elif action == "map_style":                  # 1.3.3: the buttons on the maps page

@@ -5,8 +5,9 @@ from __future__ import annotations
 import copy
 import time
 
-from . import layoutmem
+from . import layout, layoutmem
 from .appconst import SELECTABLE
+from .config import HUD_SHOWN
 from .i18n import N_, _
 
 CAP_FIT = 0.97             # 1.8.24: shown below 97 % of the asked size = the bar holds the element back
@@ -18,6 +19,10 @@ RESET_KEYS = {"map": ("anchor",), "today": ("today_pos", "today_xy"), "music": (
               "text": ("info_pos", "info_xy"), "inputs": ("inputs_pos", "inputs_xy")}
 RESET_NAMES = {"map": N_("Karte"), "hud": N_("Systemwerte"), "today": N_("Heute"), "music": N_("Musik"),
                "text": N_("Infos"), "inputs": N_("Eingaben")}
+# 1.46: the overlay editor – the map's corners of the quick places are its preset anchors (they follow the bar)
+MAP_CORNERS = {(0, 0): "top-left", (2, 0): "top-right", (0, 2): "bottom-left", (2, 2): "bottom-right"}
+CELL_TOL = 0.006             # share of the game height: an element this close to a quick place is "there"
+LOCKED_TOO = ("place", "resize", "nudge")       # preview acts a locked element ignores
 
 
 class LayoutMemory:
@@ -205,3 +210,165 @@ class LayoutMemory:
         if lay is None:
             return
         self._preview_pick_now(("place", self._sel, lay[0] + dx, lay[1] + dy))
+
+    # ---------------------------------------------------------------- 1.46: the overlay editor
+    def _locked_names(self) -> set:
+        locked = self.settings["overlay"].get("locked") or []
+        return {n for n in locked if n in RESET_NAMES} if isinstance(locked, list) else set()
+
+    def _el_locked(self, name) -> bool:
+        return name in self._locked_names()
+
+    def _lock_toggle(self, name, on):
+        """Lock / unlock one element (the editor's list, the right-click menu): a locked element is not dragged in
+        the preview nor in the game (its window stays click-through while moving). Not part of a layout."""
+        if name not in RESET_NAMES:
+            return
+        locked = self._locked_names()
+        locked = (locked | {name}) if on else (locked - {name})
+        self.settings["overlay"]["locked"] = sorted(locked)
+        self.overlay.set_locked(bool(self.overlay.editing) and "map" in locked)
+        self._log(_("{name} gesperrt – bleibt beim Anordnen, wo es ist.", name=_(RESET_NAMES[name])) if on else
+                  _("{name} entsperrt.", name=_(RESET_NAMES[name])), "Overlay")
+        self._save_soon()
+        self._tick_overlay(reschedule=False)
+
+    def _el_editable(self, name) -> bool:
+        """The element's window can be grabbed now: moving mode on and the element not locked."""
+        return bool(self.overlay.editing) and not self._el_locked(name)
+
+    def _el_shown(self, name) -> bool:
+        o = self.settings["overlay"]
+        if name == "map":
+            return bool(o.get("show_map", True))
+        if name == "text":
+            return layout.info_apart(o)
+        if name == "hud":
+            return self.settings.get("sysinfo", "off") in HUD_SHOWN
+        return bool(o.get({"today": "show_today", "music": "show_media", "inputs": "show_inputs"}[name],
+                          name != "inputs"))
+
+    def _el_place_text(self, name) -> str:
+        o = self.settings["overlay"]
+        if name == "map" and o.get("anchor", "auto") not in ("auto", "custom"):
+            return self._anchor_text(o["anchor"])
+        own = layout.own_places(o, self.settings.get("sysinfo", "off"))
+        return _("eigener Platz") if name in own or (name == "map" and o.get("anchor") == "custom") \
+            else _("automatisch")
+
+    def _elements_data(self) -> dict:
+        """The editor's list: per element shown / its place / size / locked, the element picked, moving mode and
+        the window size whose layout is edited."""
+        o = self.settings["overlay"]
+        own = layout.own_places(o, self.settings.get("sysinfo", "off"))
+        locked = self._locked_names()
+        rows = {}
+        for name, _label in SELECTABLE:
+            rows[name] = {"shown": self._el_shown(name), "own": name in own or (name == "map" and
+                                                                                   o.get("anchor") == "custom"),
+                          "place": self._el_place_text(name), "size": round(self._sel_range(name)[2]),
+                          "locked": name in locked, "can_hide": name != "text"}
+        key = self.settings.get("layout_key") if self.settings.get("layout_per_size", True) else ""
+        return {"order": [n for n, _l in SELECTABLE], "rows": rows, "selected": getattr(self, "_sel", "map"),
+                "editing": bool(self.overlay.editing), "layout": key or ""}
+
+    def _elements_act(self, value):
+        """A click in the editor's list: ("select", name) / ("general",) / ("show", name, on) / ("lock", name, on) /
+        ("menu", name, x, y)."""
+        what = value[0] if value else None
+        if what == "select":
+            self._select(value[1])
+        elif what == "general":
+            qt = getattr(self, "qt", None)
+            if qt is not None and hasattr(qt, "open_tab"):
+                qt.open_tab("overlay", "ov.pos")
+        elif what == "show":
+            self._el_show_switch(value[1], bool(value[2]))
+        elif what == "lock":
+            self._lock_toggle(value[1], bool(value[2]))
+        elif what == "menu":
+            self._preview_menu(value[1], (value[2], value[3]))
+
+    def _el_show_switch(self, name, on):
+        """The eye in the editor's list: the element's own switch (the same tick box / choice as in its tab)."""
+        if name == "text" or on == self._el_shown(name):
+            return
+        if name == "map":
+            self.show_map_var.set(on)
+            self._overlay_flags_changed()
+        elif name == "hud":
+            from .appconst import HUD_SIDES
+            side = (getattr(self, "_sysinfo_last", "") or "right") if on else "off"
+            self.sysinfo_var.set(_(dict(HUD_SIDES)[side]))
+            self._sysinfo_changed()
+        elif name == "today":
+            self.today_var.set(on)
+            self._look_flags_changed()
+        elif name == "music":
+            self.media_var.set(on)
+            self._look_flags_changed()
+        elif name == "inputs":
+            self.inputs_on_var.set(on)
+            self._inputs_on_changed()
+
+    def _cell_box(self, name, col, row):
+        """(x, y) in game pixels of ``name`` at the quick place (col, row) – corners and edges keep the margin."""
+        data = self._preview_data()
+        size = {n: (w, h) for n, _x, _y, w, h in data["layers"]}.get(name)
+        if size is None:
+            return None
+        gw, gh = data["screen"]
+        m = int(gh * self.settings["overlay"]["margin"])
+        w, h = size
+        return (m, (gw - w) / 2, gw - m - w)[col], (m, (gh - h) / 2, gh - m - h)[row]
+
+    def _anchors_data(self) -> dict:
+        """The quick places of the element picked: which one it is at ("auto" = its usual place), enabled."""
+        name = getattr(self, "_sel", "map")
+        o = self.settings["overlay"]
+        cell = None
+        if name == "map" and o.get("anchor", "auto") != "custom":
+            cell = "auto" if o.get("anchor", "auto") == "auto" else \
+                next((c for c, a in MAP_CORNERS.items() if a == o["anchor"]), None)
+        elif name != "map" and name not in layout.own_places(o, self.settings.get("sysinfo", "off")):
+            cell = "auto"
+        else:
+            data = self._preview_data()
+            at = {n: (x, y) for n, x, y, _w, _h in data["layers"]}.get(name)
+            tol = max(2.0, data["screen"][1] * CELL_TOL)
+            for c in range(3):
+                for r in range(3):
+                    box = self._cell_box(name, c, r) if at else None
+                    if box and abs(box[0] - at[0]) <= tol and abs(box[1] - at[1]) <= tol:
+                        cell = (c, r)
+        return {"name": name, "cell": cell, "enabled": not self._el_locked(name)}
+
+    def _anchor_cell(self, value):
+        """A quick place clicked: ("cell", col, row) puts the element picked there as its own place (the map's
+        corners: the preset anchors, they keep to the black bar); ("auto",) = back to its usual place. One undo
+        step; a locked element does not move."""
+        name = getattr(self, "_sel", "map")
+        if self._el_locked(name) or not value:
+            return
+        if value[0] == "auto":
+            self._el_reset(name)
+            return
+        _what, col, row = value
+        if name == "map" and (col, row) in MAP_CORNERS:
+            self._layout_mark()
+            self.anchor_var.set(self._anchor_text(MAP_CORNERS[(col, row)]))
+            self._anchor_changed()
+            return
+        box = self._cell_box(name, col, row)
+        if box is not None:
+            self._preview_pick_now(("place", name, box[0], box[1]))
+
+    def _focus_mode_toggle(self):
+        """"Fokus": the overlay editor's canvas takes the whole window – list and inspector away, the navigation
+        narrow. Esc or the button again ends it (leaving the page too)."""
+        self._editor_focus = not getattr(self, "_editor_focus", False)
+        qt = getattr(self, "qt", None)
+        if qt is not None and hasattr(qt, "set_focus_nav"):
+            qt.set_focus_nav(self._editor_focus)
+        if hasattr(self, "_qt_refresh"):
+            self._qt_refresh(force=True)

@@ -502,6 +502,7 @@ class PictureOverlay:
         self._view = None               # (frames on display, floors stacked) – mapimage.floor_view, cached
         self._shown = False
         self._editing = False
+        self._locked = False                  # 1.46: locked in the overlay editor – stays click-through while moving
         self._pos = None
         self._size = (0, 0)
 
@@ -912,6 +913,16 @@ class PictureOverlay:
         self._apply_editing()
         self._key = None                                  # re-render with/without border
 
+    def set_locked(self, on: bool):
+        """1.46: the map locked in the overlay editor – in moving mode its window stays click-through (not dragged);
+        ``editing`` stays the program's moving mode (the other elements, the preview read it)."""
+        if bool(on) != self._locked:
+            self._locked = bool(on)
+            self._apply_editing()
+
+    def grabbable(self) -> bool:
+        return self._editing and not getattr(self, "_locked", False)
+
     @property
     def editing(self):
         return self._editing
@@ -1005,7 +1016,7 @@ class Win32Overlay(PictureOverlay):
 
     def _apply_editing(self):
         ex = _GetLong(self._hwnd, GWL_EXSTYLE)
-        if self._editing:
+        if self.grabbable():                          # 1.46: not while locked
             ex &= ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
         else:
             ex |= WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
