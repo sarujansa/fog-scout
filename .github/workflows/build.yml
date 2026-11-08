@@ -94,7 +94,8 @@ jobs:
           INNO_SHA256: 8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0
         run: |
           $exe = Join-Path $env:RUNNER_TEMP "innosetup.exe"
-          Invoke-WebRequest -Uri $env:INNO_URL -OutFile $exe
+          # GitHub-Release-Downloads antworten zeitweise mit 504 (1.46.1) – dann bis zu 5-mal erneut, je 30 s Pause
+          Invoke-WebRequest -Uri $env:INNO_URL -OutFile $exe -MaximumRetryCount 5 -RetryIntervalSec 30
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
           if ($hash -ne $env:INNO_SHA256) { throw "Inno Setup: Prüfsumme $hash passt nicht" }
           $dir = Join-Path $env:RUNNER_TEMP "inno"
