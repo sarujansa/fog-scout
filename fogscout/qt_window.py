@@ -240,7 +240,8 @@ SPECS = {
                                        ("check", "st.det_menu"), ("hint", "st.det_menu_hint"))),
                 # 1.38.12: window capture and scan rate came from Log → "Erweitert" (that keeps only the tools)
                 ("card", "st.det_tech", (("check", "st.det_wgc"), ("hint", "st.det_wgc_hint"), ("slider", "st.det_rate"))),
-                ("card", "st.langs", (("grid", 5, tuple(("check", f"det.lang.{code}") for code in GAME_LANGS)),)),
+                ("card", "st.langs", (("grid", 5, tuple(("check", f"det.lang.{code}") for code in GAME_LANGS)),
+                                      ("check", "det.lang_auto"))),                                      # 1.48
                 ("card", "st.more.own", (("row", (("hint", "st.more.aliases"), ("button", "st.more.aliases_clear"))),)),
                 ("card", "st.notify", (
                     ("check", "st.lobby_notify"), ("check", "st.lobby_remind"), ("check", "st.notify_background_only"),

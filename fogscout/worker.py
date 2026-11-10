@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import cv2
 
-from . import __version__, bloodpoints, corpus
+from . import __version__, bloodpoints, corpus, gamelang
 from .capture import (IS_WIN, ImageSource, ScreenGrabber, cursor_state, find_game_window, foreground_root,
                       overlaps, windows_above)
 from .i18n import _
@@ -265,6 +265,7 @@ class DetectionWorker(threading.Thread):
         window, window_checked = None, 0.0
         session, last_seen, session_frames = False, 0.0, []
         session_strict, session_t, session_saved = False, 0.0, None
+        lang_votes = None                 # 1.48: {(code, map id): looks} of the banner on screen; None = said already
         tracker = MatchEndTracker()
         tracker_gen = None
         trial_since = 0.0                 # when the map on display appeared (tracker reset)
@@ -462,6 +463,7 @@ class DetectionWorker(threading.Thread):
                     if sep is not None:
                         if not session:
                             session, session_frames, session_t, session_saved = True, [], tick, None
+                            lang_votes = {}
                             # DBD shows the banner only at the start of a trial: well into a running round it is
                             # something in the game world (neon strips, signs) – only a clean read may switch
                             session_strict = (self.map_on_screen and tracker.in_trial
@@ -479,6 +481,13 @@ class DetectionWorker(threading.Thread):
                                 # always kept (no debug switch needed): the only way to see what fooled the reader
                                 self._last_sighting_save = tick
                                 session_saved = self._save_sighting(img, res, sep, "umgeschaltet" if d else "gesehen")
+                            if (d is None and not session_strict and lang_votes is not None
+                                    and self.settings.get("game_lang_auto", True)):
+                                hit = gamelang.vote(lang_votes, res.name_text, res.realm_text,
+                                                    self.catalog.maps.values(), set(self.catalog.languages))
+                                if hit is not None:      # 1.48: the App ticks the language, a new catalog follows
+                                    lang_votes = None
+                                    self.post("game_language", code=hit[0], map_id=hit[1], name_text=res.name_text)
                             if d is not None:
                                 lobby = self.queue.lobby_for_round(tick)   # 1.8.71: also a lobby seen only briefly
                                 self.queue.round_started(tick)  # 1.8.43: the lobby is used up (same custom lobby next)

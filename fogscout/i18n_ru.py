@@ -5517,4 +5517,28 @@ T = {
         '«Тест оверлея» сразу показывает карту, с «Расставить» вы перетаскиваете её туда.',
     'Nur die Vorschau: Liste und Einstellungen weg, die Navigation schmal – die ganze Fläche zum Anordnen. Esc oder nochmal klicken beendet es.':
         'Только предпросмотр: список и настройки убраны, навигация узкая — вся площадь для расстановки. Esc или ещё один щелчок завершает.',
+    'Englisch':
+        'Английский',
+    'Deutsch':
+        'Немецкий',
+    'Französisch':
+        'Французский',
+    'Spanisch':
+        'Испанский',
+    'Spanisch (Mexiko)':
+        'Испанский (Мексика)',
+    'Italienisch':
+        'Итальянский',
+    'Polnisch':
+        'Польский',
+    'Portugiesisch (Brasilien)':
+        'Португальский (Бразилия)',
+    'Türkisch':
+        'Турецкий',
+    'Spielsprache selbst erkennen und anhaken':
+        'Определять язык игры и отмечать его автоматически',
+    'Spielsprache {lang} erkannt (Banner „{text}“) – automatisch angehakt.':
+        'Язык игры «{lang}» определён (баннер «{text}») — отмечен автоматически.',
+    'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
+        'Если DBD запущена на языке, который здесь не отмечен, и баннер карты однозначно совпадает с картой на этом языке, Fog Scout отметит его сам — карта появится уже в том же раунде. Только в начале раунда, никогда посреди матча.',
 }

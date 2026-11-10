@@ -47,6 +47,10 @@ from .app_inputs import InputsCard
 
 LANGS = [("en", "EN"), ("de", "DE"), ("fr", "FR"), ("es", "ES"), ("es-MX", "ES-MX"), ("it", "IT"),
          ("pl", "PL"), ("pt-BR", "PT"), ("tr", "TR")]
+# 1.48: the game languages in words – for the log line when one is ticked by itself (gamelang.py)
+LANG_NAMES = {"en": N_("Englisch"), "de": N_("Deutsch"), "fr": N_("Französisch"), "es": N_("Spanisch"),
+              "es-MX": N_("Spanisch (Mexiko)"), "it": N_("Italienisch"), "pl": N_("Polnisch"),
+              "pt-BR": N_("Portugiesisch (Brasilien)"), "tr": N_("Türkisch")}
 REJECT_HOLD = 60.0        # s: a rejected map is not shown again by the same banner
 UNSURE_DELAY = 2.5        # s: a doubtful read is shown only if the banner did not read cleanly meanwhile
 QUIT_WATCHDOG_S = 15     # s: quitting takes longer than this -> the process ends anyway (1.65.1)
@@ -346,6 +350,10 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self.lang_vars[code] = v
             self._reg(f"det.lang.{code}", ui.Checkbutton(grid, text=label, variable=v, command=self._langs_changed)).grid(
                 row=i // 5, column=i % 5, sticky="w", padx=(0, 12), pady=1)
+        self.lang_auto_var = ui.BooleanVar(value=bool(self.settings.get("game_lang_auto", True)))     # 1.48
+        self._reg("det.lang_auto", ui.Checkbutton(lang, text=_("Spielsprache selbst erkennen und anhaken"),
+                                                  variable=self.lang_auto_var, command=self._lang_auto_changed)
+                  ).pack(anchor="w", pady=(6, 0))
 
     def _advanced_card(self, f):
         """"Erweitert" at the foot of the log page: troubleshooting tools, folded away – only needed when something
@@ -1184,6 +1192,8 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._log(_("Mitten in der Runde „{name}“ / „{realm}“ gelesen (am ehesten {map}) – ignoriert: Map-Banner "
                         "gibt es nur am Rundenstart, und die Lesung war nicht eindeutig.", name=d.get("name_text") or "",
                         realm=d.get("realm_text") or "", map=m.label(1)), "Erkennung")
+        elif k == "game_language":                # 1.48: the banner is in a game language not ticked
+            self._game_language(d.get("code"), d.get("name_text") or "")
         elif k == "unknown":
             txt = d.get("name_text") or "?"
             self._log(_("Banner gesehen, aber keine bekannte Map: „{text}“. Map manuell wählen "
@@ -1775,6 +1785,20 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._save_soon()
         self._reload_catalog()
         self._log(_("Eigene Map-Zuordnungen gelöscht."), "System")
+
+    def _game_language(self, code, text):
+        """1.48: the worker read a banner that names a map only in the game language ``code`` – tick it, so the
+        banner still on screen decides with the new catalog (gamelang.py). Nothing when it is off or ticked."""
+        if code not in self.lang_vars or self.lang_vars[code].get() or not self.settings.get("game_lang_auto", True):
+            return
+        self.lang_vars[code].set(True)
+        self._langs_changed()
+        self._log(_("Spielsprache {lang} erkannt (Banner „{text}“) – automatisch angehakt.",
+                    lang=_(LANG_NAMES.get(code, code)), text=text), "Erkennung")
+
+    def _lang_auto_changed(self):
+        self.settings.set("game_lang_auto", bool(self.lang_auto_var.get()))
+        self._save_soon()
 
     def _langs_changed(self):
         langs = [c for c, _ in LANGS if self.lang_vars[c].get()] or ["en"]

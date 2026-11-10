@@ -19,6 +19,7 @@ DEFAULTS = {
     "settings_version": SETTINGS_VERSION,
     # languages the game may show map names in (en, de, fr, es, es-MX, it, pl, pt-BR, tr)
     "languages": ["en", "de"],
+    "game_lang_auto": True,             # 1.48: a banner in a game language not ticked ticks it (gamelang.py)
     "auto_detect": True,
     "scans_per_second": 5,
     "hide_after_match": True,
