@@ -206,8 +206,27 @@ def _repo_problem(root, branch):
     return None
 
 
+# 1.46.6 (user: the old account name should disappear everywhere): clones made before the GitHub account was renamed
+# still fetch through GitHub's redirect from the old name – which would end if someone took that name. Exactly
+# those origin addresses (also the repository's name before 1.9) are moved to REPO_URL; a fork or any other
+# address is left alone.
+REPO_URL = "https://github.com/senisinx/fog-scout.git"
+OLD_OWNER = "sarujansa"                                # the account's name before 1.46.5 – the only place left
+OLD_ORIGIN = re.compile(r"(?i)^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
+                        + OLD_OWNER + r"/(?:fog-scout|dbd-map-scout)(?:\.git)?/?$")
+
+
+def _move_origin(root) -> bool:
+    """Point origin from the old account to REPO_URL (only the local .git/config changes). True if moved."""
+    code, url = _git(root, "config", "--local", "--get", "remote.origin.url")   # as stored, no insteadOf
+    if code != 0 or not OLD_ORIGIN.match(url.strip()):
+        return False
+    return _git(root, "remote", "set-url", "origin", REPO_URL)[0] == 0
+
+
 def _fetch(root, branch):
     """git fetch; returns (old, new, None) or (None, None, message)."""
+    _move_origin(root)
     _, old = _git(root, "rev-parse", "HEAD")
     code, out = _git(root, "fetch", "--quiet", "origin", branch, timeout=FETCH_TIMEOUT)
     if code != 0:
