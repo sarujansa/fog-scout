@@ -19,9 +19,9 @@ AppId={{6C1E2F4B-58A3-4D1C-9F0E-2B7A6D3C8E51}
 AppName=Fog Scout
 AppVersion={#AppVersion}
 AppVerName=Fog Scout {#AppVersion}
-AppPublisher=sarujansa
-AppPublisherURL=https://github.com/sarujansa/fog-scout
-AppSupportURL=https://github.com/sarujansa/fog-scout/issues
+AppPublisher=senisinx
+AppPublisherURL=https://github.com/senisinx/fog-scout
+AppSupportURL=https://github.com/senisinx/fog-scout/issues
 DefaultDirName={autopf}\Fog Scout
 DisableProgramGroupPage=yes
 ; 1.38.43 (user: no trouble if someone is banned): the own terms – unofficial, at your own risk, no liability –
