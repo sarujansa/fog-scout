@@ -1,0 +1,19 @@
+{
+"lang": "zh-Hant",
+"map_id": "blood-lodge",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "血屋",
+"realm": "廢舊車庫",
+"rendered": true
+}

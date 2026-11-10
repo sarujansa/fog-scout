@@ -17,6 +17,10 @@ import sys
 
 # files the program reads from its own folder (root_dir) – relative paths
 FILES = ("maps.json", "HISTORY.md", "models/ch_PP-OCRv4_rec_infer.onnx", "models/ch_PP-OCRv4_det_infer.onnx",
+         # 1.49: the models of the other scripts, each with its character list
+         "models/PP-OCRv5_mobile_rec.onnx", "models/PP-OCRv5_mobile_rec.txt",
+         "models/cyrillic_PP-OCRv5_mobile_rec.onnx", "models/cyrillic_PP-OCRv5_mobile_rec.txt",
+         "models/korean_PP-OCRv5_mobile_rec.onnx", "models/korean_PP-OCRv5_mobile_rec.txt",
          "fogscout/matchexport.user.js", "fogscout/fonts/FiraSans-ExtraBold.ttf", "fogscout/fonts/Inter-Regular.otf",
          "fogscout/fonts/Inter-Medium.otf", "fogscout/fonts/Inter-SemiBold.otf", "fogscout/fonts/Inter-Bold.otf")
 # third-party modules imported lazily somewhere (only Windows: the ones start.bat installs only there)
@@ -102,12 +106,16 @@ def _ocr(root: str) -> str:
     import numpy as np
     from .fullscan import TextDetector
     from .ocr import Recognizer
-    rec = Recognizer(os.path.join(root, "models", "ch_PP-OCRv4_rec_infer.onnx"), threads=1)
-    probs = rec.probs(np.full((48, 200, 3), 255, np.uint8))
-    if probs.ndim != 2 or probs.shape[1] != len(rec.chars):
-        raise ValueError(f"unerwartete Ausgabe {probs.shape}")
+    from .textnorm import MAIN, MODEL_FILES
+    sizes = []
+    for model, name in MODEL_FILES.items():           # 1.49: every recognition model loads and fits its list
+        rec = Recognizer(os.path.join(root, "models", name), threads=1)
+        probs = rec.probs(np.full((48, 200, 3), 255, np.uint8))
+        if probs.ndim != 2 or probs.shape[1] != len(rec.chars):
+            raise ValueError(f"{model}: unerwartete Ausgabe {probs.shape}, {len(rec.chars)} Zeichen")
+        sizes.append(len(rec.chars) if model == MAIN else f"{model} {len(rec.chars)}")
     TextDetector(os.path.join(root, "models", "ch_PP-OCRv4_det_infer.onnx"), threads=1)
-    return f"{len(rec.chars)} Zeichen"
+    return f"{sizes[0]} Zeichen" + (" · " + ", ".join(sizes[1:]) if sizes[1:] else "")
 
 
 def _ffmpeg() -> str:

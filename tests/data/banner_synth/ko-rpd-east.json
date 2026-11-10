@@ -1,0 +1,19 @@
+{
+"lang": "ko",
+"map_id": "rpd-east",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "라쿤 시티 경찰서 동쪽 부속 건물",
+"realm": "라쿤 시티",
+"rendered": true
+}

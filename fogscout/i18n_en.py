@@ -4032,4 +4032,15 @@ EN = {
         'Game language {lang} detected (banner “{text}”) – ticked automatically.',
     'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
         'If DBD runs in a language not ticked here and a map banner clearly matches a map in that language, Fog Scout ticks it itself – the map then appears in the same round. Only at the start of a round, never mid-match.',
+    # 1.49: game languages in other scripts
+    'Russisch':
+        'Russian',
+    'Chinesisch (vereinfacht)':
+        'Chinese (Simplified)',
+    'Chinesisch (traditionell)':
+        'Chinese (Traditional)',
+    'Japanisch':
+        'Japanese',
+    'Koreanisch':
+        'Korean',
 }

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from .textnorm import MAIN
 from .ocr import LexiconScorer, Recognizer, best_path_logp
 
 try:
@@ -79,13 +80,16 @@ class FullScanner:
         self.det = detector
         self.rec = recognizer
         self.catalog = catalog
-        self.names = LexiconScorer(catalog.name_strings)
-        self.realms = LexiconScorer(catalog.realm_strings)
+        # 1.49: the scan reads with the main model – the names of the languages it reads (Latin, Simplified Chinese)
+        self.alphabet = catalog.alphabet
+        self.names = LexiconScorer(catalog.name_strings, self.alphabet)
+        self.realms = LexiconScorer(catalog.realm_strings, self.alphabet)
+        own = [h for h in catalog.hypotheses if h.model == MAIN]
         self._name_to = {}
-        for h in catalog.hypotheses:
+        for h in own:
             self._name_to.setdefault(h.name_key, (h.map_id, h.variant))
         self._realm_to = {}
-        for h in catalog.hypotheses:
+        for h in own:
             for r in h.realm_keys:
                 self._realm_to.setdefault(r, catalog.maps[h.map_id].realm)
 
@@ -102,7 +106,7 @@ class FullScanner:
             if crop.size == 0 or (x1 - x0) < 1.5 * (y1 - y0):
                 continue
             probs = self.rec.probs(crop)
-            g = self.rec.groups(probs)
+            g = self.rec.wide_groups(probs, self.alphabet)
             bp = best_path_logp(g)
             text = self.rec.text(probs)
             for kind, scorer, lookup in (("map", self.names, self._name_to), ("realm", self.realms, self._realm_to)):

@@ -1,0 +1,19 @@
+{
+"lang": "zh-Hans",
+"map_id": "coal-tower",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "煤矿废塔",
+"realm": "迈克米伦庄园",
+"rendered": true
+}
