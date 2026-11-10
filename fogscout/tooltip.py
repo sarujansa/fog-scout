@@ -421,7 +421,8 @@ TIPS = {
     "Zurücksetzen": "Position wieder auf „automatisch“ stellen (auf Ultrawide im linken schwarzen Rand).",
     "Karte im schwarzen Rand halten":
         "Auf breiten Monitoren bleibt die Karte im schwarzen Balken, in dem sie liegt, und wird bei Bedarf "
-        "verkleinert. Mitten über dem Spiel platziert gilt keine Begrenzung.",
+        "verkleinert. Mitten über dem Spiel platziert gilt keine Begrenzung. Ohne schwarze Balken neben dem "
+        "Spielbild (16:9, z. B. 1920×1080) sind die Balken-Optionen ausgegraut.",
     "Karte anzeigen": "Aus: Das Overlay zeigt nur Rundentimer, Serverregion und Ping – "
                                                      "ohne Karte. Erkennung, Rundenende und Statistik laufen wie "
                                                      "gewohnt.",

@@ -468,6 +468,7 @@ QCheckBox::indicator:checked {{ background: {c['accent']}; border-color: {c['acc
     image: url("{ui_icon('check', c['on_accent'])}"); }}
 QCheckBox::indicator:disabled {{ border-color: {c['fg_dis']}; background: transparent; }}
 QCheckBox::indicator:checked:disabled {{ background: {c['border']}; border-color: {c['border']}; }}
+WrapCheck QLabel:disabled {{ color: {c['fg_dis']}; }}  /* 1.46.8: the text of a greyed tick box looked active */
 QToolTip {{ background: {c['panel']}; color: {c['fg']}; border: 1px solid {c['border']}; padding: 4px; }}
 """
 

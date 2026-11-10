@@ -230,3 +230,23 @@ def test_the_picked_claude_model_survives_a_restart(tmp_path):
     s = config.Settings(str(p))
     assert s.get("claude_spent") == config.DEFAULTS["claude_spent"]
     assert s.get("rec_obs_before") == config.DEFAULTS["rec_obs_before"]
+
+
+def test_a_first_start_is_told_from_saved_settings_and_the_defaults_without_bars(tmp_path):
+    """1.46.8 (user: "falls 1920×1080, soll das mit schwarzen Balken standardmässig aus sein"): ``fresh`` = no
+    settings file yet; no_bar_defaults switches off what stands in the black bars and nothing else."""
+    import copy
+    from fogscout.config import DEFAULTS, Settings, no_bar_defaults
+    p = tmp_path / "settings.json"
+    s = Settings(str(p))
+    assert s.fresh and s["sysinfo"] == "right" and s["overlay"]["show_today"] and s["overlay"]["show_media"]
+    s.save()
+    assert not Settings(str(p)).fresh
+    data = no_bar_defaults(copy.deepcopy(DEFAULTS))
+    assert data["sysinfo"] == "off" and not data["overlay"]["show_today"] and not data["overlay"]["show_media"]
+    assert data["overlay"]["show_map"] and data["overlay"]["anchor"] == "auto"
+    want = copy.deepcopy(DEFAULTS)
+    want["sysinfo"] = "off"
+    want["overlay"].update(show_today=False, show_media=False)
+    assert data == want
+    assert DEFAULTS["sysinfo"] == "right" and DEFAULTS["overlay"]["show_today"]      # the defaults themselves stay

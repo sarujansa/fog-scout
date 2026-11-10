@@ -20,6 +20,12 @@ def bar_width(gw: float, gh: float) -> float:
     return max(0.0, (gw - gh * 16 / 9) / 2)
 
 
+def side_bars(gw: float, gh: float) -> bool:
+    """1.46.8: does a window / screen of this size leave black bars left and right of DBD's 16:9 picture that are
+    wide enough for the overlay (ultrawide)? 1920×1080 and 2560×1440: no; 2560×1080 and 3440×1440: yes."""
+    return gh > 0 and bar_width(gw, gh) >= MIN_BAR
+
+
 def bar_side(anchor: str, x: float, w: float, gx: float, gw: float, bar: float):
     """'left', 'right' or None (no bar to stay in)."""
     if bar < MIN_BAR:

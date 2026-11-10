@@ -310,6 +310,16 @@ LOCAL_KEYS = ("setup_version", "setup_root", "qt_geometry", "official_dir", "lay
               "editor_layout", "claude_key", "palette_recent", "rec_obs_before", "claude_spent", "crash_seen")
 
 
+def no_bar_defaults(data: dict) -> dict:
+    """1.46.8 (user: "falls 1920×1080, soll das mit schwarzen Balken standardmässig aus sein"): the defaults of a
+    screen without black bars beside the picture (layout.side_bars) – system values, "today" and the music card
+    stand in those bars; without them they would lie on the game picture, so they start switched off (the map
+    stays, top left). Only for settings nobody has chosen yet: a first start, "Alle Einstellungen zurücksetzen"."""
+    data["sysinfo"] = "off"
+    data.setdefault("overlay", {}).update(show_today=False, show_media=False)
+    return data
+
+
 def reset_data(current: dict) -> dict:
     """1.2.19 ("Alle Einstellungen zurücksetzen"): the defaults, with the PC-specific values (LOCAL_KEYS) of
     ``current`` kept – the window geometry, the setup marker, the download folder; the layouts per window size
@@ -413,6 +423,7 @@ class Settings:
         self._save_failed = False
         self.data = copy.deepcopy(DEFAULTS)
         self.load_error = ""            # 1.8.38: the file could not be read (the app says so in the log)
+        self.fresh = not os.path.exists(path)   # 1.46.8: a first start – nothing here was chosen by the user yet
         if os.path.exists(path):
             try:
                 self.data = _load(_read_json(path))

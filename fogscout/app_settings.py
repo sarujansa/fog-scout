@@ -687,6 +687,7 @@ class SettingsTab:
             return
         from .config import reset_data
         self.settings.data = reset_data(self.settings.data)
+        self._no_bar_defaults(self.settings.data)       # 1.46.8: the defaults of this screen, like a first start
         self.settings.save()
         self.settings.frozen = True
         self._log(_("Alle Einstellungen zurückgesetzt."), "System")
