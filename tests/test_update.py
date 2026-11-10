@@ -215,6 +215,36 @@ def test_the_version_of_a_revision_before_the_rename_is_read(repos):
     assert up._version(str(user), "HEAD~9") == "?"
 
 
+def remote_url(repo):
+    return subprocess.run(["git", "config", "--get", "remote.origin.url"], cwd=repo, capture_output=True,
+                          text=True).stdout.strip()
+
+
+@pytest.mark.parametrize("old", ["https://github.com/{}/fog-scout.git", "https://github.com/{}/fog-scout",
+                                 "https://github.com/{}/dbd-map-scout.git", "git@github.com:{}/fog-scout.git"])
+def test_a_clone_from_the_old_account_is_moved_to_the_new_address(repos, old):
+    """1.46.6 (user: the old account name should disappear everywhere): an origin under the old GitHub name is set
+    to REPO_URL before the fetch – the update itself runs on as before."""
+    user, release = repos
+    real = remote_url(user)
+    old = old.format(up.OLD_OWNER.capitalize() if old.endswith("scout") else up.OLD_OWNER)   # also other letter case
+    git(user, "remote", "set-url", "origin", old)
+    git(user, "config", f"url.{real}.insteadOf", up.REPO_URL)        # the new address leads to the test origin
+    release("1.1.0")
+    assert up.update(str(user))[0] == up.UPDATED
+    assert remote_url(user) == up.REPO_URL
+
+
+@pytest.mark.parametrize("other", ["https://github.com/someone/fog-scout.git", "https://github.com/senisinx/fog-scout",
+                                   "https://example.com/{}/fog-scout.git", "https://github.com/{}/fog-scout.git.evil"])
+def test_any_other_origin_is_left_alone(repos, other):
+    user, _release = repos
+    other = other.format(up.OLD_OWNER)
+    git(user, "remote", "set-url", "origin", other)
+    assert up._move_origin(str(user)) is False
+    assert remote_url(user) == other
+
+
 def test_git_runs_without_hooks_fsmonitor_or_user_config(tmp_path, monkeypatch):
     """1.38.21 (audit SEC-2): start.bat runs update.py as administrator in a folder the user writes to, and git reads
     the user's global config (core.fsmonitor = any command, hooks path) and GIT_* variables from HKCU\\Environment.
