@@ -4007,4 +4007,29 @@ EN = {
     'Üblicher Platz': 'Usual place',
     '„Overlay testen“ zeigt die Karte sofort, mit „Anordnen“ ziehst du sie hin.': '“Test overlay” shows the map at once, with “Arrange” you drag it there.',
     'Nur die Vorschau: Liste und Einstellungen weg, die Navigation schmal – die ganze Fläche zum Anordnen. Esc oder nochmal klicken beendet es.': 'Only the preview: list and settings away, the navigation narrow – the whole area for arranging. Esc or another click ends it.',
+    # 1.48: the game language found by itself (gamelang.py)
+    'Englisch':
+        'English',
+    'Deutsch':
+        'German',
+    'Französisch':
+        'French',
+    'Spanisch':
+        'Spanish',
+    'Spanisch (Mexiko)':
+        'Spanish (Mexico)',
+    'Italienisch':
+        'Italian',
+    'Polnisch':
+        'Polish',
+    'Portugiesisch (Brasilien)':
+        'Portuguese (Brazil)',
+    'Türkisch':
+        'Turkish',
+    'Spielsprache selbst erkennen und anhaken':
+        'Detect and tick the game language by itself',
+    'Spielsprache {lang} erkannt (Banner „{text}“) – automatisch angehakt.':
+        'Game language {lang} detected (banner “{text}”) – ticked automatically.',
+    'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
+        'If DBD runs in a language not ticked here and a map banner clearly matches a map in that language, Fog Scout ticks it itself – the map then appears in the same round. Only at the start of a round, never mid-match.',
 }

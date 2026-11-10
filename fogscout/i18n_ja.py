@@ -5517,4 +5517,28 @@ T = {
         '「オーバーレイをテスト」でマップがすぐに表示され、「配置」でそこまでドラッグできます。',
     'Nur die Vorschau: Liste und Einstellungen weg, die Navigation schmal – die ganze Fläche zum Anordnen. Esc oder nochmal klicken beendet es.':
         'プレビューのみ：リストと設定を隠し、ナビゲーションを狭くします – 領域全体を配置に使えます。Esc または別の場所をクリックで終了します。',
+    'Englisch':
+        '英語',
+    'Deutsch':
+        'ドイツ語',
+    'Französisch':
+        'フランス語',
+    'Spanisch':
+        'スペイン語',
+    'Spanisch (Mexiko)':
+        'スペイン語（メキシコ）',
+    'Italienisch':
+        'イタリア語',
+    'Polnisch':
+        'ポーランド語',
+    'Portugiesisch (Brasilien)':
+        'ポルトガル語（ブラジル）',
+    'Türkisch':
+        'トルコ語',
+    'Spielsprache selbst erkennen und anhaken':
+        'ゲーム言語を自動で判別してチェック',
+    'Spielsprache {lang} erkannt (Banner „{text}“) – automatisch angehakt.':
+        'ゲーム言語「{lang}」を検出しました（バナー「{text}」）。自動でチェックしました。',
+    'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
+        'DBD がここでチェックされていない言語で動いていて、マップバナーがその言語のマップと明確に一致する場合、Fog Scout がその言語を自動でチェックします。マップは同じラウンドで表示されます。ラウンド開始時のみで、マッチの途中では行いません。',
 }

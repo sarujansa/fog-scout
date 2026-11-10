@@ -5517,4 +5517,28 @@ T = {
         '«Prova overlay» mostra subito la mappa, con «Disponi» la trascini lì.',
     'Nur die Vorschau: Liste und Einstellungen weg, die Navigation schmal – die ganze Fläche zum Anordnen. Esc oder nochmal klicken beendet es.':
         "Solo l'anteprima: elenco e impostazioni via, la navigazione stretta – tutta l'area per disporre. Esc o un altro clic la termina.",
+    'Englisch':
+        'Inglese',
+    'Deutsch':
+        'Tedesco',
+    'Französisch':
+        'Francese',
+    'Spanisch':
+        'Spagnolo',
+    'Spanisch (Mexiko)':
+        'Spagnolo (Messico)',
+    'Italienisch':
+        'Italiano',
+    'Polnisch':
+        'Polacco',
+    'Portugiesisch (Brasilien)':
+        'Portoghese (Brasile)',
+    'Türkisch':
+        'Turco',
+    'Spielsprache selbst erkennen und anhaken':
+        'Rileva e spunta da solo la lingua del gioco',
+    'Spielsprache {lang} erkannt (Banner „{text}“) – automatisch angehakt.':
+        'Lingua del gioco {lang} rilevata (banner «{text}») – spuntata automaticamente.',
+    'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
+        "Se DBD è in una lingua non spuntata qui e un banner della mappa corrisponde chiaramente a una mappa in quella lingua, Fog Scout la spunta da solo: la mappa compare già nello stesso round. Solo all'inizio del round, mai a partita in corso.",
 }

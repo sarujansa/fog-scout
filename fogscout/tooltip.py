@@ -56,6 +56,10 @@ TIPS = {
     "Position und Grösse je DBD-Fenstergrösse merken":
         "Merkt Position und Grösse aller Elemente getrennt für jede Grösse des DBD-Fensters (z. B. Vollbild "
         "3440×1440 und ein kleineres Fenster) und lädt sie automatisch, sobald DBD in dieser Grösse läuft.",
+    "Spielsprache selbst erkennen und anhaken":
+        "Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map "
+        "in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. "
+        "Nur am Rundenstart, nie mitten im Match.",
     "Karte darf grösser als der Balken werden":
         "Erlaubt jede Kartengrösse: Ist die Karte breiter als der schwarze Balken, bleibt sie an dessen Aussenrand "
         "und ragt ins Spielbild. Aus: Die Karte wird nie breiter als der Balken (auf 3440×1440 etwa 31 % der "

@@ -5517,4 +5517,28 @@ T = {
         '‘오버레이 테스트’는 맵을 바로 보여 주며, ‘배치’로 그 위치에 끌어 놓을 수 있습니다.',
     'Nur die Vorschau: Liste und Einstellungen weg, die Navigation schmal – die ganze Fläche zum Anordnen. Esc oder nochmal klicken beendet es.':
         '미리 보기만: 목록과 설정을 치우고 탐색을 좁게 – 전체 영역을 배치에 사용합니다. Esc 또는 다른 클릭으로 끝냅니다.',
+    'Englisch':
+        '영어',
+    'Deutsch':
+        '독일어',
+    'Französisch':
+        '프랑스어',
+    'Spanisch':
+        '스페인어',
+    'Spanisch (Mexiko)':
+        '스페인어(멕시코)',
+    'Italienisch':
+        '이탈리아어',
+    'Polnisch':
+        '폴란드어',
+    'Portugiesisch (Brasilien)':
+        '포르투갈어(브라질)',
+    'Türkisch':
+        '튀르키예어',
+    'Spielsprache selbst erkennen und anhaken':
+        '게임 언어를 자동으로 감지해 선택',
+    'Spielsprache {lang} erkannt (Banner „{text}“) – automatisch angehakt.':
+        "게임 언어 {lang} 감지됨(배너 '{text}') – 자동으로 선택했습니다.",
+    'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
+        'DBD가 여기서 선택하지 않은 언어로 실행 중이고 맵 배너가 그 언어의 맵과 명확히 일치하면 Fog Scout가 해당 언어를 자동으로 선택합니다. 맵은 같은 라운드에서 바로 표시됩니다. 라운드 시작 시에만 작동하며 매치 도중에는 작동하지 않습니다.',
 }

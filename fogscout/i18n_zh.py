@@ -5517,4 +5517,28 @@ T = {
         '“测试悬浮窗”会立即显示地图，使用“排列”可将其拖到那里。',
     'Nur die Vorschau: Liste und Einstellungen weg, die Navigation schmal – die ganze Fläche zum Anordnen. Esc oder nochmal klicken beendet es.':
         '仅预览：列表和设置隐藏，导航变窄，整个区域用于排列。按 Esc 或再次单击结束。',
+    'Englisch':
+        '英语',
+    'Deutsch':
+        '德语',
+    'Französisch':
+        '法语',
+    'Spanisch':
+        '西班牙语',
+    'Spanisch (Mexiko)':
+        '西班牙语（墨西哥）',
+    'Italienisch':
+        '意大利语',
+    'Polnisch':
+        '波兰语',
+    'Portugiesisch (Brasilien)':
+        '葡萄牙语（巴西）',
+    'Türkisch':
+        '土耳其语',
+    'Spielsprache selbst erkennen und anhaken':
+        '自动识别并勾选游戏语言',
+    'Spielsprache {lang} erkannt (Banner „{text}“) – automatisch angehakt.':
+        '已识别游戏语言{lang}（横幅“{text}”）——已自动勾选。',
+    'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
+        '如果 DBD 使用的语言未在此勾选，而地图横幅明确对应该语言中的某张地图，Fog Scout 会自动勾选该语言——地图会在同一局中显示。仅在对局开始时进行，绝不会在对局中途进行。',
 }

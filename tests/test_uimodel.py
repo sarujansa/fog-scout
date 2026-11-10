@@ -3407,3 +3407,28 @@ def test_a_first_start_without_black_bars_switches_off_what_stands_in_them(app_r
     with open(app_root / "settings.json", "w", encoding="utf-8") as fh:     # the user's own choice on 16:9 stays
         json.dump({"settings_version": 13, "sysinfo": "left", "overlay": {"show_today": True}, "hotkeys": {}}, fh)
     assert started()[:2] == ("left", True)
+
+
+def test_a_banner_in_a_game_language_not_ticked_ticks_it(app_root, monkeypatch):
+    """1.48 (gamelang.py): the worker's "game_language" ticks the language, the worker gets the new catalog and the
+    log says so – once; with the switch off or the language ticked already nothing changes."""
+    from fogscout.app import App
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        sent = []
+        monkeypatch.setattr(app.worker, "set_catalog", lambda cat: sent.append(list(cat.languages)))
+        assert app.settings["languages"] == ["en", "de"] and app.lang_auto_var.get()
+        app._game_language("fr", "TERRAIN DE LA CASSE")
+        assert app.settings["languages"] == ["en", "de", "fr"] and app.lang_vars["fr"].get()
+        assert sent == [["en", "de", "fr"]] and app.catalog.languages == ["en", "de", "fr"]
+        assert any("TERRAIN DE LA CASSE" in str(e) and "Französisch" in str(e) for e in app._log_entries)
+        app._game_language("fr", "TERRAIN DE LA CASSE")                    # ticked already: nothing new
+        assert len(sent) == 1
+        app.lang_auto_var.set(False)
+        app._lang_auto_changed()
+        app._game_language("tr", "BADHAM ANAOKULU")                        # switched off
+        assert app.settings["game_lang_auto"] is False and "tr" not in app.settings["languages"] and len(sent) == 1
+        app._game_language("xx", "?")                                       # never an unknown code
+        assert "xx" not in app.settings["languages"]
+    finally:
+        app.quit()
