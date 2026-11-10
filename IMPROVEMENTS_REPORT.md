@@ -3,7 +3,7 @@
 > **Historische Momentaufnahme** (Stand laut Dokument: 2. November 2026, PR #298). Die Angaben zu Version, offenen Punkten und Merge-Status gelten für diesen Tag; spätere Änderungen stehen in `HISTORY.md`.
 
 Auftrag: `prompt.md` (umfassende Produkt-, UI/UX-, Funktions- und Performance-Optimierung, Phasen 0–10).
-Stand: 2. November 2026, Zweig `claude/funny-feynman-gt5t6n`, Pull Request sarujansa/fog-scout#298 (nicht gemergt – Saru merged).
+Stand: 2. November 2026, Zweig `claude/funny-feynman-gt5t6n`, Pull Request senisinx/fog-scout#298 (nicht gemergt – Saru merged).
 
 ## 0. Ausgangslage, Vorgehen, Bestandsaufnahme
 
@@ -362,7 +362,7 @@ Ohne Windows-Rechner und Spiel nicht geprüft – bitte am PC durchgehen:
 | `007525b` | Bericht: Commit-Tabelle |
 | letzter Commit | Enter bei Lösch-Rückfragen immer „Abbrechen“ (CI Windows) |
 
-**Push:** Alle Commits sind nach `origin/claude/funny-feynman-gt5t6n` gepusht. Pull Request sarujansa/fog-scout#298 ist offen, **nicht gemergt** – Saru merged.
+**Push:** Alle Commits sind nach `origin/claude/funny-feynman-gt5t6n` gepusht. Pull Request senisinx/fog-scout#298 ist offen, **nicht gemergt** – Saru merged.
 
 **Arbeitsbaum:** Nach dem letzten Commit gibt es keine uncommitteten Änderungen.
 
