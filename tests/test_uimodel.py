@@ -3351,3 +3351,59 @@ def test_a_backup_zip_is_merged_back_after_one_question(app_root, tmp_path):
         assert "keine Sicherung von Fog Scout" in app._qt_question[1]
     finally:
         app.quit()
+
+
+def test_the_bar_options_are_greyed_without_black_bars_and_come_back_with_them(app_root, monkeypatch):
+    """1.46.8 (user: "erkennen, ob jemand Widescreen benutzt oder 1920×1080"): what only does something in a black
+    bar beside the picture is greyed on 16:9 and usable again on ultrawide; the values stay."""
+    from fogscout import app_layout
+    from fogscout.app import App
+    app = App(str(app_root), simulate=str(app_root / "sim"))
+    try:
+        reg, rect = app._qt_reg, [(0, 0, 1920, 1080)]
+        monkeypatch.setattr(app, "_game_rect", lambda: rect[0])
+        app.settings["overlay"]["keep_in_bar"] = True
+        app._bar_options_on = None
+        app._bar_options_tick()
+        assert all(reg[key].instate(["disabled"]) for key, _usual in app_layout.BAR_OPTIONS)
+        assert app.settings["overlay"]["keep_in_bar"] is True and app.keep_bar_var.get()
+        assert not reg["ov.anchor"].instate(["disabled"]) and not reg["ov.keep_out"].instate(["disabled"])
+        rect[0] = (0, 0, 3440, 1440)
+        app._bar_options_tick()
+        assert not any(reg[key].instate(["disabled"]) for key, _usual in app_layout.BAR_OPTIONS)
+        assert reg["ov.bar_align"].cget("state") == "readonly" and reg["ov.keep_bar"].cget("state") == "normal"
+        rect[0] = (0, 0, 2560, 1440)                                        # a 16:9 window on the same PC
+        app._bar_options_tick()
+        assert reg["ov.fill_bar"].instate(["disabled"]) and reg["ov.limits"].instate(["disabled"])
+    finally:
+        app.quit()
+
+
+def test_a_first_start_without_black_bars_switches_off_what_stands_in_them(app_root, monkeypatch):
+    """1.46.8 (user: "falls 1920×1080, soll das mit schwarzen Balken standardmässig aus sein"): system values,
+    "today" and music start off on a 16:9 screen, stay on on ultrawide, and saved settings are never touched."""
+    import json
+    from fogscout import mainloop
+    from fogscout.app import App
+    screen = [(1920, 1080)]
+    monkeypatch.setattr(mainloop.MainLoop, "screen_size", lambda self: screen[0])
+
+    def started(**kw):
+        app = App(str(app_root), **kw)
+        try:
+            o = app.settings["overlay"]
+            return app.settings["sysinfo"], o["show_today"], o["show_media"], o["show_map"], app.today_var.get()
+        finally:
+            app.quit()
+    assert started() == ("off", False, False, True, False)                  # 16:9: only the map
+    if os.path.exists(app_root / "settings.json"):
+        os.remove(app_root / "settings.json")
+    screen[0] = (3440, 1440)
+    assert started() == ("right", True, True, True, True)                   # ultrawide: as before
+    if os.path.exists(app_root / "settings.json"):
+        os.remove(app_root / "settings.json")
+    screen[0] = (1920, 1080)
+    assert started(simulate=str(app_root / "sim")) == ("right", True, True, True, True)   # pictures, not the screen
+    with open(app_root / "settings.json", "w", encoding="utf-8") as fh:     # the user's own choice on 16:9 stays
+        json.dump({"settings_version": 13, "sysinfo": "left", "overlay": {"show_today": True}, "hotkeys": {}}, fh)
+    assert started()[:2] == ("left", True)

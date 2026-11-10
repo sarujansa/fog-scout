@@ -12,6 +12,10 @@ from .i18n import N_, _
 
 CAP_FIT = 0.97             # 1.8.24: shown below 97 % of the asked size = the bar holds the element back
 SIZE_SETTLE = 2.0          # s a new window size must stay before its layout is loaded (no switch while resizing)
+# 1.46.8: options that only do something in a black bar beside the picture – (key in _qt_reg, its usual state)
+BAR_OPTIONS = (("ov.keep_bar", "normal"), ("ov.grow", "normal"), ("ov.fill_bar", "normal"),
+               ("ov.bar_align.label", "normal"), ("ov.bar_align", "readonly"), ("ov.limits", "normal"),
+               ("ov.limits_same", "normal"), ("ov.limits_reset", "normal"))
 
 
 # 1.44.1: right click on an element in edit mode puts it back – the overlay keys of its usual place (config.DEFAULTS)
@@ -126,6 +130,7 @@ class LayoutMemory:
         q = getattr(self, "qt", None)                 # 1.16.1 (audit, 10–13 ms 4×/s): the slider's mark is for the
         if q is None or (q.current_key() == "overlay" and q.isVisible()):   # overlay page – computed only there
             self._size_cap_tick()
+        self._bar_options_tick()                  # 1.46.8: cheap (one comparison) – right before the page is opened
         scope = self._size_scope_text()
         if scope != self.size_scope_var.get():
             self.size_scope_var.set(scope)
@@ -202,6 +207,21 @@ class LayoutMemory:
             scale._dbdms_cap = cap
         if text != self.size_cap_var.get():
             self.size_cap_var.set(text)
+
+    # ---------------------------------------------------------------- options of the black bars
+    def _bar_options_tick(self):
+        """1.46.8 (user: "eine Erkennung, ob jemand Widescreen benutzt oder 1920×1080"): the options that only do
+        something in a black bar beside the picture (BAR_OPTIONS) are greyed while there is none – the DBD window
+        is 16:9 (or narrower), or DBD is closed and the screen is. Their values stay as they are."""
+        _gx, _gy, gw, gh = self._game_rect()
+        on = layout.side_bars(gw, gh)
+        if on == getattr(self, "_bar_options_on", None):
+            return
+        self._bar_options_on = on
+        reg = getattr(self, "_qt_reg", {})
+        for key, usual in BAR_OPTIONS:
+            if key in reg:
+                reg[key].configure(state=usual if on else "disabled")
 
     # ---------------------------------------------------------------- arrow keys in the preview
     def _nudge(self, dx, dy):

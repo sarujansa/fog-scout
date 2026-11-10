@@ -17,6 +17,10 @@ EN = {
     "Kein Windows: Fenstersuche, Hotkeys und Click-Through sind nur unter Windows aktiv.":
         "Not Windows: window search, hotkeys and click-through only work on Windows.",
     "Bereit. {n} Maps geladen, Spielsprachen: {langs}.": "Ready. {n} maps loaded, game languages: {langs}.",
+    "Bildschirm {w}×{h} ohne schwarze Balken neben dem Spielbild: Systemwerte, „Heute“ und Musik im Spiel sind "
+    "ausgeschaltet (sie lägen sonst auf dem Spielbild) – einschalten auf der Seite Overlay.":
+        "Screen {w}×{h} without black bars beside the game picture: system values, “today” and music in the game "
+        "are switched off (they would lie on the game picture) – switch them on on the Overlay page.",
     "Automatisch (Windows-Sprache)": "Automatic (Windows language)",
 
     # ------------------------------------------------------------------ lists / keys
@@ -1112,9 +1116,11 @@ EN = {
     "Position wieder auf „automatisch“ stellen (auf Ultrawide im linken schwarzen Rand).":
         "Set the position back to “automatic” (on ultrawide in the left black bar).",
     "Auf breiten Monitoren bleibt die Karte im schwarzen Balken, in dem sie liegt, und wird bei Bedarf "
-    "verkleinert. Mitten über dem Spiel platziert gilt keine Begrenzung.":
+    "verkleinert. Mitten über dem Spiel platziert gilt keine Begrenzung. Ohne schwarze Balken neben dem "
+    "Spielbild (16:9, z. B. 1920×1080) sind die Balken-Optionen ausgegraut.":
         "On wide monitors the map stays inside the black bar it is in and is made smaller if needed. Placed over "
-        "the middle of the game there is no limit.",
+        "the middle of the game there is no limit. Without black bars beside the game picture (16:9, e.g. "
+        "1920×1080) the bar options are greyed out.",
     "Karte ausblenden, solange ein anderes Fenster (Browser, Discord …) im Vordergrund ist.":
         "Hide the map while another window (browser, Discord …) is in the foreground.",
     "Zusätzliche Namenszeile über der Karte – die meisten Kartenbilder tragen den Namen schon selbst.":

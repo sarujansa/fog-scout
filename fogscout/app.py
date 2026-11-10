@@ -98,6 +98,9 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._log_entries = collections.deque(maxlen=1500)
         self._qt_init()                  # Qt application; self.root = its main loop (timers, clipboard …)
         self._start_step("Qt-Schleife")
+        # 1.46.8: a first start on a screen without black bars – what stands in them starts switched off (not with
+        # --simulate: the pictures played there are not the screen's)
+        self._no_bars_told = self.settings.fresh and not simulate and self._no_bar_defaults(self.settings.data)
         if IS_WIN:
             try:
                 from .icon import ensure_ico
@@ -180,6 +183,11 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.root.after(250, self._tick_overlay)
         self._log(_("Bereit. {n} Maps geladen, Spielsprachen: {langs}.", n=len(self.catalog.maps),
                     langs=", ".join(self.settings["languages"])), "System")
+        if self._no_bars_told:
+            w, h = self.root.screen_size()
+            self._log(_("Bildschirm {w}×{h} ohne schwarze Balken neben dem Spielbild: Systemwerte, „Heute“ und Musik "
+                        "im Spiel sind ausgeschaltet (sie lägen sonst auf dem Spielbild) – einschalten auf der Seite "
+                        "Overlay.", w=w, h=h), "Overlay")
         if self.settings.load_error:            # 1.8.38: say it – before, the defaults replaced the file unnoticed
             self._log(_("settings.json war nicht lesbar ({error}) – Standardwerte geladen. Bis zum Neustart wird "
                         "nichts gespeichert.", error=self.settings.load_error) if self.settings.frozen else
@@ -1280,6 +1288,17 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self._log(_("Scan ({s} s): kein Map- oder Realm-Name auf dem Bildschirm.", s=f"{d['seconds']:.1f}"), "Erkennung")
 
     # ============================================================ overlay
+    def _no_bar_defaults(self, data: dict) -> bool:
+        """1.46.8: ``data`` (settings nobody has chosen yet) on this PC – on a primary screen without black bars
+        beside a 16:9 picture the elements that stand in the bars start switched off (config.no_bar_defaults).
+        True when that was done."""
+        from .config import no_bar_defaults
+        w, h = self.root.screen_size()
+        if layout.side_bars(w, h):
+            return False
+        no_bar_defaults(data)
+        return True
+
     def _game_rect(self):
         now = time.time()
         if now - self._game_checked > 1.0:

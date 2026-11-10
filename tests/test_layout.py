@@ -85,3 +85,12 @@ def test_preview_puts_the_map_where_the_overlay_goes():
     assert L.pos_from_point(3440, 1440, 400, 600, 3440, 0) == (1.0, 0.0)
     fx, fy = L.pos_from_point(3440, 1440, 400, 600, 1720, 720)
     assert abs(fx - 0.5) < 1e-6 and abs(fy - 0.5) < 1e-6
+
+
+def test_side_bars_tell_ultrawide_from_16_to_9():
+    """1.46.8 (user: "erkennen, ob jemand Widescreen benutzt oder 1920×1080"): bars wide enough for the overlay."""
+    assert L.side_bars(3440, 1440) and L.side_bars(2560, 1080) and L.side_bars(5120, 1440)
+    assert not L.side_bars(1920, 1080) and not L.side_bars(2560, 1440) and not L.side_bars(3840, 2160)
+    assert not L.side_bars(1920, 1200) and not L.side_bars(1280, 1024)         # 16:10, 5:4: no bar at the sides
+    assert not L.side_bars(2000, 1080)                                         # 40 px each: too narrow to use
+    assert not L.side_bars(0, 0)
