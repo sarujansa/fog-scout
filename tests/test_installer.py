@@ -355,3 +355,33 @@ def test_the_uninstaller_never_touches_the_data_folder():
     section = iss.split("[UninstallDelete]", 1)[1].split("\n[", 1)[0]          # 1.34: only {app}\update
     assert all(n.startswith("{app}\\update") for n in re.findall(r'Name: "([^"]+)"', section))
     assert "FogScout" not in autostart.uninstall_script().replace("Fog Scout", "")
+
+
+def test_the_setup_shows_the_terms_in_the_chosen_language():
+    """1.47 (as Fog Translate): seven setup languages; de/en are exactly the two halves of LICENSE, every other
+    language a complete translation that names the English text as the one that applies. All UTF-8 with BOM (Inno
+    Setup reads them as ANSI otherwise); the message of a running Fog Scout exists in every language."""
+    with open(os.path.join(ROOT, "LICENSE"), encoding="utf-8-sig") as fh:
+        de, en = fh.read().split("\nDEUTSCH\n", 1)[1].split("\nENGLISH\n", 1)
+    iss = _iss()
+    assert "LicenseFile=" not in iss
+    codes = re.findall(r'^Name: "(\w+)"; MessagesFile: "[^"]+"; LicenseFile: "terms\\terms_(\w+)\.txt"$', iss, re.M)
+    assert codes == [(c, c) for c in ("de", "en", "it", "ru", "zh", "ja", "ko")]
+    for lang in ("German", "Italian", "Russian", "ChineseSimplified", "Japanese", "Korean"):
+        assert "compiler:Languages\\%s.isl" % lang in iss
+    for code, _same in codes:
+        assert re.search(r"^%s\.FogScoutRunning=\S" % code, iss, re.M), code
+        with open(os.path.join(ROOT, "installer", "terms", "terms_%s.txt" % code), "rb") as fh:
+            raw = fh.read()
+        assert raw.startswith(b"\xef\xbb\xbf"), code
+        text = raw[3:].decode("utf-8").replace("\r\n", "\n")      # a Windows checkout has CRLF line ends
+        assert text.startswith("Fog Scout – ") and "Copyright (c) 2026 senisinx." in text.splitlines()[1], code
+        assert re.findall(r"^(\d)\. ", text, re.M) == list("123456"), code
+        for name in ("GitHub", "Behaviour Interactive", "Dead by Daylight", "Easy Anti-Cheat", "THIRD_PARTY.md"):
+            assert name in " ".join(text.split()), (code, name)          # de/en wrap their lines
+        if code == "en":
+            assert text.split("\n", 2)[2] == en
+        elif code == "de":
+            assert text.split("\n", 2)[2].rstrip("\n") == de.rstrip("\n")
+        else:
+            assert "LICENSE" in text.split("\n6. ", 1)[1].split("\n", 1)[1], code     # the English text applies

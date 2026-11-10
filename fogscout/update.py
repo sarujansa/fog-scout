@@ -70,6 +70,8 @@ def _language(root) -> str:
         setting = "auto"
     if setting in ("de", "en"):
         return setting
+    if setting != "auto":                    # 1.47: the other languages of the program – this script speaks English
+        return "en"
     try:
         if sys.platform == "win32":
             import ctypes

@@ -25,8 +25,7 @@ AppSupportURL=https://github.com/senisinx/fog-scout/issues
 DefaultDirName={autopf}\Fog Scout
 DisableProgramGroupPage=yes
 ; 1.38.43 (user: no trouble if someone is banned): the own terms – unofficial, at your own risk, no liability –
-; shown and accepted before installing (a silent update skips the page)
-LicenseFile=..\LICENSE
+; shown and accepted before installing (a silent update skips the page); 1.47: in the language chosen, see [Languages]
 ; 1.38.21 (audit SEC-3): always Program Files – a folder the user may write to would let anyone replace the .exe
 ; that the task "Fog Scout" starts with highest rights, and fogscout/paths.app_update_dir counts on this folder
 DisableDirPage=yes
@@ -46,9 +45,17 @@ WizardStyle=modern
 ; section waits for the program's mutex (fogscout/restart.py MUTEX_NAME); an installation by hand asks to close it.
 CloseApplications=no
 
+; 1.47 (user: "in allen Sprachen wie die anderen Programme"): as Fog Translate – the setup in seven languages, the
+; terms in the one chosen (UTF-8 with BOM; de/en are the two halves of LICENSE, the others translations that name the
+; English text as the one that applies)
 [Languages]
-Name: "de"; MessagesFile: "compiler:Languages\German.isl"
-Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "de"; MessagesFile: "compiler:Languages\German.isl"; LicenseFile: "terms\terms_de.txt"
+Name: "en"; MessagesFile: "compiler:Default.isl"; LicenseFile: "terms\terms_en.txt"
+Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"; LicenseFile: "terms\terms_it.txt"
+Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"; LicenseFile: "terms\terms_ru.txt"
+Name: "zh"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"; LicenseFile: "terms\terms_zh.txt"
+Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"; LicenseFile: "terms\terms_ja.txt"
+Name: "ko"; MessagesFile: "compiler:Languages\Korean.isl"; LicenseFile: "terms\terms_ko.txt"
 
 ; 1.33.2: no InstallDelete of {app}\_internal any more - Inno Setup does not bring deleted files back when the setup
 ; is aborted, and an update broken off midway (a file still in use) left a program without python312.dll. Every file
@@ -147,3 +154,8 @@ end;
 [CustomMessages]
 de.FogScoutRunning=Fog Scout läuft noch. Bitte beenden (Infobereich: Rechtsklick auf das Symbol, dann Beenden) und danach Wiederholen wählen.
 en.FogScoutRunning=Fog Scout is still running. Please close it (notification area: right-click the icon, then Exit) and choose Retry.
+it.FogScoutRunning=Fog Scout è ancora in esecuzione. Chiudilo (area di notifica: clic destro sull'icona, poi Esci) e scegli Riprova.
+ru.FogScoutRunning=Fog Scout всё ещё запущен. Закройте его (область уведомлений: правый щелчок по значку, затем «Выход») и нажмите «Повтор».
+zh.FogScoutRunning=Fog Scout 仍在运行。请先关闭它（通知区域：右键单击图标，然后选择“退出”），再选择“重试”。
+ja.FogScoutRunning=Fog Scout がまだ実行中です。終了してから（通知領域でアイコンを右クリックし「終了」）、「再試行」を選んでください。
+ko.FogScoutRunning=Fog Scout가 아직 실행 중입니다. 종료한 뒤(알림 영역에서 아이콘을 마우스 오른쪽 버튼으로 클릭한 다음 '종료') '다시 시도'를 선택하세요.

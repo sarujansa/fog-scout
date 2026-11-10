@@ -1,0 +1,37 @@
+﻿Fog Scout – Condizioni d'uso
+Copyright (c) 2026 senisinx. Tutti i diritti riservati.
+
+1. Uso. Puoi scaricare Fog Scout gratuitamente e usarlo privatamente. Copiare,
+   modificare, ridistribuire o pubblicare il programma o il suo codice sorgente (in tutto
+   o in parte) non è consentito senza l'autorizzazione scritta dell'autore. Restano
+   impregiudicati la visualizzazione e il fork su GitHub ai sensi dei Termini di servizio
+   di GitHub.
+
+2. Non ufficiale. Fog Scout è uno strumento non ufficiale creato da un fan. Non è
+   affiliato a Behaviour Interactive (Dead by Daylight), Epic Games (Easy Anti-Cheat) o
+   ai loro partner, e non è stato da essi esaminato né approvato. "Dead by Daylight" e i
+   nomi correlati sono marchi dei rispettivi titolari.
+
+3. A tuo rischio. Usi il programma a tuo rischio. Fog Scout legge soltanto i pixel dello
+   schermo e le informazioni sulle finestre, non modifica i file di gioco, non accede al
+   processo del gioco e non invia alcun input al gioco. Tuttavia nessuno può garantire
+   come Behaviour Interactive o un sistema anti-cheat valuti un programma esterno. Non vi
+   è alcuna garanzia che il suo utilizzo non comporti un avvertimento, un ban o la
+   perdita di un account di gioco. Se usarlo è una tua decisione; il rispetto delle
+   regole del gioco è una tua responsabilità.
+
+4. Nessuna garanzia. Il programma è fornito "così com'è", senza garanzie di alcun tipo,
+   comprese quelle di accuratezza, disponibilità o idoneità a uno scopo particolare.
+
+5. Responsabilità. Nei limiti consentiti dalla legge, l'autore non risponde di alcun
+   danno derivante dall'uso del programma o dall'impossibilità di usarlo, in particolare
+   non di ban o della perdita di account di gioco, di contenuti acquistati, di progressi
+   o di dati. Resta impregiudicata la responsabilità per dolo e colpa grave e per lesioni
+   alla vita, all'integrità fisica o alla salute.
+
+6. Componenti di terzi. Le librerie incluse, le immagini delle mappe e i dati di terzi
+   sono soggetti alle proprie licenze e ai propri diritti (vedi THIRD_PARTY.md); le
+   presenti condizioni non si applicano ad essi.
+
+Questo testo italiano è una traduzione fornita per comodità. In caso di divergenze tra
+questo testo e il testo inglese, prevale il testo inglese (file LICENSE del programma).
