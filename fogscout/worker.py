@@ -646,7 +646,9 @@ class DetectionWorker(threading.Thread):
                                     role = lobby_reader.result_role(crop)
                                     if role is None:     # 1.11.8: look again in a moment (1.11.1: kept then)
                                         role_retry = {"gen": tracker.generation, "t": tracker.end_t,
-                                                      "due": [tick + s for s in ROLE_RETRY_S], "crop": crop,
+                                                      # 1.46.4: a copy – the view kept the whole frame
+                                                      # (~15 MB) alive until the last retry
+                                                      "due": [tick + s for s in ROLE_RETRY_S], "crop": crop.copy(),
                                                       "text": getattr(lobby_reader, "last_result_text", "")}
                                 except Exception:
                                     self._report("Rolle", traceback.format_exc())
@@ -897,7 +899,7 @@ class DetectionWorker(threading.Thread):
                 rx, ry, rw, rh = result_box(fw, fh)
                 crop = frame[ry:ry + rh, rx:rx + rw]
                 role = lobby_reader.result_role(crop)
-                retry["crop"], retry["text"] = crop, getattr(lobby_reader, "last_result_text", "")
+                retry["crop"], retry["text"] = crop.copy(), getattr(lobby_reader, "last_result_text", "")
         except Exception:
             self._report("Rolle", traceback.format_exc())
         if role:
