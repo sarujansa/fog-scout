@@ -51,9 +51,10 @@ jobs:
         shell: pwsh
         env:
           # 1.38.56 (Saru: "Das Build soll zurück auf 1 gehen"): the shown number counts the merges to main since
-          # this commit (the 1.38.55 merge = Build 0, the next one Build 1). `build` stays the run number – tags
-          # build-<run number> and the update check compare it, so installed copies keep finding updates.
-          BUILD_BASE: d8b8f98f3301a9964d6bf67298079757b601eb28
+          # this commit (Build 0, the next merge Build 1). `build` stays the run number – tags build-<run number> and
+          # the update check compare it, so installed copies keep finding updates. 1.46.7 (Saru: "Fog Scout soll
+          # Build 1 erhalten"): counted again from the last merge before 1.46.7 (PR #398).
+          BUILD_BASE: e34bf39b04434713e0e6bcad5417123963266765
         run: |
           $version = python -c "import fogscout; print(fogscout.__version__)"
           $shown = git rev-list --count --first-parent "$env:BUILD_BASE..HEAD"
@@ -201,6 +202,7 @@ jobs:
             fogscout/__init__.py
             fogscout/whatsnew.py
             tools/release_notes.py
+            tools/release_guide.md
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7.0.0
         with:
@@ -230,7 +232,9 @@ jobs:
             printf 'Fog Scout %s (Build %s), Commit %s\n\n' "$version" "$SHOWN" "$GITHUB_SHA"
             if [ -n "$news" ]; then printf '## Neu\n\n%s\n\n' "$news"; fi
             printf 'SHA-256 von %s: %s\n\n' "$setup" "$sum"
-            printf 'Nicht signiert: Windows SmartScreen fragt beim ersten Start (Weitere Informationen → Trotzdem ausführen). Alle Versionen: [HISTORY.md](https://github.com/%s/blob/%s/HISTORY.md)\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA"
+            printf 'Nicht signiert: Windows SmartScreen fragt beim ersten Start (Weitere Informationen → Trotzdem ausführen). Alle Versionen: [HISTORY.md](https://github.com/%s/blob/%s/HISTORY.md)\n\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA"
+            # 1.46.7 (Saru: "Anleitung auf english und deutsch"): install/update guide in both languages
+            cat ../tools/release_guide.md
           } > notes.md
           gh release create "$TAG" "$setup" "$setup.sha256" --target "$GITHUB_SHA" \
             --title "Fog Scout $version (Build $SHOWN)" --notes-file notes.md --latest
