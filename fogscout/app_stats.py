@@ -1889,6 +1889,10 @@ class StatsTab:
             return
         from . import backups
         self._backup_done(backups.snapshot(self.data_dir, tag="vorher"))     # 1.8.80: one more copy first
+        if not backups.saved(self.data_dir, history.FILE):          # 1.46.4: no copy, no clearing
+            self._inform(_("Alle Runden löschen"), _("Die Kopie in {folder}/ konnte nicht angelegt werden – die "
+                                                     "Runden bleiben gespeichert.", folder="backup"))
+            return
         history.clear(self._hist_path())
         self._stats_render()
         self._log(_("Rundenverlauf gelöscht."), "System")
