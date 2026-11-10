@@ -1,0 +1,33 @@
+﻿Fog Scout – Terms of use
+Copyright (c) 2026 senisinx. All rights reserved.
+
+1. Use. You may download Fog Scout free of charge and use it privately. Copying,
+   modifying, redistributing or publishing the program or its source code (in whole or
+   in part) is not permitted without the author's written permission. Viewing and
+   forking on GitHub under GitHub's Terms of Service remain unaffected.
+
+2. Unofficial. Fog Scout is an unofficial fan tool. It is not affiliated with Behaviour
+   Interactive (Dead by Daylight), Epic Games (Easy Anti-Cheat) or their partners, and
+   it has not been reviewed or approved by them. "Dead by Daylight" and related names
+   are trademarks of their respective owners.
+
+3. At your own risk. You use the program at your own risk. Fog Scout only reads screen
+   pixels and window information, does not modify game files, does not access the game
+   process and sends no input to the game. Still, nobody can promise how Behaviour
+   Interactive or an anti-cheat system judges an external program. There is no
+   assurance that using it will not lead to a warning, a ban or the loss of a game
+   account. Whether you use it is your decision; following the game's rules is your
+   responsibility.
+
+4. No warranty. The program is provided "as is", without warranty of any kind,
+   including accuracy, availability or fitness for a particular purpose.
+
+5. Liability. To the extent permitted by law, the author is not liable for any damage
+   arising from the use of or the inability to use the program, in particular not for
+   bans or the loss of game accounts, purchased content, progress or data. Liability
+   for intent and gross negligence and for injury to life, body or health remains
+   unaffected.
+
+6. Third-party parts. Bundled libraries, map pictures and third-party data are subject
+   to their own licenses and rights (see THIRD_PARTY.md); these terms do not apply to
+   them.

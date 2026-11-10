@@ -1,0 +1,35 @@
+﻿Fog Scout – Nutzungsbedingungen
+Copyright (c) 2026 senisinx. Alle Rechte vorbehalten.
+
+1. Nutzung. Du darfst Fog Scout kostenlos herunterladen und für dich privat benutzen.
+   Kopieren, Verändern, Weitergeben oder Veröffentlichen des Programms oder seines
+   Quelltexts (auch in Teilen) ist ohne schriftliche Erlaubnis des Urhebers nicht
+   gestattet. Ansehen und Forken auf GitHub im Rahmen der GitHub-Nutzungsbedingungen
+   bleiben davon unberührt.
+
+2. Inoffiziell. Fog Scout ist ein inoffizielles Fan-Tool. Es ist nicht mit Behaviour
+   Interactive (Dead by Daylight), Epic Games (Easy Anti-Cheat) oder deren Partnern
+   verbunden und wurde von ihnen weder geprüft noch genehmigt. „Dead by Daylight“ und
+   zugehörige Namen sind Marken ihrer jeweiligen Inhaber.
+
+3. Auf eigene Gefahr. Die Nutzung erfolgt auf eigene Gefahr. Fog Scout liest nur
+   Bildschirmpixel und Fensterinformationen, verändert keine Spieldateien, greift nicht
+   auf den Spielprozess zu und sendet keine Eingaben an das Spiel. Trotzdem kann
+   niemand zusagen, wie Behaviour Interactive oder ein Anti-Cheat-System ein externes
+   Programm bewertet. Es gibt keine Zusicherung, dass die Nutzung nicht zu einer
+   Verwarnung, Sperre oder dem Verlust eines Spielkontos führt. Ob du das Programm
+   benutzt, entscheidest du selbst; die Regeln des Spiels einzuhalten, liegt bei dir.
+
+4. Ohne Gewähr. Das Programm wird so, wie es ist, ohne jede Gewährleistung
+   bereitgestellt – insbesondere ohne Gewähr für Richtigkeit, Verfügbarkeit oder
+   Eignung für einen bestimmten Zweck.
+
+5. Haftung. Soweit gesetzlich zulässig, haftet der Urheber nicht für Schäden aus der
+   Nutzung oder Nichtnutzbarkeit des Programms, insbesondere nicht für Sperren oder den
+   Verlust von Spielkonten, gekauften Inhalten, Fortschritt oder Daten. Unberührt
+   bleibt die Haftung für Vorsatz und grobe Fahrlässigkeit sowie für Schäden an Leben,
+   Körper oder Gesundheit.
+
+6. Fremde Bestandteile. Mitgelieferte Bibliotheken, Kartenbilder und Daten Dritter
+   stehen unter ihren eigenen Lizenzen und Rechten (siehe THIRD_PARTY.md); diese
+   Bedingungen gelten für sie nicht.

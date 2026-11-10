@@ -445,7 +445,7 @@ class ClaudeMixin:
             return
         boxes = [list(b) for b in base.boxes]
         style = base.censor_style if base.censor_style in imageedit.CENSOR_STYLES else "pixel"
-        language = "German" if i18n.current() == "de" else "English"
+        language = i18n.language_name()
         ffmpeg = self.ffmpeg
         self._claude_seq += 1
         seq = self._claude_seq
@@ -524,7 +524,7 @@ class ClaudeMixin:
         if not jobs:
             return
         picture = self._cut_picture(base)
-        language = "German" if i18n.current() == "de" else "English"
+        language = i18n.language_name()
         self._claude_seq += 1
         seq = self._claude_seq
         self._claude_busy, self._claude_result = True, None
@@ -570,7 +570,7 @@ class ClaudeMixin:
         if not jobs:
             return
         picture = self._cut_picture(base)
-        language = "German" if i18n.current() == "de" else "English"
+        language = i18n.language_name()
         self._claude_seq += 1
         seq = self._claude_seq
         self._claude_busy, self._claude_result = True, None
@@ -758,7 +758,7 @@ class ClaudeMixin:
         path, info, ffmpeg = self._src_path(part), self._src_info(part), self.ffmpeg
         boxes = [list(b) for b in self.preview.boxes]
         style = self._censor_style if self._censor_style in imageedit.CENSOR_STYLES else "pixel"
-        language = "German" if i18n.current() == "de" else "English"
+        language = i18n.language_name()
         self._claude_seq += 1
         seq = self._claude_seq
         self._claude_busy = True
@@ -836,7 +836,7 @@ class ClaudeMixin:
             return
         boxes = [list(b) for b in base.boxes]
         style = base.censor_style if base.censor_style in imageedit.CENSOR_STYLES else "pixel"
-        language = "German" if i18n.current() == "de" else "English"
+        language = i18n.language_name()
         from . import shorts
         wish = highlights.SHORT_WISH.format(limit=int(min(60, shorts.MAX_S)), language=language)
         text = (editcommands.content(wish, base, mode, marks, picture=False) + "\n\n"

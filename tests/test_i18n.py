@@ -12,7 +12,8 @@ from fogscout.i18n_en import EN  # noqa: E402
 
 PKG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fogscout")
 SOURCES = [p for p in sorted(glob.glob(os.path.join(PKG, "*.py")))
-           if os.path.basename(p) not in ("update.py", "i18n_en.py")]
+           if os.path.basename(p) != "update.py" and not os.path.basename(p).startswith("i18n_")]
+OTHERS = [c for c in i18n.CODES if c not in ("de", "en")]          # 1.47: the languages that lie on English
 UNTRANSLATED_OK = {"Sprache / Language", "Log", "Log ⚠", "Maps", "Layout ▸", "●", "Fog Scout", "Ping", "Realm"}
 
 def _trees():
@@ -122,7 +123,57 @@ def test_switching_language():
 
 def test_language_setting():
     assert i18n.resolve("de") == "de" and i18n.resolve("en") == "en"
-    assert i18n.resolve("auto") in ("de", "en")
+    assert i18n.resolve("auto") in i18n.CODES and i18n.resolve("xx") in i18n.CODES
+    assert all(i18n.resolve(c) == c for c in i18n.CODES)
+
+
+def test_the_program_speaks_the_languages_of_fog_translate():
+    """1.47 (user: "in allen Sprachen wie die anderen Programme"): German, English and Fog Translate's Italian,
+    Russian, Simplified Chinese, Japanese and Korean; Windows picks one by its language id, any other is English."""
+    assert i18n.CODES == ("de", "en", "it", "ru", "zh", "ja", "ko")
+    assert set(i18n.WINDOWS_IDS.values()) == set(i18n.CODES) and set(i18n.NAMES) == set(i18n.CODES)
+    assert len({label for _c, label in i18n.LANGUAGES}) == len(i18n.LANGUAGES)
+
+
+def test_every_language_has_every_text_with_the_same_placeholders():
+    """Each i18n_<code>.T has exactly the keys of English (none missing, none stale), no empty text, the same
+    {placeholders} and as many line breaks – a wrong name would raise in _() and show German instead."""
+    import importlib
+    for code in OTHERS:
+        table = importlib.import_module(f"fogscout.i18n_{code}").T
+        assert sorted(set(EN) - set(table))[:5] == [], code
+        assert sorted(set(table) - set(EN))[:5] == [], code
+        assert [k for k, v in table.items() if not isinstance(v, str) or not v.strip()][:5] == [], code
+        assert [k for k, v in table.items() if fields(k) != fields(v)][:5] == [], code
+        assert [k for k, v in table.items() if EN[k].count("\n") != v.count("\n")][:5] == [], code
+
+
+def test_the_other_languages_show_their_text_and_english_where_one_is_missing(monkeypatch):
+    import importlib
+    try:
+        for code in OTHERS:
+            assert i18n.set_language(code) == code
+            own = importlib.import_module(f"fogscout.i18n_{code}").T
+            assert i18n._("Overlay testen") == own["Overlay testen"] != EN["Overlay testen"]
+            assert i18n._("Im Match: {map}", map="Coal Tower").count("Coal Tower") == 1
+            assert i18n.source(own["Overlay testen"]) == "Overlay testen"
+            assert "Test overlay" in i18n.other(own["Overlay testen"]).split(" ") or \
+                "Overlay testen" in i18n.other(own["Overlay testen"])
+            assert i18n.is_program_text(own["Overlay testen"]) and i18n.language_name() == i18n.NAMES[code]
+        mod = importlib.import_module("fogscout.i18n_ja")
+        monkeypatch.delitem(mod.T, "Overlay testen")
+        i18n.set_language("ja")
+        assert i18n._("Overlay testen") == "Test overlay"                     # missing: English, not German
+    finally:
+        i18n.set_language("de")
+    assert i18n._("Overlay testen") == "Overlay testen"
+
+
+def test_the_start_script_speaks_english_for_the_other_languages(tmp_path, monkeypatch):
+    monkeypatch.delenv("DBDMS_LANG", raising=False)
+    for code in OTHERS:
+        (tmp_path / "settings.json").write_text('{"ui_language": "%s"}' % code, encoding="utf-8")
+        assert update._language(str(tmp_path)) == "en"
 
 def test_update_messages_follow_the_setting(tmp_path, monkeypatch):
     monkeypatch.delenv("DBDMS_LANG", raising=False)
