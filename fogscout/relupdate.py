@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 from .i18n import _
 
-REPO = "sarujansa/fog-scout"
+REPO = "senisinx/fog-scout"
 API = f"https://api.github.com/repos/{REPO}/releases/latest"
 DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 TAG = re.compile(r"^build-(\d{1,9})$")
