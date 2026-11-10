@@ -42,7 +42,7 @@ Die Nutzung von Informationen aus Google-APIs durch Fog Scout richtet sich nach 
 
 ## Kontakt
 
-Fragen und Hinweise: über die Issues dieses Repositorys (<https://github.com/sarujansa/fog-scout/issues>).
+Fragen und Hinweise: über die Issues dieses Repositorys (<https://github.com/senisinx/fog-scout/issues>).
 
 ---
 
@@ -88,4 +88,4 @@ Fog Scout's use of information received from Google APIs adheres to the [Google 
 
 ## Contact
 
-Questions and remarks: through the issues of this repository (<https://github.com/sarujansa/fog-scout/issues>).
+Questions and remarks: through the issues of this repository (<https://github.com/senisinx/fog-scout/issues>).
