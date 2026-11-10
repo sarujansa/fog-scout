@@ -37,7 +37,7 @@ def test_every_map_has_a_name_in_every_new_language_and_its_model_knows_every_si
         assert LANG_MODEL[code] in MODEL_FILES and LANG_MODEL[code] != MAIN
         with open(os.path.join(ROOT, "models", os.path.splitext(MODEL_FILES[LANG_MODEL[code]])[0] + ".txt"),
                   encoding="utf-8", newline="") as fh:
-            known = set(fh.read().split("\n"))
+            known = {c.rstrip("\r") for c in fh.read().split("\n")}       # a Windows checkout has CRLF line ends
         names = [m["names"].get(code, "") for m in data["maps"]] + [r.get(code, "") for r in data["realms"].values()]
         assert all(names), code
         assert len({fold_any(m["names"][code]) for m in data["maps"]}) == len(data["maps"]), code     # no two alike
@@ -150,3 +150,18 @@ def test_a_name_of_two_signs_needs_its_realm_to_name_a_language():
     assert gamelang.match("煤矿废塔", "麦克米伦庄园", maps, {"en", "de"}) == ("zh-Hans", "coal-tower")
     assert gamelang.match("血屋", "", maps, {"en", "de"}) is None                  # two signs, but no realm read
     assert gamelang.match("ИГРА", "МЯСОКОМБИНАТ «ГИДЕОН»", maps, {"en", "de"}) == ("ru", "the-game")
+
+
+def test_a_character_list_with_windows_line_ends_reads_the_same(tmp_path):
+    """1.49 (Windows CI): git turned the lists' line ends into CRLF – every character carried a "\\r"."""
+    pytest.importorskip("onnxruntime")
+    import shutil
+    from fogscout.ocr import Recognizer
+    name = MODEL_FILES["cyrillic"]
+    src = os.path.join(ROOT, "models", name)
+    shutil.copyfile(src, tmp_path / name)
+    with open(os.path.splitext(src)[0] + ".txt", "rb") as fh:
+        raw = fh.read().replace(b"\r\n", b"\n")
+    (tmp_path / (os.path.splitext(name)[0] + ".txt")).write_bytes(raw.replace(b"\n", b"\r\n"))
+    crlf, plain = Recognizer(str(tmp_path / name)), Recognizer(src)
+    assert crlf.chars == plain.chars and not any(c.endswith("\r") for c in crlf.chars) and "Я" in crlf.chars

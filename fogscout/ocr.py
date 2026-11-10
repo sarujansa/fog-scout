@@ -88,8 +88,10 @@ class Recognizer:
         if not chars:
             own = os.path.splitext(model_path)[0] + ".txt"         # 1.49: PP-OCRv5 – one character per line
             if os.path.exists(own):
+                # one character per line; a Windows checkout may have turned the line ends into CRLF (1.49: every
+                # character then carried a "\r" and the model read nothing)
                 with open(own, encoding="utf-8", newline="") as fh:
-                    chars = fh.read().split("\n")[:-1]
+                    chars = [c[:-1] if c.endswith("\r") else c for c in fh.read().split("\n")[:-1]]
             else:
                 keys = os.path.join(os.path.dirname(model_path), "ppocr_keys_v1.txt")
                 with open(keys, encoding="utf-8") as fh:
