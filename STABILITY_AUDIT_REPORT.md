@@ -56,7 +56,7 @@ Ein Critical-Befund fand sich nicht.
 
 **Geprüft und in Ordnung (kein Befund):**
 - **Update-Sperren:** Updates sind während einer Runde, einer laufenden OBS-Aufnahme und beim Speichern eines Clips gesperrt (`apply_update`: `_round_running` = offene Runde ∨ `recorder.recording`, `_clips_saving`; vor der Installation erneut in `_release_install`, dazu `_quit_phase1` für Editor-Projekte).
-- **Nur eigene Release-Downloads:** Downloads kommen nur von `https://github.com/sarujansa/fog-scout/releases/download/build-N/…` (`parse_release` prüft die Adresse genau).
+- **Nur eigene Release-Downloads:** Downloads kommen nur von `https://github.com/senisinx/fog-scout/releases/download/build-N/…` (`parse_release` prüft die Adresse genau).
 - **Grösse und Prüfsumme:** Die Grösse wird gegen die Angabe im Release und gegen `MAX_BYTES` geprüft; die SHA-256 gegen die `.sha256`-Datei, und beide müssen mit GitHubs Digest übereinstimmen.
 - **Abgebrochener Download:** Ein abgebrochener oder falscher Download löscht seine `.part`-Datei.
 - **Fehler der GitHub-API:** Netzfehler, 403/Rate-Limit und kaputtes JSON werden zum Zustand `error`, kein Absturz (jetzt mit Tests).
