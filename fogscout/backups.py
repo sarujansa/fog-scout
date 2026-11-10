@@ -16,7 +16,7 @@ from . import fsops
 DIR = "backup"
 KEEP = 14                                   # copies kept per file (the newest)
 FILES = ("rounds.jsonl", "official.jsonl")  # history.FILE, official.FILE
-_NAME = re.compile(r"^(?P<stem>[a-z]+)-(?P<day>\d{4}-\d{2}-\d{2})(?:-[a-z]+)?\.jsonl$")
+_NAME = re.compile(r"^(?P<stem>[a-z]+)-(?P<day>\d{4}-\d{2}-\d{2})(?:-(?P<tag>[a-z]+)(?P<n>\d*))?\.jsonl$")
 
 
 def _digest(path: str):
@@ -33,7 +33,21 @@ def copies(folder: str, stem: str) -> list:
         names = os.listdir(folder)
     except OSError:
         return []
-    return sorted(n for n in names if (m := _NAME.match(n)) and m.group("stem") == stem)
+    found = [(m, n) for n in names if (m := _NAME.match(n)) and m.group("stem") == stem]
+    # 1.46.4: "-vorher2" … after "-vorher" of the same day (by number – "-vorher10" after "-vorher9")
+    return [n for m, n in sorted(found, key=lambda p: (p[0].group("day"), p[0].group("tag") or "",
+                                                         int(p[0].group("n") or 1), p[1]))]
+
+
+def saved(root: str, name: str) -> bool:
+    """1.46.4: the file ``name`` of ``root`` as it is now has a copy in backup/ (or does not exist) – checked
+    before the history is cleared, so a copy that could not be written never lets the rounds go."""
+    src = os.path.join(root, name)
+    if not os.path.isfile(src):
+        return True
+    now = _digest(src)
+    folder = os.path.join(root, DIR)
+    return now is not None and any(_digest(os.path.join(folder, c)) == now for c in copies(folder, name.split(".")[0]))
 
 
 def snapshot(root: str, now: float | None = None, tag: str = "") -> dict:
@@ -49,6 +63,15 @@ def snapshot(root: str, now: float | None = None, tag: str = "") -> dict:
         stem = name.split(".")[0]
         target = f"{stem}-{day}{'-' + tag if tag else ''}.jsonl"
         had = copies(folder, stem)
+        if target in had and tag:
+            # 1.46.4: cleared twice a day – the rounds played since the first copy got none; the same content
+            # needs no second copy, other content gets the next free number ("-vorher2")
+            if _digest(src) in {_digest(os.path.join(folder, n)) for n in had if n.startswith(target[:-6])}:
+                continue
+            n = 2
+            while f"{stem}-{day}-{tag}{n}.jsonl" in had:
+                n += 1
+            target = f"{stem}-{day}-{tag}{n}.jsonl"
         if target in had:
             continue
         if had and not tag and _digest(os.path.join(folder, had[-1])) == _digest(src):
@@ -229,7 +252,7 @@ def _plan(data_dir: str, u: _Unpacked, members: dict) -> dict:
                     r, kind = d, "lost"
                 else:
                     r, kind = history._round_line(line), "rounds"
-            except (ValueError, KeyError, TypeError, RecursionError):
+            except (ValueError, KeyError, TypeError, RecursionError, ArithmeticError):   # 1.46.4: + Infinity
                 continue
             if r is None:
                 continue
@@ -249,7 +272,7 @@ def _plan(data_dir: str, u: _Unpacked, members: dict) -> dict:
                     plan["gaps"].append((float(d["from"]), float(d["to"])))
                     continue
                 m = official._match_line(line)
-            except (ValueError, KeyError, TypeError, RecursionError):
+            except (ValueError, KeyError, TypeError, RecursionError, ArithmeticError):   # 1.46.4: + Infinity
                 continue
             if m is None:
                 continue

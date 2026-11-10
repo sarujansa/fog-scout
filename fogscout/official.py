@@ -235,9 +235,12 @@ def _match_line(line: str):
     d = json.loads(line)
     if not isinstance(d, dict) or d.get("gap"):
         return None
+    t = float(d["t"])
+    if not math.isfinite(t):          # 1.46.4: json reads NaN/Infinity – round(t) further on would raise
+        raise ValueError("start is not a number")
     opp = [Player(**{k: str(o.get(k) or "") for k in ("role", "character", "status", "img")})
            for o in d.get("opp") or [] if isinstance(o, dict)]
-    return Match(t=float(d["t"]), map=str(d.get("map") or ""), custom=bool(d.get("custom")),
+    return Match(t=t, map=str(d.get("map") or ""), custom=bool(d.get("custom")),
                  role=str(d.get("role") or ""), character=str(d.get("character") or ""),
                  seconds=float(d.get("seconds") or 0), bp=int(d.get("bp") or 0),
                  status=str(d.get("status") or ""), img=str(d.get("img") or ""), opp=opp, **_stored_extra(d))
@@ -688,6 +691,8 @@ def bucket_start(t: float, unit: str) -> float:
 
 def _next_bucket(start: float, unit: str) -> float:
     import datetime
+    if unit == "hour":      # 1.46.4: an hour is 3600 s – the local clock skipped the repeated hour of a DST end
+        return bucket_start(start + 3601, unit)
     d = datetime.datetime.fromtimestamp(start)
     d += {"hour": datetime.timedelta(hours=1), "day": datetime.timedelta(days=1),
           "week": datetime.timedelta(days=7)}[unit]

@@ -788,3 +788,22 @@ def test_the_tick_takes_the_downloads_only_when_due_but_always_while_the_user_wa
     fake._off_next, fake._off_fast_until = 0.0, 6000.0        # the user just opened the stats page
     app_stats.StatsTab._official_tick(fake)
     assert calls == [1] and fake._off_next == 5003.0
+
+
+@pytest.mark.skipif(not hasattr(__import__("time"), "tzset"), reason="time.tzset: not on Windows")
+def test_the_hourly_trend_keeps_the_repeated_hour_of_a_dst_end(monkeypatch):
+    """1.46.4: on 2025-10-26 (Europe/Berlin) 02:00–03:00 comes twice; stepping the local clock by an hour skipped
+    the second one, and its rounds were missing from the hourly view."""
+    import time
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    time.tzset()
+    try:
+        for start, end in ((1761429600, 1761451200), (1743199200, 1743217200)):     # autumn, spring
+            b, seen = o.bucket_start(start, "hour"), []
+            while b < end:
+                seen.append(b)
+                b = o._next_bucket(b, "hour")
+            assert seen == sorted({o.bucket_start(t, "hour") for t in range(start, end, 60)})
+    finally:
+        monkeypatch.undo()
+        time.tzset()

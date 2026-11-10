@@ -250,11 +250,7 @@ def add_border(pic: Image.Image, label: str = "") -> Image.Image:
     d = ImageDraw.Draw(pic)
     d.rectangle([0, 0, pic.width - 1, pic.height - 1], outline=BORDER, width=3)
     if label:
-        size = 15
-        try:
-            font = ImageFont.truetype(FIRA, size)
-        except OSError:
-            font = _font(size)
+        font = fira(15)                  # 1.46.4: cached, was loaded from the file on every frame drawn
         tw = min(pic.width, int(d.textlength(label, font=font)) + 12)
         asc, desc = font.getmetrics()
         th = min(pic.height, asc + desc + 6)
@@ -846,9 +842,11 @@ def music_card(body, height: int, style: str, progress=None, look=(), upnext=Non
     return pad_to(pic, min_w, style != "compact", min_h)
 
 
+@lru_cache(maxsize=16)
 def guide_line(length: int, vertical: bool, dash: int = 14) -> Image.Image:
     """A centre guide line (1.64.5, user: "Mittellinie als Kreuz beim Ausrichten"): 3 px – light dashes on a dark
-    edge, visible on bright and dark game pictures alike."""
+    edge, visible on bright and dark game pictures alike. 1.46.4: cached – drawn on every tick while arranging only
+    to be dropped by set_picture (same key); the picture is only read afterwards, never changed."""
     w, h = (3, length) if vertical else (length, 3)
     pic = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(pic)

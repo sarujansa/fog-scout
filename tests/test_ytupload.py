@@ -25,7 +25,7 @@ SECRET = "GOCSPX-secret"
 
 class FakeGoogle(threading.Thread):
     """oauth2.googleapis.com + www.googleapis.com on one local port: /token (code / refresh grants with PKCE and the
-    client secret), the resumable videos.insert and its session PUTs. ``mode``: ok | quota | 401-once | gone."""
+    client secret), the resumable videos.insert and its session PUTs. ``mode``: ok | quota | 401-once | 401-always | gone."""
 
     def __init__(self):
         super().__init__(daemon=True)
@@ -131,8 +131,9 @@ class FakeGoogle(threading.Thread):
                 raw = self.rfile.read(n)
                 m = re.match(r"^/upload/session/(\w+)$", self.path)
                 sess = outer.sessions.get(m.group(1)) if m else None
-                if outer.mode == "401-once":
-                    outer.mode = "ok"
+                outer.puts = getattr(outer, "puts", 0) + 1
+                if outer.mode in ("401-once", "401-always"):
+                    outer.mode = "ok" if outer.mode == "401-once" else outer.mode
                     return self._api_error(401, "authError", "Invalid Credentials")
                 if sess is None or outer.mode == "gone":
                     return self._api_error(404, "notFound", "Not Found")
@@ -388,6 +389,32 @@ def test_the_thread_uploads_a_queued_clip_and_tells_the_app(fake, tmp_path):
         assert any(k == "progress" for k, _d in events) and up.uploaded == 1
         assert fake.grants[0][0] == "refresh_token" and fake.grants[0][1]["refresh_token"] == "ref-stored"
         assert "hochgeladen" in up.status and "Warteschlange=0" in up.diag_line()
+    finally:
+        up.quit()
+        up.join(timeout=3)
+
+
+def test_a_401_that_stays_after_a_fresh_token_waits_like_a_network_error(fake, tmp_path):
+    """1.46.4: a session the new token is not allowed to use (another account's, from the queue) answered 401 on
+    every PUT – refreshed and asked again twice a second, without end. Now one refresh, then the RETRY_S pause of a
+    network error, and after MAX_ATTEMPTS the job is given up – without a new session (each costs quota)."""
+    folder = str(tmp_path)
+    _video(folder, "Clips/a.mp4", 300 * 1024)
+    events = []
+    up = _uploader(events)
+    try:
+        up.configure(True, CID, SECRET, "private", spotify.protect("ref-stored"), [], {})
+        up.set_folder(folder)
+        assert _wait(lambda: up.state == "linked")
+        fake.mode = "401-always"
+        up.add(yt.Job(rel="Clips/a.mp4", kind="clip", title="T"))
+        assert _wait(lambda: up.jobs and up.jobs[0].attempts == 1)
+        assert "neuer Versuch" in up.status
+        assert _wait(lambda: any(k == "failed" for k, _d in events), timeout=12)      # given up, not looped
+        assert not up.jobs and fake.puts <= 2 * yt.MAX_ATTEMPTS and fake.inserts == 1
+        puts = fake.puts
+        time.sleep(0.8)
+        assert fake.puts == puts
     finally:
         up.quit()
         up.join(timeout=3)
