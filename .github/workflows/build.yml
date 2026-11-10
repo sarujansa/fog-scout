@@ -53,8 +53,8 @@ jobs:
           # 1.38.56 (Saru: "Das Build soll zurück auf 1 gehen"): the shown number counts the merges to main since
           # this commit (Build 0, the next merge Build 1). `build` stays the run number – tags build-<run number> and
           # the update check compare it, so installed copies keep finding updates. 1.46.7 (Saru: "Fog Scout soll
-          # Build 1 erhalten"): counted again from the 1.46.6 merge.
-          BUILD_BASE: 9560e0f07d9f72eb895ca18be47f4772df4cbf56
+          # Build 1 erhalten"): counted again from the last merge before 1.46.7 (PR #398).
+          BUILD_BASE: e34bf39b04434713e0e6bcad5417123963266765
         run: |
           $version = python -c "import fogscout; print(fogscout.__version__)"
           $shown = git rev-list --count --first-parent "$env:BUILD_BASE..HEAD"

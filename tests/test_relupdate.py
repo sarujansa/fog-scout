@@ -494,8 +494,8 @@ def test_only_a_push_to_main_publishes_and_only_that_job_may_write():
     # 1.38.56: the title shows the merges since BUILD_BASE; the tag and the comparison keep the run number
     assert "fetch-depth: 0" in wf and 'git rev-list --count --first-parent "$env:BUILD_BASE..HEAD"' in wf
     assert "SHOWN: ${{ needs.exe.outputs.shown }}" in release and '--title "Fog Scout $version (Build $SHOWN)"' in release
-    # 1.46.7: Build 1 counts from the 1.46.6 merge; every release carries the guide in German and English
-    assert "BUILD_BASE: 9560e0f07d9f72eb895ca18be47f4772df4cbf56" in wf
+    # 1.46.7: Build 1 counts from the last merge before it (PR #398); every release carries the guide in German and English
+    assert "BUILD_BASE: e34bf39b04434713e0e6bcad5417123963266765" in wf
     assert "tools/release_guide.md" in release and "cat ../tools/release_guide.md" in release
     assert release.index("cat ../tools/release_guide.md") < release.index("} > notes.md")
     with open(os.path.join(ROOT, "tools", "release_guide.md"), encoding="utf-8") as fh:
