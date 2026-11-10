@@ -458,6 +458,10 @@ class PictureOverlay:
     ``_push(pos)``, ``_show_window()``, ``_hide_window()``, ``_apply_editing()``, ``_raise()``,
     ``_destroy_window()``, ``hwnd()``, ``is_visible()``. ``root`` = mainloop.MainLoop (timers)."""
 
+    BASES_KEPT = 3     # 1.46.4: scaled maps kept per size (measured size + settled size + one spare)
+    SIZES_KEPT = 16    # 1.46.4: measured overlay sizes kept per content key
+    INFO_KEPT = 4      # 1.46.4: info cards kept (measured + fitted text size)
+
     def __init__(self, root):
         self.root = root
         self.opacity = 0.85
@@ -491,6 +495,12 @@ class PictureOverlay:
         self._rec = False               # 1.4.1: OBS records the round – blinking red dot right of the timer
         self._base = []                 # [(PIL RGBA, duration)] scaled map (+ caption), cached per size
         self._base_key = None
+        # 1.46.4: the App measures one size, then settles on another (bottom bar, fit_room, limiter lines) – with
+        # one slot both sizes were drawn again on every tick (~2 × compose = 60–70 ms per tick). The last few
+        # scaled maps (per base_key) and measured sizes (per key) are kept; ``_gen`` counts map/floor changes.
+        self._bases = {}
+        self._sizes = {}
+        self._gen = 0
         self._prepared = []             # [(bytes, w, h, duration)]
         self._pics = []                 # 1.8.89: the frames' RGBA pictures (obsoverlay composes the shown one)
         self._key = None
@@ -521,6 +531,7 @@ class PictureOverlay:
         self._caption = caption
         self.realm = realm or ""
         self._base_key = self._key = None
+        self._forget_sizes()
 
     def set_skin(self, style: str, accent=None):
         """1.3.1: the overlay style of the map card (classic | glass | chips | line) and the theme's accent."""
@@ -592,6 +603,13 @@ class PictureOverlay:
         if index != self._floor:
             self._floor, self._view = index, None
             self._base_key = self._key = None
+            self._forget_sizes()
+
+    def _forget_sizes(self):
+        """Another map or floor: the scaled maps and measured sizes kept by render() belong to the old one."""
+        self._gen += 1
+        self._bases.clear()
+        self._sizes.clear()
 
     def _view_frames(self):
         if self._view is None:
@@ -638,9 +656,17 @@ class PictureOverlay:
         key = (int(text_h), timer, self._server, self._ping, self._note, self._record, self._memo, rec, self.skin,
                self.accent, self.transparent, self.backdrop)
         if getattr(self, "_info_key", None) != key:
-            self._info_key = key
-            self._info_pic = info_card(timer, self._server, self._ping, self._note, self._record, int(text_h),
-                                       self.skin, self.accent, self.transparent, self.backdrop, rec, self._memo)
+            # 1.46.4: the App measures at the full text size and then draws a smaller one when the card is wider
+            # than the bar – a few cards are kept, so the pair is not drawn again on every tick
+            memo = self.__dict__.setdefault("_info_memo", {})
+            pic = memo.pop(key, None)
+            if pic is None:
+                pic = info_card(timer, self._server, self._ping, self._note, self._record, int(text_h),
+                                self.skin, self.accent, self.transparent, self.backdrop, rec, self._memo)
+            memo[key] = pic
+            while len(memo) > self.INFO_KEPT:
+                memo.pop(next(iter(memo)))
+            self._info_key, self._info_pic = key, pic
         return self._info_pic
 
     def set_show_map(self, on: bool):
@@ -697,8 +723,21 @@ class PictureOverlay:
         base_key = (height, self._caption if self.show_caption and not headed else "", self.transparent,
                     self.show_map, text_h, self.skin if modern else "")
         new_base = base_key != self._base_key
+        here = self._lines_here()                    # 1.8.24: the lines apart – the map alone
+        rec = rec_phase() if self._rec and here else None     # 1.5.2: the dot blinks with the seconds
+        timer, server, ping, note, record, memo = (self._timer, self._server, self._ping, self._note, self._record,
+                                                   self._memo) if here else ("", "", None, "", "", ())
+        top = self.lines_top and not self.info_beside
+        key = (base_key, self._editing, timer, server, ping, note, record, memo,
+               self.info_beside, self.backdrop, self.skin, self.accent, self.realm, rec, top)
+        size_key = (self._gen, key, self.edit_label if self._editing else "")
+        if not push and key != self._key and size_key in self._sizes:
+            return self._sizes[size_key]          # measured before: the picture on hand stays as it is
         if new_base:                      # scaling is the slow part: done once per size, not per timer tick
-            if self.show_map:
+            memo_key = (self._gen, base_key)
+            if memo_key in self._bases:
+                self._base = self._bases.pop(memo_key)
+            elif self.show_map:
                 frames = self._view_frames()[0]
                 split = self._title_split(frames)
                 if headed:                # 1.3.1: the map alone, its drawn name becomes the header
@@ -709,14 +748,10 @@ class PictureOverlay:
                                   for img, dur in frames]
             else:                         # info only: an empty picture, the info block is drawn below it
                 self._base = [(Image.new("RGBA", (1, 1), (0, 0, 0, 0)), 0)]
+            self._bases[memo_key] = self._base            # newest last
+            while len(self._bases) > self.BASES_KEPT:
+                self._bases.pop(next(iter(self._bases)))
             self._base_key = base_key
-        here = self._lines_here()                    # 1.8.24: the lines apart – the map alone
-        rec = rec_phase() if self._rec and here else None     # 1.5.2: the dot blinks with the seconds
-        timer, server, ping, note, record, memo = (self._timer, self._server, self._ping, self._note, self._record,
-                                                   self._memo) if here else ("", "", None, "", "", ())
-        top = self.lines_top and not self.info_beside
-        key = (base_key, self._editing, timer, server, ping, note, record, memo,
-               self.info_beside, self.backdrop, self.skin, self.accent, self.realm, rec, top)
         if key != self._key:
             self._prepared, self._pics = [], []
             pics = []
@@ -746,6 +781,9 @@ class PictureOverlay:
                 self._pics.append(pic)
             self._key = key
             self._size = (self._prepared[0][1], self._prepared[0][2])
+            self._sizes[size_key] = self._size
+            while len(self._sizes) > self.SIZES_KEPT:
+                self._sizes.pop(next(iter(self._sizes)))
             if new_base or self._frame_i >= len(self._prepared):
                 self._frame_i = 0
                 if push:

@@ -725,3 +725,46 @@ def test_the_lines_can_be_joined_to_the_map_above_it(tmp_path):
         assert "Mit der Karte verbunden, oben" in app.info_pos_var.get()
     finally:
         app.quit()
+
+
+def test_measuring_one_size_and_settling_on_another_scales_the_map_once_per_size(monkeypatch):
+    """1.46.4: the bottom bar / fit_room measure the map at one height and draw it at another – with one cached
+    size both were scaled again on every tick (2 × compose ≈ 70 ms per 250-ms tick)."""
+    calls = []
+    real = ow.compose
+    monkeypatch.setattr(ow, "compose", lambda *a, **k: calls.append(a[1]) or real(*a, **k))
+    ov = _Overlay(_Root())
+    ov.set_map(COAL, "Coal Tower")
+    ov.set_server("Frankfurt", 31)
+    sizes = set()
+    for i in range(12):                          # three seconds of ticks, the timer changes every fourth
+        ov.set_timer(f"3:{i // 4:02d}")
+        sizes.add(ov.render(700, push=False))
+        assert ov.render(560, push=False) == ov.render(560)
+    assert sorted(calls) == [560, 700]
+    assert len(sizes) == 1                        # the measured size is the real one
+    fresh = _Overlay(_Root())
+    fresh.set_map(COAL, "Coal Tower")
+    fresh.set_server("Frankfurt", 31)
+    fresh.set_timer("3:02")
+    assert fresh.render(700, push=False) == sizes.pop()
+    ov.set_map(COAL, "Other caption")            # another map: nothing of the old one is reused
+    ov.render(560)
+    assert calls[-1] == 560 and len(calls) == 4   # + the fresh overlay's one
+
+
+def test_the_info_card_measured_wide_and_drawn_smaller_is_not_drawn_again_each_tick(monkeypatch):
+    """1.46.4: the lines' card wider than the bar is measured at the full text size, then drawn smaller."""
+    calls = []
+    real = ow.info_card
+    monkeypatch.setattr(ow, "info_card", lambda *a, **k: calls.append(a[5]) or real(*a, **k))
+    ov = _Overlay(_Root())
+    ov.set_map(COAL, "Coal Tower")
+    ov.set_timer("3:27")
+    for _tick in range(5):
+        big = ov.info_picture(60)
+        small = ov.info_picture(40)
+    assert sorted(calls) == [40, 60] and small is not big
+    ov.set_timer("3:28")
+    ov.info_picture(60)
+    assert len(calls) == 3

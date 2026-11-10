@@ -657,7 +657,7 @@ class OverlayTab:
         if pic is None:
             return None
         key = (self.overlay._info_key, editing, win.edit_label)
-        if editing:
+        if editing and key != getattr(win, "_key", None):    # 1.46.4: the frame only for a new picture
             pic = add_border(pic.copy(), win.edit_label)
         win.opacity = float(o.get("info_opacity", o["opacity"]))
         self._info_size = win.set_picture(pic, key)
