@@ -478,6 +478,11 @@ def test_only_a_push_to_main_publishes_and_only_that_job_may_write():
     assert "permissions:\n  contents: read" in head
     assert "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in release
     assert len(re.findall(r"^ +contents: write$", wf, re.M)) == 1 and "    permissions:\n      contents: write" in release
+    # 1.46.7: build provenance – only this job may ask for an OIDC token and write attestations, before publishing
+    for right in ("id-token: write", "attestations: write"):
+        assert len(re.findall(r"^ +%s\b" % right, wf, re.M)) == 1 and right in release, right
+    assert "subject-path: setup/FogScout-Setup-*.exe" in release
+    assert release.index("actions/attest-build-provenance@") < release.index("gh release create")
     assert 'TAG: build-${{ github.run_number }}' in release and "sha256sum" in release and "--latest" in release
     assert "${{ github.event" not in release.split("run: |", 1)[1]           # no expression inside the script
     # 1.33.4: notes from HISTORY.md (checkout without a token), then only older build-<N> releases are removed
