@@ -647,6 +647,8 @@ EN = {
     "Alle gespeicherten Runden löschen? Vorher wird eine Kopie in {folder}/ angelegt.":
         "Delete all saved rounds? A copy goes to {folder}/ first.",
     "Es sind keine Runden gespeichert.": "No rounds are saved.",
+    "Die Kopie in {folder}/ konnte nicht angelegt werden – die Runden bleiben gespeichert.":
+        "The copy in {folder}/ could not be made – the rounds stay saved.",
     "Nicht angewendet – 1 Änderung. „Auswahl anwenden“ übernimmt sie, danach DBD neu starten.":
         "Not applied – 1 change. \"Apply selection\" takes it over; restart DBD afterwards.",
     "Nicht angewendet – {n} Änderungen. „Auswahl anwenden“ übernimmt sie, danach DBD neu starten.":

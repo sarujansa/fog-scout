@@ -6,6 +6,7 @@ count). Stored only locally, nothing leaves the PC. The file is a runtime file (
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import asdict, dataclass
 
@@ -158,7 +159,10 @@ def _round_line(line: str):
     if not isinstance(d, dict) or d.get("lost"):
         return None
     wait = d.get("wait")
-    return Round(t=float(d["t"]), seconds=float(d["seconds"]), map_id=str(d["map_id"]),
+    t, seconds = float(d["t"]), float(d["seconds"])
+    if not (math.isfinite(t) and math.isfinite(seconds)):   # 1.46.4: json reads NaN/Infinity (a restored backup)
+        raise ValueError("start or length is not a number")
+    return Round(t=t, seconds=seconds, map_id=str(d["map_id"]),
                  map=str(d.get("map") or d["map_id"]), region=str(d.get("region") or ""),
                  source=str(d.get("source") or ""),
                  wait=float(wait) if isinstance(wait, (int, float)) and wait >= 0 else None,
