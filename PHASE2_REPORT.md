@@ -3,7 +3,7 @@
 > **Historische Momentaufnahme** (Stand laut Dokument: 3. November 2026, PR #299). Die Angaben zu Version, offenen Punkten und Merge-Status gelten für diesen Tag; spätere Änderungen stehen in `HISTORY.md`.
 
 Auftrag: `prompt_phase2.md` („Entwicklungsphase 2: Produkt-Redesign, moderne Benutzeroberfläche, UX und gezielte Funktionsentwicklung“), acht Arbeitspakete.
-Stand: 3. November 2026, Zweig `claude/funny-feynman-gt5t6n`, Pull Request sarujansa/fog-scout#299 – **nicht gemergt**, der Merge bleibt Saru vorbehalten.
+Stand: 3. November 2026, Zweig `claude/funny-feynman-gt5t6n`, Pull Request senisinx/fog-scout#299 – **nicht gemergt**, der Merge bleibt Saru vorbehalten.
 
 ## 1. Ausgangszustand und untersuchte Architektur
 
@@ -401,7 +401,7 @@ Ein erster Lauf mit n = 10 ergab 544,9 gegen 630,8 ms (A 460–2700, B 484–828
 ## 11. Git, Commits, Push, PR
 
 - **Zweig:** `claude/funny-feynman-gt5t6n`, Basis `main` = `eb94fec`.
-- **Autor der Commits:** `sarujansa`, laut CLAUDE.md.
+- **Autor der Commits:** GitHub-Konto des Nutzers, laut CLAUDE.md.
 - **Commits** (je Arbeitspaket einer):
 
   | Commit | Version | Inhalt |
@@ -418,8 +418,8 @@ Ein erster Lauf mit n = 10 ergab 544,9 gegen 630,8 ms (A 460–2700, B 484–828
   | `952098a` | 1.24.7 | Statistik: Schleife über verknüpfte Custom Games nur mit Verknüpfungen (Endmessung) |
   | (dieser) | – | `PHASE2_REPORT.md` |
 
-- **Push:** Jeder Commit wurde nach `origin` gepusht. GitHub meldet beim Push, dass das Repository nach `sarujansa/fog-scout` umgezogen ist (Umleitung, siehe CLAUDE.md).
-- **PR:** sarujansa/fog-scout#299, offen, **nicht gemergt**.
+- **Push:** Jeder Commit wurde nach `origin` gepusht. GitHub meldet beim Push, dass das Repository umgezogen ist (Umleitung, siehe CLAUDE.md).
+- **PR:** senisinx/fog-scout#299, offen, **nicht gemergt**.
 - **CI:**
   - `b7761f3` bis `b788e8c` (1.24–1.24.4): Linux grün, **Windows rot** – in jedem dieser fünf Läufe derselbe eine Test (z. B. 1.24: 1 failed, 1127 passed, 114 skipped).
     - Der Test `test_the_overview_draws_a_main_action_only_when_the_player_has_to_act` (neu in 1.24) rief `overview_model(app, 1000.0, …)` auf; `datetime.timestamp()` einer Lokalzeit nahe 1970 wirft unter Windows `OSError 22`.

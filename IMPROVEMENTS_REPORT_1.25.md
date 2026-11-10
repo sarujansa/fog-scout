@@ -4,7 +4,7 @@
 
 **Auftrag:** „Fog Scout – umfassende Produkt-, UI/UX-, Funktions- und Performance-Optimierung“ (Phasen 0 bis 10).
 
-**Stand:** 3. November 2026, Zweig `claude/funny-feynman-gt5t6n`, PR sarujansa/fog-scout#299 – **nicht gemergt**.
+**Stand:** 3. November 2026, Zweig `claude/funny-feynman-gt5t6n`, PR senisinx/fog-scout#299 – **nicht gemergt**.
 
 `IMPROVEMENTS_REPORT.md` (1.22.3–1.23.1) und `PHASE2_REPORT.md` (1.24–1.24.7) bleiben unverändert. Dieser Bericht ist eine neue Datei, um keinen vorhandenen Bericht zu überschreiben.
 
@@ -294,7 +294,7 @@ __main__ → splash → App (app.py + Mixins app_*)
 ## G. Git-Zustand
 
 - **Zweig:** `claude/funny-feynman-gt5t6n`, Ausgangscommit `3232a00` (PR 299 nach Phase 2; `main` = `eb94fec`).
-- **Commits** (Autor `sarujansa`, wie in `CLAUDE.md` festgelegt):
+- **Commits** (Autor = GitHub-Konto des Nutzers, wie in `CLAUDE.md` festgelegt):
   - `19894c7` 1.25
   - `e0ba389` 1.25.1
   - `f5ce9eb` 1.25.2
