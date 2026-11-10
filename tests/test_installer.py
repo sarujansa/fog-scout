@@ -378,7 +378,7 @@ def test_the_setup_shows_the_terms_in_the_chosen_language():
         assert text.startswith("Fog Scout – ") and "Copyright (c) 2026 senisinx." in text.splitlines()[1], code
         assert re.findall(r"^(\d)\. ", text, re.M) == list("123456"), code
         for name in ("GitHub", "Behaviour Interactive", "Dead by Daylight", "Easy Anti-Cheat", "THIRD_PARTY.md"):
-            assert name in text, (code, name)
+            assert name in " ".join(text.split()), (code, name)          # de/en wrap their lines
         if code == "en":
             assert text.split("\n", 2)[2] == en
         elif code == "de":
