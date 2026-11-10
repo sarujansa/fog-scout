@@ -47,8 +47,25 @@ def test_a_tagged_copy_is_taken_even_when_today_has_one(tmp_path):
     backups.snapshot(root, t0)
     r = backups.snapshot(root, t0, tag="vorher")
     assert r["copied"] == [f"rounds-{_day(t0)}-vorher.jsonl"]
-    assert backups.snapshot(root, t0, tag="vorher")["copied"] == []               # the same tag once a day too
+    assert backups.snapshot(root, t0, tag="vorher")["copied"] == []               # same content: no second copy
     assert backups.status(root)[0] == 2
+    assert backups.saved(root, "rounds.jsonl")
+
+
+def test_cleared_twice_a_day_the_rounds_since_the_first_copy_get_their_own(tmp_path):
+    """1.46.4: "Alle Runden löschen" in the morning and again in the evening – the second copy was skipped (its
+    name existed), the rounds played in between were gone."""
+    root = str(tmp_path)
+    t0 = time.time()
+    for i in range(2, 12):
+        (tmp_path / "rounds.jsonl").write_text(f"{i}\n")
+        assert not backups.saved(root, "rounds.jsonl")
+        backups.snapshot(root, t0, tag="vorher")
+        assert backups.saved(root, "rounds.jsonl")
+    names = backups.copies(str(tmp_path / backups.DIR), "rounds")
+    day = _day(t0)
+    assert names == [f"rounds-{day}-vorher.jsonl"] + [f"rounds-{day}-vorher{n}.jsonl" for n in range(2, 11)]
+    assert (tmp_path / backups.DIR / names[-1]).read_text() == "11\n"           # numbers sort as numbers
 
 
 def test_without_files_or_folder_nothing_happens(tmp_path):
@@ -232,3 +249,23 @@ def test_one_member_can_be_read_from_a_plain_zip(tmp_path):
         z.writestr(backups.SETTINGS_NAME, "{}")
     with zipfile.ZipFile(path) as z:
         assert backups._read(z, z.getinfo(backups.SETTINGS_NAME)) == b"{}"
+
+
+def test_numbers_json_reads_as_nan_or_infinity_skip_the_line_instead_of_stopping_the_restore(tmp_path):
+    """1.46.4: Python's json takes NaN/Infinity – round(nan) and int(inf) raised outside the skipped errors, the
+    restore thread died without a word."""
+    from fogscout import history, official
+    good = '{"t": 1000.0, "seconds": 600, "map_id": "coal", "map": "Coal Tower"}'
+    rounds = "\n".join([good, '{"t": NaN, "seconds": 600, "map_id": "coal"}',
+                        '{"t": 1500.0, "seconds": Infinity, "map_id": "coal"}']) + "\n"
+    matches = "\n".join(['{"t": NaN, "map": "x"}', '{"t": 1700000000, "bp": Infinity}',
+                         '{"t": 962.0, "map": "Coal Tower"}']) + "\n"
+    p = str(tmp_path / "s.zip")
+    _zip(p, {"rounds.jsonl": rounds, "official.jsonl": matches})
+    now = str(tmp_path / "now")
+    os.makedirs(now)
+    assert backups.inspect(now, p)["rounds"] == 1 and backups.inspect(now, p)["matches"] == 1
+    got = backups.restore(now, p)
+    assert (got["rounds"], got["matches"]) == (1, 1)
+    assert [r.t for r in history.load(os.path.join(now, history.FILE))] == [1000.0]
+    assert [m.t for m in official.load(os.path.join(now, official.FILE))] == [962.0]

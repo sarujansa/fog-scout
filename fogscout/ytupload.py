@@ -496,6 +496,7 @@ class Uploader(threading.Thread):
         self._verifier = ""
         self._redirect = ""
         self._retry_at = 0.0
+        self._expired_once = False        # 1.46.4: a 401 refreshes the token once; a second one counts as an error
         self._sent = {}                   # rel -> bytes Google confirmed (this session of the program)
         self._active = False              # 1.11.2: a chunk loop stopped only because its tick budget was up
         self.uploaded = 0                 # videos done since start (diagnosis)
@@ -830,6 +831,7 @@ class Uploader(threading.Thread):
             return
         try:
             self._work(job, path, now)
+            self._expired_once = False
         except YouTubeError as e:
             self._failed(job, e)
 
@@ -888,9 +890,16 @@ class Uploader(threading.Thread):
             self.quota.exhaust(time.time())
             self._tell("quota", asdict(self.quota))
             return                                        # the job waits for the next day
-        if e.kind == "expired":
+        if e.kind == "expired" and not self._expired_once:
+            self._expired_once = True
             self._token = spotify.Token()                 # refreshed on the next tick
             return
+        if e.kind == "expired":
+            # 1.46.4: 401 again with a fresh token (e.g. a session of another account from the queue) – was tried
+            # again twice a second without end; now counted like a network error (RETRY_S, MAX_ATTEMPTS). The
+            # session stays: a new one would cost UPLOAD_COST of the day's quota on every try
+            self._expired_once = False
+            self._token = spotify.Token()
         if e.kind == "gone":
             job.session = ""
             self._sent.pop(job.rel, None)
