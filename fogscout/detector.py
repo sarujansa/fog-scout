@@ -275,6 +275,7 @@ class TextLines:
     name: np.ndarray | None          # map name (two lines already joined)
     realm: np.ndarray | None
     name_lines: int = 0
+    cut: bool = False                # 1.49.2: the name runs on to the right edge of the crop
 
 
 # 1.11.1 (user log: "ASHEAVEN", "4OTHER'S DWELLING", "OLDWINDFARM", realm "MOND"; test picture: "PRINGWOOD"): the
@@ -285,20 +286,28 @@ FALLBACK_LEFT = 0.06
 
 
 def locate_text(img: np.ndarray, sep: Separator) -> TextLines:
+    """Name and realm crops of the banner at ``sep``. 1.49.2 (user's Russian RPD East Wing on a bright floor): the
+    line fades towards its right end and was found only up to half of the name – a name that runs on to the edge of
+    the crop is cut again up to the right edge of the picture (the chain still ends at the first wide gap)."""
+    lines = _locate_text(img, sep, None)
+    return _locate_text(img, sep, img.shape[1]) if lines.cut else lines
+
+
+def _locate_text(img: np.ndarray, sep: Separator, right: int | None) -> TextLines:
     H, W = img.shape[:2]
     L = max(1, sep.length)
     # a line shorter than usual was probably only partly visible (bright
     # background on its left end) -> the text may start further left
     left = 0.60 * L if sep.frac < 0.30 else 0.03 * L
     cx0 = max(0, int(sep.x0 - left))
-    cx1 = min(W, int(sep.x1 + 0.03 * L))
+    cx1 = min(W, int(sep.x1 + 0.03 * L)) if right is None else min(W, right)
     start_limit = sep.x0 - cx0 + 0.12 * L
 
     # ---- map name above the line (one or two lines, left-aligned)
     ay0 = max(0, int(sep.y - 0.30 * L))
     ay1 = max(ay0 + 1, int(sep.y - 0.003 * L))
     above = img[ay0:ay1, cx0:cx1]
-    name_img, n_lines = None, 0
+    name_img, n_lines, cut = None, 0, False
     if above.size:
         m = _text_mask(above, L)
         chains = _chains(_components(m), 0.022 * L, 0.095 * L, start_limit)
@@ -318,6 +327,7 @@ def locate_text(img: np.ndarray, sep: Separator) -> TextLines:
                 picked.insert(0, max(up, key=lambda c: c.bottom))
             crops = [_crop_chain(above, c) for c in picked]
             crops = [c for c in crops if c.size]
+            cut = cx1 < W and any(c.x1 + 0.5 * c.h >= above.shape[1] for c in picked)
             if crops:
                 name_img = crops[0] if len(crops) == 1 else _hconcat(crops)
                 n_lines = len(crops)
@@ -347,7 +357,7 @@ def locate_text(img: np.ndarray, sep: Separator) -> TextLines:
             rx0 = max(0, int(sep.x0 - cx0 - FALLBACK_LEFT * L))
             crop = below[0:min(below.shape[0], int(0.058 * L)), rx0:min(below.shape[1], rx0 + int(0.85 * L))]
             realm_img = crop if crop.size else None
-    return TextLines(name=name_img, realm=realm_img, name_lines=n_lines)
+    return TextLines(name=name_img, realm=realm_img, name_lines=n_lines, cut=cut)
 
 
 # 1.49: the lines of a banner in another script (Chinese, Japanese, Korean, Cyrillic). ``locate_text`` finds
@@ -375,8 +385,10 @@ def _bands(rows: np.ndarray, from_bottom: bool, gap: int, max_bands: int):
     return (runs[::-1] if from_bottom else runs)[:max_bands]
 
 
-def _wide_line(region: np.ndarray, mask: np.ndarray, top: int, bottom: int, x_from: int, x_start_max: int):
-    """The crop of one band: from its first stroke (near the line's start) to the last one before a wide gap."""
+def _wide_line(region: np.ndarray, mask: np.ndarray, top: int, bottom: int, x_from: int, x_start_max: int,
+               ends: list | None = None):
+    """The crop of one band: from its first stroke (near the line's start) to the last one before a wide gap.
+    ``ends`` (1.49.2): gets True when the last stroke lies within half a line height of the region's right edge."""
     h = bottom - top
     cols = np.nonzero(mask[top:bottom, x_from:].any(0))[0]
     if len(cols) == 0 or cols[0] + x_from > x_start_max:
@@ -386,6 +398,8 @@ def _wide_line(region: np.ndarray, mask: np.ndarray, top: int, bottom: int, x_fr
         if c - end > WIDE_GAP * h:
             break
         end = c
+    if ends is not None:
+        ends.append(x_from + int(end) + 0.5 * h >= region.shape[1] - 1)
     pv, ph = int(round(0.28 * h)), int(round(0.40 * h))
     crop = region[max(0, top - pv):min(region.shape[0], bottom + pv),
                   max(0, x_from + int(cols[0]) - ph):min(region.shape[1], x_from + int(end) + 1 + ph)]
@@ -397,18 +411,24 @@ def locate_text_wide(img: np.ndarray, sep: Separator, latin: TextLines | None = 
     lines, joined), realm below it. ``latin``: what ``locate_text`` found for the same line, when the caller has
     it. 1.49.1 (the user's Russian banners): the realm is small and grey, its band came out cut ("ПОМЕСТЬ",
     "СТЬЕМАКМИЛЛАН" of "ПОМЕСТЬЕ МАКМИЛЛАН") while locate_text's crop held all of it – the wider of the two is
-    taken."""
+    taken. 1.49.2: a name that runs on to the edge of the crop is cut again up to the right edge of the picture
+    (see ``locate_text``)."""
+    lines = _locate_text_wide(img, sep, latin, None)
+    return _locate_text_wide(img, sep, latin, img.shape[1]) if lines.cut else lines
+
+
+def _locate_text_wide(img: np.ndarray, sep: Separator, latin: TextLines | None, right: int | None) -> TextLines:
     H, W = img.shape[:2]
     L = max(1, sep.length)
     cx0 = max(0, int(sep.x0 - 0.06 * L))
-    cx1 = min(W, int(sep.x1 + 0.35 * L))
+    cx1 = min(W, int(sep.x1 + 0.35 * L)) if right is None else min(W, right)
     start_max = int(sep.x0 - cx0 + 0.12 * L)
     lo, hi, gap = WIDE_MIN_H * L, WIDE_MAX_H * L, max(1, int(0.006 * L))
 
     ay0 = max(0, int(sep.y - 0.34 * L))
     ay1 = max(ay0 + 1, int(sep.y - 0.003 * L))
     above = img[ay0:ay1, cx0:cx1]
-    name_img, n_lines = None, 0
+    name_img, n_lines, ends = None, 0, []
     if above.size:
         m = _text_mask(above, L)
         crops, first_h, edge = [], None, above.shape[0]
@@ -418,7 +438,7 @@ def locate_text_wide(img: np.ndarray, sep: Separator, latin: TextLines | None = 
                 if crops:
                     break
                 continue                      # specks between the text and the line
-            crop = _wide_line(above, m, top, bottom, 0, start_max)
+            crop = _wide_line(above, m, top, bottom, 0, start_max, ends)
             if crop is None:
                 break
             crops.insert(0, crop)
@@ -443,7 +463,7 @@ def locate_text_wide(img: np.ndarray, sep: Separator, latin: TextLines | None = 
         realm_img = rest.realm
     if name_img is None:                       # nothing found: the fixed place locate_text falls back to
         return TextLines(name=rest.name, realm=realm_img, name_lines=0)
-    return TextLines(name=name_img, realm=realm_img, name_lines=n_lines)
+    return TextLines(name=name_img, realm=realm_img, name_lines=n_lines, cut=cx1 < W and any(ends))
 
 
 # --------------------------------------------------------------------------

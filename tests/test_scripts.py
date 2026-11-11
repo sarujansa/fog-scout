@@ -215,3 +215,30 @@ def test_the_worker_names_the_language_of_a_banner_and_then_reads_it(tmp_path, m
     assert language is not None and (language["code"], language["map_id"]) == ("ru", "coal-tower"), seen
     assert "УГОЛЬНАЯ" in language["name_text"] and "warn" not in seen and "error" not in seen, seen
     assert found is not None and found["map_id"] == "coal-tower"
+
+
+REAL = sorted(glob.glob(os.path.join(ROOT, "tests", "data", "banner", "ru-*.json")))
+
+
+@pytest.mark.parametrize("path", REAL, ids=[os.path.basename(p)[:-5] for p in REAL])
+def test_a_long_name_over_a_bright_floor_is_read_past_the_end_of_the_found_line(path, readers):
+    """1.49.2 (user: Russian RPD East Wing, RU ticked, four looks, "0 lesbar"): on the bright floor the line fades
+    towards its right end and was found only under the first half of the name; the crops stopped there
+    ("ВОСТОЧНОЕ КРЫЛО ПОЛИЦЕЙСКОГО"). A name that runs on to the edge of the crop is now cut to the picture's edge.
+    The user's own banners: with RU the map, without it the language."""
+    from fogscout.detector import Accumulator, locate_text_wide
+    meta, roi = _roi(path)
+    reader = readers(["en", "de", "ru"])
+    sep, res = reader.read(roi, *meta["frame"])
+    assert sep is not None and sep.frac < 0.45                     # the line is only half found
+    assert locate_text_wide(roi, sep).name.shape[1] > 1.3 * sep.length
+    acc = Accumulator()
+    d = acc.add(res) or acc.add(res)
+    assert d is not None and d.map_id == "rpd-east", (res.best, res.name_fit, res.name_text)
+    reader = readers(["en", "de"])
+    reader.read(roi, *meta["frame"])
+    maps, votes, hit = list(reader.catalog.maps.values()), {}, None
+    for _look in range(gamelang.VOTES):
+        for name, realm in reader.probe():
+            hit = hit or gamelang.vote(votes, name, realm, maps, {"en", "de"})
+    assert hit == ("ru", "rpd-east"), votes

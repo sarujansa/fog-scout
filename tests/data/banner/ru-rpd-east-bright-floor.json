@@ -1,0 +1,20 @@
+{
+"lang": "ru",
+"map_id": "rpd-east",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2752,
+677
+],
+"offset": [
+450,
+360
+],
+"name": "Восточное крыло полицейского участка Раккун-Сити",
+"realm": "Раккун-Сити",
+"rendered": false,
+"source": "user's debug picture (11.11.2026, DBD in Russian, 1.49.2), shrunk to 2000 px by the upload and scaled back; the red line the debug picture paints over the found part of the separator is replaced by a light one – the faded rest of the line is the game's own"
+}
