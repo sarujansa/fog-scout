@@ -271,9 +271,9 @@ def test_the_shortcut_and_the_window_point_at_the_same_task_and_icon(monkeypatch
     assert cmd == f'"{paths.system_exe("schtasks.exe")}" /run /tn "Fog Scout"' and "Elsewhere" not in cmd
     assert cmd.lower().endswith(r'\system32\schtasks.exe" /run /tn "fog scout"')
     assert au.shortcut_script(ROOT, "", "Desktop").count("'/run /tn \"Fog Scout\"'") == 1
-    assert icon.FILE == "fogscout-2.ico" and icon.FILE not in icon.OLD_FILES
+    assert icon.FILE == "fogscout-3.ico" and icon.FILE not in icon.OLD_FILES
     s = au.shortcut_script(ROOT, os.path.join(ROOT, icon.FILE))
-    assert "fogscout-2.ico,0'" in s
+    assert "fogscout-3.ico,0'" in s
 
 
 def test_powershell_finds_its_modules_only_in_windows_own_folder(monkeypatch):
