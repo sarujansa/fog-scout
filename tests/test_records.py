@@ -70,7 +70,7 @@ def test_the_tiles_of_the_records_tab(monkeypatch):
     assert tiles["Beste Woche als Survivor"].value == "–"           # three survivor rounds: fewer than WEEK_MIN
     assert tiles["Meiste Runden an einem Tag"].value == "6"
     assert tiles["Längste Sitzung"].sub.endswith("6 Runden")
-    assert tiles["Längste Runde"].value == "11:40" and tiles["Längste Runde"].sub.startswith("Coal Tower")
+    assert tiles["Längste Runde"].value == "11:40" and tiles["Längste Runde"].sub.startswith("Kohlelager")      # 1.50: in the UI language
     empty = {t.title: t for t in records.tiles([], [])}
     assert set(empty) == {"4K-Serie", "Entkommen-Serie", "Beste Woche als Killer", "Beste Woche als Survivor"}
     assert empty["4K-Serie"].value == "–"

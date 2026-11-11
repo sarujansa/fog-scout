@@ -238,9 +238,19 @@ def add_title(img: Image.Image, name: str, font_path: str = FONT) -> Image.Image
     while True:
         font = ImageFont.truetype(font_path, size)
         track = TRACK * size / FONT_SIZE
-        xs = [font.getlength(text[:i]) + i * track for i in range(len(text))]    # keeps kerning, adds spacing
-        box = font.getbbox(text)
-        width = round(box[2] - box[0] + track * (len(text) - 1))
+        fonts = _char_fonts(font, text)
+        if all(f is font for f in fonts):
+            xs = [font.getlength(text[:i]) + i * track for i in range(len(text))]    # keeps kerning, adds spacing
+            box = font.getbbox(text)
+        else:
+            # 1.50: a name in Chinese, Japanese or Korean (the UI language) – each sign from a font that has it
+            xs, x = [], 0.0
+            for ch, f in zip(text, fonts):
+                xs.append(x)
+                x += f.getlength(ch) + track
+            tops = [f.getbbox(ch) for ch, f in zip(text, fonts) if ch.strip()] or [font.getbbox("A")]
+            box = (0, min(b[1] for b in tops), round(x - track), max(b[3] for b in tops))
+        width = round(box[2] - box[0] + track * (len(text) - 1)) if all(f is font for f in fonts) else box[2]
         if width <= img.width * 0.96 or size <= 8:                  # long name on a narrow map: smaller
             break
         size -= 1
@@ -254,7 +264,28 @@ def add_title(img: Image.Image, name: str, font_path: str = FONT) -> Image.Image
     d = ImageDraw.Draw(out)
     x0, y = (w - tw) // 2 - box[0], pad - box[1]
     for dx, dy, colour in ((sx, sy, SHADE), (0, 0, WHITE)):
-        for ch, x in zip(text, xs):
-            d.text((x0 + x + dx, y + dy), ch, font=font, fill=colour)
+        for ch, x, f in zip(text, xs, fonts):
+            d.text((x0 + x + dx, y + dy), ch, font=f, fill=colour)
     out.alpha_composite(img, ((w - img.width) // 2, pad + th + gap))
     return out
+
+
+def _char_fonts(font, text: str) -> list:
+    """The font for each sign of ``text``: ``font`` where it has the sign, else a fallback (overlay_render.font_for)."""
+    if all(ord(c) < 0x2000 for c in text):
+        return [font] * len(text)                  # Latin, Cyrillic, Greek: the Fira font has them
+    from .overlay_render import font_for
+    return [font_for(font, ch) if ch.strip() else font for ch in text]
+
+
+def retitle(img: Image.Image, name: str) -> Image.Image:
+    """1.50 (user: the map's name on the picture stayed English with the UI in another language): the picture with
+    the name drawn on top replaced by ``name`` – drawn as ``add_title`` draws it. A picture without a drawn name
+    (title_split finds none) comes back unchanged."""
+    if not name:
+        return img
+    parts = title_split(img)
+    if parts is None:
+        return img
+    body = _crop_cols(img.crop((0, parts[2], img.width, img.height)))
+    return add_title(body, name)

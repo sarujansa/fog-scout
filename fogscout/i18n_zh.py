@@ -747,6 +747,8 @@ T = {
         '错误：{error}',
     'Statistik':
         '统计',
+    'Log':
+        '日志',
     'Maps':
         '地图',
     'Map':

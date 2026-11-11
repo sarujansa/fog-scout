@@ -747,6 +747,8 @@ T = {
         '오류: {error}',
     'Statistik':
         '통계',
+    'Log':
+        '로그',
     'Maps':
         '맵',
     'Map':

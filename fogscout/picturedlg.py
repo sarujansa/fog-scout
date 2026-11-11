@@ -53,7 +53,7 @@ class PictureDialog:
         self.app = app
         cat = app.catalog
         self.choices = [(m.id, v) for m in cat.sorted_entries() for v in sorted(m.variants) if m.variants[v]]
-        self.labels = [f"{cat.maps[mid].label(v)} ({cat.realm_display(cat.maps[mid])})" +
+        self.labels = [f"{cat.maps[mid].shown_label(v)} ({cat.realm_display(cat.maps[mid])})" +
                        (" – " + _("eigenes Bild") if cat.is_own(mid, v) else "") for mid, v in self.choices]
         self.realms = sorted(cat.realms)
         self.src = None
@@ -224,7 +224,7 @@ class PictureDialog:
         if taken:
             other = cat.maps[sorted(taken)[0]]
             return _("„{name}“ gibt es schon ({map}) – dann „Bild einer vorhandenen Map ersetzen“ wählen.", name=name,
-                     map=other.name)
+                     map=other.title)
         realm = self._realm_guess(self.realm_var.get().strip())
         return f"{mi.safe_name(realm) or 'Eigene Maps'}/{name}", None, 1
 
@@ -252,7 +252,7 @@ class PictureDialog:
         if not sel or not cat.is_own(*sel):
             return
         path, _v = cat.image_path(*sel)
-        label = cat.maps[sel[0]].label(sel[1])
+        label = cat.maps[sel[0]].shown_label(sel[1])
         if not self.app._ask(_("Eigenes Bild löschen"), _("Eigenes Bild für „{map}“ löschen?", map=label) + f"\n\n{path}",
                              self.delete, parent=self.dlg):
             return

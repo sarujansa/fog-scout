@@ -91,16 +91,15 @@ class PaletteMixin:
         return self.qt.setting_entries()
 
     def _palette_maps(self) -> list:
-        lang = i18n.current()
         out = []
         for mid, m in self.catalog.maps.items():
             try:
                 v = m.image_for(1)[1]
             except Exception:
                 v = 1
-            realm = m.realm_names.get(lang) or m.realm_names.get("en") or m.realm
+            realm = m.realm_title                      # 1.50: zh → zh-Hans as well (catalog.SHOWN_LANG)
             words = " ".join(list(m.names.values()) + list(m.realm_names.values()) + list(m.aliases or ()))
-            out.append(palette.Entry("map", "m:" + mid, m.names.get(lang) or m.name, realm, action="map",
+            out.append(palette.Entry("map", "m:" + mid, m.title, realm, action="map",
                                      arg=(mid, v), alt="show", words=words))
         return out
 
@@ -113,7 +112,8 @@ class PaletteMixin:
         for r in rows:
             when = time.strftime("%d.%m.%Y %H:%M", time.localtime(r.t))
             out.append(palette.Entry("round", "r:" + repr(r.t), r.map, when + (" · " + r.text if r.text else ""),
-                                     action="round", arg=r.t, alt="recording" if r.recording else ""))
+                                     action="round", arg=r.t, alt="recording" if r.recording else "",
+                                     words=r.label))         # 1.50: the stored English name finds it as well
         return out
 
     def _palette_build(self) -> list:

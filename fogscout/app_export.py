@@ -12,6 +12,7 @@ import time
 
 from . import history, roundexport, tooltip
 from . import uimodel as ui
+from .catalog import shown
 from .i18n import _
 from .lobby import killer_label
 
@@ -71,7 +72,7 @@ class ExportDialog:
         self._export_killers = [(None, _("Alle Killer"))] + [(k, killer_label(k)) for k in history.killers_used(all_rounds)]
         killer = self._stats_pick(getattr(self, "_stats_killers", ()), getattr(self, "stats_killer_var", None))
         self.export_killer_var = ui.StringVar(value=dict(self._export_killers).get(killer, self._export_killers[0][1]))
-        self._export_maps = [(None, _("Alle Maps"))] + [(m, m) for m in sorted({r.map for r in all_rounds}, key=str.lower)]
+        self._export_maps = [(None, _("Alle Maps"))] + [(m, shown(m)) for m in sorted({r.map for r in all_rounds}, key=lambda x: shown(x).lower())]
         wmap = self._stats_pick(getattr(self, "_stats_maps_f", ()), getattr(self, "stats_map_var", None))
         self.export_map_var = ui.StringVar(value=dict(self._export_maps).get(wmap, self._export_maps[0][1]))
         self._export_regions = [(None, _("Alle Regionen"))] + \

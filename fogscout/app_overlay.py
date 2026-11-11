@@ -431,9 +431,12 @@ class OverlayTab:
         self._tick_overlay(reschedule=False)
 
     @staticmethod
-    def _realm_name(m) -> str:
-        """The realm as the styled map card shows it in its header (English like the map names)."""
+    def _realm_name(m, english: bool = False) -> str:
+        """The realm as the styled map card shows it in its header – 1.50: in the language of the user interface like
+        the map name (``english``: for Discord, which other people read)."""
         names = getattr(m, "realm_names", None) or {}
+        if not english and hasattr(m, "realm_title"):
+            return m.realm_title
         return names.get("en") or next(iter(names.values()), "") or getattr(m, "realm", "") or ""
 
     def _style_changed(self):
@@ -483,7 +486,7 @@ class OverlayTab:
             m = self.catalog.maps.get(self.current[0])
             parts = ([_("eigene Grösse {n} % (Hotkeys/Strg+Mausrad)", n=f"{own * 100:.0f}")] if own else []) + \
                 ([_("gedreht um {deg}°", deg=deg)] if deg else [])
-            self.map_size_var.set((m.name if m else "") + ": " + " · ".join(parts))
+            self.map_size_var.set((m.title if m else "") + ": " + " · ".join(parts))
             if not self.map_size_row.winfo_manager():
                 self.map_size_row.pack(fill="x", pady=(0, 3), after=self._size_row_after)
         elif self.map_size_row.winfo_manager():
@@ -497,7 +500,7 @@ class OverlayTab:
             return
         o = self.settings["overlay"]
         m = self.catalog.maps.get(map_id)
-        name = m.name if m else map_id
+        name = m.title if m else map_id
         if (o.get("map_heights") or {}).pop(map_id, None):
             self._log(_("Eigene Grösse für {map} entfernt – es gilt wieder der Schieberegler.", map=name), "Overlay")
         if (o.get("map_rotations") or {}).pop(map_id, None):

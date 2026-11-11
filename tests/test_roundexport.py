@@ -73,8 +73,9 @@ def test_cells_table_csv_and_text():
                      region=lambda code: {"eu-central-1": "Frankfurt"}.get(code, code), realm=lambda mid: "MacMillan")
     keys = [k for k, _l in rx.COLUMNS]
     row = rx.table([r], {id(r): m}, keys, names)[0]
+    # 1.50: the map in the language of the user interface (German in the tests)
     assert dict(zip(keys, row)) == {"start": "23.10.2026 18:32", "end": "23.10.2026 18:44", "duration": "12:34",
-                                    "map": "Coal Tower", "realm": "MacMillan", "role": "Killer", "killer": "Nurse",
+                                    "map": "Kohlelager", "realm": "MacMillan", "role": "Killer", "killer": "Nurse",
                                     "kind": "Normal", "wait": "01:23", "region": "Frankfurt", "ping": "47",
                                     "kills": "1", "escaped": "", "bp": "31500", "opponents": "Dwight Fairfield, Meg Thomas",
                                     "balance": "", "stalls": "", "fps": "", "mode": "", "character": "",
@@ -91,9 +92,9 @@ def test_cells_table_csv_and_text():
     head = rx.header(["start", "map", "kills"])
     assert head == ["Start", "Map", "Kills"]
     rows = rx.table([r, farm], {id(r): m}, ["start", "map", "kills"], names)
-    assert rx.csv_text(head, rows) == "Start;Map;Kills\n23.10.2026 18:32;Coal Tower;1\n23.10.2026 18:47;Coal Tower;\n"
-    assert rx.text_lines(rows) == ["23.10.2026 18:32 · Coal Tower · 1", "23.10.2026 18:47 · Coal Tower"]
-    assert rx.preview("text", head, rows) == "23.10.2026 18:32 · Coal Tower · 1\n23.10.2026 18:47 · Coal Tower"
+    assert rx.csv_text(head, rows) == "Start;Map;Kills\n23.10.2026 18:32;Kohlelager;1\n23.10.2026 18:47;Kohlelager;\n"
+    assert rx.text_lines(rows) == ["23.10.2026 18:32 · Kohlelager · 1", "23.10.2026 18:47 · Kohlelager"]
+    assert rx.preview("text", head, rows) == "23.10.2026 18:32 · Kohlelager · 1\n23.10.2026 18:47 · Kohlelager"
     assert rx.preview("csv", head, rows * 2).splitlines()[-1] == "…"                 # more than the first lines
 
 
@@ -123,6 +124,6 @@ def test_the_new_columns_and_the_json_format():
                                                              "Lethal Pursuer, Grim Embrace"]
     head = rx.header(["map", "stalls"])
     rows = rx.table([r], {id(r): m}, ["map", "stalls"], rx.Names())
-    assert json.loads(rx.json_text(head, rows)) == [{"Map": "Coal Tower", "Aussetzer": "2"}]
+    assert json.loads(rx.json_text(head, rows)) == [{"Map": "Kohlelager", "Aussetzer": "2"}]
     assert rx.text_of("json", head, rows) == rx.json_text(head, rows) and rx.SUFFIX["json"] == ".json"
     assert rx.preview("json", head, rows).startswith("[")

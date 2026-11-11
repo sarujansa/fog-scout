@@ -716,11 +716,15 @@ class QtShell:
                 with Image.open(path) as im:
                     im.seek(0)
                     pic = im.convert("RGBA")
+                title = self._map_title(m, shown)            # 1.50: the name on the picture in the UI language
+                if title:
+                    from .mapimage import retitle
+                    pic = retitle(pic, title)
                 pic.thumbnail((PREVIEW_PX, PREVIEW_PX))
             except (OSError, ValueError) as e:
                 self._log(_("Kartenbild nicht lesbar: {error}", error=e), "Fehler")
         realm = self.catalog.realm_display(m) or _("Eigene Bilder")
-        out = (mid, shown, m.label(shown), realm, pic)
+        out = (mid, shown, m.shown_label(shown), realm, pic)
         self._qt_preview_cache = ((mid, v, id(self.catalog), path), out)
         return out + (note,)
 
@@ -802,7 +806,7 @@ class QtShell:
         for m in self.catalog.search(self._qt_search_text() if search else ""):
             realm = self.catalog.realm_display(m) or _("Eigene Bilder")
             for v in [v for v in sorted(m.variants) if m.variants[v]]:
-                out.append((realm, m.label(v) if len(m.variants) > 1 else m.name, m.id, v))
+                out.append((realm, m.shown_label(v), m.id, v))
         return out
 
     def _qt_hwnd(self) -> int:

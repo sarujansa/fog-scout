@@ -61,15 +61,16 @@ _frames = collections.OrderedDict()     # (path, mtime, size, rotation) -> frame
 _frames_lock = threading.Lock()
 
 
-def load_frames(path: str, rotation: int = 0):
+def load_frames(path: str, rotation: int = 0, title: str = ""):
     """[(PIL RGBA image, duration ms)] – several for animated GIFs; ``rotation``: map turned clockwise (°).
     Pictures taller than MAX_LOAD_H are scaled down (Midwich: 6 × 2000² px = 96 MB otherwise). 1.8.84: the last
     FRAMES_KEPT results are kept by path, file time, size and rotation – show_map and set_map both load, a map
     shown again (layout, floor, the same round) is not decoded again (Midwich: 0.43 s each time). The callers
-    only read the frames; a changed file (other time or size) is read anew."""
+    only read the frames; a changed file (other time or size) is read anew. ``title`` (1.50): the map's name in the
+    language of the user interface – drawn instead of the (English) name on the picture (mapimage.retitle)."""
     try:
         st = os.stat(path)
-        key = (os.path.abspath(path), st.st_mtime_ns, st.st_size, int(rotation))
+        key = (os.path.abspath(path), st.st_mtime_ns, st.st_size, int(rotation), title or "")
     except OSError:
         key = None
     if key is not None:
@@ -79,6 +80,9 @@ def load_frames(path: str, rotation: int = 0):
                 _frames.move_to_end(key)
                 return list(cached)
     frames = _decode(path, rotation)
+    if title:
+        from .mapimage import retitle
+        frames = [(retitle(img, title), dur) for img, dur in frames]
     if key is not None:
         with _frames_lock:
             _frames[key] = frames

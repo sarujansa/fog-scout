@@ -468,8 +468,8 @@ def test_right_click_makes_one_style_or_all_styles_of_the_map_clicked(tmp_path, 
     entries = [a for a, _l in qt_maps.MapsPage.style_entries()]
     assert entries == ["style:" + k for k, _l, _t in qt_maps.STYLE_BUTTONS if k != "classic"] + ["style:all"]
     assert {e.split(":")[1] for e in entries[:-1]} == set(appmod.mapstyle.STYLES)      # every style can be made
-    maps = {"coal": types.SimpleNamespace(id="coal", name="Coal Tower", variants={1: "a", 2: "b"}),
-            "bad": types.SimpleNamespace(id="bad", name="Badham", variants={1: "c"})}
+    maps = {"coal": types.SimpleNamespace(id="coal", name="Coal Tower", title="Coal Tower", variants={1: "a", 2: "b"}),
+            "bad": types.SimpleNamespace(id="bad", name="Badham", title="Badham", variants={1: "c"})}
     cat = types.SimpleNamespace(maps=maps, image_path=lambda mid, v=1: (f"/maps/{mid}-{v}.webp", v))
     fake = _fake_app(appmod, cat, tmp_path, "grey")
     logs, all_of, one_of = [], [], []

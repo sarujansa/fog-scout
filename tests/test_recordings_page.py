@@ -614,7 +614,7 @@ def test_the_recording_card_text_follows_obs_state():
     rec = dict(base, recording=True, ours=True, label="Coal Tower", manual=True, seconds=61.0, bytes=3 * 1024 ** 2,
                marks=2, active_fps=58.0)
     state, vals, warn = rec_card_text(rec, extra_s=4.0, clip_s=15, now=1000.0, last_clip=("c.mp4", 940.0))
-    assert state == "Nimmt auf · Coal Tower · von Hand gestartet · 01:05 · 3 MB · 2 Marken"   # 1.24.3: no ●/⚑
+    assert state == "Nimmt auf · Kohlelager · von Hand gestartet · 01:05 · 3 MB · 2 Marken"   # 1.24.3: no ●/⚑
     assert vals == "2560×1440 · 60 fps (gerade 58) · NVENC H.264 · 500 GB frei · letzter Clip c.mp4 (vor 01:00)"
     assert warn == ""
     state = rec_card_text(dict(rec, paused=True), extra_s=4.0)[0]
@@ -661,7 +661,7 @@ def test_the_app_opens_the_new_editor_with_a_library_and_replaces_a_pristine_one
         kinds = sorted((it.kind, os.path.basename(it.path)) for it in items)
         assert kinds == [("clip", "clip.mp4"), ("round", os.path.basename(rec))]
         rnd = next(it for it in items if it.kind == "round")
-        assert rnd.marks == [1.5] and rnd.seconds == pytest.approx(4.0) and rnd.round_t == t and "Coal Tower" in rnd.name
+        assert rnd.marks == [1.5] and rnd.seconds == pytest.approx(4.0) and rnd.round_t == t and "Kohlelager" in rnd.name
         app._rec_render(force=True)
         app.rec_table.selection_set(app.rec_table.get_children()[0])
         app._rec_clip(at=(1.0, 3.0, 2.0))

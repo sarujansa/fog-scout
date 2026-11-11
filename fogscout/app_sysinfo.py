@@ -984,7 +984,7 @@ class SysInfo:
             return _("Gilt für: {window}", window=window)
         mid = self._own_size_map()
         m = self.catalog.maps.get(mid) if mid else None
-        maps = _("nur {map}", map=m.name) if m else _("alle Maps (keine Map eingeblendet)")
+        maps = _("nur {map}", map=m.title) if m else _("alle Maps (keine Map eingeblendet)")
         return _("Gilt für: {maps} · {window}", maps=maps, window=window)
 
     def _sel_sync(self):

@@ -10,6 +10,7 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 
 from . import dashboard, history, obsrec, official, records, sysinfo, theme
+from .catalog import shown
 from .connwatch import UNKNOWN, region_name
 from .i18n import N_, _
 from .lobby import killer_label
@@ -521,8 +522,9 @@ def days(app, now: float) -> dict:
                        "last": str(counts[-1][0]) if counts[-1][0] else "", "empty": ""}}
 
 
-RoundRow = namedtuple("RoundRow", "map text t recording")   # 1.17.1: a row of "Letzte Runden" – click → statistics,
-                                                                # ▶ → its recording (None: none or the file is gone)
+# 1.17.1: a row of "Letzte Runden" – click → statistics, ▶ → its recording (None: none or the file is gone);
+# 1.50: ``map`` in the language of the user interface, ``label`` the stored English one
+RoundRow = namedtuple("RoundRow", "map text t recording label", defaults=("",))
 
 
 def last_rounds(app, n: int = LAST_ROUNDS) -> list:
@@ -540,14 +542,14 @@ def last_rounds(app, n: int = LAST_ROUNDS) -> list:
             who = (who + " · " if who else "") + _("Farming")
         res = app._official_result(j.off.get(id(r)))
         parts = [p for p in (who, res if res != "–" else "", fmt_duration(r.seconds)) if p]
-        out.append(RoundRow(r.map, " · ".join(parts), r.t, find(r.t) if find else None))
+        out.append(RoundRow(shown(r.map), " · ".join(parts), r.t, find(r.t) if find else None, r.map))
     return out
 
 
 def overview_model(app, now: float, is_win: bool) -> Overview:
     o = Overview()
     m = app.catalog.maps.get(app.current[0]) if app.current else None
-    label = m.label(app.current[1]) if m else ""
+    label = m.shown_label(app.current[1]) if m else ""
     st = user_state(app._worker_status, auto_detect=bool(app.settings.get("auto_detect", True)),
                     game_found=app.game is not None, simulate=bool(app.simulate), has_map=app.overlay.has_map(),
                     map_label=label, visible_wanted=app.user_visible, hidden_after_match=app.hidden_after_match,
