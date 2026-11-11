@@ -6,7 +6,7 @@ from __future__ import annotations
 from . import discordrpc, launch
 from . import uimodel as ui
 from .i18n import _
-from .lobby import killer_label
+from .lobby import killer_label_en
 
 PORTAL = "https://discord.com/developers/applications"
 
@@ -94,7 +94,7 @@ class DiscordPresence:
         return discordrpc.GameState(running, "menu")
 
     def _killer_name(self, name) -> str:
-        return killer_label(self._killer_of(name)) if name else ""
+        return killer_label_en(self._killer_of(name)) if name else ""     # 1.50: others read it – English
 
     def _discord_tick(self):
         self.presence.update(self._discord_state())
