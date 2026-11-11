@@ -31,13 +31,15 @@ from .i18n import N_
 from .ocr import LexiconScorer, Recognizer, best_path_logp
 from .textnorm import MAIN, MODEL_FILES
 
-# Part of the game frame that is captured for detection (fractions of w/h).
-ROI = (0.0, 0.52, 0.64, 0.99)
+# Part of the game frame that is captured for detection (fractions of w/h). 1.49.2: right edge 0.64 → 0.80 – the
+# game does not wrap long names (user's Russian RPD East Wing ran past 0.64 of 3440; on 16:9 it ends near 0.71).
+ROI = (0.0, 0.52, 0.80, 0.99)
 # Separator line: (brighter than the rows around it by, at least this bright). The second pass only runs when
 # the first finds nothing: a small game picture (window narrower than 16:9 shows the trial letterboxed, user
 # screenshot 1718×1360 → picture ~858 px high) draws the hairline below one pixel, it comes out at grey ~55
 # on a dark map instead of > 105. Unknown text still never maps to a wrong map (lexicon scoring).
 SEPARATOR_PASSES = ((12, 105), (25, 40))
+MAX_LINE = 0.80              # 1.49.2: longest banner line in 16:9 widths (was 0.60; Russian RPD ≈ 0.64)
 SMALL_PICTURE_H = 1200       # the second pass only for pictures below this height (1440p reads fine with the first)
 # 1.8.62: where the banner sits in a letterboxed picture when no line is found at all (user screenshot 1714×1360,
 # RPD East Wing: the hairline is a grey ~95 over a tiled floor of ~97 – neither pass sees it). Same spot in the
@@ -134,7 +136,7 @@ def _separator_in(mask: np.ndarray, frame_w: int, frame_h: int, s: float) -> Sep
         x1 = int(row_end[r]) + 1
         x0 = x1 - length
         frac = length / wn
-        if frac > 0.60 or x0 > 0.30 * frame_w * s:    # the banner is left-aligned
+        if frac > MAX_LINE or x0 > 0.30 * frame_w * s:    # the banner is left-aligned
             continue
         if best is None or length > best[2]:
             best = (x0, float(np.mean(grp)), length, len(grp), frac)
