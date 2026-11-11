@@ -89,7 +89,7 @@ def readers():
 
 def test_there_are_rendered_banners_for_every_new_language():
     assert sorted({os.path.basename(p).rsplit("-", 99)[0].split("-")[0] for p in SAMPLES}) == ["ja", "ko", "ru", "zh"]
-    assert len(SAMPLES) == 15
+    assert len(SAMPLES) == 17
 
 
 @pytest.mark.parametrize("path", SAMPLES, ids=[os.path.basename(p)[:-5] for p in SAMPLES])
