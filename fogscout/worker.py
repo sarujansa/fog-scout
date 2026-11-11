@@ -24,7 +24,8 @@ from .lobby import LobbyReader, QueueTracker, SteadyCorner, corner_box, crosspla
 from .ticktime import CpuShare, LookTimes
 from .matchstart import LOADING_LOOKS, MatchStart
 from .matchend import MatchEndTracker, Signals
-from .ocr import Recognizer
+from .ocr import ModelPool, Recognizer
+from .textnorm import MAIN, MODEL_FILES
 
 log = logging.getLogger("fogscout")
 END_CHECK_INTERVAL = 0.5          # seconds between two looks for result screen / lobby / loading screen …
@@ -231,9 +232,12 @@ class DetectionWorker(threading.Thread):
 
     def _run(self):
         models = os.path.join(self.root_dir, "models")
-        rec = Recognizer(os.path.join(models, "ch_PP-OCRv4_rec_infer.onnx"),
-                         threads=self.settings.get("ocr_threads", 2))
-        reader = BannerReader(rec, self.catalog)
+        rec = Recognizer(os.path.join(models, MODEL_FILES[MAIN]), threads=self.settings.get("ocr_threads", 2))
+        # 1.49: the models of the other scripts (Cyrillic, Chinese/Japanese, Korean) – loaded only for a
+        # game language that is ticked, or for a look at a banner nothing ticked can read (gamelang)
+        pool = ModelPool(models, threads=self.settings.get("ocr_threads", 2),
+                         on_error=lambda model, e: self._report(f"Modell {model}", f"{type(e).__name__}: {e}"))
+        reader = BannerReader(rec, self.catalog, pool)
         acc = Accumulator()
         out_of_match = OutOfMatchWatcher(rec)
         lobby_reader = LobbyReader(rec)
@@ -266,6 +270,7 @@ class DetectionWorker(threading.Thread):
         session, last_seen, session_frames = False, 0.0, []
         session_strict, session_t, session_saved = False, 0.0, None
         lang_votes = None                 # 1.48: {(code, map id): looks} of the banner on screen; None = said already
+        lang_probes = 0                   # 1.49: looks of this banner the other scripts' models were asked for
         tracker = MatchEndTracker()
         tracker_gen = None
         trial_since = 0.0                 # when the map on display appeared (tracker reset)
@@ -291,7 +296,8 @@ class DetectionWorker(threading.Thread):
                             break
                         if cmd[0] == "catalog":
                             self.catalog = cmd[1]
-                            reader = BannerReader(rec, self.catalog)
+                            reader = BannerReader(rec, self.catalog, pool)
+                            pool.drop(keep=self.catalog.models)      # a model only a probe needed
                             acc.reset()
                             if self._scanner:
                                 self._scanner = None
@@ -463,7 +469,7 @@ class DetectionWorker(threading.Thread):
                     if sep is not None:
                         if not session:
                             session, session_frames, session_t, session_saved = True, [], tick, None
-                            lang_votes = {}
+                            lang_votes, lang_probes = {}, 0
                             # DBD shows the banner only at the start of a trial: well into a running round it is
                             # something in the game world (neon strips, signs) – only a clean read may switch
                             session_strict = (self.map_on_screen and tracker.in_trial
@@ -483,11 +489,21 @@ class DetectionWorker(threading.Thread):
                                 session_saved = self._save_sighting(img, res, sep, "umgeschaltet" if d else "gesehen")
                             if (d is None and not session_strict and lang_votes is not None
                                     and self.settings.get("game_lang_auto", True)):
-                                hit = gamelang.vote(lang_votes, res.name_text, res.realm_text,
-                                                    self.catalog.maps.values(), set(self.catalog.languages))
+                                maps_, active = self.catalog.maps.values(), set(self.catalog.languages)
+                                hit = gamelang.vote(lang_votes, res.name_text, res.realm_text, maps_, active)
+                                if hit is None and res.name_fit < acc.fit_ok:
+                                    # 1.49: another script? From the second look nothing ticked can read (the
+                                    # first is often the banner fading in) the models of the scripts not in use
+                                    # read the same two lines – PROBE_LOOKS times per banner, then never again
+                                    lang_probes += 1
+                                    if 2 <= lang_probes <= 1 + gamelang.PROBE_LOOKS:
+                                        for name_text, realm_text in reader.probe():
+                                            hit = hit or gamelang.vote(lang_votes, name_text, realm_text,
+                                                                       maps_, active)
                                 if hit is not None:      # 1.48: the App ticks the language, a new catalog follows
                                     lang_votes = None
-                                    self.post("game_language", code=hit[0], map_id=hit[1], name_text=res.name_text)
+                                    self.post("game_language", code=hit[0], map_id=hit[1],
+                                              name_text=lang_votes.pop("text", "") or res.name_text)
                             if d is not None:
                                 lobby = self.queue.lobby_for_round(tick)   # 1.8.71: also a lobby seen only briefly
                                 self.queue.round_started(tick)  # 1.8.43: the lobby is used up (same custom lobby next)
@@ -505,6 +521,7 @@ class DetectionWorker(threading.Thread):
                                 self._save_debug(img, res, sep)
                     elif session and tick - last_seen > 1.5:
                         session = False
+                        pool.drop(keep=self.catalog.models)          # 1.49: models only a probe loaded
                         self._banner_seen(session_t, session_strict, session_frames, acc, session_saved)
                         if acc.decided is None and session_frames:
                             best = max(session_frames, key=lambda f: f[2])

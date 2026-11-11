@@ -1,0 +1,19 @@
+{
+"lang": "ko",
+"map_id": "wreckers-yard",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "폐차장",
+"realm": "오토헤이븐 차량보관소",
+"rendered": true
+}

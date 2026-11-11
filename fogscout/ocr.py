@@ -20,7 +20,7 @@ import unicodedata
 import cv2
 import numpy as np
 
-from .textnorm import ALPHABET, fold
+from .textnorm import ALPHABET, MAIN, MODEL_FILES, fold, fold_any
 
 try:
     import onnxruntime as ort
@@ -56,8 +56,23 @@ def _char_group(ch: str) -> int:
     return JUNK
 
 
+def _wide_group(ch: str, group_of: dict, junk: int) -> int:
+    """``_char_group`` for an alphabet with letters of other scripts (1.49): a class of the model that is one of
+    the alphabet's symbols counts as it, punctuation and spaces as blank, everything else as "other"."""
+    if ch in ("<blank>", " ", ""):
+        return 0
+    if ch in _VISUAL:
+        return group_of[_VISUAL[ch]]
+    f = fold_any(ch)
+    if len(f) == 1 and f in group_of:
+        return group_of[f]
+    if f == "" and unicodedata.category(ch[0])[0] in ("P", "Z", "S", "C"):
+        return 0
+    return junk
+
+
 class Recognizer:
-    """Thin wrapper around the PP-OCRv4 recognition model."""
+    """Thin wrapper around a PP-OCR recognition model (v4, or v5 with its character list beside it)."""
 
     def __init__(self, model_path: str, threads: int = 2):
         if ort is None:
@@ -71,15 +86,42 @@ class Recognizer:
         meta = self.session.get_modelmeta().custom_metadata_map
         chars = meta.get("character", "").splitlines()
         if not chars:
-            keys = os.path.join(os.path.dirname(model_path), "ppocr_keys_v1.txt")
-            with open(keys, encoding="utf-8") as fh:
-                chars = [ln.rstrip("\r\n") for ln in fh]
+            own = os.path.splitext(model_path)[0] + ".txt"         # 1.49: PP-OCRv5 – one character per line
+            if os.path.exists(own):
+                # one character per line; a Windows checkout may have turned the line ends into CRLF (1.49: every
+                # character then carried a "\r" and the model read nothing)
+                with open(own, encoding="utf-8", newline="") as fh:
+                    chars = [c[:-1] if c.endswith("\r") else c for c in fh.read().split("\n")[:-1]]
+            else:
+                keys = os.path.join(os.path.dirname(model_path), "ppocr_keys_v1.txt")
+                with open(keys, encoding="utf-8") as fh:
+                    chars = [ln.rstrip("\r\n") for ln in fh]
         self.chars = ["<blank>"] + chars + [" "]
         self.input_name = self.session.get_inputs()[0].name
         groups = np.array([_char_group(c) for c in self.chars], dtype=np.int64)
         self.group_matrix = np.zeros((len(self.chars), N_GROUPS), dtype=np.float32)
         self.group_matrix[np.arange(len(self.chars)), groups] = 1.0
         self._lock = threading.Lock()
+        self._wide: dict = {}             # alphabet -> (group of each class, classes that are no "other")
+
+    def wide_groups(self, probs: np.ndarray, alphabet: str) -> np.ndarray:
+        """``groups`` for an alphabet with letters of other scripts: blank + the alphabet's symbols + other, shape
+        (T, len(alphabet) + 2). Only the classes that are a symbol or blank are summed (a few hundred of up to
+        18 000); "other" is the rest of each row."""
+        if alphabet == ALPHABET:
+            return self.groups(probs)
+        known = self._wide.get(alphabet)
+        if known is None:
+            group_of = {c: i + 1 for i, c in enumerate(alphabet)}
+            junk = len(alphabet) + 1
+            grp = np.array([_wide_group(c, group_of, junk) for c in self.chars], dtype=np.int64)
+            keep = np.nonzero(grp != junk)[0]
+            known = self._wide[alphabet] = (grp[keep], keep)
+        grp, keep = known
+        g = np.zeros((len(alphabet) + 2, len(probs)), np.float64)
+        np.add.at(g, grp, probs[:, keep].T.astype(np.float64))
+        g[-1] = np.maximum(0.0, probs.sum(1) - g[:-1].sum(0))
+        return np.clip(g.T, 1e-9, 1.0)
 
     @staticmethod
     def _prepare(bgr: np.ndarray) -> np.ndarray:
@@ -122,6 +164,37 @@ class Recognizer:
         return "".join(res).strip()
 
 
+class ModelPool:
+    """1.49: the recognition models of the other scripts (textnorm.MODEL_FILES), loaded when first asked for and
+    kept – a user with Latin game languages never loads one. ``get`` returns None for a model that is not there
+    or does not load (said once through ``on_error``); the main model is not this pool's business."""
+
+    def __init__(self, models_dir: str, threads: int = 2, on_error=None):
+        self.models_dir = models_dir
+        self.threads = threads
+        self.on_error = on_error
+        self._recs: dict = {}
+
+    def get(self, model: str):
+        if model not in self._recs:
+            rec = None
+            name = MODEL_FILES.get(model)
+            try:
+                if name is None or model == MAIN:
+                    raise KeyError(model)
+                rec = Recognizer(os.path.join(self.models_dir, name), threads=self.threads)
+            except Exception as e:
+                if self.on_error is not None:
+                    self.on_error(model, e)
+            self._recs[model] = rec
+        return self._recs[model]
+
+    def drop(self, keep=()):
+        """Forget the models not in ``keep`` (the ones a probe loaded for a single banner)."""
+        for model in [m for m in self._recs if m not in keep]:
+            del self._recs[model]
+
+
 def best_path_logp(groups: np.ndarray) -> float:
     """log-probability of the single most likely frame labelling (upper bound)."""
     if len(groups) == 0:
@@ -130,9 +203,13 @@ def best_path_logp(groups: np.ndarray) -> float:
 
 
 class LexiconScorer:
-    """Vectorised CTC forward pass for a fixed list of folded strings."""
+    """Vectorised CTC forward pass for a fixed list of folded strings. ``alphabet`` (1.49): the symbols the strings
+    are made of – A-Z0-9, or ``alphabet_for`` the names of a game language in another script."""
 
-    def __init__(self, strings):
+    def __init__(self, strings, alphabet: str = ALPHABET):
+        _GROUP_OF = {c: i + 1 for i, c in enumerate(alphabet)}
+        N_GROUPS = len(alphabet) + 2
+        self.alphabet = alphabet
         self.strings = list(dict.fromkeys(s for s in strings if s))
         self.index = {s: i for i, s in enumerate(self.strings)}
         n = len(self.strings)

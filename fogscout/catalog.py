@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from .i18n import _
 from .mapimage import USER_DIR
-from .textnorm import fold, name_forms, roman
+from .textnorm import MAIN, alphabet_for, fold, fold_any, model_of, name_forms, roman
 
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
@@ -60,6 +60,7 @@ class Hypothesis:
     lang: str
     name_key: str          # folded map-name string
     realm_keys: tuple      # folded realm strings allowed together with this name
+    model: str = MAIN      # 1.49: the recognition model that reads this language (ocr.MODEL_FILES)
 
 
 class Catalog:
@@ -166,19 +167,22 @@ class Catalog:
     # ----------------------------------------------------------- hypotheses
     def _build_hypotheses(self):
         hyps = []
+        main_langs = [l for l in self.languages if model_of(l) == MAIN]      # custom maps and aliases: main model
         for m in self.maps.values():
             langs = [l for l in self.languages if l in m.names]
             if m.custom or not langs:
                 langs = list(m.names)[:1]
             multi = len(m.variants) > 1
             for lang in langs:
+                model = MAIN if m.custom else model_of(lang)
                 if m.custom:
                     # file name is language-neutral: accept the realm in any enabled language
                     realm_keys = tuple(dict.fromkeys(
-                        fold(r) for l in self.languages for r in name_forms(m.realm_names.get(l, ""), l) if fold(r)))
+                        fold_any(r) for l in main_langs for r in name_forms(m.realm_names.get(l, ""), l)
+                        if fold_any(r)))
                 else:
                     realm = m.realm_names.get(lang) or m.realm_names.get("en") or m.realm
-                    realm_keys = tuple(dict.fromkeys(fold(r) for r in name_forms(realm, lang) if fold(r)))
+                    realm_keys = tuple(dict.fromkeys(fold_any(r) for r in name_forms(realm, lang) if fold_any(r)))
                 for form in name_forms(m.names[lang], lang):
                     for v in sorted(m.variants):
                         texts = []
@@ -189,18 +193,26 @@ class Catalog:
                         else:
                             texts = [f"{form} {roman(v)}"]
                         for t in texts:
-                            k = fold(t)
+                            k = fold_any(t)
                             if k:
-                                hyps.append(Hypothesis(m.id, v, lang, k, realm_keys))
+                                hyps.append(Hypothesis(m.id, v, lang, k, realm_keys, model))
             for alias in m.aliases:
                 all_realms = tuple(dict.fromkeys(
-                    fold(r) for l in self.languages for r in name_forms(m.realm_names.get(l, ""), l) if fold(r)))
+                    fold_any(r) for l in main_langs for r in name_forms(m.realm_names.get(l, ""), l) if fold_any(r)))
                 k = fold(alias)
                 if k:
                     hyps.append(Hypothesis(m.id, 1, "alias", k, all_realms))
         self.hypotheses = hyps
-        self.name_strings = sorted({h.name_key for h in hyps})
-        self.realm_strings = sorted({r for h in hyps for r in h.realm_keys})
+        # 1.49: per recognition model its names, realms and the symbols they are made of (ocr.alphabet_for – with
+        # Latin languages alone exactly A-Z0-9, as before)
+        self.models = [MAIN] + sorted({h.model for h in hyps} - {MAIN})
+        self.by_model = {}
+        for model in self.models:
+            own = [h for h in hyps if h.model == model]
+            names = sorted({h.name_key for h in own})
+            realms = sorted({r for h in own for r in h.realm_keys})
+            self.by_model[model] = (names, realms, alphabet_for(names + realms))
+        self.name_strings, self.realm_strings, self.alphabet = self.by_model[MAIN]
 
     # --------------------------------------------------------------- helpers
     def image_path(self, map_id: str, variant: int = 1):

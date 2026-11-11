@@ -25,7 +25,8 @@ SETUP_W = 820                     # px (logical): widest step of the setup assis
 
 # The setup assistant on the first start (1.60, user's wish): steps of controls that are also on the pages
 # (same keys – the same widgets of the UI model). ("note", text) = an explaining line of the step itself.
-GAME_LANGS = ("en", "de", "fr", "es", "es-MX", "it", "pl", "pt-BR", "tr")   # app.LANGS (test: the same)
+GAME_LANGS = ("en", "de", "fr", "es", "es-MX", "it", "pl", "pt-BR", "tr",   # app.LANGS (test: the same)
+              "ru", "zh-Hans", "zh-Hant", "ja", "ko")
 
 
 SETUP_HOTKEYS = ("toggle_overlay", "rotate_map", "edit_position", "scan_now", "reject_map")

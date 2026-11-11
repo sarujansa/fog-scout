@@ -171,7 +171,10 @@ def run_test(paths, languages):
     from .detector import ROI, BannerReader
     from .ocr import Recognizer
     cat = Catalog(ROOT, languages)
-    reader = BannerReader(Recognizer(os.path.join(ROOT, "models", "ch_PP-OCRv4_rec_infer.onnx")), cat)
+    from .ocr import ModelPool
+    from .textnorm import MAIN, MODEL_FILES
+    models = os.path.join(ROOT, "models")
+    reader = BannerReader(Recognizer(os.path.join(models, MODEL_FILES[MAIN])), cat, ModelPool(models))
     files = []
     for p in paths:
         if os.path.isdir(p):

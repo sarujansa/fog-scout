@@ -46,11 +46,15 @@ from .app_palette import PaletteMixin
 from .app_inputs import InputsCard
 
 LANGS = [("en", "EN"), ("de", "DE"), ("fr", "FR"), ("es", "ES"), ("es-MX", "ES-MX"), ("it", "IT"),
-         ("pl", "PL"), ("pt-BR", "PT"), ("tr", "TR")]
+         ("pl", "PL"), ("pt-BR", "PT"), ("tr", "TR"),
+         # 1.49: other scripts – each read by a model of its own (textnorm.MODEL_FILES), zh-Hans by the main one
+         ("ru", "RU"), ("zh-Hans", "ZH"), ("zh-Hant", "ZH-TW"), ("ja", "JA"), ("ko", "KO")]
 # 1.48: the game languages in words – for the log line when one is ticked by itself (gamelang.py)
 LANG_NAMES = {"en": N_("Englisch"), "de": N_("Deutsch"), "fr": N_("Französisch"), "es": N_("Spanisch"),
               "es-MX": N_("Spanisch (Mexiko)"), "it": N_("Italienisch"), "pl": N_("Polnisch"),
-              "pt-BR": N_("Portugiesisch (Brasilien)"), "tr": N_("Türkisch")}
+              "pt-BR": N_("Portugiesisch (Brasilien)"), "tr": N_("Türkisch"), "ru": N_("Russisch"),
+              "zh-Hans": N_("Chinesisch (vereinfacht)"), "zh-Hant": N_("Chinesisch (traditionell)"),
+              "ja": N_("Japanisch"), "ko": N_("Koreanisch")}
 REJECT_HOLD = 60.0        # s: a rejected map is not shown again by the same banner
 UNSURE_DELAY = 2.5        # s: a doubtful read is shown only if the banner did not read cleanly meanwhile
 QUIT_WATCHDOG_S = 15     # s: quitting takes longer than this -> the process ends anyway (1.65.1)
@@ -418,8 +422,11 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             try:
                 from .detector import BannerReader
                 from .ocr import Recognizer
-                reader = BannerReader(Recognizer(os.path.join(self.root_dir, "models", "ch_PP-OCRv4_rec_infer.onnx")),
-                                      self.catalog)
+                from .ocr import ModelPool
+                from .textnorm import MAIN, MODEL_FILES
+                models = os.path.join(self.root_dir, "models")
+                reader = BannerReader(Recognizer(os.path.join(models, MODEL_FILES[MAIN])), self.catalog,
+                                      ModelPool(models))
                 rep = corpus.check(self.data_dir, reader)
             except Exception as e:
                 rep = e

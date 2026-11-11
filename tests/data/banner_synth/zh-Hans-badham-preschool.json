@@ -1,0 +1,19 @@
+{
+"lang": "zh-Hans",
+"map_id": "badham-preschool",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "巴德姆幼儿园",
+"realm": "春木镇",
+"rendered": true
+}

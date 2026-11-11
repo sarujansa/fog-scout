@@ -1,0 +1,19 @@
+{
+"lang": "zh-Hant",
+"map_id": "family-residence",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "家宅",
+"realm": "山岡家族地產",
+"rendered": true
+}

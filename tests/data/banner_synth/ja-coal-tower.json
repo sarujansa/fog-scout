@@ -1,0 +1,19 @@
+{
+"lang": "ja",
+"map_id": "coal-tower",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "コール・タワー",
+"realm": "マクミラン・エステート",
+"rendered": true
+}

@@ -1,0 +1,19 @@
+{
+"lang": "zh-Hant",
+"map_id": "midwich",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "米德威治小學",
+"realm": "沉默之丘",
+"rendered": true
+}

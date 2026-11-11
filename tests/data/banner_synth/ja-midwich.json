@@ -1,0 +1,19 @@
+{
+"lang": "ja",
+"map_id": "midwich",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "ミッドウィッチ小学校",
+"realm": "サイレントヒル",
+"rendered": true
+}

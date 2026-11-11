@@ -5541,4 +5541,14 @@ T = {
         'Lingua del gioco {lang} rilevata (banner «{text}») – spuntata automaticamente.',
     'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
         "Se DBD è in una lingua non spuntata qui e un banner della mappa corrisponde chiaramente a una mappa in quella lingua, Fog Scout la spunta da solo: la mappa compare già nello stesso round. Solo all'inizio del round, mai a partita in corso.",
+    'Russisch':
+        'Russo',
+    'Chinesisch (vereinfacht)':
+        'Cinese (semplificato)',
+    'Chinesisch (traditionell)':
+        'Cinese (tradizionale)',
+    'Japanisch':
+        'Giapponese',
+    'Koreanisch':
+        'Coreano',
 }

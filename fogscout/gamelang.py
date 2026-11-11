@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import re
 
-from .textnorm import fold
+from .textnorm import fold_any as fold
 
-ORDER = ("en", "de", "fr", "es", "es-MX", "it", "pl", "pt-BR", "tr")   # app.LANGS – first wins on a tie (es/es-MX)
+# app.LANGS – first wins on a tie (es/es-MX, zh-Hans/zh-Hant)
+ORDER = ("en", "de", "fr", "es", "es-MX", "it", "pl", "pt-BR", "tr", "ru", "zh-Hans", "zh-Hant", "ja", "ko")
+LONG_NAME = 12       # 1.49: letters of another script from which a name needs no realm to count
+PROBE_LOOKS = 3      # 1.49: looks of one banner the models of the scripts not in use are asked for (worker)
 MIN_CHARS = 4        # a shorter read says too little ("GRA"); short names count only with their realm anyway
 MAX_NAME = 0.15      # at most this share of the name's letters wrong (edit distance / length)
 MAX_REALM = 0.25     # the realm line: compared over the realm name's length (the line often carries noise after it)
@@ -42,7 +45,8 @@ def _realm_fits(realm_text: str, realm: str) -> bool:
 def match(name_text: str, realm_text: str, maps, active) -> tuple | None:
     """(code, map id) of one look, or None. ``maps``: catalog entries (``id``, ``names``, ``realm_names``)."""
     name = fold(name_text)
-    if len(name) < MIN_CHARS:
+    # a sign of Chinese, Japanese or Korean says as much as two letters ("血屋" is a whole name)
+    if sum((2 if ord(c) >= 0x2E80 else 1) for c in name) < MIN_CHARS:
         return None
     bare = re.sub(r"[IVX]{1,4}$", "", name)          # the layout number at the end ("BADHAM ANAOKULU III")
     best_active, found = 1.0, []
@@ -57,7 +61,9 @@ def match(name_text: str, realm_text: str, maps, active) -> tuple | None:
                 best_active = min(best_active, d)
             elif d <= MAX_NAME:
                 realm = (m.realm_names or {}).get(code) or (m.realm_names or {}).get("en") or ""
-                if _realm_fits(realm_text, realm):
+                # 1.49: a long name in another script speaks for itself – the realm below it may be read in Latin
+                # look-alikes ("RAKKUN-SITI" for "РАККУН-СИТИ" under a name of 42 Cyrillic letters read right)
+                if sum(ord(c) >= 0x250 for c in other) >= LONG_NAME or _realm_fits(realm_text, realm):
                     found.append((d, ORDER.index(code) if code in ORDER else len(ORDER), code, m.id))
     if not found:
         return None
@@ -79,4 +85,7 @@ def vote(votes: dict, name_text: str, realm_text: str, maps, active) -> tuple | 
     if hit is None:
         return None
     votes[hit] = votes.get(hit, 0) + 1
-    return hit if votes[hit] >= VOTES else None
+    if votes[hit] < VOTES:
+        return None
+    votes["text"] = name_text            # what was read, for the log line
+    return hit

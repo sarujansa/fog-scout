@@ -1,0 +1,19 @@
+{
+"lang": "ko",
+"map_id": "coal-tower",
+"frame": [
+3440,
+1440
+],
+"roi": [
+2201,
+677
+],
+"offset": [
+470,
+270
+],
+"name": "석탄 저장소",
+"realm": "맥밀란 사유지",
+"rendered": true
+}

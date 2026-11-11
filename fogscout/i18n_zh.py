@@ -5541,4 +5541,14 @@ T = {
         '已识别游戏语言{lang}（横幅“{text}”）——已自动勾选。',
     'Läuft DBD in einer Sprache, die hier nicht angehakt ist, und passt ein Map-Banner eindeutig zu einer Map in dieser Sprache, hakt Fog Scout sie selbst an – die Karte erscheint dann schon in derselben Runde. Nur am Rundenstart, nie mitten im Match.':
         '如果 DBD 使用的语言未在此勾选，而地图横幅明确对应该语言中的某张地图，Fog Scout 会自动勾选该语言——地图会在同一局中显示。仅在对局开始时进行，绝不会在对局中途进行。',
+    'Russisch':
+        '俄语',
+    'Chinesisch (vereinfacht)':
+        '简体中文',
+    'Chinesisch (traditionell)':
+        '繁体中文',
+    'Japanisch':
+        '日语',
+    'Koreanisch':
+        '韩语',
 }

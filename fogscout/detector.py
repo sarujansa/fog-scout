@@ -29,6 +29,7 @@ import numpy as np
 
 from .i18n import N_
 from .ocr import LexiconScorer, Recognizer, best_path_logp
+from .textnorm import MAIN, MODEL_FILES
 
 # Part of the game frame that is captured for detection (fractions of w/h).
 ROI = (0.0, 0.52, 0.64, 0.99)
@@ -347,6 +348,97 @@ def locate_text(img: np.ndarray, sep: Separator) -> TextLines:
     return TextLines(name=name_img, realm=realm_img, name_lines=n_lines)
 
 
+# 1.49: the lines of a banner in another script (Chinese, Japanese, Korean, Cyrillic). ``locate_text`` finds
+# a line as a chain of letter-shaped parts of one height – right for Latin capitals, but a Chinese sign or a Hangul
+# syllable is several strokes of different sizes, and the chain ended at the first word gap (test banners: "라쿤 시티
+# 경찰서 동" of "라쿤 시티 경찰서 동쪽 부속 건물"). Here a line is a band of rows with bright thin strokes, from the
+# line's start to the last stroke before a wide gap – whatever the strokes look like.
+WIDE_GAP = 1.6          # a gap of this many line heights ends the text
+WIDE_MIN_H, WIDE_MAX_H = 0.022, 0.14      # height of a line in line lengths
+
+
+def _bands(rows: np.ndarray, from_bottom: bool, gap: int, max_bands: int):
+    """Runs of True in ``rows`` as (top, bottom) – nearest to the separator first; a hole of up to ``gap`` rows
+    stays inside a run (the gap between a letter and its accent or dot)."""
+    idx = np.nonzero(rows)[0]
+    if len(idx) == 0:
+        return []
+    runs, start, prev = [], idx[0], idx[0]
+    for i in idx[1:]:
+        if i - prev > gap + 1:
+            runs.append((int(start), int(prev) + 1))
+            start = i
+        prev = i
+    runs.append((int(start), int(prev) + 1))
+    return (runs[::-1] if from_bottom else runs)[:max_bands]
+
+
+def _wide_line(region: np.ndarray, mask: np.ndarray, top: int, bottom: int, x_from: int, x_start_max: int):
+    """The crop of one band: from its first stroke (near the line's start) to the last one before a wide gap."""
+    h = bottom - top
+    cols = np.nonzero(mask[top:bottom, x_from:].any(0))[0]
+    if len(cols) == 0 or cols[0] + x_from > x_start_max:
+        return None
+    end = cols[0]
+    for c in cols[1:]:
+        if c - end > WIDE_GAP * h:
+            break
+        end = c
+    pv, ph = int(round(0.28 * h)), int(round(0.40 * h))
+    crop = region[max(0, top - pv):min(region.shape[0], bottom + pv),
+                  max(0, x_from + int(cols[0]) - ph):min(region.shape[1], x_from + int(end) + 1 + ph)]
+    return crop if crop.size else None
+
+
+def locate_text_wide(img: np.ndarray, sep: Separator) -> TextLines:
+    """``locate_text`` for the scripts that are not Latin capitals (see above): name above the line (up to three
+    lines, joined), realm below it."""
+    H, W = img.shape[:2]
+    L = max(1, sep.length)
+    cx0 = max(0, int(sep.x0 - 0.06 * L))
+    cx1 = min(W, int(sep.x1 + 0.35 * L))
+    start_max = int(sep.x0 - cx0 + 0.12 * L)
+    lo, hi, gap = WIDE_MIN_H * L, WIDE_MAX_H * L, max(1, int(0.006 * L))
+
+    ay0 = max(0, int(sep.y - 0.34 * L))
+    ay1 = max(ay0 + 1, int(sep.y - 0.003 * L))
+    above = img[ay0:ay1, cx0:cx1]
+    name_img, n_lines = None, 0
+    if above.size:
+        m = _text_mask(above, L)
+        crops, first_h, edge = [], None, above.shape[0]
+        for top, bottom in _bands(m[:, :start_max + int(1.1 * L)].sum(1) >= 2, True, gap, 4):
+            h = bottom - top
+            if edge - bottom > 0.08 * L or not lo <= h <= hi or (first_h and not 0.6 * first_h <= h <= 1.6 * first_h):
+                if crops:
+                    break
+                continue                      # specks between the text and the line
+            crop = _wide_line(above, m, top, bottom, 0, start_max)
+            if crop is None:
+                break
+            crops.insert(0, crop)
+            first_h, edge = first_h or h, top
+            if len(crops) == 3:
+                break
+        if crops:
+            name_img, n_lines = (crops[0] if len(crops) == 1 else _hconcat(crops)), len(crops)
+
+    by0 = min(H - 1, int(sep.y + 0.003 * L))
+    by1 = min(H, int(sep.y + 0.13 * L))
+    below = img[by0:by1, cx0:cx1]
+    realm_img = None
+    if below.size:
+        mb = _text_mask(below, L)
+        for top, bottom in _bands(mb[:, :start_max + int(1.1 * L)].sum(1) >= 2, False, gap, 2):
+            if top <= 0.06 * L and 0.013 * L <= bottom - top <= 0.09 * L:
+                realm_img = _wide_line(below, mb, top, bottom, 0, start_max)
+                break
+    if name_img is None:                       # nothing found: the fixed place locate_text falls back to
+        rest = locate_text(img, sep)
+        return TextLines(name=rest.name, realm=realm_img if realm_img is not None else rest.realm, name_lines=0)
+    return TextLines(name=name_img, realm=realm_img, name_lines=n_lines)
+
+
 # --------------------------------------------------------------------------
 # 3) scoring one frame
 # --------------------------------------------------------------------------
@@ -361,49 +453,107 @@ class FrameResult:
     ms: float = 0.0
 
 
+@dataclass
+class _ModelView:
+    """One recognition model with the names it reads (1.49): the main model, or the model of another script."""
+    model: str
+    rec: Recognizer
+    alphabet: str
+    names: LexiconScorer
+    realms: LexiconScorer
+
+
 class BannerReader:
-    def __init__(self, recognizer: Recognizer, catalog):
+    def __init__(self, recognizer: Recognizer, catalog, pool=None):
+        """``pool`` (ocr.ModelPool, 1.49): where the models of the other scripts come from – without it, or for a
+        model that is missing, the names of those game languages are simply not read."""
         self.rec = recognizer
         self.catalog = catalog
-        self.name_scorer = LexiconScorer(catalog.name_strings)
-        self.realm_scorer = LexiconScorer(catalog.realm_strings)
+        self.pool = pool
+        self._seen = None                # (picture, line) of the read under way – for the other scripts' crop
+        self._wide = None                # … its text lines found the script-neutral way (locate_text_wide)
+        self.views = []
+        for model in catalog.models:
+            rec = recognizer if model == MAIN else (pool.get(model) if pool is not None else None)
+            if rec is None:
+                continue
+            names, realms, alphabet = catalog.by_model[model]
+            self.views.append(_ModelView(model, rec, alphabet, LexiconScorer(names, alphabet),
+                                         LexiconScorer(realms, alphabet)))
+        self.name_scorer, self.realm_scorer = self.views[0].names, self.views[0].realms
 
     def score_lines(self, lines: TextLines) -> FrameResult | None:
         t0 = time.perf_counter()
         if lines.name is None or lines.name.size == 0:
             return None
-        pn = self.rec.probs(lines.name)
-        gn = self.rec.groups(pn)
-        name_lp = self.name_scorer.score(gn)
-        name_bp = best_path_logp(gn)
-        realm_lp, realm_bp, realm_text = None, None, ""
-        if lines.realm is not None and lines.realm.size:
-            pr = self.rec.probs(lines.realm)
-            gr = self.rec.groups(pr)
-            realm_lp = self.realm_scorer.score(gr)
-            realm_bp = best_path_logp(gr)
-            realm_text = self.rec.text(pr)
-        ni = self.name_scorer.index
-        ri = self.realm_scorer.index
+        read = {}                        # model -> what it made of the two lines
+        latin = lines
+        for view in self.views:
+            # the main model reads Latin capitals from the crop it always had; another script gets its own crop
+            lines = latin if view.model == MAIN else self._wide_lines(latin)
+            if lines.name is None or lines.name.size == 0:
+                continue
+            pn = view.rec.probs(lines.name)
+            gn = view.rec.wide_groups(pn, view.alphabet)
+            name_lp = view.names.score(gn)
+            name_bp = best_path_logp(gn)
+            pr, realm_lp, realm_bp = None, None, None
+            if lines.realm is not None and lines.realm.size:
+                pr = view.rec.probs(lines.realm)
+                gr = view.rec.wide_groups(pr, view.alphabet)
+                realm_lp = view.realms.score(gr)
+                realm_bp = best_path_logp(gr)
+            read[view.model] = (view, pn, name_lp, name_bp, pr, realm_lp, realm_bp)
         scores = {}
         best_name = {}
         for h in self.catalog.hypotheses:
-            s = name_lp[ni[h.name_key]]
+            got = read.get(h.model)
+            if got is None:
+                continue
+            view, _pn, name_lp, _bp, _pr, realm_lp, _rbp = got
+            s = name_lp[view.names.index[h.name_key]]
             if realm_lp is not None and h.realm_keys:
-                s = s + max(realm_lp[ri[r]] for r in h.realm_keys)
+                s = s + max(realm_lp[view.realms.index[r]] for r in h.realm_keys)
             key = (h.map_id, h.variant)
             if s > scores.get(key, -np.inf):
                 scores[key] = s
                 best_name[key] = h
         best = max(scores, key=scores.get) if scores else None
-        res = FrameResult(scores=scores, best=best, name_text=self.rec.text(pn), realm_text=realm_text)
+        # the texts for the log come from the model that read the best name (the main model when there is none)
+        view, pn, name_lp, name_bp, pr, realm_lp, realm_bp = read[best_name[best].model if best is not None
+                                                                  else self.views[0].model]
+        res = FrameResult(scores=scores, best=best, name_text=view.rec.text(pn),
+                          realm_text=view.rec.text(pr) if pr is not None else "")
         if best is not None:
             h = best_name[best]
-            res.name_fit = float(name_lp[ni[h.name_key]] - name_bp)
+            res.name_fit = float(name_lp[view.names.index[h.name_key]] - name_bp)
             if realm_lp is not None and h.realm_keys:
-                res.realm_fit = float(max(realm_lp[ri[r]] for r in h.realm_keys) - realm_bp)
+                res.realm_fit = float(max(realm_lp[view.realms.index[r]] for r in h.realm_keys) - realm_bp)
         res.ms = (time.perf_counter() - t0) * 1000
         return res
+
+    def _wide_lines(self, fallback):
+        if self._wide is None and self._seen is not None:
+            self._wide = locate_text_wide(*self._seen)
+        return self._wide if self._wide is not None else fallback
+
+    def probe(self) -> list:
+        """1.49 (gamelang): the last read's lines as the models of the scripts *not* in use read them –
+        [(name text, realm text)], greedy. Loads those models (the pool keeps them until ``drop``)."""
+        out = []
+        if self.pool is None or self._seen is None:
+            return out
+        lines = self._wide_lines(None)
+        if lines is None or lines.name is None or lines.name.size == 0:
+            return out
+        used = {v.model for v in self.views}
+        for model in MODEL_FILES:
+            rec = None if model in used or model == MAIN else self.pool.get(model)
+            if rec is None:
+                continue
+            realm = rec.text(rec.probs(lines.realm)) if lines.realm is not None and lines.realm.size else ""
+            out.append((rec.text(rec.probs(lines.name)), realm))
+        return out
 
     def read(self, img: np.ndarray, frame_w: int, frame_h: int, letterboxed: bool = False, bars=None):
         """Full pipeline on one captured ROI. Returns (Separator|None, FrameResult|None).
@@ -414,10 +564,12 @@ class BannerReader:
             sep = anchored_separator(frame_w, frame_h, bars) if letterboxed else None
             if sep is None:
                 return None, None
+            self._seen, self._wide = (img, sep), None
             res = self.score_lines(locate_text(img, sep))
             if res is None or res.name_fit < ANCHOR_FIT:
                 return None, None
             return sep, res
+        self._seen, self._wide = (img, sep), None
         lines = locate_text(img, sep)
         return sep, self.score_lines(lines)
 
@@ -466,6 +618,12 @@ def _softmax(d: dict) -> dict:
 
 MIN_NAME_CHARS = 3   # a frame whose name reads as (almost) nothing is no evidence: an empty read fitted "The Game"
                      # at -8.1 (> fit_ok) on a line in the lobby (user diagnosis 1.45.0)
+
+
+def name_chars(text: str) -> int:
+    """Letters and digits of a read name for MIN_NAME_CHARS – a Chinese, Japanese or Korean sign counts as two
+    (1.49: maps there have names of two signs, "血屋")."""
+    return sum((2 if ord(c) >= 0x2E80 else 1) for c in text if c.isalnum())
 
 
 @dataclass
@@ -531,7 +689,7 @@ class Accumulator:
             return None
         self.frames += 1
         self.last_texts = (fr.name_text, fr.realm_text)
-        if fr.name_fit < self.fit_ok or sum(c.isalnum() for c in fr.name_text) < MIN_NAME_CHARS:
+        if fr.name_fit < self.fit_ok or name_chars(fr.name_text) < MIN_NAME_CHARS:
             return None                   # unreadable / unknown text: no evidence (nothing read fits short names)
         self.good_frames += 1
         if fr.best is not None:
