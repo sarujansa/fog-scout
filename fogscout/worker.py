@@ -501,9 +501,11 @@ class DetectionWorker(threading.Thread):
                                             hit = hit or gamelang.vote(lang_votes, name_text, realm_text,
                                                                        maps_, active)
                                 if hit is not None:      # 1.48: the App ticks the language, a new catalog follows
+                                    # 1.49.1: the text first, then "said already" – the other way round this
+                                    # raised on None and no language was ever named (1.49)
+                                    read_as = lang_votes.get("text") or res.name_text
                                     lang_votes = None
-                                    self.post("game_language", code=hit[0], map_id=hit[1],
-                                              name_text=lang_votes.pop("text", "") or res.name_text)
+                                    self.post("game_language", code=hit[0], map_id=hit[1], name_text=read_as)
                             if d is not None:
                                 lobby = self.queue.lobby_for_round(tick)   # 1.8.71: also a lobby seen only briefly
                                 self.queue.round_started(tick)  # 1.8.43: the lobby is used up (same custom lobby next)

@@ -390,9 +390,12 @@ def _wide_line(region: np.ndarray, mask: np.ndarray, top: int, bottom: int, x_fr
     return crop if crop.size else None
 
 
-def locate_text_wide(img: np.ndarray, sep: Separator) -> TextLines:
+def locate_text_wide(img: np.ndarray, sep: Separator, latin: TextLines | None = None) -> TextLines:
     """``locate_text`` for the scripts that are not Latin capitals (see above): name above the line (up to three
-    lines, joined), realm below it."""
+    lines, joined), realm below it. ``latin``: what ``locate_text`` found for the same line, when the caller has
+    it. 1.49.1 (the user's Russian banners): the realm is small and grey, its band came out cut ("ПОМЕСТЬ",
+    "СТЬЕМАКМИЛЛАН" of "ПОМЕСТЬЕ МАКМИЛЛАН") while locate_text's crop held all of it – the wider of the two is
+    taken."""
     H, W = img.shape[:2]
     L = max(1, sep.length)
     cx0 = max(0, int(sep.x0 - 0.06 * L))
@@ -433,9 +436,11 @@ def locate_text_wide(img: np.ndarray, sep: Separator) -> TextLines:
             if top <= 0.06 * L and 0.013 * L <= bottom - top <= 0.09 * L:
                 realm_img = _wide_line(below, mb, top, bottom, 0, start_max)
                 break
+    rest = latin if latin is not None else locate_text(img, sep)
+    if rest.realm is not None and (realm_img is None or rest.realm.shape[1] > realm_img.shape[1]):
+        realm_img = rest.realm
     if name_img is None:                       # nothing found: the fixed place locate_text falls back to
-        rest = locate_text(img, sep)
-        return TextLines(name=rest.name, realm=realm_img if realm_img is not None else rest.realm, name_lines=0)
+        return TextLines(name=rest.name, realm=realm_img, name_lines=0)
     return TextLines(name=name_img, realm=realm_img, name_lines=n_lines)
 
 
@@ -534,7 +539,7 @@ class BannerReader:
 
     def _wide_lines(self, fallback):
         if self._wide is None and self._seen is not None:
-            self._wide = locate_text_wide(*self._seen)
+            self._wide = locate_text_wide(*self._seen, latin=fallback)
         return self._wide if self._wide is not None else fallback
 
     def probe(self) -> list:

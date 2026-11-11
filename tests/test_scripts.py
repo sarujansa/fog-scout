@@ -165,3 +165,53 @@ def test_a_character_list_with_windows_line_ends_reads_the_same(tmp_path):
     (tmp_path / (os.path.splitext(name)[0] + ".txt")).write_bytes(raw.replace(b"\n", b"\r\n"))
     crlf, plain = Recognizer(str(tmp_path / name)), Recognizer(src)
     assert crlf.chars == plain.chars and not any(c.endswith("\r") for c in crlf.chars) and "Я" in crlf.chars
+
+
+def test_the_worker_names_the_language_of_a_banner_and_then_reads_it(tmp_path, monkeypatch):
+    """1.49.1 (user: three Russian banners, no language ticked, no map – the worker raised right where it said
+    which language it had found: ``lang_votes`` was dropped before its text was read, so every find died in the
+    tick). The whole way: EN/DE ticked, a Russian banner on screen → event "game_language" (and no warning), the
+    new catalog the App sends → the same banner names its map."""
+    pytest.importorskip("onnxruntime")
+    import queue
+    import time
+    import numpy as np
+    from fogscout import config, worker
+    from fogscout.detector import ROI
+    meta, roi = _roi(os.path.join(ROOT, "tests", "data", "banner_synth", "ru-coal-tower.json"))
+    w, h = meta["frame"]
+    frame = np.zeros((h, w, 3), np.uint8)
+    frame[int(ROI[1] * h):int(ROI[1] * h) + roi.shape[0], int(ROI[0] * w):int(ROI[0] * w) + roi.shape[1]] = roi
+
+    class Source:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def current(self):
+            return frame
+
+    monkeypatch.setattr(worker, "ImageSource", Source)
+    events = queue.Queue()
+    wk = worker.DetectionWorker(ROOT, config.Settings(str(tmp_path / "settings.json")), Catalog(ROOT, ["en", "de"]),
+                                events, simulate=str(tmp_path), data_dir=str(tmp_path))
+    wk.start()
+    seen, language, found = [], None, None
+    try:
+        deadline = time.time() + 90                                # generous: shared CI runners
+        while found is None and time.time() < deadline:
+            try:
+                ev = events.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            seen.append(ev.kind)
+            if ev.kind == "game_language" and language is None:
+                language = ev.data
+                wk.set_catalog(Catalog(ROOT, ["en", "de", language["code"]]))      # what App._game_language does
+            elif ev.kind == "detected":
+                found = ev.data
+    finally:
+        wk.stop()
+        wk.join(timeout=10)
+    assert language is not None and (language["code"], language["map_id"]) == ("ru", "coal-tower"), seen
+    assert "УГОЛЬНАЯ" in language["name_text"] and "warn" not in seen and "error" not in seen, seen
+    assert found is not None and found["map_id"] == "coal-tower"
