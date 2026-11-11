@@ -58,3 +58,21 @@ def test_the_maps_page_finds_a_map_by_its_name_in_another_script(lang):
     coal = cat.maps["coal-tower"]
     assert coal in cat.search(coal.names["ru"][:5]) and coal in cat.search("coal")
     assert coal in cat.search(cat.maps["coal-tower"].names["ja"])
+
+
+def test_killer_names_follow_the_language_of_the_interface_and_discord_stays_english(lang):
+    """1.50 (user: "mach die Killernamen auch"): every listed killer has its name in every language of the interface
+    (from DBD's own Steam achievements) – except the four Steam has no "Adept" achievement for, which stay English."""
+    from fogscout import lobby
+    no_source = {"The Shape", "The Demogorgon", "The Cenobite", "The Judgment"}
+    assert set(lobby.KILLER_NAMES) == set(lobby.KILLERS) - no_source
+    langs = set(i18n.CODES) - {"en"}
+    assert all(set(v) == langs and all(v.values()) for v in lobby.KILLER_NAMES.values())
+    lang("ru")
+    assert lobby.killer_label("The Hillbilly") == "Деревенщина"            # as the user's Russian lobby shows it
+    assert lobby.killer_label("The Shape") == "Shape" and lobby.killer_label("Frank Stone") == "Frank Stone"
+    assert lobby.killer_label_en("The Hillbilly") == "Hillbilly"
+    lang("ja")
+    assert lobby.killer_label("The Nurse") == "ナース"
+    lang("en")
+    assert lobby.killer_label("The Nurse") == "Nurse"

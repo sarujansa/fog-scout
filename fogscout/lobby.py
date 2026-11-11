@@ -35,6 +35,7 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from .ocr import LexiconScorer, best_path_logp
+from .i18n import current as current_language
 from .textnorm import fold
 
 BUTTON_WORDS = ("PLAY", "CANCEL", "READY")
@@ -46,13 +47,60 @@ KILLERS = ("The Trapper", "The Wraith", "The Hillbilly", "The Nurse", "The Shape
            "The Blight", "The Twins", "The Trickster", "The Nemesis", "The Cenobite", "The Artist", "The Onryō",
            "The Dredge", "The Mastermind", "The Knight", "The Skull Merchant", "The Singularity", "The Xenomorph",
            "The Good Guy", "The Unknown", "The Lich", "The Dark Lord", "The Houndmaster", "The Ghoul",
-           "The Animatronic", "The Krasue", "The First")
+           "The Animatronic", "The Krasue", "The First", "The Slasher", "The Judgment")
 # Legendary outfits show their own name below the button instead of the killer's. Only outfits whose
 # killer is confirmed (official news / wiki); anything else the user assigns once in the statistics.
 SKINS = {"Murderous Grizzly": "The Oni", "The Minotaur": "The Oni", "Ferryman of the Underworld": "The Blight",
          "Naughty Bear": "The Trapper", "Frank Stone": "The Trapper", "Were-Elk": "The Huntress",
          "Hunk": "The Legion", "William Afton": "The Animatronic",
          "Lilith": "The Artist", "Belial": "The Dredge", "Mephisto": "The Nurse"}   # 1.8.58: Diablo collection
+# 1.50 (user: "mach die Killernamen auch"): the killers' names in the languages of the user interface, as the
+# game writes them – from DBD's own Steam achievements "Adept <killer>" in each Steam language (title, checked
+# against the description; where they differ, the description's form, Russian titles in another case put back
+# into the nominative). Not there: The Shape, The Demogorgon, The Cenobite (no such achievement) and The Judgment
+# (not translated yet) – they stay English. Short form without the article, like killer_label.
+KILLER_NAMES = {
+    'The Trapper': {"de": "Fallensteller", "it": "Cacciatore", "ru": "Охотник", "zh": "设陷者", "ja": "トラッパー", "ko": "트래퍼"},
+    'The Wraith': {"de": "Geist", "it": "Spettro", "ru": "Призрак", "zh": "幽灵", "ja": "レイス", "ko": "레이스"},
+    'The Hillbilly': {"de": "Hinterwäldler", "it": "Mandriano", "ru": "Деревенщина", "zh": "农场主", "ja": "ヒルビリー", "ko": "힐빌리"},
+    'The Nurse': {"de": "Krankenschwester", "it": "Infermiera", "ru": "Медсестра", "zh": "护士", "ja": "ナース", "ko": "너스"},
+    'The Hag': {"de": "Hexe", "it": "Strega", "ru": "Ведьма", "zh": "妖巫", "ja": "ハグ", "ko": "해그"},
+    'The Doctor': {"de": "Doktor", "it": "Dottore", "ru": "Доктор", "zh": "医生", "ja": "ドクター", "ko": "닥터"},
+    'The Huntress': {"de": "Jägerin", "it": "Cacciatrice", "ru": "Охотница", "zh": "女猎手", "ja": "ハントレス", "ko": "헌트리스"},
+    'The Cannibal': {"de": "Kannibale", "it": "Cannibale", "ru": "Каннибал", "zh": "食人魔", "ja": "カニバル", "ko": "카니발"},
+    'The Nightmare': {"de": "Albtraum", "it": "Incubo", "ru": "Кошмар", "zh": "梦魇", "ja": "ナイトメア", "ko": "나이트메어"},
+    'The Pig': {"de": "Schwein", "it": "Maiale", "ru": "Свинья", "zh": "门徒", "ja": "ピッグ", "ko": "피그"},
+    'The Clown': {"de": "Clown", "it": "Clown", "ru": "Клоун", "zh": "小丑", "ja": "クラウン", "ko": "클라운"},
+    'The Spirit': {"de": "Gespenst", "it": "Spirito", "ru": "Дух", "zh": "怨灵", "ja": "スピリット", "ko": "스피릿"},
+    'The Legion': {"de": "Legion", "it": "Legione", "ru": "Легион", "zh": "军团", "ja": "軍団", "ko": "군대"},
+    'The Plague': {"de": "Seuche", "it": "Malattia", "ru": "Чума", "zh": "瘟疫", "ja": "プレイグ", "ko": "역병"},
+    'The Ghost Face': {"de": "Ghost Face", "it": "Ghost Face", "ru": "Гоуст Фейс", "zh": "鬼面", "ja": "ゴーストフェイス", "ko": "고스트 페이스"},
+    'The Oni': {"de": "Oni", "it": "Oni", "ru": "Они", "zh": "鬼武士", "ja": "鬼", "ko": "악귀"},
+    'The Deathslinger': {"de": "Todesbote", "it": "Araldo di Morte", "ru": "Стрелок", "zh": "死亡枪手", "ja": "デススリンガー", "ko": "데스슬링거"},
+    'The Executioner': {"de": "Henker", "it": "Boia", "ru": "Палач", "zh": "处刑者", "ja": "エクセキューショナー", "ko": "처형자"},
+    'The Blight': {"de": "Fäule", "it": "Piaga", "ru": "Мор", "zh": "枯萎者", "ja": "ブライト", "ko": "블라이트"},
+    'The Twins': {"de": "Zwillinge", "it": "Gemelli", "ru": "Близнецы", "zh": "连体婴", "ja": "ツインズ", "ko": "쌍둥이"},
+    'The Trickster': {"de": "Trickster", "it": "Ingannatore", "ru": "Трюкач", "zh": "骗术师", "ja": "トリックスター", "ko": "트릭스터"},
+    'The Nemesis': {"de": "Nemesis", "it": "Nemesis", "ru": "Немезис", "zh": "Nemesis", "ja": "ネメシス", "ko": "네메시스"},
+    'The Artist': {"de": "Künstlerin", "it": "Artista", "ru": "Художница", "zh": "艺术家", "ja": "アーティスト", "ko": "아티스트"},
+    'The Onryō': {"de": "Onryō", "it": "Onryō", "ru": "Онрё", "zh": "贞子", "ja": "怨霊", "ko": "원령"},
+    'The Dredge': {"de": "Dredsche", "it": "Draga", "ru": "Грязь", "zh": "影魔", "ja": "ドレッジ", "ko": "드레지"},
+    'The Mastermind': {"de": "Mastermind", "it": "Mastermind", "ru": "Кукловод", "zh": "操纵者", "ja": "ウェスカー", "ko": "마스터마인드"},
+    'The Knight': {"de": "Ritter", "it": "Cavaliere", "ru": "Рыцарь", "zh": "恶骑士", "ja": "ナイト", "ko": "기사"},
+    'The Skull Merchant': {"de": "Schädelhändlerin", "it": "Mercante di teschi", "ru": "Торговка Черепами", "zh": "白骨商人", "ja": "スカルマーチャント", "ko": "해골 상인"},
+    'The Singularity': {"de": "Singularität", "it": "Singolarità", "ru": "Сингулярность", "zh": "奇点", "ja": "シンギュラリティ", "ko": "특이점"},
+    'The Xenomorph': {"de": "Xenomorph", "it": "Xenomorfo", "ru": "Ксеноморф", "zh": "异形", "ja": "ゼノモーフ", "ko": "제노모프"},
+    'The Good Guy': {"de": "Good Guy", "it": "Tipo Bello", "ru": "Хороший Парень", "zh": "好孩子", "ja": "グッドガイ", "ko": "착한 아이"},
+    'The Unknown': {"de": "Unbekannte", "it": "Ignoto", "ru": "Неведомое", "zh": "未知恶物", "ja": "アンノウン", "ko": "미지의 존재"},
+    'The Lich': {"de": "Lich", "it": "Lich", "ru": "Лич", "zh": "巫妖", "ja": "リッチ", "ko": "리치"},
+    'The Dark Lord': {"de": "Dunkler Graf", "it": "Signore oscuro", "ru": "Темный Властелин", "zh": "黑暗之主", "ja": "ダークロード", "ko": "어둠의 군주"},
+    'The Houndmaster': {"de": "Hundegebieterin", "it": "Signora dei segugi", "ru": "Егерь", "zh": "训犬师", "ja": "ハウンドマスター", "ko": "조련사"},
+    'The Ghoul': {"de": "Ghul", "it": "Ghoul", "ru": "Гуль", "zh": "食尸鬼", "ja": "喰種", "ko": "구울"},
+    'The Animatronic': {"de": "Animatronic", "it": "Animatronic", "ru": "Аниматроник", "zh": "电子玩偶", "ja": "アニマトロニック", "ko": "애니매트로닉스"},
+    'The Krasue': {"de": "Krasue", "it": "Krasue", "ru": "Красу", "zh": "克拉苏", "ja": "ガスー", "ko": "끄라스"},
+    'The First': {"de": "Erste", "it": "Primo", "ru": "Первый", "zh": "一号", "ja": "ファースト", "ko": "퍼스트"},
+    'The Slasher': {"de": "Schlitzer", "it": "Squartatore", "ru": "Слэшер", "zh": "杀人魔", "ja": "スラッシャー", "ko": "슬래셔"},
+}
 KILLER_OK = -3.0          # listed killers fit about +1, a killer missing from the list -22 and worse
 FUZZY_OK, FUZZY_GAP = 0.88, 0.12   # text as read vs a listed name (without "The"): this alike, and clearly the best
 KILLER_CATEGORIES = ("BRUTALITY", "DEVIOUSNESS", "HUNTER", "SACRIFICE")
@@ -98,7 +146,14 @@ def plain_name(text: str) -> str:
 
 
 def killer_label(name: str) -> str:
-    """Short form for tables: "The Nurse" -> "Nurse"."""
+    """Short form for tables: "The Nurse" -> "Nurse" – 1.50: in the language of the user interface ("Медсестра")
+    when KILLER_NAMES has it; what is stored and matched stays the English name."""
+    own = (KILLER_NAMES.get(name) or {}).get(current_language())
+    return own or killer_label_en(name)
+
+
+def killer_label_en(name: str) -> str:
+    """The English short form – for what other people read (Discord status, YouTube titles)."""
     return name[4:] if name.startswith("The ") else name
 
 

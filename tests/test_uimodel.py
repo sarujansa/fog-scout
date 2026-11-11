@@ -731,14 +731,14 @@ def test_the_clips_sub_tab_lists_filters_and_deletes_the_programs_clips(app_root
         def rows():
             return [t.item(i, "values") for i in t.get_children()]
         assert [(r[1], r[2], r[3], r[4]) for r in rows()] == [("Sprithimmel", "Survivor", "Sofort-Clip", "–"),
-                                                               ("Kohlelager", "Nurse", "Clip", "00:28")]
+                                                               ("Kohlelager", "Krankenschwester", "Clip", "00:28")]
         assert "holiday.mp4" not in [r[6] for r in rows()] and "2 von 2 Clips" in app.clip_summary_var.get()
-        assert [lbl for _k, lbl in app._clip_killers] == ["Alle Killer", "Nurse"]
+        assert [lbl for _k, lbl in app._clip_killers] == ["Alle Killer", "Krankenschwester"]
         app.clip_role_var.set("Survivor")
         app._clips_render()
         assert [r[1] for r in rows()] == ["Sprithimmel"] and "1 von 2 Clips" in app.clip_summary_var.get()
         app.clip_role_var.set("Alle Rollen")
-        app.clip_killer_var.set("Nurse")
+        app.clip_killer_var.set("Krankenschwester")
         app._clips_render()
         assert [r[1] for r in rows()] == ["Kohlelager"]
         app.clip_killer_var.set("Alle Killer")
@@ -802,7 +802,7 @@ def test_the_recordings_tab_lists_the_index_and_acts_on_the_marked_row(app_root)
         t = app.rec_table
         rows = [t.item(i, "values") for i in t.get_children()]                          # 1.11.5: farming counts
         assert [r[1] for r in rows] == ["Sprithimmel", "Kohlelager"]                     # newest first
-        assert rows[1][2] == "Nurse" and rows[1][4] == "10:00" and rows[1][6] == "⚑2" and rows[0][2].endswith("Farming")
+        assert rows[1][2] == "Krankenschwester" and rows[1][4] == "10:00" and rows[1][6] == "⚑2" and rows[0][2].endswith("Farming")
         assert rows[0][5] == "2 KB"                                                        # size column
         assert "2 Aufnahmen" in app.rec_summary_var.get() and app.rec_hint_var.get() == str(folder)
         assert app.rec_play_btn.cget("state") == "disabled"
@@ -877,7 +877,7 @@ def test_farming_rounds_have_a_tab_of_their_own_whatever_the_role_filter(app_roo
         app._stats_render()
         assert list(app.stats_farm.get_children()) == [repr(t2), repr(t1)]   # newest first
         row = app.stats_farm.item(repr(t1), "values")
-        assert row[1] == "Kohlelager" and "Nurse" in row[4] and row[5] == "–"   # no official match: no BP
+        assert row[1] == "Kohlelager" and "Krankenschwester" in row[4] and row[5] == "–"   # no official match: no BP
         # 1.8.85 (user: "Wartezeit, wenn's instant ist, kann man das hinschreiben"): a farming round without a
         # measured search time filled its lobby at once; a normal round without one stays unknown
         assert row[3] == "sofort" and row[6] == "–"
@@ -1239,7 +1239,7 @@ def test_the_export_dialog_filters_rounds_and_writes_csv_or_a_text_list(app_root
         assert app.settings.get("export_columns") == ["start", "map", "killer", "kills"]
         assert app.settings.get("export_format") == "text"
         # the round with match data carries the page's layout ("Coal Tower I", official.correct_maps), as the tables do
-        assert app.export_preview_var.get().splitlines() == [roundexport.fmt_when(t1) + " · Kohlelager I · Nurse · 1",
+        assert app.export_preview_var.get().splitlines() == [roundexport.fmt_when(t1) + " · Kohlelager I · Krankenschwester · 1",
                                                              roundexport.fmt_when(t2) + " · Kohlelager"]
         app._export_copy()
         assert copied[-1].splitlines() == app.export_preview_var.get().splitlines()
@@ -1258,7 +1258,7 @@ def test_the_export_dialog_filters_rounds_and_writes_csv_or_a_text_list(app_root
         app._export_refresh()
         app._export_save(str(app_root / "out.csv"))
         text = (app_root / "out.csv").read_text(encoding="utf-8-sig").splitlines()
-        assert text[0] == "Start;Map;Killer;Kills" and len(text) == 4 and text[2].endswith(";Kohlelager I;Nurse;1")
+        assert text[0] == "Start;Map;Killer;Kills" and len(text) == 4 and text[2].endswith(";Kohlelager I;Krankenschwester;1")
         assert app.export_msg_var.get().startswith("3 Runden exportiert")
         app._qt_event("dlg_close", str(app._export_dlg))                  # X / Esc of the window
         assert not app._export_dlg.winfo_exists()
@@ -1423,7 +1423,7 @@ def test_the_builds_tab_lists_the_own_loadout_with_its_results(app_root):
         assert rows["Lethal Pursuer"][1:6] == ("Perk", "Killer", 2, "100%", "Ø 3.00")
         assert rows["Spencer's Last Breath"][1] == "Kraft/Item"
         builds_rows = [app.stats_builds.item(c, "values") for c in app.stats_builds.get_children()]
-        assert len(builds_rows) == 1 and builds_rows[0][1:] == ("Nurse", 2, "Ø 3.00")
+        assert len(builds_rows) == 1 and builds_rows[0][1:] == ("Krankenschwester", 2, "Ø 3.00")
         assert app.stats_build_var.get() == ""
         # 1.11.14: the same selection again takes the kept rows; a new round (another join) works them out anew
         import fogscout.builds as builds_mod
@@ -2461,7 +2461,7 @@ def test_rounds_with_a_farming_partner_count_as_farming_by_a_right_click_on_the_
         app._stats_select("Gegner")
         app._stats_render()
         rows = lambda: [app.stats_opp.item(c, "values")[0] for c in app.stats_opp.get_children()]   # noqa: E731
-        assert rows() == ["Slasher", "Nurse"] and app.stats_opp.get_children()[0] == "killer\tSlasher"   # by name
+        assert rows() == ["Schlitzer", "Krankenschwester"] and app.stats_opp.get_children()[0] == "killer\tSlasher"   # by name
         app.stats_opp.selection_set("killer\tSlasher")
         items = app._stats_opp_menu_items()
         assert [it[0] for it in items] == ["opp_on:Slasher"] and "Farming" in items[0][1]
@@ -2472,20 +2472,20 @@ def test_rounds_with_a_farming_partner_count_as_farming_by_a_right_click_on_the_
         # 1.8.81: the partner stays listed; 1.11.5: in "Begegnungen" as long as farming counts, with "Farming
         # ausblenden" its rounds move into the column "Farming"
         vals = lambda: {c.split("\t")[1]: app.stats_opp.item(c, "values") for c in app.stats_opp.get_children()}  # noqa: E731
-        assert rows() == ["Slasher", "Nurse"] and vals()["Slasher"][2] == 1 and vals()["Slasher"][7] == "–"
+        assert rows() == ["Schlitzer", "Krankenschwester"] and vals()["Slasher"][2] == 1 and vals()["Slasher"][7] == "–"
         assert vals()["The Nurse"][2] == 1 and vals()["The Nurse"][7] == "–"
         assert any("„Slasher“ gilt jetzt als Farming-Gegner – 1 Runden" in e[2] for e in app._log_entries)
         assert "Slasher" in app.farm_opp_var.get()
         app.settings.set("hide_farming", True)
         app._stats_render()
-        assert rows() == ["Slasher", "Nurse"] and vals()["Slasher"][2] == 0 and vals()["Slasher"][7] == 1   # not twice
+        assert rows() == ["Schlitzer", "Krankenschwester"] and vals()["Slasher"][2] == 0 and vals()["Slasher"][7] == 1   # not twice
         app.settings.set("hide_farming", False)
         app._stats_render()
         app.stats_opp.selection_set("killer\tThe Nurse")
         assert [it[0] for it in app._stats_opp_menu_items()] == ["opp_on:The Nurse"]
         app._stats_opp_menu_act("opp_off:Slasher")                        # not marked: taken off again
         assert app.settings.get("farming_opponents") == [] and [r.farming for r in app._joined().rounds] == [False, False]
-        assert rows() == ["Slasher", "Nurse"] and "(keine)" in app.farm_opp_var.get()
+        assert rows() == ["Schlitzer", "Krankenschwester"] and "(keine)" in app.farm_opp_var.get()
     finally:
         app.quit()
 

@@ -269,7 +269,9 @@ def test_killer_missing_from_the_list_is_kept_as_read(reader, monkeypatch):
     assert view(r, "k_search_nurse").killer == "The Nurse"                  # read text, not the lexicon
     assert r.killers.strings and "THENURSE" not in r.killers.strings
     assert lobby.plain_name("THE  NEW-ONE!") == "The New One"
-    assert lobby.killer_label("The Nurse") == "Nurse" and lobby.killer_label("Frank Stone") == "Frank Stone"
+    assert lobby.killer_label_en("The Nurse") == "Nurse" and lobby.killer_label("Frank Stone") == "Frank Stone"
+    # 1.50: shown in the language of the user interface (German in the tests), English for Discord/YouTube
+    assert lobby.killer_label("The Nurse") == "Krankenschwester" and lobby.killer_label("The Shape") == "Shape"
 
 
 def K(kind, name, elapsed=None):

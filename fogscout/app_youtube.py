@@ -10,7 +10,7 @@ from . import launch, obsrec, spotify, ytupload
 from . import uimodel as ui
 from .capture import foreground_root, is_game_window
 from .i18n import _
-from .lobby import killer_label
+from .lobby import killer_label_en
 
 FOLDER_EVERY_S = 5.0      # recorder.folder() asks every drive letter on Windows – not four times a second
 
@@ -281,7 +281,7 @@ class YouTubeUpload:
 
     # ---------------------------------------------------------- what the recordings tab asks for
     def _yt_who(self, role, killer) -> str:
-        return killer_label(self._killer_of(killer)) if role == "killer" and killer else (self._role_name(role) or "")
+        return killer_label_en(self._killer_of(killer)) if role == "killer" and killer else (self._role_name(role) or "")
 
     def _yt_enqueue(self, kind: str, rel: str, label: str, role: str, killer: str, t: float, seconds: float = 0.0):
         """A file of the recordings folder into the upload queue (nothing twice)."""

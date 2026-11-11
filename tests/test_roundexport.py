@@ -75,7 +75,7 @@ def test_cells_table_csv_and_text():
     row = rx.table([r], {id(r): m}, keys, names)[0]
     # 1.50: the map in the language of the user interface (German in the tests)
     assert dict(zip(keys, row)) == {"start": "23.10.2026 18:32", "end": "23.10.2026 18:44", "duration": "12:34",
-                                    "map": "Kohlelager", "realm": "MacMillan", "role": "Killer", "killer": "Nurse",
+                                    "map": "Kohlelager", "realm": "MacMillan", "role": "Killer", "killer": "Krankenschwester",
                                     "kind": "Normal", "wait": "01:23", "region": "Frankfurt", "ping": "47",
                                     "kills": "1", "escaped": "", "bp": "31500", "opponents": "Dwight Fairfield, Meg Thomas",
                                     "balance": "", "stalls": "", "fps": "", "mode": "", "character": "",
