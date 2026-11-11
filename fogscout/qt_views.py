@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QPlainTex
                                QVBoxLayout, QWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QToolTip)
 
 from . import qt_theme
+from .catalog import shown
 from .qt_layouts import FlowRow, TileGrid
 from .i18n import _
 from .qt_common import _label, _card, _set, _tip
@@ -859,7 +860,7 @@ class MapBars(QWidget):
             y = i * self.ROW
             mid = y + self.ROW / 2
             p.setPen(QColor(c["fg"]))
-            p.drawText(0, y, name_w, self.ROW, Qt.AlignLeft | Qt.AlignVCenter, fm.elidedText(name, Qt.ElideRight, name_w))
+            p.drawText(0, y, name_w, self.ROW, Qt.AlignLeft | Qt.AlignVCenter, fm.elidedText(shown(name), Qt.ElideRight, name_w))
             length = max(3.0, bar_w * n / self._max)
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(c["handle"]))      # map bars: a plain count, neutral – 1.25: >= 3:1 (was 2.4/2.8:1)
@@ -915,7 +916,7 @@ class Heatmap(QWidget):
             y = self.HEAD + i * self.ROW
             p.setPen(QColor(c["fg"]))
             p.drawText(QRectF(0, y, name_w - 8, self.ROW), Qt.AlignLeft | Qt.AlignVCenter,
-                       fm.elidedText(m, Qt.ElideRight, name_w - 8))
+                       fm.elidedText(shown(m), Qt.ElideRight, name_w - 8))
             for j, k in enumerate(d.columns):
                 rect = QRectF(name_w + j * cell_w + 1, y + 1, cell_w - 2, self.ROW - 2)     # 2 px surface gap
                 cell = d.cells.get((m, k))
@@ -932,7 +933,7 @@ class Heatmap(QWidget):
                 p.drawRoundedRect(rect, 4, 4)
                 p.setPen(ink_on(fill))
                 p.drawText(rect, Qt.AlignCenter, f"{avg:.1f}")
-                self._hits.append((rect, _("{map} · {killer}: Ø {kills} Kills ({n} Runden)", map=m, killer=k,
+                self._hits.append((rect, _("{map} · {killer}: Ø {kills} Kills ({n} Runden)", map=shown(m), killer=k,
                                            kills=f"{avg:.1f}", n=n), m, k))
         # legend: the ramp from 0 to 4 kills
         ly = self.HEAD + len(d.rows) * self.ROW + 10

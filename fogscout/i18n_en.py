@@ -546,6 +546,7 @@ EN = {
     # ------------------------------------------------------------------ tab statistics
     "Statistik": "Statistics",
     "Maps": "Maps",
+    "Log": "Log",                  # 1.50: the page's name, translated in the other languages
     "Map": "Map",
     "Runden": "Rounds",
     "Ø Dauer": "Avg. length",

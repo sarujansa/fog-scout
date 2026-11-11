@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QFrame, QHBoxLayout, 
                                QPlainTextEdit, QPushButton, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QScrollArea,
                                QSizePolicy, QStackedWidget, QVBoxLayout, QWidget)
 
-from . import qt_theme, thumbs
+from . import i18n, qt_theme, thumbs
 from .qt_layouts import FlowRow
 from .i18n import N_, _
 from .mapnotes import MAX_CHARS as NOTE_CHARS
@@ -168,8 +168,9 @@ class MapsPage(QWidget):
         # another resize), made in a thread, kept on disk
         ratio = self.devicePixelRatioF()
         self._loader = thumbs.Loader((round((TILE_W - 24) * ratio), round((TILE_PIC - 8) * ratio)), cache_dir,
-                                     workers=thumbs.WORKERS, by_content=True)        # 1.38.45: see thumbs
-        page, lay = _scroll_page("Maps", scroll=False, page_key="maps")
+                                     workers=thumbs.WORKERS, by_content=True,         # 1.38.45: see thumbs
+                                     bare=i18n.current() != "en")      # 1.50: the name below the tile is translated
+        page, lay = _scroll_page(_("Maps"), scroll=False, page_key="maps")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(page)

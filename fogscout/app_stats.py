@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from . import builds, dashboard, history, launch, mapnotes, official, overview, recindex, records, regions, sysinfo
 from . import uimodel as ui
 from .capture import foreground_root, is_game_window
+from .catalog import shown
 from .i18n import N_, _
 from .lobby import KILLERS, killer_label
 from .textnorm import fold
@@ -264,10 +265,10 @@ class StatsTab:
         mr = ui.Frame(sel)                                  # 1.38.26 (F3): a wrongly read map, corrected here
         mr.pack(fill="x", pady=(6, 0))
         ui.Label(mr, text=_("Map der Runde:")).pack(side="left")
-        self._stats_map_choices = sorted(self.catalog.maps.values(), key=lambda m: m.name.lower())
+        self._stats_map_choices = sorted(self.catalog.maps.values(), key=lambda m: m.title.lower())
         self.stats_round_map_var = ui.StringVar(value="")
         self.stats_round_map_cb = ui.Combobox(mr, textvariable=self.stats_round_map_var, state="disabled",
-                                               width=22, values=[m.name for m in self._stats_map_choices])
+                                               width=22, values=[m.title for m in self._stats_map_choices])
         self.stats_round_map_cb.pack(side="left", padx=(6, 0))
         self.stats_round_map_btn = ui.Button(mr, text=_("Map setzen"), command=self._stats_set_map,
                                               state="disabled")
@@ -759,8 +760,8 @@ class StatsTab:
         self.stats_killer_cb.configure(values=[lbl for _k, lbl in self._stats_killers])
         self.stats_killer_var.set(dict(self._stats_killers)[killer])
         wmap = next((k for k, lbl in self._stats_maps_f if lbl == self.stats_map_var.get()), None)
-        self._stats_maps_f = [(None, _("Alle Maps"))] + [(m, m) for m in sorted({r.map for r in all_rounds},
-                                                                                 key=str.lower)]
+        self._stats_maps_f = [(None, _("Alle Maps"))] + [(m, shown(m)) for m in sorted({r.map for r in all_rounds},
+                                                                                 key=lambda x: shown(x).lower())]
         if wmap not in [k for k, _lbl in self._stats_maps_f]:
             wmap = None
         self.stats_map_cb.configure(values=[lbl for _k, lbl in self._stats_maps_f])
@@ -806,7 +807,7 @@ class StatsTab:
         ghosts = [r for r in j.phantoms if since is None or r.t >= since]
         if ghosts:
             notes[1].append(_("{n} × Map mitten im Match falsch erkannt (laut Stats-Seite lief da schon ein Match) – "
-                              "nicht gezählt. Zuletzt: {map}, {when}.", n=len(ghosts), map=ghosts[-1].map,
+                              "nicht gezählt. Zuletzt: {map}, {when}.", n=len(ghosts), map=shown(ghosts[-1].map),
                               when=time.strftime("%d.%m.%y %H:%M", time.localtime(ghosts[-1].t))))
         pairs = [(r, off[id(r)]) for r in rounds if id(r) in off and (role == "custom" or not r.custom)]
         # 1.3.5: only the sub-tab on display is drawn now, the others when they are opened – with 5000 rounds all
@@ -867,7 +868,7 @@ class StatsTab:
         found = self._stats_farm_candidates()
         if found:
             self.stats_farm_var.set(_("{n} Runden sehen nach Farming aus: {reasons}. Zuletzt: {map}, {when}.",
-                                      n=len(found), reasons=self._stats_farm_reasons(found), map=found[-1].map,
+                                      n=len(found), reasons=self._stats_farm_reasons(found), map=shown(found[-1].map),
                                       when=time.strftime("%d.%m.%y %H:%M", time.localtime(found[-1].t))))
             self.stats_farm_row.pack(anchor="w", fill="x", after=self.stats_dash, pady=(6, 0))
         else:
@@ -886,7 +887,7 @@ class StatsTab:
         rows = []
         for name, n, avg, _longest in history.per_map(rounds):
             g = res.get(name, {})
-            rows.append((name, n, *roles.get(name, (0, 0)), official.mean(g.get("kills")),
+            rows.append((shown(name), n, *roles.get(name, (0, 0)), official.mean(g.get("kills")),
                          official.mean(g.get("escaped")), avg, official.mean(g.get("bp"))))
         col, desc = self._stats_sort
         idx = {"map": 0, "n": 1, "k": 2, "s": 3, "kills": 4, "esc": 5, "avg": 6, "bp": 7}[col]
@@ -995,7 +996,7 @@ class StatsTab:
             m = off.get(id(r))
             role = killer_label(r.killer) if r.role == "killer" and r.killer else self._role_name(r.role) or "–"
             t.insert("", "end", iid=repr(r.t), values=(
-                time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), r.map, fmt_duration(r.seconds),
+                time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), shown(r.map), fmt_duration(r.seconds),
                 self._wait_text(r), role,
                 _bp(m.bp) if m is not None and m.bp > 0 else "–",
                 self._server_cell(r)))
@@ -1285,7 +1286,7 @@ class StatsTab:
                                                       else self._role_name(r.role) or "–")
             if r.farming and not r.custom:
                 role += " · " + _("Farming")
-            t.insert("", "end", iid=repr(r.t), values=(time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), r.map,
+            t.insert("", "end", iid=repr(r.t), values=(time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), shown(r.map),
                                                        fmt_duration(r.seconds),
                                                        self._wait_text(r), role,
                                                        self._official_result(off.get(id(r))),
@@ -1307,7 +1308,7 @@ class StatsTab:
         for key, v, r in peaks:
             name, suffix = SYS_PEAK_ROWS[key]
             value = fmt_duration(v) if key in history.SYS_SUMS else (f"{v:.1f}" if "_used" in key else f"{v:.0f}") + suffix
-            t.insert("", "end", values=(_(name), value, time.strftime("%d.%m. %H:%M", time.localtime(r.t)), r.map))
+            t.insert("", "end", values=(_(name), value, time.strftime("%d.%m. %H:%M", time.localtime(r.t)), shown(r.map)))
         if peaks:
             self.stats_sys_peaks_box.pack(fill="x", pady=(8, 0), after=self.stats_sys_tiles)
         else:
@@ -1644,7 +1645,7 @@ class StatsTab:
         name = _("Custom Game") if role == "custom" else self._role_name(role)
         if len(done) == 1:
             r = done[0]
-            self._log(_("Rolle für {map} ({when}) auf {role} geändert.", map=r.map,
+            self._log(_("Rolle für {map} ({when}) auf {role} geändert.", map=shown(r.map),
                         when=time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), role=name), "System")
         elif done:
             self._log(_("Rolle für {n} Runden auf {role} geändert.", n=len(done), role=name), "System")
@@ -1675,8 +1676,8 @@ class StatsTab:
         if len(done) == 1:
             r = done[0]
             when = time.strftime("%d.%m.%y %H:%M", time.localtime(r.t))
-            self._log(_("{map} ({when}) zählt jetzt als Farming-Runde.", map=r.map, when=when) if r.farming
-                      else _("{map} ({when}) zählt wieder als normale Runde.", map=r.map, when=when), "System")
+            self._log(_("{map} ({when}) zählt jetzt als Farming-Runde.", map=shown(r.map), when=when) if r.farming
+                      else _("{map} ({when}) zählt wieder als normale Runde.", map=shown(r.map), when=when), "System")
         elif done:
             self._log(_("{n} Runden zählen jetzt als Farming-Runden.", n=len(done)) if on
                       else _("{n} Runden zählen wieder als normale Runden.", n=len(done)), "System")
@@ -1733,7 +1734,7 @@ class StatsTab:
             m = off.get(id(r))
             opp = ", ".join(killer_label(o.name) if o.role == "killer" else o.name
                             for o in official.opponents([(r, m)])[:2]) if m is not None else "–"
-            t.insert("", "end", iid=repr(r.t), values=(time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), r.map,
+            t.insert("", "end", iid=repr(r.t), values=(time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), shown(r.map),
                                                        fmt_duration(r.seconds), role, opp or "–",
                                                        self._stats_farm_why(r)))
         kept = [k for k in keep if t.exists(k)]
@@ -1815,7 +1816,7 @@ class StatsTab:
             self._log(_("Runde konnte nicht gelöscht werden: {error}", error=e), "Fehler")
             return
         if len(gone) == 1:
-            self._log(_("Runde gelöscht: {map} ({when}).", map=gone[0].map,
+            self._log(_("Runde gelöscht: {map} ({when}).", map=shown(gone[0].map),
                         when=time.strftime("%d.%m.%y %H:%M", time.localtime(gone[0].t))), "System")
         elif gone:
             self._log(_("{n} Runden gelöscht.", n=len(gone)), "System")
@@ -1836,7 +1837,7 @@ class StatsTab:
             self._log(_("Killer konnte nicht gespeichert werden: {error}", error=e), "Fehler")
             return
         if r is not None:
-            self._log(_("Killer für {map} ({when}) auf {killer} gesetzt.", map=r.map,
+            self._log(_("Killer für {map} ({when}) auf {killer} gesetzt.", map=shown(r.map),
                         when=time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), killer=killer_label(target)),
                       "System")
         self.stats_round_killer_var.set("")
@@ -1846,7 +1847,7 @@ class StatsTab:
         """1.38.26 (F3): the map of the rounds marked in "Letzte Runden" – a banner read as the wrong map. The
         recording keeps its file name; statistics, overlay record and the official join follow the new map."""
         ts = self._stats_selected_ts()
-        target = next((m for m in self._stats_map_choices if m.name == self.stats_round_map_var.get()), None)
+        target = next((m for m in self._stats_map_choices if m.title == self.stats_round_map_var.get()), None)
         if not ts or target is None:
             return
         try:
@@ -2198,7 +2199,7 @@ class StatsTab:
                            n=len(seen) + len(missed), share=f"{len(seen) / (len(seen) + len(missed)):.0%}"))
         if missed:
             lines.append(_("Nicht erkannt (oder das Programm lief nicht): {list}", list=", ".join(
-                f"{m.map} {time.strftime('%d.%m. %H:%M', time.localtime(m.t))}" for m in missed[::-1][:5])
+                f"{shown(m.map)} {time.strftime('%d.%m. %H:%M', time.localtime(m.t))}" for m in missed[::-1][:5])
                 + (" …" if len(missed) > 5 else "")))
         saved = {id(r) for r in j.rescued}
         ends = [official.end_offset(r, j.off[id(r)]) for r in j.rounds if id(r) in j.off and id(r) not in saved]
@@ -2222,7 +2223,7 @@ class StatsTab:
             r, m = j.other[-1]
             lines.append(_("⚠ {n}× andere Map als erkannt, zuletzt {when}: erkannt {ours}, laut Seite {theirs}.",
                            n=len(j.other), when=time.strftime("%d.%m. %H:%M", time.localtime(r.t)),
-                           ours=j.fixed.get(id(r), r.map), theirs=m.map))
+                           ours=shown(j.fixed.get(id(r), r.map)), theirs=shown(m.map)))
         bundled = official.script_version(os.path.join(os.path.dirname(official.__file__), official.SCRIPT))
         if 0 < getattr(self, "_off_script", 0) < bundled:
             lines.append(_("⚠ Das Userscript ist veraltet (Version {old}, aktuell {new}) – „Userscript kopieren“ und "

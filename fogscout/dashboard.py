@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 import math
 
 from . import bloodpoints, history, official
+from .catalog import shown
 from .i18n import _, current as _language
 from .textnorm import fmt_duration
 
@@ -124,7 +125,7 @@ def bp_tiles(pairs, role_label=lambda r: r) -> list:
            Tile(_("BP/h mit Wartezeit"), _bp(b.per_hour_waiting) if b.per_hour_waiting else "–",
                 _("Match und Suche zusammen"))]
     best_r, best_m = max(((r, m) for r, m in pairs if m.bp > 0), key=lambda p: (p[1].bp, p[0].t))
-    sub = best_r.map + " · " + time.strftime("%d.%m.%y", time.localtime(best_r.t))
+    sub = shown(best_r.map) + " · " + time.strftime("%d.%m.%y", time.localtime(best_r.t))
     if best_r.role in ("killer", "survivor"):
         sub += " · " + role_label(best_r.role)
     out.append(Tile(_("Beste Runde"), _bp(best_m.bp), sub, open=rounds_target([best_r.t])))

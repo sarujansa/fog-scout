@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass
 
 from . import official
+from .catalog import shown
 from .dashboard import Tile, play_time, rounds_target
 from .i18n import _
 from .textnorm import fmt_duration
@@ -238,14 +239,14 @@ def tiles(rounds, pairs, killer_name=None) -> list:
                         open=rounds_target([r.t for r in rounds if ses[0] <= r.t <= ses[1]])))
     r = longest_round(rounds)
     if r is not None:
-        out.append(Tile(_("Längste Runde"), fmt_duration(r.seconds), f"{r.map} · {_date(r.t)}",
+        out.append(Tile(_("Längste Runde"), fmt_duration(r.seconds), f"{shown(r.map)} · {_date(r.t)}",
                         open=rounds_target([r.t])))
     fast = fastest_four(pairs)
     if fast is not None:
         r, _m, seconds = fast
         who = (killer_name or str)(r.killer) if r.killer else ""
         out.append(Tile(_("Schnellste 4K"), fmt_duration(seconds),
-                        " · ".join(x for x in (who, r.map, _date(r.t)) if x), open=rounds_target([r.t])))
+                        " · ".join(x for x in (who, shown(r.map), _date(r.t)) if x), open=rounds_target([r.t])))
     return out
 
 

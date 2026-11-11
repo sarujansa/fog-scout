@@ -747,6 +747,8 @@ T = {
         'エラー：{error}',
     'Statistik':
         '統計',
+    'Log':
+        'ログ',
     'Maps':
         'マップ',
     'Map':

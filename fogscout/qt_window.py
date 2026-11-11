@@ -94,9 +94,9 @@ __all__ = (
 
 # key, label (the navigation's icons are drawn by nav_icon: same size and place for all)
 NAV_KEYS = 9                      # 1.17: Ctrl+1 … Ctrl+9 jump to the pages of the navigation
-PAGES = (("overview", N_("Übersicht")), ("maps", "Maps"), ("overlay", N_("Overlay")), ("stats", N_("Statistik")),
+PAGES = (("overview", N_("Übersicht")), ("maps", N_("Maps")), ("overlay", N_("Overlay")), ("stats", N_("Statistik")),
          ("recordings", N_("Aufnahmen")), ("server", N_("Server")), ("settings", N_("Einstellungen")),
-         ("log", "Log"))          # 1.8.78: "Erkennung" went into the settings (cards) and the log ("Erweitert")
+         ("log", N_("Log")))          # 1.8.78: "Erkennung" went into the settings (cards) and the log ("Erweitert")
 
 
 HOTKEY_GROUPS = (                  # 1.25: the hotkeys tab in groups (keys and bindings unchanged)

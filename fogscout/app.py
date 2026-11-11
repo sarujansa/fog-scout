@@ -268,7 +268,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.nb.add(self.tab_recordings, text=_("Aufnahmen"))
         self.nb.add(self.tab_server, text=_("Server"))
         self.nb.add(self.tab_settings, text=_("Einstellungen"))
-        self.nb.add(self.tab_log, text="Log")
+        self.nb.add(self.tab_log, text=_("Log"))
         self.nb.bind("<<NotebookTabChanged>>", lambda e: self._tab_changed())
         self._apply_theme()
         tooltip.attach_all(self.ui_root, self._tip_lookup)
@@ -532,11 +532,11 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             return
         path, shown = self._map_file(map_id, variant)
         if path is None:
-            self._log(_("Für „{map}“ gibt es kein Bild.", map=m.label(variant)), "Overlay")
+            self._log(_("Für „{map}“ gibt es kein Bild.", map=m.shown_label(variant)), "Overlay")
             return
         rotation = self._map_rotation(map_id)
         try:
-            frames = load_frames(path, rotation)
+            frames = load_frames(path, rotation, self._map_title(m, shown))
         except Exception as e:
             self._log(_("Bild konnte nicht geladen werden: {path} ({error})", path=path, error=e), "Fehler")
             return
@@ -549,7 +549,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.source = source
         if prev is not None:                     # 1.8.39: another map/layout in the same round – the round follows
             self._hist_follow(map_id, m.label(shown))
-        self.overlay.set_map(path, m.label(shown), rotation, realm=self._realm_name(m), frames=frames)
+        self.overlay.set_map(path, m.shown_label(shown), rotation, realm=self._realm_name(m), frames=frames)
         if not same_map:                         # a new map/round starts as set, the same one keeps its floor
             self._floor = None if self.settings["overlay"].get("floor_auto", True) else 0
         self._apply_floor()
@@ -561,12 +561,12 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         self.hidden_after_match = False
         self.menu_paused = False
         self._watch(source)
-        self.tray.set_title(f"Fog Scout – {m.label(shown)}")
+        self.tray.set_title(f"Fog Scout – {m.shown_label(shown)}")
         self._detail = detail or {"manual": _("manuell gewählt"), "scan": _("per Scan gefunden")}.get(source, "")
         self._set_thumb(frames[0][0])
         self._show_map_size()
         if source == "manual":
-            self._log(_("Map gewählt: {map}", map=m.label(shown)), "Overlay")
+            self._log(_("Map gewählt: {map}", map=m.shown_label(shown)), "Overlay")
         self._tick_overlay(reschedule=False)
 
     def _unload_test_map(self):
@@ -605,9 +605,16 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._thumb_src = src
         return getattr(self, "_thumb_src", None)
 
+    @staticmethod
+    def _map_title(m, variant) -> str:
+        """1.50: the name the map's picture gets in the language of the user interface – "" when it is the English one
+        drawn on it already (English UI, own maps)."""
+        own = m.shown_label(variant)
+        return own if own != m.label(variant) else ""
+
     def _current_label(self) -> str:
         m = self.catalog.maps.get(self.current[0]) if self.current else None
-        return m.label(self.current[1]) if m else ""
+        return m.shown_label(self.current[1]) if m else ""
 
     def toggle_overlay(self):
         if not self.overlay.has_map():
@@ -752,7 +759,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         m = self.catalog.maps[self.current[0]]
         vs = [v for v in sorted(m.variants) if m.variants[v]]
         if len(vs) < 2:
-            self._log(_("„{map}“ hat nur ein Layout.", map=m.name), "Overlay")
+            self._log(_("„{map}“ hat nur ein Layout.", map=m.title), "Overlay")
             return
         i = vs.index(self.current[1]) if self.current[1] in vs else 0
         self.show_map(m.id, vs[(i + 1) % len(vs)], "manual", _("Layout manuell gewechselt"))
@@ -886,7 +893,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         if self.current and self.current[0] == map_id:
             self._reload_picture()
         m = self.catalog.maps.get(map_id)
-        self._log(_("{map} um {deg}° gedreht.", map=m.name if m else map_id, deg=deg), "Overlay")
+        self._log(_("{map} um {deg}° gedreht.", map=m.title if m else map_id, deg=deg), "Overlay")
         self._show_map_size()
         self._save_soon()
 
@@ -990,7 +997,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         for path in self._style_paths(mid):
             self._style_all(path)
         if mid in self.catalog.maps:
-            self._log(_("Kartenstile für {map} werden im Hintergrund erstellt.", map=self.catalog.maps[mid].name),
+            self._log(_("Kartenstile für {map} werden im Hintergrund erstellt.", map=self.catalog.maps[mid].title),
                       "Overlay")
 
     def _style_map_one(self, mid, style):
@@ -1002,7 +1009,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._style_request(path, style)
         from .app_overlay import MAP_STYLES
         self._log(_("Kartenstil {style} für {map} wird im Hintergrund erstellt.", style=_(dict(MAP_STYLES)[style]),
-                    map=self.catalog.maps[mid].name), "Overlay")
+                    map=self.catalog.maps[mid].title), "Overlay")
 
 
     def _reload_picture(self):
@@ -1015,11 +1022,11 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             return
         rotation = self._map_rotation()
         try:
-            frames = load_frames(path, rotation)
+            frames = load_frames(path, rotation, self._map_title(m, self.current[1]))
         except Exception as e:
             self._log(_("Bild konnte nicht geladen werden: {path} ({error})", path=path, error=e), "Fehler")
             return
-        self.overlay.set_map(path, m.label(self.current[1]), rotation, realm=self._realm_name(m), frames=frames)
+        self.overlay.set_map(path, m.shown_label(self.current[1]), rotation, realm=self._realm_name(m), frames=frames)
         self._apply_floor()
         self._set_thumb(frames[0][0])
         self._tick_overlay(reschedule=False)
@@ -1184,9 +1191,9 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             if not same:
                 self.show_map(d["map_id"], d["variant"], "auto", detail, keep_timer=True)
                 if d.get("unsure"):
-                    self._unsure = {"label": m.label(d["variant"]), "t": time.time(), "shown": False,
+                    self._unsure = {"label": m.shown_label(d["variant"]), "t": time.time(), "shown": False,
                                     "fit": d.get("name_fit", 0.0), "name": d["name_text"]}
-                self._log(_("Erkannt: {map} – gelesen „{name}“ / „{realm}“", map=m.label(d["variant"]),
+                self._log(_("Erkannt: {map} – gelesen „{name}“ / „{realm}“", map=m.shown_label(d["variant"]),
                             name=d["name_text"], realm=d["realm_text"]), "Erkennung")
                 if len(m.variants) > 1 and vp < 0.8:
                     self._layout_unsure = True
@@ -1198,7 +1205,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
                 return                              # nothing that looked like another map
             self._log(_("Mitten in der Runde „{name}“ / „{realm}“ gelesen (am ehesten {map}) – ignoriert: Map-Banner "
                         "gibt es nur am Rundenstart, und die Lesung war nicht eindeutig.", name=d.get("name_text") or "",
-                        realm=d.get("realm_text") or "", map=m.label(1)), "Erkennung")
+                        realm=d.get("realm_text") or "", map=m.shown_label(1)), "Erkennung")
         elif k == "game_language":                # 1.48: the banner is in a game language not ticked
             self._game_language(d.get("code"), d.get("name_text") or "")
         elif k == "unknown":
@@ -1290,7 +1297,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self.show_map(h.map_id, h.variant, "scan", _("per Scan gefunden: „{text}“", text=h.text))
             if self._hist is None:
                 self._hist_open(h.map_id, h.variant, "scan")
-            self._log(_("Scan ({s} s): {map}", s=f"{d['seconds']:.1f}", map=m.label(h.variant)), "Erkennung")
+            self._log(_("Scan ({s} s): {map}", s=f"{d['seconds']:.1f}", map=m.shown_label(h.variant)), "Erkennung")
             return
         realms = [h for h in hits if h.kind == "realm" and h.realm]
         if realms:
@@ -1405,7 +1412,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         m = self.catalog.maps.get(self.current[0]) if self.current else None
         if m is None and pic is not None:                  # the sample picture: the catalog's first map
             m = next((e for e in self.catalog.maps.values() if self._map_file(e.id, 1, request=False)[0]), None)
-        name = m.label(self.current[1] if self.current else 1) if m else _("Map-Name")
+        name = m.shown_label(self.current[1] if self.current else 1) if m else _("Map-Name")
         caption = name if o.get("show_caption", True) and pic is not None else ""
         info = {"timer": "3:27" if o.get("show_timer", True) else "",
                 "server": _("Frankfurt") if o.get("show_server", True) and self.settings.get("show_connection") else "",
@@ -1471,19 +1478,24 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
         in a thread – the preview goes without a map picture for the few ticks until it is there."""
         pic = getattr(self, "_preview_pic", None)
         if pic is None and getattr(self, "_preview_token", None) is None:
-            path = next((p for p in (self._map_file(mid, 1)[0] for mid in self.catalog.maps) if p), None)
+            mid, path = next(((mid, p) for mid, p in ((mid, self._map_file(mid, 1)[0]) for mid in self.catalog.maps)
+                              if p), (None, None))
             if path:
                 token = self._preview_token = object()
-                threading.Thread(target=self._preview_load, args=(path, token), daemon=True,
+                title = self._map_title(self.catalog.maps[mid], 1)            # 1.50: the name in the UI language
+                threading.Thread(target=self._preview_load, args=(path, token, title), daemon=True,
                                  name="preview-sample").start()
         return pic
 
-    def _preview_load(self, path, token):
+    def _preview_load(self, path, token, title=""):
         from PIL import Image
         try:
             with Image.open(path) as im:
                 im.seek(0)
                 pic = im.convert("RGBA")
+            if title:
+                from .mapimage import retitle
+                pic = retitle(pic, title)
             pic.thumbnail((480, 480))
         except (OSError, ValueError):
             pic = None
@@ -1685,7 +1697,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             return
         name, realm = self._unknown
         entries = [m for m in self.catalog.sorted_entries() if not m.custom]
-        labels = [f"{m.name} ({self.catalog.realm_display(m)})" for m in entries]
+        labels = [f"{m.title} ({self.catalog.realm_display(m)})" for m in entries]
         guess = self.catalog.suggest(name, realm)
         dlg = ui.Toplevel(self.ui_root)
         dlg.title(_("Map zuordnen"))
@@ -1722,7 +1734,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._reload_catalog()
             dlg.destroy()
             self._hide_unknown()
-            self._log(_("„{text}“ wird jetzt als {map} erkannt (eigene Zuordnung).", text=name, map=m.name),
+            self._log(_("„{text}“ wird jetzt als {map} erkannt (eigene Zuordnung).", text=name, map=m.title),
                       "Erkennung")
             self.show_map(m.id, 1, "manual", _("zugeordnet: „{text}“", text=name))
 
@@ -1758,7 +1770,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
             self._log(_("Kartenbild gespeichert: {path}", path=rel), "Overlay")
             return
         m = self.catalog.maps[map_id]
-        self._log(_("Eigenes Kartenbild für {map} gespeichert: {path}", map=m.label(variant), path=rel)
+        self._log(_("Eigenes Kartenbild für {map} gespeichert: {path}", map=m.shown_label(variant), path=rel)
                   + (" – " + _("wird ab jetzt automatisch erkannt.") if m.custom else ""), "Overlay")
         self.show_map(map_id, variant, "manual", _("eigenes Bild"))
 
@@ -1777,7 +1789,7 @@ class App(ServerTab, StatsTab, ExportDialog, RecordingsTab, DiscordPresence, Spo
 
     def _show_aliases(self):
         aliases = self.settings.get("user_aliases") or {}
-        items = [f"„{t}“ → {self.catalog.maps[mid].name}" for mid, ts in aliases.items() if mid in self.catalog.maps
+        items = [f"„{t}“ → {self.catalog.maps[mid].title}" for mid, ts in aliases.items() if mid in self.catalog.maps
                  for t in ts]
         self.alias_var.set("; ".join(items) if items else
                            _("Keine. Unbekannte Map-Namen lassen sich nach dem Match im Hauptfenster zuordnen."))

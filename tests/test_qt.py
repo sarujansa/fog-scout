@@ -30,6 +30,8 @@ class _Map:
     def label(self, v):
         return "Coal Tower" + (" II" if v == 2 else "")
 
+    shown_label = label                  # 1.50: the name in the UI language – this fake has only the one
+
 
 def fake_app(**kw):
     """The attributes and helpers overview_model() reads from App."""
@@ -80,7 +82,7 @@ def test_overview_with_a_map_in_a_round():
     timer, server, ping, who = o.facts
     assert timer.value == "01:05" and server.value == "Frankfurt" and ping.value == "31 ms" and who.value == "Oni"
     assert "1.2.3.4" not in repr(o)                                 # never the server address
-    assert o.today[0].value == "1" and [tuple(r[:2]) for r in o.rounds] == [("Coal Tower", "Oni · 09:00")]
+    assert o.today[0].value == "1" and [tuple(r[:2]) for r in o.rounds] == [("Kohlelager", "Oni · 09:00")]
 
 
 def test_overview_doubt_and_unknown():

@@ -15,11 +15,56 @@ import json
 import os
 from dataclasses import dataclass, field
 
+from . import i18n
 from .i18n import _
 from .mapimage import USER_DIR
 from .textnorm import MAIN, alphabet_for, fold, fold_any, model_of, name_forms, roman
 
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
+# 1.50 (user: "alles in der entsprechenden Sprache", map names stayed English): map and realm names are *shown* in
+# the language of the user interface (maps.json has them in every game language); what is stored – rounds.jsonl,
+# recordings, the match with the official data – keeps the English label. UI code -> code in maps.json.
+SHOWN_LANG = {"zh": "zh-Hans"}
+_SHOWN_LABELS: dict = {}           # English label ("Coal Tower II") -> label in the UI language, of the last catalog
+
+
+def shown_lang() -> str:
+    code = i18n.current()
+    return SHOWN_LANG.get(code, code)
+
+
+def shown(label: str) -> str:
+    """A stored English map label ("Coal Tower II", as in rounds.jsonl) in the language of the user interface –
+    unknown text unchanged. Before any catalog is loaded, the names come from the program's own maps.json."""
+    if not label:
+        return label
+    if not _SHOWN_LABELS:
+        _remember_labels(_listed_maps(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    return _SHOWN_LABELS.get(shown_lang(), {}).get(label, label)
+
+
+def _listed_maps(root: str) -> list:
+    try:
+        with open(os.path.join(root, "maps.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    return [MapEntry(id=m["id"], realm=m.get("realm", ""), names=dict(m.get("names", {})),
+                     variants={int(k): v for k, v in (m.get("variants") or {"1": None}).items()})
+            for m in data.get("maps", []) if m.get("id")]
+
+
+def _remember_labels(maps) -> None:
+    """English label -> label in each language, for ``shown`` (every layout, and the name without its number)."""
+    _SHOWN_LABELS.clear()
+    for m in maps:
+        for v in sorted(m.variants) or [1]:
+            for code in set(m.names) | {"en"}:
+                names = _SHOWN_LABELS.setdefault(code, {})
+                n = m.names.get(code) or m.name
+                names.setdefault(m.label(v), f"{n} {roman(v)}" if len(m.variants) > 1 else n)
+                if v == 1 and len(m.variants) > 1:
+                    names.setdefault(m.name, n)        # older rounds and the official data: no number
 
 
 @dataclass
@@ -37,10 +82,28 @@ class MapEntry:
         return self.names.get("en") or next(iter(self.names.values()))
 
     def label(self, variant: int = 1) -> str:
+        """The English label – what is stored (rounds, recordings) and matched with the official data."""
         n = self.name
         if len(self.variants) > 1:
             n = f"{n} {roman(variant)}"
         return n
+
+    @property
+    def title(self) -> str:
+        """1.50: the name in the language of the user interface (English when maps.json has none)."""
+        return self.names.get(shown_lang()) or self.name
+
+    def shown_label(self, variant: int = 1) -> str:
+        """``label`` in the language of the user interface – for everything the user reads."""
+        n = self.title
+        if len(self.variants) > 1:
+            n = f"{n} {roman(variant)}"
+        return n
+
+    @property
+    def realm_title(self) -> str:
+        names = self.realm_names or {}
+        return names.get(shown_lang()) or names.get("en") or next(iter(names.values()), "") or self.realm or ""
 
     def image_for(self, variant: int):
         """(relative path, variant actually shown). Falls back to variant 1."""
@@ -80,6 +143,7 @@ class Catalog:
             if m:
                 m.aliases.extend(t for t in texts if fold(t) and t not in m.aliases)
         self._build_hypotheses()
+        _remember_labels(self.maps.values())
 
     # ------------------------------------------------------------------ load
     def _load(self):
@@ -256,17 +320,18 @@ class Catalog:
         return best
 
     def sorted_entries(self):
-        return sorted(self.maps.values(), key=lambda m: (m.realm.lower(), m.name.lower()))
+        return sorted(self.maps.values(), key=lambda m: (m.realm_title.lower(), m.title.lower()))
 
     def realm_display(self, m: MapEntry) -> str:
-        return m.realm_names.get("en") or m.realm
+        return m.realm_title
 
     def search(self, query: str):
         """Maps whose (any language) name or realm contains the query."""
-        q = fold(query)
+        q = fold_any(query)                   # 1.50: also Cyrillic, Chinese, Japanese, Korean
         res = []
         for m in self.sorted_entries():
-            keys = [fold(n) for n in m.names.values()] + [fold(r) for r in m.realm_names.values()] + [fold(a) for a in m.aliases]
+            keys = ([fold_any(n) for n in m.names.values()] + [fold_any(r) for r in m.realm_names.values()]
+                    + [fold_any(a) for a in m.aliases])
             if not q or any(q in k for k in keys):
                 res.append(m)
         return res

@@ -15,6 +15,7 @@ import time
 from types import SimpleNamespace
 
 from . import encoders, history, launch, obsrec, project, recquality, steamshots, uimodel as ui
+from .catalog import shown as map_shown
 from .medialib import montage_items
 from .appconst import STATS_PERIODS
 from .capture import IS_WIN
@@ -94,7 +95,7 @@ def rec_card_text(d: dict | None, extra_s: float = 0.0, clip_s: int = 0, now: fl
         bits = [_("Pausiert") if paused else _("Nimmt auf")]       # 1.24.3: the colour is the line's (ui.level)
         if d.get("ours"):
             if d.get("label"):
-                bits.append(d["label"])
+                bits.append(map_shown(d["label"]))
             if d.get("manual"):
                 bits.append(_("von Hand gestartet"))
         else:
@@ -870,7 +871,7 @@ class RecordingsTab:
             self.rec_hint_var.set(folder)
         # the map list follows the index
         labels = sorted({r.label for r in recs if r.label})
-        maps = [(None, _("Alle Maps"))] + [(lbl, lbl) for lbl in labels]
+        maps = [(None, _("Alle Maps"))] + [(lbl, map_shown(lbl)) for lbl in labels]
         if maps != self._rec_maps:
             self._rec_maps = maps
             self.rec_map_cb.configure(values=[lbl for _m, lbl in maps])
@@ -898,7 +899,7 @@ class RecordingsTab:
                 size += " ⚠"
             iid = repr(r.t)
             self._rec_rows[iid] = r
-            t.insert("", "end", iid=iid, values=(time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), r.label or "–",
+            t.insert("", "end", iid=iid, values=(time.strftime("%d.%m.%y %H:%M", time.localtime(r.t)), map_shown(r.label) or "–",
                                                  role_txt, res, fmt_duration(r.end - r.t) if r.end > r.t else "–",
                                                  size, self._rec_status(r.keep, len(r.marks),
                                                                         self._yt_mark(r.file, r.yt)), r.file))
@@ -988,7 +989,7 @@ class RecordingsTab:
                 who = self._role_name(c.role) or "–"
             if c.farming:
                 who += " · " + _("Farming")
-            label = c.label if c.label and c.label not in ("Clip", _("Clip")) else "–"    # an old clip without map
+            label = map_shown(c.label) if c.label and c.label not in ("Clip", _("Clip")) else "–"    # an old clip without map
             t.insert("", "end", iid=c.file, values=(
                 time.strftime("%d.%m.%y %H:%M", time.localtime(c.t)), label, who,
                 _(CLIP_KIND_NAMES.get(c.kind, "Clip")), fmt_duration(c.seconds) if c.seconds else "–",
@@ -1561,7 +1562,7 @@ class RecordingsTab:
                 continue
             seconds = max(0.0, (r.end - r.t) if r.end else 0.0) + max(0.0, r.pre_s or 0.0)
             who = self._rec_role(r, None)
-            name = (r.label or os.path.splitext(r.file)[0]) + (f" · {who}" if who and who != "–" else "")
+            name = (map_shown(r.label) or os.path.splitext(r.file)[0]) + (f" · {who}" if who and who != "–" else "")
             out.append(MediaItem(path, name, "round", r.t, seconds, r.size, list(r.marks or ()),
                                  (r.extra or {}).get("sources"), r.label, r.role, r.killer, r.t))
         cdir = obsrec.clips_dir(folder)

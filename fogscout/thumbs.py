@@ -58,29 +58,33 @@ def content_key(path: str) -> str | None:
     return key
 
 
-def cache_name(path: str, box: tuple, by_content: bool = False) -> str:
+def cache_name(path: str, box: tuple, by_content: bool = False, bare: bool = False) -> str:
     """File name of the thumbnail of ``path`` in a cache folder: path, mtime, size and box, so that a changed
     picture never shows its old thumbnail. ``by_content`` (1.38.45, the maps page): the picture's bytes instead of
     path and mtime – a reinstalled, unchanged map keeps its thumbnail (screenshots stay by mtime: reading thousands
-    of large files would cost more than it saves)."""
+    of large files would cost more than it saves). ``bare``: see thumbnail."""
     content = content_key(path) if by_content else None
+    tag = "|bare" if bare else ""
     if content is not None:
-        key = f"content|{content}|{box[0]}x{box[1]}|v{VERSION}"
+        key = f"content|{content}|{box[0]}x{box[1]}|v{VERSION}{tag}"
         return hashlib.sha1(key.encode("utf-8")).hexdigest()[:24] + ".png"
     try:
         st = os.stat(path)
         stamp = f"{st.st_mtime_ns}|{st.st_size}"
     except OSError:
         stamp = "missing"
-    key = f"{os.path.abspath(path)}|{stamp}|{box[0]}x{box[1]}|v{VERSION}"
+    key = f"{os.path.abspath(path)}|{stamp}|{box[0]}x{box[1]}|v{VERSION}{tag}"
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:24] + ".png"
 
 
-def thumbnail(path: str, box: tuple, cache_dir: str | None = None, by_content: bool = False) -> Image.Image:
+def thumbnail(path: str, box: tuple, cache_dir: str | None = None, by_content: bool = False,
+              bare: bool = False) -> Image.Image:
     """The picture at ``path`` shrunk to fit ``box`` (RGBA, first frame). From ``cache_dir`` when it is there
     (the file's mtime is refreshed – ``prune`` keeps what is used), else decoded and, with a cache folder, saved
-    for the next time. The errors of a broken picture are the caller's. ``by_content``: see cache_name."""
-    target = os.path.join(cache_dir, cache_name(path, box, by_content)) if cache_dir else None
+    for the next time. The errors of a broken picture are the caller's. ``by_content``: see cache_name. ``bare``
+    (1.50, the maps page in another language than English): without the (English) name drawn on top of a callout
+    map – the tile writes the name below it in the language of the user interface."""
+    target = os.path.join(cache_dir, cache_name(path, box, by_content, bare)) if cache_dir else None
     if target and os.path.isfile(target):
         try:
             with Image.open(target) as im:
@@ -97,6 +101,11 @@ def thumbnail(path: str, box: tuple, cache_dir: str | None = None, by_content: b
         if im.format == "JPEG":                       # 1.12.2: screenshots – decoded at a reduced scale (draft)
             im.draft("RGB", (max(1, box[0]) * 2, max(1, box[1]) * 2))
         pic = converted(im, "RGBA")
+    if bare:
+        from .mapimage import title_split
+        parts = title_split(pic)
+        if parts is not None:
+            pic = pic.crop((0, parts[2], pic.width, pic.height))
     pic.thumbnail((max(1, box[0]), max(1, box[1])), Image.LANCZOS)      # as the tiles were drawn before
     if target:
         try:
@@ -141,8 +150,9 @@ class Loader:
     bytes (cache_name)."""
 
     def __init__(self, box: tuple, cache_dir: str | None = None, name: str = "map-thumbs", workers: int = 1,
-                 by_content: bool = False):
+                 by_content: bool = False, bare: bool = False):
         self.box = tuple(box)
+        self.bare = bool(bare)                     # 1.50: see thumbnail
         self.name = name
         self.cache_dir = cache_dir
         self.workers = max(1, int(workers))
@@ -243,7 +253,7 @@ class Loader:
         of the picture makes it a broken one: Pillow raises more than OSError/ValueError (DecompressionBombError
         for a picture over 2 × MAX_IMAGE_PIXELS, SyntaxError for some broken files)."""
         try:
-            pic = thumbnail(path, self.box, self.cache_dir, self.by_content)
+            pic = thumbnail(path, self.box, self.cache_dir, self.by_content, self.bare)
             return (path, pic.width, pic.height, pic.tobytes("raw", "RGBA"))
         except Exception:
             return (path, 0, 0, b"")

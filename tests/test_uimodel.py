@@ -618,7 +618,7 @@ def test_size_changes_with_a_map_on_display_are_for_that_map(app_root):
         assert o["height"] == 0.4 and not o.get("map_heights")
         mid = list(app.catalog.maps)[2]
         app.show_map(mid, 1, "manual")
-        assert app._size_scope_text().startswith(f"Gilt für: nur {app.catalog.maps[mid].name}")
+        assert app._size_scope_text().startswith(f"Gilt für: nur {app.catalog.maps[mid].title}")
         app._set_size("map", 55)                              # a map on display: only this one
         assert o["height"] == 0.4 and o["map_heights"][mid] == 0.55 and app._map_height() == 0.55
         app._resize(0.05)                                     # hotkeys: the same map
@@ -730,21 +730,21 @@ def test_the_clips_sub_tab_lists_filters_and_deletes_the_programs_clips(app_root
 
         def rows():
             return [t.item(i, "values") for i in t.get_children()]
-        assert [(r[1], r[2], r[3], r[4]) for r in rows()] == [("Gas Heaven", "Survivor", "Sofort-Clip", "–"),
-                                                               ("Coal Tower", "Nurse", "Clip", "00:28")]
+        assert [(r[1], r[2], r[3], r[4]) for r in rows()] == [("Sprithimmel", "Survivor", "Sofort-Clip", "–"),
+                                                               ("Kohlelager", "Nurse", "Clip", "00:28")]
         assert "holiday.mp4" not in [r[6] for r in rows()] and "2 von 2 Clips" in app.clip_summary_var.get()
         assert [lbl for _k, lbl in app._clip_killers] == ["Alle Killer", "Nurse"]
         app.clip_role_var.set("Survivor")
         app._clips_render()
-        assert [r[1] for r in rows()] == ["Gas Heaven"] and "1 von 2 Clips" in app.clip_summary_var.get()
+        assert [r[1] for r in rows()] == ["Sprithimmel"] and "1 von 2 Clips" in app.clip_summary_var.get()
         app.clip_role_var.set("Alle Rollen")
         app.clip_killer_var.set("Nurse")
         app._clips_render()
-        assert [r[1] for r in rows()] == ["Coal Tower"]
+        assert [r[1] for r in rows()] == ["Kohlelager"]
         app.clip_killer_var.set("Alle Killer")
         app.clip_kind_var.set("Sofort-Clips (F8)")
         app._clips_render()
-        assert [r[1] for r in rows()] == ["Gas Heaven"]
+        assert [r[1] for r in rows()] == ["Sprithimmel"]
         app.clip_kind_var.set("Alle Arten")
         app._clips_render()
         assert app.clip_delete_btn.cget("state") == "disabled"
@@ -801,7 +801,7 @@ def test_the_recordings_tab_lists_the_index_and_acts_on_the_marked_row(app_root)
         app._rec_render()
         t = app.rec_table
         rows = [t.item(i, "values") for i in t.get_children()]                          # 1.11.5: farming counts
-        assert [r[1] for r in rows] == ["Gas Heaven", "Coal Tower"]                     # newest first
+        assert [r[1] for r in rows] == ["Sprithimmel", "Kohlelager"]                     # newest first
         assert rows[1][2] == "Nurse" and rows[1][4] == "10:00" and rows[1][6] == "⚑2" and rows[0][2].endswith("Farming")
         assert rows[0][5] == "2 KB"                                                        # size column
         assert "2 Aufnahmen" in app.rec_summary_var.get() and app.rec_hint_var.get() == str(folder)
@@ -811,18 +811,18 @@ def test_the_recordings_tab_lists_the_index_and_acts_on_the_marked_row(app_root)
         t.event_generate("<<TreeviewSelect>>")
         assert app.rec_play_btn.cget("state") == "normal" and "00:12" in app.rec_marks_var.get()
         assert app.rec_sel_row.winfo_manager() and not app.rec_sel_hint.winfo_manager()
-        assert [lbl for _m, lbl in app._rec_maps] == ["Alle Maps", "Coal Tower", "Gas Heaven"]
-        app.rec_map_var.set("Coal Tower")
+        assert [lbl for _m, lbl in app._rec_maps] == ["Alle Maps", "Kohlelager", "Sprithimmel"]
+        app.rec_map_var.set("Kohlelager")
         app._rec_render(force=True)
-        assert [t.item(i, "values")[1] for i in t.get_children()] == ["Coal Tower"]
+        assert [t.item(i, "values")[1] for i in t.get_children()] == ["Kohlelager"]
         app.rec_map_var.set("Alle Maps")
         app.rec_role_var.set("Survivor")
         app._rec_render(force=True)
-        assert [t.item(i, "values")[1] for i in t.get_children()] == ["Gas Heaven"]
+        assert [t.item(i, "values")[1] for i in t.get_children()] == ["Sprithimmel"]
         app.rec_role_var.set("Alle Rollen")
         app._farming_vars[0].set(True)                                             # "Farming ausblenden"
         app._farming_switch(app._farming_vars[0])
-        assert [t.item(i, "values")[1] for i in t.get_children()] == ["Coal Tower"]
+        assert [t.item(i, "values")[1] for i in t.get_children()] == ["Kohlelager"]
         app._farming_vars[0].set(False)
         app._farming_switch(app._farming_vars[0])
         t.selection_set(repr(t1))
@@ -877,7 +877,7 @@ def test_farming_rounds_have_a_tab_of_their_own_whatever_the_role_filter(app_roo
         app._stats_render()
         assert list(app.stats_farm.get_children()) == [repr(t2), repr(t1)]   # newest first
         row = app.stats_farm.item(repr(t1), "values")
-        assert row[1] == "Coal Tower" and "Nurse" in row[4] and row[5] == "–"   # no official match: no BP
+        assert row[1] == "Kohlelager" and "Nurse" in row[4] and row[5] == "–"   # no official match: no BP
         # 1.8.85 (user: "Wartezeit, wenn's instant ist, kann man das hinschreiben"): a farming round without a
         # measured search time filled its lobby at once; a normal round without one stays unknown
         assert row[3] == "sofort" and row[6] == "–"
@@ -886,10 +886,10 @@ def test_farming_rounds_have_a_tab_of_their_own_whatever_the_role_filter(app_roo
         assert app._wait_text(history.Round(0, 1, "coal", "Coal Tower")) == "–"
         tiles = {x.title: x for x in app.stats_farm_tiles.data}
         assert tiles["Farming-Runden"].value == "2" and "1 als Killer · 1 als Survivor" in tiles["Farming-Runden"].sub
-        app.stats_map_var.set("Coal Tower")
+        app.stats_map_var.set("Kohlelager")
         app._stats_render()
         assert list(app.stats_farm.get_children()) == [repr(t1)]
-        app.stats_map_var.set("Ormond Lake Mine")
+        app.stats_map_var.set("Mine am Ormond-See")
         app.stats_role_var.set("Killer")
         app._stats_render()
         assert list(app.stats_farm.get_children()) == [repr(t2)]       # the role filter does not hide them here
@@ -1132,7 +1132,7 @@ def test_short_rounds_against_the_same_killer_are_offered_as_farming_and_the_ove
         app._stats_render()
         text = app.stats_farm_var.get()
         assert text.startswith("3 Runden sehen nach Farming aus: 3 kurze Runden (bis 3 min) hintereinander gegen "
-                               "denselben Charakter. Zuletzt: Coal Tower")
+                               "denselben Charakter. Zuletzt: Kohlelager")
         assert app.stats_farm_row.winfo_manager()
         facts, _note = overview.today(app, time.time())
         ask = [f for f in facts if f.title == "Farming?"]
@@ -1239,8 +1239,8 @@ def test_the_export_dialog_filters_rounds_and_writes_csv_or_a_text_list(app_root
         assert app.settings.get("export_columns") == ["start", "map", "killer", "kills"]
         assert app.settings.get("export_format") == "text"
         # the round with match data carries the page's layout ("Coal Tower I", official.correct_maps), as the tables do
-        assert app.export_preview_var.get().splitlines() == [roundexport.fmt_when(t1) + " · Coal Tower I · Nurse · 1",
-                                                             roundexport.fmt_when(t2) + " · Coal Tower"]
+        assert app.export_preview_var.get().splitlines() == [roundexport.fmt_when(t1) + " · Kohlelager I · Nurse · 1",
+                                                             roundexport.fmt_when(t2) + " · Kohlelager"]
         app._export_copy()
         assert copied[-1].splitlines() == app.export_preview_var.get().splitlines()
         assert app.export_msg_var.get() == "2 Runden in die Zwischenablage kopiert."
@@ -1258,7 +1258,7 @@ def test_the_export_dialog_filters_rounds_and_writes_csv_or_a_text_list(app_root
         app._export_refresh()
         app._export_save(str(app_root / "out.csv"))
         text = (app_root / "out.csv").read_text(encoding="utf-8-sig").splitlines()
-        assert text[0] == "Start;Map;Killer;Kills" and len(text) == 4 and text[2].endswith(";Coal Tower I;Nurse;1")
+        assert text[0] == "Start;Map;Killer;Kills" and len(text) == 4 and text[2].endswith(";Kohlelager I;Nurse;1")
         assert app.export_msg_var.get().startswith("3 Runden exportiert")
         app._qt_event("dlg_close", str(app._export_dlg))                  # X / Esc of the window
         assert not app._export_dlg.winfo_exists()
@@ -2949,7 +2949,7 @@ def test_the_recording_card_and_its_hotkeys_drive_the_recorder(app_root):
         app._rec_event("obs_status", {"connected": True, "recording": True, "paused": True, "ours": True,
                                       "label": "Coal Tower", "seconds": 30.0, "bytes": 0, "buffer": True,
                                       "width": 2560, "height": 1440, "fps": 60.0, "encoder": "x264 (CPU)"})
-        assert app.rec_state_var.get().startswith("Pausiert · Coal Tower")
+        assert app.rec_state_var.get().startswith("Pausiert · Kohlelager")
         assert app.rec_state_label._dbdms_level == "warn"                        # 1.24.3: colour + words
         assert "2560×1440" in app.rec_live_var.get() and app.rec_start_btn.cget("text") == "Aufnahme stoppen"
         assert app.rec_pause_btn.cget("text") == "Fortsetzen" and str(app.rec_mark_btn.cget("state")) == "normal"
@@ -3287,7 +3287,7 @@ def test_farming_is_answered_per_round_in_the_list(app_root):
         tree = app.stats_farm_tree
         assert list(tree.get_children()) == [repr(t0 + 600), repr(t0 + 300), repr(t0)]       # newest first
         row = tree.item(repr(t0), "values")
-        assert row[1].startswith("Coal Tower") and "Slasher" in row[4] and row[5] == "kurze Serie, gleicher Gegner"
+        assert row[1].startswith("Kohlelager") and "Slasher" in row[4] and row[5] == "kurze Serie, gleicher Gegner"
         app._qt_event("farm_suggest")
         assert revealed == [("stats", str(app.stats_farm_row))]
         app._stats_farm_pick(True)                                      # nothing marked: nothing happens

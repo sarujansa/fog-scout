@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import history, official
+from .catalog import shown
 from .i18n import N_, _
 from .lobby import killer_label
 from .textnorm import fmt_duration
@@ -127,7 +128,7 @@ def cell(key: str, r, m, names: Names) -> str:
     if key == "duration":
         return fmt_duration(r.seconds)
     if key == "map":
-        return r.map
+        return shown(r.map)                    # 1.50: in the language of the user interface
     if key == "realm":
         return names.realm(r.map_id) if r.map_id else ""
     if key == "role":
