@@ -1,72 +1,49 @@
-"""Program icon (drawn, so no binary file is needed in the repository).
+"""Program icon: pictures from fogscout/assets, one file per size.
 
     python -m fogscout.icon PATH.ico     -> writes a multi-size .ico (16 … 256 px)
 
-1.9.1 (user: "ändere ruhig auch das Logo"): a compass star – the scout – over layers of fog, on the dark ground
-of the UI; the needle that points is gold (the theme's accent). Until 1.9 a lavender blocky callout map with a
-white marker. The file carries ICON_VERSION in its name: Windows caches shortcut and taskbar icons by path and
-would keep showing the old picture out of a replaced file; the old files go with the old shortcuts
-(autostart.install).
+1.50.2 (Saru: "die Icons sollten in einer höheren Qualität sein, ich bin mit allen 4 nicht zufrieden"): the icon
+belongs to one family with Fog Forge, Fog Translate and Fog Launch – the same dark tile with depth, warm glow, soft
+fog and amber; the scout's picture stays the compass star. The pictures come from the shared source in the
+fog-forge repository (tools/icons/, rendered by Chromium from SVG), so this module no longer draws: each size in
+SIZES is its own file, and 16–32 px are a simpler variant (no fog, larger star) that stays sharp in the taskbar.
+Until 1.50.1 the icon was drawn here with PIL (compass star over lavender fog). The file carries ICON_VERSION in its
+name: Windows caches shortcut and taskbar icons by path and would keep showing the old picture out of a replaced
+file; the old files go with the old shortcuts (autostart.install).
 """
 from __future__ import annotations
 
 import os
 import sys
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
-ICON_VERSION = 2
+ICON_VERSION = 3
 FILE = f"fogscout-{ICON_VERSION}.ico"
-OLD_FILES = ("fogscout.ico", "dbdmapscout.ico")       # icons of earlier versions (1.9 / until 1.8.91)
-BG = (20, 20, 22, 255)
-FOG = (176, 182, 228)              # the lavender of the old icon, pale, layered with alpha
-NORTH = (201, 162, 39, 255)        # theme accent: the needle that points
-STAR = (236, 238, 243, 255)
-SOUTH = (200, 203, 212, 255)
+OLD_FILES = ("fogscout-2.ico", "fogscout.ico", "dbdmapscout.ico")   # earlier pictures (1.50.1 / 1.9 / until 1.8.91)
+BG = (20, 28, 33, 255)             # the tile's dark ground (ring around the tray dots)
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+PICTURES = (16, 20, 24, 32, 40, 48, 64, 128, 256, 512)   # assets/icon-<n>.png; up to 32 the small variant
 SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
+_CACHE: dict[int, Image.Image] = {}
+
+
+def _picture(n: int) -> Image.Image:
+    if n not in _CACHE:
+        with Image.open(os.path.join(ASSETS, f"icon-{n}.png")) as img:
+            _CACHE[n] = img.convert("RGBA")
+    return _CACHE[n]
 
 
 def draw(size: int = 256) -> Image.Image:
-    s = 4 * size                                  # draw large, scale down (smooth edges)
-    u = s / 16
-    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    radius = int(3.2 * u)
-    d.rounded_rectangle([0, 0, s - 1, s - 1], radius=radius, fill=BG)
-    # fog: soft bands in the lower half, denser towards the bottom, kept inside the rounded ground
-    fog = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    fd = ImageDraw.Draw(fog)
-    for x0, y0, x1, y1, a in ((-2.0, 10.2, 11.0, 12.4, 60), (4.0, 10.8, 18.0, 13.2, 75), (-3.0, 12.0, 12.0, 14.8, 105),
-                              (3.0, 12.6, 19.0, 15.6, 125), (-2.0, 13.8, 18.0, 17.5, 150)):
-        fd.ellipse([x0 * u, y0 * u, x1 * u, y1 * u], fill=FOG + (a,))
-    fog = fog.filter(ImageFilter.GaussianBlur(radius=0.7 * u))
-    ground = Image.new("L", (s, s), 0)
-    ImageDraw.Draw(ground).rounded_rectangle([0, 0, s - 1, s - 1], radius=radius, fill=255)
-    fog.putalpha(Image.composite(fog.getchannel("A"), Image.new("L", (s, s), 0), ground))
-    img.alpha_composite(fog)
-    # compass star: four points, the north one long and gold, the south one sinking into the fog
-    cx, cy = 8 * u, 7.4 * u
-    long_n, long_s, short, w = 5.6 * u, 4.2 * u, 3.3 * u, 1.55 * u
-    points = {"n": [(cx, cy - long_n), (cx + w, cy), (cx, cy), (cx - w, cy)],
-              "s": [(cx, cy + long_s), (cx - w, cy), (cx, cy), (cx + w, cy)],
-              "e": [(cx + short, cy), (cx, cy - w), (cx, cy), (cx, cy + w)],
-              "w": [(cx - short, cy), (cx, cy + w), (cx, cy), (cx, cy - w)]}
-    shadow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow)
-    for k in points:
-        sd.polygon(points[k], fill=(0, 0, 0, 150))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=0.35 * u))
-    img.alpha_composite(shadow, (int(0.1 * u), int(0.25 * u)))
-    d = ImageDraw.Draw(img)
-    d.polygon(points["e"], fill=STAR)
-    d.polygon(points["w"], fill=STAR)
-    d.polygon(points["s"], fill=SOUTH)
-    d.polygon(points["n"], fill=NORTH)
-    r = 0.8 * u
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=BG)
-    r = 0.38 * u
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=STAR)
-    return img.resize((size, size), Image.LANCZOS)
+    """The icon at ``size`` px: its own picture when there is one, else the next larger one scaled down (the
+    small variant only for sizes up to 32, where it was made for)."""
+    exact = size if size in PICTURES else None
+    if exact:
+        return _picture(exact).copy()
+    larger = [n for n in PICTURES if n >= size and (n > 32 or size <= 32)]
+    source = _picture(larger[0] if larger else PICTURES[-1])
+    return source.resize((size, size), Image.LANCZOS)
 
 
 REC = (229, 83, 75, 255)      # 1.4.1: recording dot top right (theme.DOT "err" red)
@@ -96,9 +73,11 @@ def draw_status(size: int, colour: str | None, rec: bool = False) -> Image.Image
 
 
 def ico_bytes() -> bytes:
+    """Every size from its own picture (saving one big picture with ``sizes`` would scale it down instead)."""
     from io import BytesIO
     buf = BytesIO()
-    draw(256).save(buf, format="ICO", sizes=[(n, n) for n in SIZES])
+    pictures = [draw(n) for n in SIZES]
+    pictures[-1].save(buf, format="ICO", sizes=[(n, n) for n in SIZES], append_images=pictures[:-1])
     return buf.getvalue()
 
 
