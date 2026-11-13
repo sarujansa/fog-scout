@@ -13,8 +13,8 @@ from . import layout, media, sysinfo
 from . import skin
 from .i18n import _
 from .overlay_render import (INPUT_RATIO, add_info, backdrop, backdrop_pad, body_cols, compose, info_card,
-                            input_card, lines_above, map_backdrop, map_body, music_body, music_card, pad_to,
-                            render_hud)
+                            input_card, lines_above, map_backdrop, map_body, music_body, music_card, music_fit_height,
+                            music_full_width, pad_to, render_hud)
 
 SAMPLE_SNAPSHOT = dict(cpu_load=38, cpu_temp=64, gpu_temp=71, gpu_load=92, gpu_name="GPU",
                        vram_used=7.1, vram_total=16, ram_used=17.2, ram_total=32, gpu_power=241)
@@ -202,15 +202,25 @@ def layers(gw: int, gh: int, o: dict, hud_side: str, hud_rows: list, hud_own, ma
             look = media.look(o)
             mstyle = o.get("media_style", "big")
             npos = o.get("media_next_pos", "below")
-            mw = mins.get("music", 0)
+            room = avail if spot != "custom" else gw / 3
+            queue = (str(upnext[0]), len(upnext[1])) if upnext and upnext[1] else None
+            shape = (bool(o.get("media_cover", True)), mstyle, bool(prog), tuple(sorted(look)), style, accent,
+                     queue, npos)
+
+            def mw(h, col=mins.get("music", 0)):
+                """1.50.3: the card's fixed width like the App's (the longest title's, never wider than the bar)."""
+                return max(col, min(int(music_full_width(int(h), *shape)), int(room)))
+            asked_h = int(gh * scale)
+            fit_h = music_fit_height(asked_h, room, *shape)   # one size for every song, like the App
             cards["music"] = (fitted((lambda h: skin.music(rows_m, show_cover, h, style, prog, look, accent, mstyle,
-                                                           upnext, npos, min_w=mw)) if modern
+                                                           upnext, npos, min_w=mw(h))) if modern
                                      else (lambda h: music_card(_music_body(rows_m, show_cover, h, mstyle, look), h,
-                                                                mstyle, prog, look, upnext, npos, min_w=mw)),
-                                     int(gh * scale), avail if spot != "custom" else gw / 3,
+                                                                mstyle, prog, look, upnext, npos, min_w=mw(h))),
+                                     fit_h, room,
                                      ("music", repr(rows_m), id(show_cover), mstyle, prog, look, style, accent,
-                                      repr(upnext), npos, mw), fits),
+                                      repr(upnext), npos, mins.get("music", 0), o.get("media_cover", True)), fits),
                               spot, o.get("media_xy"))
+            fits["music"] = fits.get("music", 1.0) * fit_h / max(1, asked_h)   # the slider's mark: of the asked size
         return hud, cards
 
     def place_all(hud, cards):

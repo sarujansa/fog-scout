@@ -597,8 +597,14 @@ class SysInfo:
         """Draw the music card – during a song change (``_media_trans``) the cross-fade frame, else the card;
         never wider than ``avail`` and (1.8.28) never narrower than it was for the same layout: a shorter title
         or queue is drawn at the steady width, nothing moves."""
+        from .overlay_render import music_fit_height, music_full_width
         kw.pop("min_w", None), kw.pop("min_h", None)       # the natural size first
         asked = kw.get("height")                            # (before the bar's fit: that depends on the title)
+        up = kw.get("upnext")
+        queue = (str(up[0]), len(up[1])) if up and up[1] else None
+        shape = (bool(self.settings["overlay"].get("media_cover", True)), kw.get("style"), bool(kw.get("progress")),
+                 tuple(sorted(kw.get("look") or ())), kw.get("skin"), kw.get("accent"), queue, kw.get("upnext_pos"))
+        kw["height"] = music_fit_height(int(asked), avail, *shape)   # 1.50.3: one size for every song
         w, h = self._media_draw(win, kw, avail)
         # 1.8.30 (user: "wenn Spotify den Song wechselt, werden die Felder kurz kleiner und wieder normal"): the key
         # leaves out what comes and goes with a song change (cover, queue, title) – the card keeps its size and
@@ -607,6 +613,11 @@ class SysInfo:
                bool(win.editing))
         st = getattr(self, "_music_steady", None)
         self._music_steady, sw, sh = layout.steady_box(st, key, w, h, time.monotonic())
+        # 1.50.3 (user: "nicht alle Lieder sind gleich breit … immer eine fixe Grösse"): every song at the card's
+        # fixed width (music_full_width: modern = skin.MUSIC_W, classic = its longest title's) – never wider than
+        # the bar; a line that still came out wider is kept for good (_steady_width), never narrower again
+        full = music_full_width(int(kw["height"]), *shape)
+        sw = self._steady_width("music", key + (queue,), max(sw, min(int(full), int(avail))))
         sw = max(sw, self._column_min_w("music", sw, avail))
         if sw > w or sh > h:
             kw["min_w"], kw["min_h"] = sw, sh
@@ -629,7 +640,9 @@ class SysInfo:
             return w, h
         self._media_trans = None
         w, h = win.render(**kw)
-        if w > avail:                                       # never wider than the black bar
+        for _step in range(3):                              # never wider than the black bar (1.50.3: again when one
+            if w <= avail or kw["height"] <= 200:           # step was not enough – the queue beside the card does
+                break                                       # not shrink in proportion)
             kw["height"] = max(200, int(kw["height"] * avail / w))
             w, h = win.render(**kw)
         return w, h

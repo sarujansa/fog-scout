@@ -290,7 +290,7 @@ def test_the_preview_draws_the_cards_of_one_bar_at_one_width():
     from fogscout.config import DEFAULTS
     o = copy.deepcopy(DEFAULTS["overlay"])
     o.update(style="chips", today_pos="custom", today_xy=[0.94, 0.6], media_pos="custom", media_xy=[0.94, 0.87],
-             media_style="big", bar_limits_on=False, keep_out_on=False)
+             media_style="big", bar_limits_on=False, keep_out_on=False, hud_scale=1.05)   # (at one scale all are as wide)
     hud = sysinfo.hud_rows(sysinfo.Snapshot(t=0, cpu_load=38, cpu_temp=64, gpu_temp=71, gpu_load=92, vram_used=7.9,
                                             vram_total=12, ram_used=18.2, ram_total=32))
     today = [[("HEUTE ", sysinfo.DIM), ("4 RUNDEN · 1:12 h", sysinfo.WHITE)]]
@@ -310,8 +310,8 @@ def test_the_preview_draws_the_cards_of_one_bar_at_one_width():
     assert len(set(own.values())) > 1 and max(own.values()) == same["hud"]
     assert layout.column_widths({"a": (3100, 100, 200, 50), "b": (3050, 400, 300, 50), "c": (100, 100, 150, 50),
                                  "d": (1700, 100, 500, 50)}, (0, 0, 3440, 1440)) == {"a": 300}
-    # a long title makes the music card bar-wide, so every card of the column is – such a card reaches into
-    # Discord's pinned-chat zone at the bar's edge: the zone yields (soft), the cards never lie on each other
+    # a long title (until 1.50.3 it made the music card and so the whole column bar-wide) with the limits and
+    # Discord's pinned-chat zone at the bar's edge: one width, and the cards never lie on each other
     o["cards_same_width"], o["keep_out_on"] = True, True
     o.update(bar_limits_on=True, bar_limits=[0.1521, 0.2381, 0.3014, 0.0], bar_limits_same=False)
     long = ([[("Beneath Your Beautiful (feat. Emeli Sandé)", sysinfo.WHITE)], [("Labrinth", sysinfo.DIM)]],
@@ -322,7 +322,7 @@ def test_the_preview_draws_the_cards_of_one_bar_at_one_width():
         layers, _r = preview.layers(3440, 1440, o, "custom", hud, (0.984, 0.383), pic, "", {"timer": "1:00"}, 0.36,
                                     long, today, accent="#c9a227")
         boxes = {n: (x, y, img.width, img.height) for n, img, x, y in layers}
-        assert len({boxes[n][2] for n in ("hud", "today", "music")}) == 1
+        assert {boxes[n][2] for n in ("hud", "today", "music")} == {same["hud"]}   # 1.50.3: as with a short title
         names = list(boxes)
         for i, a in enumerate(names):
             for b in names[i + 1:]:
