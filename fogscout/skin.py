@@ -485,6 +485,11 @@ def chip_rows(chips, max_w: int, gap: int) -> Image.Image:
 # ------------------------------------------------------------------ the music card
 BIG_COVER = 200                         # side of the big cover in design pixels (≈ classic "Groß" at 1440p)
 SMALL_COVER = 64                        # cover of the compact card
+# 1.50.3 (user: "nicht alle Lieder sind gleich breit … ich will, dass es immer eine fixe Grösse hat"): the music
+# card is as wide as the tile cards (system values, today) whatever the title says – a long title is set smaller,
+# then cut. Before, it was as wide as its text, up to WRAP_SHARE of the game height (403 at 1440p): a long title
+# widened the card and, with it, the whole column in the bar.
+MUSIC_W = CARD_MIN_W
 
 
 def music(rows, cover, height: int, style: str, progress=None, look=(), accent=None,
@@ -521,6 +526,17 @@ def music(rows, cover, height: int, style: str, progress=None, look=(), accent=N
         panel = upnext_panel(label, items, u, style, anim, min_w - im.width - gap - shadow)
         im = _attach(im, panel, "right", gap, centred=big)
     return im
+
+
+def music_full_width(height: int, style: str, big: bool = False, queue_right: bool = False) -> int:
+    """The width of music() at ``height`` (1.50.3, user: every song at one fixed width): the card is MUSIC_W wide
+    – title, artist and queue rows are fitted to it –, the frame's shadow comes on top; with the queue as a panel
+    to the right (``queue_right``) card + gap + the widest panel. ``big`` = the layout with the cover on top."""
+    u = max(0.25, height / 1440)
+    shadow = 4 * max(2, int(8 * u)) if surface(style)["shadow"] else 0
+    full = int(MUSIC_W * u)
+    card = max(full, int(BIG_COVER * u) + 2 * int(PAD * u) if big else 0) + shadow
+    return card + int(8 * u) + full + shadow if queue_right else card
 
 
 BODIES_KEPT = 6                         # 1.8.31: music cards without their progress, by song and size
@@ -564,9 +580,10 @@ def _music_base(title, artist, cover, u, progress, look, style, big, inside, min
     """(card without the progress, bar x, bar y) – the part of the music card that stays while a song plays."""
     pad = int(PAD * u)
     line = style == "line"
+    full = int(MUSIC_W * u)                          # 1.50.3: the card's one width – every line is fitted to it
     if big:
         side = int(BIG_COVER * u)
-        max_w = max(side, int(WRAP_SHARE * 1440 * u) - 2 * pad)
+        max_w = max(side, full - 2 * pad)
         tf, title = _fit_text(title, "SemiBold", int(20 * u), max_w)
         af, artist = _fit_text(artist, "Medium", int(15 * u), max_w) if artist else (inter("Medium", int(15 * u)), "")
         w = int(max(side, _width(tf, title), _width(af, artist), 160 * u)) + 2 * pad
@@ -575,18 +592,18 @@ def _music_base(title, artist, cover, u, progress, look, style, big, inside, min
     else:
         side = int(SMALL_COVER * u) if cover is not None else 0
         text_x = pad + side + (int(14 * u) if cover is not None else 0)
-        max_w = int(WRAP_SHARE * 1440 * u) - text_x - pad
+        max_w = full - text_x - pad
         tf, title = _fit_text(title, "SemiBold", int(20 * u), max_w)
         af, artist = _fit_text(artist, "Medium", int(16 * u), max_w) if artist else (inter("Medium", int(16 * u)), "")
         w = text_x + int(max(_width(tf, title), _width(af, artist), 120 * u)) + pad
         body_h = max(side + pad, int(80 * u if progress else 60 * u))
-    queue = _upnext_fitted(*inside[:2], u, style, int(WRAP_SHARE * 1440 * u) - 2 * pad) if inside else None
+    queue = _upnext_fitted(*inside[:2], u, style, full - 2 * pad) if inside else None
     if queue:
         w = max(w, queue["w"] + 2 * pad)
         list_h = int(20 * u) + queue["head_h"] + queue["rows_h"]
     else:
         list_h = 0
-    w = max(w, int(min_w))
+    w = max(w, full, int(min_w))
     h = max(body_h + list_h + pad, int(min_h))
     im = _frame(w, h, style, u)
     d = ImageDraw.Draw(im)
@@ -690,10 +707,10 @@ def _upnext_draw(im, x, y, w, q, u, style, anim=None):
 
 def upnext_panel(label: str, items, u: float, style: str, anim=None, min_w: int = 0) -> Image.Image:
     """"Als nächstes" (1.8) as a small panel of its own in ``style`` (right of the music card): a caps header,
-    then number · title – artist per track, each line fitted to the width of the bar (WRAP_SHARE); at least
+    then number · title – artist per track, each line fitted to the music card's width (MUSIC_W); at least
     ``min_w`` wide (1.8.28: the steady width of the whole music picture)."""
     pad = int(12 * u)
-    q = _upnext_fitted(label, items, u, style, int(WRAP_SHARE * 1440 * u) - 2 * pad)
+    q = _upnext_fitted(label, items, u, style, int(MUSIC_W * u) - 2 * pad)
     w = max(q["w"] + 2 * pad, int(120 * u), int(min_w))
     h = pad + q["head_h"] + q["rows_h"] + pad
     im = _frame(w, h, style, u)

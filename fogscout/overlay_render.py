@@ -668,6 +668,49 @@ def music_picture(rows, height: int, cover=None, style="big", progress=None, loo
     return music_card(bodies[key][0], height, style, progress, look, upnext, upnext_pos, anim, min_w, min_h)
 
 
+@lru_cache(maxsize=32)
+def music_full_width(height: int, cover: bool = True, style="big", progress: bool = False, look=(),
+                     skin="classic", accent=None, queue=None, upnext_pos="below") -> int:
+    """Width of the music card with the longest title, artist and queue rows it can show at ``height`` (1.50.3,
+    user: "nicht alle Lieder sind gleich breit … ich will, dass es immer eine fixe Grösse hat"): the App draws
+    every song at this width (``min_w``), so the card is as wide for "Hi" as for the longest title. ``cover`` =
+    the card shows covers, ``queue`` = (label, rows) of the Spotify list or None. Measured from a sample card,
+    once per layout."""
+    from .media import LONGEST
+    white, dim = (255, 255, 255, 255), DIM_LABEL
+    # the longest text media.rows lets through: the modern styles fit it to a pixel width, the classic card sets
+    # it smaller and wraps it (fit_lines – its compact cover grows with the lines, so the wrapped case is the
+    # widest); the queue rows are cut to a pixel width (modern) or a number of characters (classic)
+    n = LONGEST
+    rows = [[("n" * n, white)], [("n" * n, dim)]]
+    art = Image.new("RGB", (8, 8), (40, 40, 40)) if cover else None
+    upnext = (queue[0], tuple(("n" * n, "n" * n) for _ in range(max(1, int(queue[1]))))) if queue else None
+    w = music_picture(rows, int(height), art, style, (0, 600) if progress else None, tuple(look), skin, accent,
+                      upnext, upnext_pos).width
+    if skin != "classic":                        # a fitted line ends a few pixels short of the limit: the limit itself
+        from . import skin as skins
+        w = max(w, skins.music_full_width(int(height), skin, style == "big" and cover,
+                                          bool(queue) and upnext_pos == "right"))
+    return w
+
+
+def music_fit_height(height: int, avail: float, cover: bool = True, style="big", progress: bool = False, look=(),
+                     skin="classic", accent=None, queue=None, upnext_pos="below") -> int:
+    """The height at which the music card's fixed width (music_full_width) fits ``avail`` (1.50.3): the modern
+    styles reach that width with any long title, and a card that is set smaller only for those songs would
+    change its size from song to song – so every song is drawn at this height. Unchanged for the classic style
+    and for the queue to the right (their widest case is rare; there only a too wide card is set smaller)."""
+    height = int(height)
+    if skin == "classic" or (queue and upnext_pos == "right") or avail <= 0:
+        return height
+    for _ in range(3):
+        full = music_full_width(height, cover, style, progress, look, skin, accent, queue, upnext_pos)
+        if full <= avail or height <= 200:
+            break
+        height = max(200, int(height * avail / full))
+    return height
+
+
 def lines_above(pic: Image.Image, lines: Image.Image, text_h: int) -> Image.Image:
     """1.8.34: the classic lines block (add_info on an empty picture) above the map picture, both centred – the
     map's drawn name stays on top of the map itself."""

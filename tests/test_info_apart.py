@@ -356,13 +356,15 @@ def test_a_card_keeps_its_widest_width_while_its_values_change(tmp_path):
         win = app.media_win = _SizedWin(300, 400)
         app.media.now = media.NowPlaying("Blinding Lights", "The Weeknd", True, time.time(), position=10.0,
                                          duration=176.0, at=time.time())
-        assert app._media_card() == (300, 400) and "min_w" not in win.calls[-1]
+        big = app._media_card()                              # 1.50.3: at the layout's fixed width from the start
+        assert big[0] >= 300 and big[1] == 400 and win.calls[-1]["min_w"] == big[0]
         win.size = (260, 400)                                # a shorter title
         app.media.now = media.NowPlaying("Hi", "X", True, time.time(), position=1.0, duration=90.0, at=time.time())
-        assert app._media_card() == (300, 400) and win.calls[-1]["min_w"] == 300
-        app.settings["overlay"]["media_style"] = "compact"   # another layout: its own steady width
+        assert app._media_card() == big and win.calls[-1]["min_w"] == big[0]
+        app.settings["overlay"]["media_style"] = "compact"   # another layout: its own fixed width
         win.size = (250, 120)
-        assert app._media_card() == (250, 120) and not win.calls[-1].get("min_w")
+        small = app._media_card()
+        assert small[0] != big[0] and small[1] == 120 and win.calls[-1]["min_w"] == small[0]
         today = app.today_win = _SizedWin(280, 200)
         assert app._today_card() == (280, 200)
         today.size = (250, 200)
@@ -538,6 +540,60 @@ def test_cards_in_the_same_bar_share_one_width_and_merge_into_a_column(tmp_path)
         assert ys == sorted(ys)                                                          # one column, top down
         app.undo_layout()                                                                # back to the own places
         assert o["today_pos"] == "custom" and o["media_pos"] == "custom" and not o["cards_same_width"]
+    finally:
+        app.quit()
+
+
+@WHOLE_APP
+def test_the_music_card_is_as_wide_for_every_song(tmp_path):
+    """1.50.3 (user: "nicht alle Lieder sind gleich breit. Dann verbreitert sich das Fenster oder wird schmaler.
+    Ich will, dass es immer eine fixe Grösse hat"): the card was as wide as its title and only held the widest
+    width for SHRINK_AFTER seconds. Now every song is drawn at one width (overlay_render.music_full_width: the
+    modern styles' skin.MUSIC_W like the tile cards, classic its longest title's) – in every style and layout,
+    from the first song on, never wider than the black bar, and still the same after a long time."""
+    import json
+    import time
+    from fogscout import layout, media
+    from fogscout.app import App
+    from fogscout.preview import sample_cover
+    (tmp_path / "settings.json").write_text(json.dumps({"welcome_seen": True}), encoding="utf-8")
+    (tmp_path / "sim").mkdir()
+    app = App(str(tmp_path), simulate=str(tmp_path / "sim"))
+    songs = (("Hi", "X"), ("Blinding Lights", "The Weeknd"), ("Beneath Your Beautiful (feat. Emeli Sandé)", "Labrinth"),
+             ("Symphony No. 9 in D Minor, Op. 125 \"Choral\": IV. Finale. Presto – Allegro assai",
+              "Ludwig van Beethoven, Berliner Philharmoniker, Herbert von Karajan"), ("WWWWWWWWWWWW MMMMMMMMMM", "W"))
+    try:
+        app._media_ctx = (0, 0, 3440, 1440, True)
+        app._forced = True
+        o = app.settings["overlay"]
+        o["media_fade"] = False
+        app.media_win = _DrawWin("MUSIK")
+        queue = ("ALS NÄCHSTES", (("Te Amo", "Rihanna"), ("3 Gold Rings", "Shane Moyer")))
+        cases = [(sk, st, sc, None, "below", "bottom_right") for sk in ("classic", "glass", "chips", "line")
+                 for st in ("big", "compact") for sc in (0.6, 1.0)]
+        cases += [(sk, st, 0.6, queue, pos, spot) for sk in ("classic", "glass", "line") for st in ("big", "compact")
+                  for pos in ("below", "right") for spot in ("bottom_right", "custom")]
+        for skin_name, style, scale, up, pos, spot in cases:
+            app._upnext = lambda now, sample=False, up=up: up
+            avail = layout.max_width(layout.bar_width(3440, 1440), int(1440 * o["margin"])) \
+                if spot != "custom" else 3440 / 3
+            o.update(style=skin_name, media_style=style, media_scale=scale, media_next_pos=pos, media_pos=spot)
+            widths = []
+            for title, artist in songs:
+                app.media.now = media.NowPlaying(title, artist, True, time.time(), position=10.0,
+                                                 duration=200.0, at=time.time(), cover=sample_cover())
+                widths.append(app._media_card()[0])
+            st = app._music_steady                   # … and long after the longest title
+            app._music_steady = (st[0], st[1], st[2], time.monotonic() - 600)
+            app.media.now = media.NowPlaying("Hi", "X", True, time.time(), position=10.0, duration=200.0,
+                                             at=time.time(), cover=None)
+            widths += [app._media_card()[0], app._media_card()[0]]
+            case = (skin_name, style, scale, bool(up), pos, spot, widths)
+            if max(widths) > avail:                  # a title too long for the bar even at the smallest
+                assert skin_name == "classic" and up and pos == "right", case   # text (classic, list beside)
+                assert widths[:-2] == sorted(widths[:-2]) and len(set(widths[-3:])) == 1, case  # stays wide
+            else:
+                assert len(set(widths)) == 1, case
     finally:
         app.quit()
 
